@@ -1,12 +1,16 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { pathToFileURL } from "url";
 import { createServices, createMcpServer } from "./server-setup.js";
 
 // Re-export the public package surface for npm consumers
 export { startServer, type ServerOptions } from "./serve-http.js";
 export { createServices, createMcpServer } from "./server-setup.js";
 
-// STDIO entry: only run when invoked directly (not when imported)
-const isMainModule = import.meta.url === `file://${process.argv[1]}` || import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/"));
+// STDIO entry: only run when invoked directly (not when imported).
+// Uses pathToFileURL for cross-platform correctness (handles Windows drive letters
+// + the file:///C:/... vs file://C:/... slash-count mismatch). Guards against
+// process.argv[1] being undefined (REPL, some bundlers).
+const isMainModule = process.argv[1] != null && import.meta.url === pathToFileURL(process.argv[1]).href;
 
 if (isMainModule) {
   const DATA_DIR = process.env.COORDINATOR_DATA_DIR || "./data";
