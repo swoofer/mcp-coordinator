@@ -1,0 +1,91 @@
+name: Release binaries
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-14
+            platform: darwin
+            arch: arm64
+            bun_target: bun-darwin-aarch64
+          - os: macos-15
+            platform: darwin
+            arch: x64
+            bun_target: bun-darwin-x64
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+            bun_target: bun-linux-x64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - run: npm install
+
+      - run: npm test
+
+      - name: Build binary
+        run: |
+          mkdir -p bin
+          bun build --compile cli/index.ts --outfile bin/mcp-coordinator
+
+      - name: Sign binary (macOS)
+        if: matrix.platform == 'darwin'
+        run: |
+          codesign --remove-signature bin/mcp-coordinator || true
+          codesign --sign - --force --entitlements /dev/stdin bin/mcp-coordinator << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>com.apple.security.cs.allow-jit</key>
+              <true/>
+              <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+              <true/>
+              <key>com.apple.security.cs.disable-library-validation</key>
+              <true/>
+          </dict>
+          </plist>
+          EOF
+
+      - name: Verify binary
+        run: |
+          ./bin/mcp-coordinator --version
+          ./bin/mcp-coordinator server --help
+
+      - name: Package tarball
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          DIST_NAME="mcp-coordinator-${VERSION}-${{ matrix.platform }}-${{ matrix.arch }}"
+          mkdir -p "dist/${DIST_NAME}/dashboard"
+
+          cp bin/mcp-coordinator "dist/${DIST_NAME}/"
+          cp package.json "dist/${DIST_NAME}/"
+          cp -r dashboard/public "dist/${DIST_NAME}/dashboard/"
+
+          cd dist
+          tar czf "${DIST_NAME}.tar.gz" "${DIST_NAME}"
+
+      - name: Publish tarball to GH Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.tar.gz
+          generate_release_notes: true
+          fail_on_unmatched_files: true
