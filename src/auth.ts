@@ -1,0 +1,114 @@
+import { SignJWT, jwtVerify, errors } from "jose";
+import { randomUUID } from "crypto";
+import type { IncomingMessage } from "http";
+import { getDb } from "./database.js";
+import { silentLogger, type Logger } from "./logger.js";
+
+let signingKey: Uint8Array;
+let defaultExpiry = "24h";
+let log: Logger = silentLogger;
+
+export function setAuthLogger(logger: Logger): void {
+  log = logger;
+}
+
+export interface AuthClaims {
+  sub: string;
+  role: "agent" | "admin";
+}
+
+export function initAuth(secret: string, expiry?: string): void {
+  signingKey = new TextEncoder().encode(secret);
+  if (expiry) defaultExpiry = expiry;
+}
+
+export async function createToken(
+  agentId: string,
+  role: "agent" | "admin",
+  expiry?: string,
+): Promise<string> {
+  return new SignJWT({ role })
+    .setProtectedHeader({ alg: "HS256" })
+    .setSubject(agentId)
+    .setJti(randomUUID())
+    .setIssuedAt()
+    .setExpirationTime(expiry || defaultExpiry)
+    .sign(signingKey);
+}
+
+export async function verifyToken(token: string): Promise<AuthClaims> {
+  const { payload } = await jwtVerify(token, signingKey);
+  if (!payload.sub) throw new Error("Missing sub claim in token");
+  const role = payload.role;
+  if (role !== "agent" && role !== "admin") throw new Error("Invalid role in token");
+  return { sub: payload.sub, role };
+}
+
+export async function refreshToken(
+  token: string,
+  gracePeriod = "1h",
+): Promise<string> {
+  let claims: AuthClaims;
+  try {
+    claims = await verifyToken(token);
+  } catch (err) {
+    if (err instanceof errors.JWTExpired) {
+      const { payload } = await jwtVerify(token, signingKey, {
+        clockTolerance: gracePeriod,
+      });
+      if (!payload.sub) throw new Error("Missing sub claim in token");
+      const role = payload.role;
+      if (role !== "agent" && role !== "admin") throw new Error("Invalid role in token");
+      claims = { sub: payload.sub, role };
+    } else {
+      throw err;
+    }
+  }
+  return createToken(claims.sub, claims.role);
+}
+
+export function isRevoked(agentId: string): boolean {
+  const db = getDb();
+  const row = db.prepare("SELECT 1 FROM revoked_agents WHERE agent_id = ?").get(agentId);
+  return !!row;
+}
+
+export function revokeAgent(agentId: string, revokedBy: string): void {
+  const db = getDb();
+  db.prepare("INSERT OR IGNORE INTO revoked_agents (agent_id, revoked_by) VALUES (?, ?)").run(agentId, revokedBy);
+}
+
+const ADMIN_ONLY_ROUTES = ["/api/auth/revoke", "/api/reset"];
+
+export type AuthResult =
+  | { ok: true; claims: AuthClaims }
+  | { ok: false; status: 401 | 403; error: string };
+
+export async function authenticateRequest(req: IncomingMessage): Promise<AuthResult> {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return { ok: false, status: 401, error: "Missing or invalid Authorization header" };
+  }
+
+  const token = authHeader.slice(7);
+  let claims: AuthClaims;
+  try {
+    claims = await verifyToken(token);
+  } catch (err) {
+    log.error({ err }, "JWT verification error");
+    return { ok: false, status: 401, error: "Invalid or expired token" };
+  }
+
+  if (isRevoked(claims.sub)) {
+    return { ok: false, status: 403, error: "Agent has been revoked" };
+  }
+
+  const url = req.url || "";
+  // Strip query string and hash before matching — "/api/reset?x=1" must hit the check
+  const pathOnly = url.split(/[?#]/)[0];
+  if (ADMIN_ONLY_ROUTES.some((r) => pathOnly === r) && claims.role !== "admin") {
+    return { ok: false, status: 403, error: "Admin access required" };
+  }
+
+  return { ok: true, claims };
+}
