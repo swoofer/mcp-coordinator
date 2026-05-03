@@ -6,15 +6,22 @@
   <title>mcp-coordinator — Embedded MQTT broker + MCP server</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
     :root {
       --bg: #060b18;
       --bg-alt: #0a1120;
       --text: #e2e8f0;
       --muted: #94a3b8;
-      --accent: #60a5fa;
+      --accent: #4ade80;
+      --blue: #60a5fa;
+      --yellow: #fbbf24;
+      --red: #f87171;
       --border: rgba(255,255,255,0.08);
+      --card-bg: rgba(255,255,255,0.03);
     }
+
     html { scroll-behavior: smooth; }
+
     body {
       background: var(--bg);
       color: var(--text);
@@ -22,74 +29,2916 @@
       font-size: 16px;
       line-height: 1.6;
     }
+
     a { color: var(--accent); text-decoration: none; }
     a:hover { text-decoration: underline; }
-    .container { max-width: 960px; margin: 0 auto; padding: 4rem 2rem; }
-    h1 { font-size: 3rem; margin-bottom: 1rem; letter-spacing: -0.02em; }
-    h2 { font-size: 1.5rem; margin: 2.5rem 0 1rem; color: var(--accent); }
-    .lead { color: var(--muted); font-size: 1.25rem; margin-bottom: 2rem; max-width: 640px; }
-    pre {
-      background: var(--bg-alt);
-      border: 1px solid var(--border);
-      padding: 1.25rem;
-      border-radius: 8px;
-      overflow-x: auto;
-      font-size: 0.9rem;
-      margin: 1rem 0;
+
+    /* NAV */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      background: rgba(6,11,24,0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 0 2rem;
+      height: 56px;
+      display: flex; align-items: center; justify-content: space-between;
     }
-    code { font-family: 'Fira Code', 'JetBrains Mono', monospace; color: var(--accent); }
-    pre code { color: var(--text); }
-    ul { padding-left: 1.5rem; margin: 1rem 0; }
-    li { margin: 0.5rem 0; }
-    .related {
-      margin-top: 4rem;
-      padding-top: 2rem;
-      border-top: 1px solid var(--border);
+
+    .nav-logo {
+      font-weight: 700; font-size: 1rem; color: var(--text);
+      display: flex; align-items: center; gap: 0.5rem;
     }
-    .related p { margin: 0.75rem 0; color: var(--muted); }
-    .related strong { color: var(--text); }
-    footer {
-      margin-top: 4rem;
-      padding-top: 2rem;
-      border-top: 1px solid var(--border);
+
+    .nav-logo span { color: var(--accent); }
+
+    .nav-links { display: flex; gap: 1.5rem; align-items: center; }
+    .nav-links a { color: var(--muted); font-size: 0.9rem; transition: color 0.2s; }
+    .nav-links a:hover { color: var(--text); text-decoration: none; }
+    .nav-links a.nav-active { color: var(--accent); }
+    .nav-links .btn-sm {
+      background: var(--accent); color: #060b18; padding: 0.3rem 0.85rem;
+      border-radius: 6px; font-weight: 600; font-size: 0.85rem;
+    }
+    .nav-links .btn-sm:hover { opacity: 0.9; text-decoration: none; }
+
+    .hamburger { display: none; background: none; border: none; color: var(--text); font-size: 1.5rem; cursor: pointer; }
+
+    /* SECTIONS */
+    section { padding: 5rem 2rem; }
+    section:nth-child(even) { background: var(--bg-alt); }
+    .container { max-width: 960px; margin: 0 auto; }
+
+    /* HERO */
+    #hero {
+      padding-top: 8rem;
+      text-align: center;
+      background: radial-gradient(ellipse at 50% 0%, rgba(74,222,128,0.06) 0%, transparent 60%),
+                  var(--bg);
+    }
+
+    .hero-eyebrow {
+      display: inline-block;
+      background: rgba(74,222,128,0.1);
+      color: var(--accent);
+      border: 1px solid rgba(74,222,128,0.3);
+      border-radius: 20px;
+      padding: 0.25rem 0.9rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      margin-bottom: 1.5rem;
+    }
+
+    h1 {
+      font-size: clamp(2.2rem, 6vw, 3.8rem);
+      font-weight: 800;
+      line-height: 1.1;
+      margin-bottom: 1.25rem;
+      background: linear-gradient(135deg, var(--accent) 0%, var(--blue) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero-subtitle {
+      font-size: clamp(1rem, 2.5vw, 1.25rem);
       color: var(--muted);
-      font-size: 0.875rem;
+      max-width: 600px;
+      margin: 0 auto 2rem;
+    }
+
+    .hero-stats {
+      display: flex; flex-wrap: wrap; gap: 1rem;
+      justify-content: center;
+      margin-bottom: 2.5rem;
+    }
+
+    .stat-pill {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 0.3rem 0.9rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
+    .stat-pill strong { color: var(--accent); }
+
+    /* TERMINAL */
+    .terminal {
+      background: #0d1117;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 0.82rem;
+      line-height: 1.8;
+      text-align: left;
+      max-width: 660px;
+      margin: 0 auto 2.5rem;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .terminal::before {
+      content: '';
+      display: block;
+      width: 60px; height: 10px;
+      background: linear-gradient(90deg, #ff5f56 0 30%, #ffbd2e 33% 63%, #27c93f 66%);
+      border-radius: 5px;
+      margin-bottom: 1rem;
+    }
+
+    .terminal::after {
+      content: '';
+      position: absolute;
+      inset: -40px;
+      background: radial-gradient(ellipse at center, rgba(74,222,128,0.08) 0%, transparent 70%);
+      z-index: -1;
+      border-radius: 50%;
+    }
+
+    .t-dim { color: var(--muted); }
+    .t-green { color: var(--accent); }
+    .t-blue { color: var(--blue); }
+    .t-yellow { color: var(--yellow); }
+    .t-red { color: var(--red); }
+
+    /* Hero terminal typing animation */
+    .hero-term-line {
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity 0.5s ease, transform 0.5s ease;
+    }
+    .hero-term-line.shown {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .hero-cta { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      padding: 0.7rem 1.5rem;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.95rem;
+      transition: opacity 0.2s, transform 0.15s;
+      cursor: pointer;
+    }
+
+    .btn:hover { opacity: 0.9; transform: translateY(-1px); text-decoration: none; }
+    .btn-primary { background: var(--accent); color: #060b18; }
+    .btn-outline { border: 1px solid var(--border); color: var(--text); background: var(--card-bg); }
+
+    /* SECTION TITLES */
+    .section-title {
+      font-size: clamp(1.6rem, 4vw, 2.2rem);
+      font-weight: 700;
+      margin-bottom: 0.75rem;
+    }
+
+    .section-sub {
+      color: var(--muted);
+      max-width: 560px;
+      margin: 0 auto 3rem;
+      text-align: center;
+    }
+
+    .text-center { text-align: center; }
+
+    /* CARDS GRID */
+    .cards { display: grid; gap: 1.25rem; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+
+    .card:hover { border-color: rgba(74,222,128,0.3); transform: translateY(-2px); }
+
+    .card-icon { font-size: 1.8rem; margin-bottom: 0.75rem; }
+    .card h3 { font-size: 1.05rem; margin-bottom: 0.5rem; }
+    .card p { color: var(--muted); font-size: 0.9rem; }
+
+    /* STEPS */
+    .steps { display: grid; gap: 1.25rem; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+
+    .step {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      position: relative;
+    }
+
+    .step-num {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 32px; height: 32px;
+      background: rgba(74,222,128,0.1);
+      border: 1px solid rgba(74,222,128,0.3);
+      border-radius: 50%;
+      color: var(--accent);
+      font-weight: 700;
+      font-size: 0.85rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .step-icon { font-size: 1.5rem; margin-bottom: 0.5rem; }
+    .step h3 { font-size: 1rem; margin-bottom: 0.4rem; }
+    .step p { color: var(--muted); font-size: 0.88rem; }
+
+    /* SCORING */
+    .score-grid { display: grid; gap: 0.75rem; }
+
+    .score-row {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      align-items: center;
+      gap: 1rem;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+    }
+
+    .score-label { font-size: 0.9rem; }
+    .score-badge {
+      font-family: monospace;
+      font-size: 1rem;
+      font-weight: 700;
+      min-width: 40px;
+      text-align: right;
+    }
+
+    .score-tag {
+      font-size: 0.75rem;
+      padding: 0.2rem 0.6rem;
+      border-radius: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .tag-red { background: rgba(248,113,113,0.15); color: var(--red); border: 1px solid rgba(248,113,113,0.3); }
+    .tag-yellow { background: rgba(251,191,36,0.1); color: var(--yellow); border: 1px solid rgba(251,191,36,0.3); }
+    .tag-green { background: rgba(74,222,128,0.1); color: var(--accent); border: 1px solid rgba(74,222,128,0.3); }
+
+    /* ARCHITECTURE */
+    .arch-diagram {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2rem;
+      overflow-x: auto;
+    }
+
+    .arch-row { display: flex; align-items: center; justify-content: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+    .arch-row:last-child { margin-bottom: 0; }
+
+    .arch-box {
+      background: rgba(96,165,250,0.08);
+      border: 1px solid rgba(96,165,250,0.3);
+      border-radius: 8px;
+      padding: 0.5rem 1rem;
+      font-size: 0.82rem;
+      font-family: monospace;
+      white-space: nowrap;
+      color: var(--blue);
+    }
+
+    .arch-box.accent {
+      background: rgba(74,222,128,0.08);
+      border-color: rgba(74,222,128,0.3);
+      color: var(--accent);
+    }
+
+    .arch-box.neutral {
+      background: rgba(148,163,184,0.06);
+      border-color: var(--border);
+      color: var(--muted);
+    }
+
+    .arch-arrow { color: var(--muted); font-size: 0.9rem; }
+    .arch-down { text-align: center; color: var(--muted); font-size: 1rem; margin: 0.5rem 0; }
+
+    /* DASHBOARD */
+    .dash-preview {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.75rem;
+    }
+
+    .dash-header { display: flex; gap: 0.5rem; margin-bottom: 1.25rem; flex-wrap: wrap; }
+
+    .agent-status {
+      display: flex; align-items: center; gap: 0.4rem;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 0.3rem 0.75rem;
+      font-size: 0.82rem;
+    }
+
+    .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .dot-blue { background: var(--blue); }
+    .dot-green { background: var(--accent); }
+    .dot-yellow { background: var(--yellow); }
+    .dot-red { background: var(--red); }
+
+    /* Pulsing dots for active states */
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .dot-blue, .dot-yellow { animation: pulse 1.5s infinite; }
+
+    .dash-timeline {
+      font-family: monospace;
+      font-size: 0.8rem;
+      color: var(--muted);
+      line-height: 2;
+    }
+
+    .dash-timeline .tl-time { color: rgba(148,163,184,0.5); margin-right: 0.75rem; }
+    .dash-timeline .tl-green { color: var(--accent); }
+    .dash-timeline .tl-yellow { color: var(--yellow); }
+    .dash-timeline .tl-blue { color: var(--blue); }
+
+    /* INSTALL */
+    .install-grid { display: grid; gap: 1.25rem; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+
+    .install-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      transition: border-color 0.2s;
+    }
+
+    .install-card:hover { border-color: rgba(74,222,128,0.3); }
+
+    .install-step {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 0.5rem;
+    }
+
+    .install-card h3 { font-size: 1rem; margin-bottom: 0.75rem; }
+
+    .code-block {
+      background: #0d1117;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.75rem 1rem;
+      font-family: monospace;
+      font-size: 0.8rem;
+      color: var(--accent);
+      margin-top: 0.75rem;
+      overflow-x: auto;
+      position: relative;
+    }
+
+    /* COPY BUTTON */
+    .copy-btn {
+      position: absolute; top: 8px; right: 8px;
+      background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15);
+      color: var(--muted); font-size: 0.7rem; padding: 0.2rem 0.5rem;
+      border-radius: 4px; cursor: pointer; transition: all 0.2s;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    .copy-btn:hover { background: rgba(255,255,255,0.2); color: var(--text); }
+
+    /* RESULTS TABLE */
+    .results-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+    }
+
+    .results-table th {
+      text-align: left;
+      color: var(--muted);
+      font-weight: 600;
+      padding: 0.6rem 1rem;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .results-table td {
+      padding: 0.9rem 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .results-table tr:last-child td { border-bottom: none; }
+    .results-table tr:hover td { background: rgba(255,255,255,0.02); }
+
+    .result-id {
+      font-family: monospace;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    /* DOGFOOD TERMINAL */
+    .dogfood-terminal {
+      background: #0d1117;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 0.8rem;
+      line-height: 1.9;
+      max-width: 720px;
+      margin: 0 auto;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .dogfood-terminal::before {
+      content: '';
+      display: block;
+      width: 60px; height: 10px;
+      background: linear-gradient(90deg, #ff5f56 0 30%, #ffbd2e 33% 63%, #27c93f 66%);
+      border-radius: 5px;
+      margin-bottom: 1rem;
+    }
+
+    .df-prompt { color: var(--muted); }
+    .df-cmd { color: var(--accent); }
+    .df-output { color: var(--blue); }
+    .df-highlight { color: var(--yellow); }
+    .df-result { color: var(--accent); }
+    .df-blank { display: block; height: 0.5em; }
+
+    /* DEPLOY CARDS */
+    .deploy-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.5rem;
+    }
+
+    .deploy-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 2rem;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+
+    .deploy-card:hover { transform: translateY(-3px); }
+    .deploy-card.local:hover { border-color: rgba(74,222,128,0.4); }
+    .deploy-card.team:hover { border-color: rgba(96,165,250,0.4); }
+    .deploy-card.cloud:hover { border-color: rgba(167,139,250,0.4); }
+
+    .deploy-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 0.2rem 0.65rem;
+      border-radius: 12px;
+      margin-bottom: 1rem;
+    }
+
+    .deploy-badge.badge-local { background: rgba(74,222,128,0.1); color: var(--accent); border: 1px solid rgba(74,222,128,0.3); }
+    .deploy-badge.badge-team { background: rgba(96,165,250,0.1); color: var(--blue); border: 1px solid rgba(96,165,250,0.3); }
+    .deploy-badge.badge-cloud { background: rgba(167,139,250,0.1); color: #a78bfa; border: 1px solid rgba(167,139,250,0.3); }
+
+    .deploy-card h3 { font-size: 1.15rem; margin-bottom: 0.5rem; }
+    .deploy-card > p { color: var(--muted); font-size: 0.9rem; margin-bottom: 1.25rem; line-height: 1.6; }
+
+    .deploy-diagram {
+      background: rgba(0,0,0,0.25);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem;
+      margin-bottom: 1.25rem;
+      overflow-x: auto;
+    }
+
+    .deploy-diagram .dd-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      margin-bottom: 0.6rem;
+    }
+
+    .deploy-diagram .dd-row:last-child { margin-bottom: 0; }
+
+    .dd-box {
+      background: rgba(96,165,250,0.08);
+      border: 1px solid rgba(96,165,250,0.25);
+      border-radius: 6px;
+      padding: 0.4rem 0.75rem;
+      font-size: 0.75rem;
+      font-family: monospace;
+      color: var(--blue);
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    .dd-box.dd-accent {
+      background: rgba(74,222,128,0.08);
+      border-color: rgba(74,222,128,0.25);
+      color: var(--accent);
+    }
+
+    .dd-box.dd-violet {
+      background: rgba(167,139,250,0.08);
+      border-color: rgba(167,139,250,0.25);
+      color: #a78bfa;
+    }
+
+    .dd-box.dd-muted {
+      background: rgba(148,163,184,0.06);
+      border-color: var(--border);
+      color: var(--muted);
+    }
+
+    .dd-container {
+      border: 1px dashed rgba(148,163,184,0.2);
+      border-radius: 8px;
+      padding: 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      align-items: center;
+    }
+
+    .dd-container-label {
+      font-size: 0.68rem;
+      font-family: monospace;
+      color: var(--muted);
+      text-align: center;
+      margin-bottom: 0.25rem;
+    }
+
+    .dd-arrow {
+      color: var(--muted);
+      font-size: 0.85rem;
+      flex-shrink: 0;
+    }
+
+    .deploy-cmd {
+      background: #0d1117;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.6rem 0.9rem;
+      font-family: monospace;
+      font-size: 0.78rem;
+      color: var(--accent);
+      position: relative;
+      overflow-x: auto;
+    }
+
+    /* COMMUNICATION SECTION */
+    .comm-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+    }
+
+    .comm-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 2rem;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+
+    .comm-card:hover { transform: translateY(-3px); border-color: rgba(74,222,128,0.3); }
+
+    .comm-tag {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 0.2rem 0.65rem;
+      border-radius: 12px;
+      margin-bottom: 1rem;
+      background: rgba(74,222,128,0.1);
+      color: var(--accent);
+      border: 1px solid rgba(74,222,128,0.3);
+    }
+
+    .comm-tag.tag-auto {
+      background: rgba(96,165,250,0.1);
+      color: var(--blue);
+      border-color: rgba(96,165,250,0.3);
+    }
+
+    .comm-card h3 { font-size: 1.15rem; margin-bottom: 0.5rem; }
+    .comm-card > p { color: var(--muted); font-size: 0.9rem; margin-bottom: 1.5rem; line-height: 1.6; }
+
+    .flow-diagram {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0;
+    }
+
+    .flow-step {
+      background: rgba(0,0,0,0.25);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.7rem 1rem;
+      font-size: 0.8rem;
+      color: var(--muted);
+      width: 100%;
+      max-width: 300px;
+      text-align: center;
+      line-height: 1.5;
+    }
+
+    .flow-step strong { color: var(--text); }
+    .flow-step .flow-detail { font-size: 0.75rem; color: var(--muted); margin-top: 0.2rem; }
+
+    .flow-arrow {
+      color: var(--muted);
+      font-size: 0.9rem;
+      padding: 0.15rem 0;
+      line-height: 1;
+    }
+
+    .flow-step.flow-highlight {
+      border-color: rgba(74,222,128,0.25);
+      background: rgba(74,222,128,0.04);
+    }
+
+    .flow-step.flow-highlight-blue {
+      border-color: rgba(96,165,250,0.25);
+      background: rgba(96,165,250,0.04);
+    }
+
+    /* Automated mode: parallel agents visual */
+    .flow-parallel {
+      display: flex;
+      gap: 0.75rem;
+      width: 100%;
+      max-width: 360px;
+      align-items: stretch;
+    }
+
+    .flow-parallel-agents {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      flex: 1;
+    }
+
+    .flow-parallel-bracket {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      color: var(--muted);
+      font-size: 0.75rem;
+      font-family: monospace;
+      padding: 0 0.25rem;
+      position: relative;
+      min-width: 80px;
+    }
+
+    .flow-parallel-bracket::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 10%;
+      bottom: 10%;
+      width: 2px;
+      background: var(--border);
+      border-radius: 1px;
+    }
+
+    /* ROADMAP TIMELINE */
+    .timeline {
+      position: relative;
+      padding-left: 2.5rem;
+      max-width: 700px;
+      margin: 0 auto;
+    }
+
+    .timeline::before {
+      content: '';
+      position: absolute;
+      left: 0.75rem;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: var(--border);
+    }
+
+    .timeline-item {
+      position: relative;
+      padding-bottom: 2rem;
+      padding-left: 1.5rem;
+    }
+
+    .timeline-item:last-child { padding-bottom: 0; }
+
+    .timeline-dot {
+      position: absolute;
+      left: -2rem;
+      top: 0.25rem;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      border: 2px solid;
+    }
+
+    .dot-done { background: var(--accent); border-color: var(--accent); }
+    .dot-progress { background: var(--blue); border-color: var(--blue); animation: pulse 2s infinite; }
+    .dot-planned { background: transparent; border-color: var(--yellow); }
+    .dot-future { background: transparent; border-color: var(--border); }
+
+    .timeline-badge {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+      display: inline-block;
+      margin-bottom: 0.25rem;
+    }
+
+    .badge-done { background: rgba(74,222,128,0.15); color: var(--accent); }
+    .badge-progress { background: rgba(96,165,250,0.15); color: var(--blue); }
+    .badge-planned { background: rgba(251,191,36,0.1); color: var(--yellow); }
+    .badge-future { background: rgba(148,163,184,0.08); color: var(--muted); }
+
+    .timeline-item h4 {
+      font-size: 1rem;
+      font-weight: 700;
+      margin-bottom: 0.25rem;
+    }
+
+    .timeline-item p {
+      color: var(--muted);
+      font-size: 0.88rem;
+      line-height: 1.6;
+    }
+
+    @media (max-width: 768px) {
+      .deploy-grid { grid-template-columns: 1fr; }
+      .comm-grid { grid-template-columns: 1fr; }
+    }
+
+    /* FOOTER */
+    footer {
+      background: var(--bg);
+      border-top: 1px solid var(--border);
+      padding: 2.5rem 2rem;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+
+    footer .footer-links { display: flex; gap: 1.5rem; justify-content: center; margin-bottom: 1rem; flex-wrap: wrap; }
+    footer .footer-links a { color: var(--muted); transition: color 0.2s; }
+    footer .footer-links a:hover { color: var(--text); text-decoration: none; }
+
+    /* FADE IN ANIMATION */
+    .fade-in {
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity 0.5s ease, transform 0.5s ease;
+    }
+
+    .fade-in.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* WHY SECTION — FEATURES */
+    .features { display: flex; flex-direction: column; gap: 4rem; }
+
+    .feature-block {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 3rem;
+      align-items: center;
+    }
+
+    .feature-block.reverse { direction: rtl; }
+    .feature-block.reverse > * { direction: ltr; }
+
+    .feature-text h3 {
+      font-size: 1.4rem;
+      font-weight: 700;
+      margin-bottom: 0.75rem;
+    }
+
+    .feature-text p {
+      color: var(--muted);
+      font-size: 0.95rem;
+      line-height: 1.7;
+    }
+
+    .feature-highlight {
+      background: var(--card-bg);
+      border: 2px solid rgba(74,222,128,0.3);
+      border-radius: 16px;
+      padding: 2.5rem;
+      text-align: center;
+    }
+
+    .feature-highlight h3 {
+      font-size: 1.5rem;
+      background: linear-gradient(135deg, var(--accent), var(--blue));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 1rem;
+    }
+
+    .feature-highlight p {
+      color: var(--muted);
+      font-size: 0.95rem;
+      line-height: 1.7;
+      max-width: 640px;
+      margin: 0 auto;
+    }
+
+    /* Agent grid visual */
+    .agent-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+    }
+
+    .agent-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.1rem;
+      font-size: 0.85rem;
+      transition: border-color 0.2s;
+    }
+
+    .agent-card:hover { border-color: rgba(74,222,128,0.3); }
+
+    .agent-card .agent-name {
+      font-weight: 700;
+      margin-bottom: 0.25rem;
+    }
+
+    .agent-card .agent-model {
+      color: var(--muted);
+      font-size: 0.78rem;
+      margin-bottom: 0.15rem;
+    }
+
+    .agent-card .agent-role {
+      color: var(--muted);
+      font-size: 0.78rem;
+    }
+
+    .agent-card .agent-scope {
+      font-family: monospace;
+      font-size: 0.75rem;
+      color: var(--blue);
+      margin-top: 0.4rem;
+      padding-top: 0.4rem;
+      border-top: 1px solid var(--border);
+    }
+
+    /* Feature terminal */
+    .feature-terminal {
+      background: #0d1117;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 0.8rem;
+      line-height: 2;
+    }
+
+    .feature-terminal::before {
+      content: '';
+      display: block;
+      width: 60px; height: 10px;
+      background: linear-gradient(90deg, #ff5f56 0 30%, #ffbd2e 33% 63%, #27c93f 66%);
+      border-radius: 5px;
+      margin-bottom: 1rem;
+    }
+
+    /* Results summary card */
+    .results-card {
+      background: var(--card-bg);
+      border: 1px solid rgba(74,222,128,0.3);
+      border-radius: 12px;
+      padding: 1.75rem 2rem;
+    }
+
+    .results-card h4 {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 1rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .results-card .result-line {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.4rem 0;
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+
+    .results-card .result-line span:last-child {
+      font-family: monospace;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    .results-card .result-line.highlight span:last-child {
+      color: var(--yellow);
+    }
+
+    /* Mini dashboard mockup */
+    .mini-dash {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+    }
+
+    .mini-dash-agents {
+      display: flex;
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+      flex-wrap: wrap;
+    }
+
+    .mini-dash-agent {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.78rem;
+      color: var(--muted);
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 0.25rem 0.65rem;
+    }
+
+    .mini-dash-timeline {
+      font-family: monospace;
+      font-size: 0.78rem;
+      color: var(--muted);
+      line-height: 2;
+      margin-bottom: 1rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .mini-dash-metrics {
+      font-size: 0.82rem;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .mini-dash-metrics strong { color: var(--accent); }
+
+    @media (max-width: 768px) {
+      .feature-block { grid-template-columns: 1fr; }
+      .feature-block.reverse { direction: ltr; }
+    }
+
+    /* RESPONSIVE */
+    /* LANGUAGE SWITCHER */
+    .lang-switcher { display: flex; gap: 0.25rem; margin-left: 0.5rem; }
+    .lang-btn {
+      background: transparent; border: 1px solid var(--border); color: var(--muted);
+      padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.7rem;
+      cursor: pointer; transition: all 0.2s; font-family: inherit;
+    }
+    .lang-btn:hover { border-color: var(--accent); color: var(--text); }
+    .lang-btn.active { background: var(--accent); color: #060b18; border-color: var(--accent); }
+
+    @media (max-width: 640px) {
+      nav { padding: 0 1rem; }
+      .hamburger { display: block; }
+      .nav-links {
+        display: none; position: absolute; top: 56px; left: 0; right: 0;
+        background: rgba(6,11,24,0.95); flex-direction: column; padding: 1rem; gap: 0.75rem;
+      }
+      .nav-links.open { display: flex; }
+      .lang-switcher { margin-left: 0; margin-top: 0.25rem; }
+      section { padding: 3.5rem 1.25rem; }
+      .arch-row { gap: 0.25rem; }
+      .arch-box { padding: 0.4rem 0.6rem; font-size: 0.75rem; }
+    }
+
+    /* TEMPLATES */
+    .tmpl-grid { display: grid; gap: 1.5rem; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+
+    .tmpl-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      transition: border-color 0.3s, transform 0.2s;
+      cursor: default;
+    }
+
+    .tmpl-card:hover { border-color: rgba(74,222,128,0.3); transform: translateY(-2px); }
+
+    .tmpl-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+
+    .tmpl-icon {
+      width: 40px; height: 40px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 10px;
+      font-size: 1.3rem;
+      flex-shrink: 0;
+    }
+
+    .tmpl-icon.parallel { background: rgba(96,165,250,0.12); border: 1px solid rgba(96,165,250,0.25); }
+    .tmpl-icon.sequential { background: rgba(251,191,36,0.12); border: 1px solid rgba(251,191,36,0.25); }
+    .tmpl-icon.hierarchy { background: rgba(74,222,128,0.12); border: 1px solid rgba(74,222,128,0.25); }
+    .tmpl-icon.readonly { background: rgba(148,163,184,0.12); border: 1px solid rgba(148,163,184,0.25); }
+
+    .tmpl-name { font-weight: 700; font-size: 1.05rem; }
+    .tmpl-desc { color: var(--muted); font-size: 0.88rem; margin-bottom: 1rem; }
+
+    .tmpl-flow {
+      font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 0.72rem;
+      line-height: 1.6;
+      color: var(--muted);
+      background: rgba(0,0,0,0.2);
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+      overflow-x: auto;
+    }
+
+    .tmpl-flow .fl-green { color: var(--accent); }
+    .tmpl-flow .fl-blue { color: var(--blue); }
+    .tmpl-flow .fl-yellow { color: var(--yellow); }
+    .tmpl-flow .fl-dim { color: rgba(148,163,184,0.5); }
+
+    .tmpl-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .tmpl-tag {
+      font-size: 0.72rem;
+      padding: 0.15rem 0.55rem;
+      border-radius: 10px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .tmpl-tag.tag-agents { background: rgba(96,165,250,0.1); color: var(--blue); border: 1px solid rgba(96,165,250,0.25); }
+    .tmpl-tag.tag-mode { background: rgba(74,222,128,0.1); color: var(--accent); border: 1px solid rgba(74,222,128,0.25); }
+    .tmpl-tag.tag-profile { background: rgba(251,191,36,0.1); color: var(--yellow); border: 1px solid rgba(251,191,36,0.25); }
+    .tmpl-tag.tag-rule { background: rgba(248,113,113,0.1); color: var(--red); border: 1px solid rgba(248,113,113,0.25); }
+
+    .tmpl-behaviors {
+      margin-top: 1rem;
+      padding-top: 0.75rem;
+      border-top: 1px solid var(--border);
+    }
+
+    .tmpl-layer {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5rem;
+      margin-bottom: 0.35rem;
+      font-size: 0.78rem;
+    }
+
+    .tmpl-layer-bar {
+      width: 4px;
+      min-height: 16px;
+      border-radius: 2px;
+      margin-top: 2px;
+      flex-shrink: 0;
+    }
+
+    .tmpl-layer-bar.foundation { background: var(--muted); }
+    .tmpl-layer-bar.pattern { background: var(--blue); }
+    .tmpl-layer-bar.mission { background: var(--accent); }
+    .tmpl-layer-bar.safety { background: var(--yellow); }
+
+    .tmpl-layer-text { color: var(--muted); }
+    .tmpl-layer-text strong { color: var(--text); font-weight: 600; }
+
+    /* Behavior legend */
+    .bce-legend {
+      display: flex;
+      gap: 1.5rem;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-bottom: 2rem;
+    }
+
+    .bce-legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+
+    .bce-legend-dot {
+      width: 12px;
+      height: 4px;
+      border-radius: 2px;
     }
   </style>
 </head>
 <body>
-  <main class="container">
-    <h1>mcp-coordinator</h1>
-    <p class="lead">Embedded MQTT broker + MCP server for multi-agent coordination.</p>
 
-    <h2>Quick start</h2>
-    <pre><code>npm install -g mcp-coordinator
-mcp-coordinator server start
-mcp-coordinator dashboard</code></pre>
+<!-- NAV -->
+<nav>
+  <div class="nav-logo">
+    <span>&#x2B21;</span> MCP Coordinator
+  </div>
+  <button class="hamburger" aria-label="Menu">&#9776;</button>
+  <div class="nav-links">
+    <a href="#why" data-i18n="nav.why">Why</a>
+    <a href="#mqtt" data-i18n="nav.mqtt">MQTT</a>
+    <a href="#deploy" data-i18n="nav.deploy">Deploy</a>
+    <a href="#roadmap" data-i18n="nav.roadmap">Roadmap</a>
+    <a href="https://github.com/swoofer/mcp-coordinator" target="_blank">GitHub</a>
+    <a href="#install" class="btn-sm" data-i18n="nav.getstarted">Get Started</a>
+    <div class="lang-switcher">
+      <button class="lang-btn active" data-lang="en">EN</button>
+      <button class="lang-btn" data-lang="fr">FR</button>
+      <button class="lang-btn" data-lang="es">ES</button>
+      <button class="lang-btn" data-lang="de">DE</button>
+      <button class="lang-btn" data-lang="zh">中文</button>
+      <button class="lang-btn" data-lang="ja">JA</button>
+    </div>
+  </div>
+</nav>
 
-    <h2>What it does</h2>
-    <p>When multiple AI agents work on the same repository in parallel, they need a coordination layer to avoid stepping on each other. mcp-coordinator provides:</p>
-    <ul>
-      <li>Embedded MQTT broker for real-time agent-to-agent messaging.</li>
-      <li>MCP server (HTTP/SSE + STDIO) exposing 26 tools for announcement, conflict detection, consultation, and quota tracking.</li>
-      <li>SQLite-backed state for thread persistence.</li>
-      <li>Live dashboard showing connected agents, open consultations, file activity, quota.</li>
-    </ul>
+<!-- HERO -->
+<section id="hero">
+  <div class="container">
+    <div class="hero-eyebrow" data-i18n="hero.eyebrow">Open Source &middot; MIT License</div>
+    <h1>MCP Coordinator</h1>
+    <p class="hero-subtitle" data-i18n="hero.subtitle">Multi-agent coordination for development teams. Zero conflicts, everyone aligned.</p>
 
-    <h2>Client-agnostic</h2>
-    <p>The server speaks the MCP protocol and MQTT — any MCP-compatible agent can connect: Claude Code, Cursor, Cline, Aider, custom scripts.</p>
+    <div class="hero-stats">
+      <div class="stat-pill"><strong data-count="26">0</strong> <span data-i18n="hero.stat.tools">MCP tools</span></div>
+      <div class="stat-pill"><strong data-count="216">0</strong> <span data-i18n="hero.stat.tests">tests</span></div>
+      <div class="stat-pill"><strong data-count="8">0</strong> <span data-i18n="hero.stat.topics">MQTT topics</span></div>
+    </div>
 
-    <p style="margin-top: 2rem;"><a href="https://github.com/swoofer/mcp-coordinator">View on GitHub</a> · <a href="https://www.npmjs.com/package/mcp-coordinator">npm</a></p>
+    <div class="terminal" id="hero-terminal">
+      <div class="hero-term-line"><span class="t-blue">Agent Alpha</span> <span class="t-dim">&rarr;</span> announce_work(<span class="t-green">"Add updated_at to User"</span>, <span class="t-yellow">types.ts</span>)</div>
+      <div class="hero-term-line"><span class="t-dim">mqtt publish</span> <span class="t-blue">coordinator/consultations/new</span> <span class="t-dim">&rarr;</span> <span class="t-yellow">score 100 (layer 0a)</span></div>
+      <div class="hero-term-line"><span class="t-dim">push to Agent Beta's loop between turns</span> <span class="t-green">&#9889;</span> <span class="t-dim">"compatible, adding migration after"</span></div>
+      <div class="hero-term-line"><span class="t-green">&#9989; propose_resolution</span> <span class="t-dim">&rarr;</span> <span class="t-green">consensus in 38s</span> <span class="t-dim">&mdash; zero sidecar process</span></div>
+    </div>
 
-    <section class="related">
-      <h2>Related projects</h2>
-      <p><strong><a href="https://github.com/swoofer/promptweave">@swoofer/promptweave</a></strong> — YAML composer for agent prompts, hooks, and MCP configs.</p>
-      <p><strong><a href="https://github.com/swoofer/essaim">essaim</a></strong> — end-to-end orchestrator (coming soon). Ships the reference catalog of coordinator-aware behaviors.</p>
-    </section>
+    <div class="hero-cta">
+      <a href="#install" class="btn btn-primary" data-i18n="hero.cta.start">Get Started</a>
+      <a href="https://github.com/swoofer/mcp-coordinator" target="_blank" class="btn btn-outline">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </div>
+</section>
 
-    <footer>
-      <p>Released under the MIT License.</p>
-    </footer>
-  </main>
+<!-- WHY MCP COORDINATOR -->
+<section id="why">
+  <div class="container">
+    <div class="text-center">
+      <h2 class="section-title" data-i18n="why.title">Why MCP Coordinator?</h2>
+      <p class="section-sub" data-i18n="why.subtitle">Scale your team's AI agents without the chaos.</p>
+    </div>
+    <div class="features">
+
+      <!-- Block 1: Scale your agents -->
+      <div class="feature-block fade-in">
+        <div class="feature-text">
+          <h3 data-i18n="why.block1.title">Multiple agents, one aligned process</h3>
+          <p data-i18n="why.block1.desc">Run several agents per developer on different tasks. Several developers with their own agents on the same repo. Specialize by role &mdash; one codes, one reviews, one tests.</p>
+        </div>
+        <div class="agent-grid">
+          <div class="agent-card">
+            <div class="agent-name">&#128187; Dev A</div>
+            <div class="agent-model">agent-loop</div>
+            <div class="agent-role">phase: execute</div>
+            <div class="agent-scope">src/auth</div>
+          </div>
+          <div class="agent-card">
+            <div class="agent-name">&#128187; Dev B</div>
+            <div class="agent-model">agent-loop</div>
+            <div class="agent-role">phase: discover</div>
+            <div class="agent-scope">src/api</div>
+          </div>
+          <div class="agent-card">
+            <div class="agent-name">&#129514; Tester</div>
+            <div class="agent-model">Sonnet (mid)</div>
+          </div>
+          <div class="agent-card">
+            <div class="agent-name">&#128221; Reviewer</div>
+            <div class="agent-model">Haiku (low)</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Block 2: Automatic coordination (reversed) -->
+      <div class="feature-block reverse fade-in">
+        <div class="feature-text">
+          <h3 data-i18n="why.block2.title">Agents hear each other through MQTT &mdash; no sidecar</h3>
+          <p data-i18n="why.block2.desc">The agent-loop subscribes to the embedded MQTT broker once. Conflicts, messages, claims and resolutions arrive in real-time and are drained between turns. No separate liaison process, no polling, no extra tokens burned on coordination chatter.</p>
+        </div>
+        <div class="feature-terminal">
+          <div><span class="t-blue">Worker Alpha</span> <span class="t-dim">&rarr;</span> announce_work(<span class="t-green">"Refactor auth"</span>)</div>
+          <div><span class="t-dim">mqtt</span> <span class="t-blue">coordinator/consultations/new</span> <span class="t-yellow">score 100</span></div>
+          <div><span class="t-dim">push &rarr; Beta's loop queue</span></div>
+          <div><span class="t-green">Agent Beta</span> <span class="t-dim">&rarr;</span> post_to_thread(<span class="t-green">"compatible, will rebase"</span>)</div>
+          <div><span class="t-green">&#9989; propose_resolution</span> <span class="t-dim">&rarr; approved in 38s</span></div>
+        </div>
+      </div>
+
+      <!-- Block 3: Simulate real scenarios -->
+      <div class="feature-block fade-in">
+        <div class="feature-text">
+          <h3 data-i18n="why.block3.title">Dogfood everything</h3>
+          <p data-i18n="why.block3.desc">6 agents coordinated via work-stealing phases to rewrite the coordinator's own unit tests from scratch. Another raid found and patched 11 real bugs in the coordinator itself. Zero duplicated work, zero merge conflicts &mdash; all via the coordinator's own announce/MQTT/consensus loop.</p>
+        </div>
+        <div class="results-card">
+          <h4 data-i18n="why.dogfood.title">La M&ecirc;l&eacute;e run</h4>
+          <div class="result-line"><span data-i18n="why.dogfood.agents">Agents</span><span>6 (agent-loop)</span></div>
+          <div class="result-line"><span data-i18n="why.dogfood.phases">Phases</span><span>discover &rarr; execute</span></div>
+          <div class="result-line"><span data-i18n="why.dogfood.threads">Threads opened</span><span>8</span></div>
+          <div class="result-line"><span data-i18n="why.dogfood.messages">MQTT messages exchanged</span><span>25</span></div>
+          <div class="result-line highlight"><span data-i18n="why.dogfood.consensus">Consensus</span><span data-i18n="why.dogfood.consensusval">7 reached &middot; 0 duplicates</span></div>
+          <div class="result-line"><span data-i18n="why.dogfood.tests">Tests produced</span><span>~2 400 lines</span></div>
+          <div class="result-line"><span data-i18n="why.dogfood.total">Total tests (suite)</span><span>652</span></div>
+        </div>
+      </div>
+
+      <!-- Block 4: Real-time visibility (reversed) -->
+      <div class="feature-block reverse fade-in">
+        <div class="feature-text">
+          <h3 data-i18n="why.block4.title">See everything, miss nothing</h3>
+          <p data-i18n="why.block4.desc">A live SSE dashboard shows every decision in real-time. Who's working on what, which conflicts were detected, how they were resolved. Per-agent token gauge, Anthropic quota widget, scoring-layer breakdown. Complete traceability &mdash; every coordination decision is logged.</p>
+        </div>
+        <div class="mini-dash">
+          <div class="mini-dash-agents">
+            <div class="mini-dash-agent"><span class="dot dot-blue"></span> Alpha</div>
+            <div class="mini-dash-agent"><span class="dot dot-green"></span> Beta</div>
+            <div class="mini-dash-agent"><span class="dot dot-yellow"></span> Gamma</div>
+            <div class="mini-dash-agent"><span class="dot dot-red"></span> Delta</div>
+          </div>
+          <div class="mini-dash-timeline">
+            <div><span class="tl-time">09:41</span> <span class="tl-blue">Alpha</span> announced &rarr; types.ts</div>
+            <div><span class="tl-time">09:41</span> <span class="tl-yellow">&#9889; Conflict scored 100</span></div>
+            <div><span class="tl-time">09:42</span> <span class="tl-green">&#9989; Consensus reached</span></div>
+          </div>
+          <div class="mini-dash-metrics">
+            <strong>2</strong> consultations &nbsp;&middot;&nbsp; <strong>1</strong> conflict &nbsp;&middot;&nbsp; <strong>45s</strong> avg
+          </div>
+        </div>
+      </div>
+
+      <!-- Block 5: Zero conflicts — full width -->
+      <div class="feature-highlight fade-in">
+        <h3 data-i18n="why.block5.title">Zero conflicts. Everyone aligned.</h3>
+        <p data-i18n="why.block5.desc">Intent detection before code is written. Impact scoring across 4 layers. Automatic consultation when scores exceed thresholds. The coordinator doesn't replace developers &mdash; it eliminates the chaos when multiple agents work in parallel. Your agents, your repo, your rules &mdash; just without the collisions.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- PROBLEM -->
+<section id="problem">
+  <div class="container">
+    <div class="text-center">
+      <h2 class="section-title" data-i18n="problem.title">The coordination problem</h2>
+      <p class="section-sub" data-i18n="problem.subtitle">AI coding agents accelerate individual work — but create new team-level problems when running in parallel.</p>
+    </div>
+    <div class="cards fade-in">
+      <div class="card">
+        <div class="card-icon">&#128165;</div>
+        <h3 data-i18n="problem.card1.title">Regressions</h3>
+        <p data-i18n="problem.card1.desc">Two agents touch the same file simultaneously. One's changes silently overwrite the other's. The bug only shows up in review — or production.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">&#128257;</div>
+        <h3 data-i18n="problem.card2.title">Duplicated effort</h3>
+        <p data-i18n="problem.card2.desc">Without visibility into each other's intent, two agents implement the same feature with different APIs, different schemas, different assumptions.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">&#127787;&#65039;</div>
+        <h3 data-i18n="problem.card3.title">No visibility</h3>
+        <p data-i18n="problem.card3.desc">Nobody knows what the other agents are doing. Plans stay local, decisions are invisible. Misalignment compounds silently until it explodes.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section id="how-it-works">
+  <div class="container">
+    <div class="text-center">
+      <h2 class="section-title" data-i18n="how.title">How it works</h2>
+      <p class="section-sub" data-i18n="how.subtitle">A lightweight coordination loop that runs before every coding session, not after.</p>
+    </div>
+    <div class="steps fade-in">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-icon">&#128226;</div>
+        <h3 data-i18n="how.step1.title">Announce</h3>
+        <p data-i18n="how.step1.desc">Agent declares intent — task description, target files, affected modules — before writing a single line of code.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-icon">&#127919;</div>
+        <h3 data-i18n="how.step2.title">Detect</h3>
+        <p data-i18n="how.step2.desc">The scorer evaluates overlap against all active intents across 4 layers: file, dependency, module, and semantic proximity.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-icon">&#128172;</div>
+        <h3 data-i18n="how.step3.title">Consult</h3>
+        <p data-i18n="how.step3.desc">The coordinator publishes the new thread on MQTT. Each affected agent-loop drains the event between turns and posts context, constraints, or a resolution proposal — no separate sidecar process.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-icon">&#9989;</div>
+        <h3 data-i18n="how.step4.title">Resolve</h3>
+        <p data-i18n="how.step4.desc">Proposals are approved, contested, or re-proposed. The thread closes on consensus, or auto-resolves in gray zones. All decisions land on the dashboard timeline.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- MQTT COMMUNICATION LAYER -->
+<section id="mqtt">
+  <div class="container">
+    <div class="text-center">
+      <h2 class="section-title" data-i18n="mqtt.title">MQTT — the coordinator's nervous system</h2>
+      <p class="section-sub" data-i18n="mqtt.subtitle">Every coordination event fans out on an embedded MQTT broker. Agents subscribe once and drain messages between turns — zero polling, zero sidecar.</p>
+    </div>
+
+    <div class="cards fade-in">
+      <div class="card">
+        <div class="card-icon">&#128225;</div>
+        <h3 data-i18n="mqtt.card1.title">Embedded Aedes broker</h3>
+        <p data-i18n="mqtt.card1.desc">The coordinator ships its own broker — no Mosquitto, no RabbitMQ to deploy. TCP on port <code style="color:var(--accent)">1883</code> for local/LAN, WebSocket on <code style="color:var(--accent)">/mqtt</code> over the coordinator's HTTP port for remote agents and the Bun binary.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">&#9889;</div>
+        <h3 data-i18n="mqtt.card2.title">Push, not poll</h3>
+        <p data-i18n="mqtt.card2.desc">The agent-loop subscribes to every coordinator topic at startup. New threads, messages, claims and completions arrive through a queue drained between turns — latency &lt; 50ms end-to-end with zero wasted tokens.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">&#128737;</div>
+        <h3 data-i18n="mqtt.card3.title">Self-filter built-in</h3>
+        <p data-i18n="mqtt.card3.desc">Each message carries an <code style="color:var(--accent)">agent_id</code>. The listener drops messages from the local agent, so the loop never wakes itself on its own actions. One less tokens-burning rabbit hole.</p>
+      </div>
+    </div>
+
+    <div class="text-center" style="margin-top: 3rem;">
+      <h3 style="font-size: 1.3rem; margin-bottom: 1rem;" data-i18n="mqtt.topics.title">Topic map</h3>
+      <p style="color: var(--muted); font-size: 0.95rem; margin-bottom: 1.5rem;" data-i18n="mqtt.topics.sub">Eight topics cover every event class. Wildcards (<code style="color:var(--accent)">+</code>) let agents subscribe to all threads at once.</p>
+    </div>
+
+    <div class="fade-in" style="overflow-x: auto;">
+      <table class="results-table">
+        <thead>
+          <tr>
+            <th data-i18n="mqtt.th.topic">Topic</th>
+            <th data-i18n="mqtt.th.emitted">Emitted when</th>
+            <th data-i18n="mqtt.th.payload">Key payload</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code style="color: var(--blue); font-size: 0.85em;">coordinator/consultations/new</code></td>
+            <td data-i18n="mqtt.row1.emit">A thread is opened</td>
+            <td data-i18n="mqtt.row1.pay"><code style="font-size:0.8em">thread_id, subject, initiator_id, target_files</code></td>
+          </tr>
+          <tr>
+            <td><code style="color: var(--blue); font-size: 0.85em;">.../consultations/+/messages</code></td>
+            <td data-i18n="mqtt.row2.emit">Someone posts to a thread</td>
+            <td data-i18n="mqtt.row2.pay"><code style="font-size:0.8em">agent_id, name, content, type</code></td>
+          </tr>
+          <tr>
+            <td><code style="color: var(--blue); font-size: 0.85em;">.../consultations/+/status</code></td>
+            <td data-i18n="mqtt.row3.emit">Thread transitions state</td>
+            <td data-i18n="mqtt.row3.pay"><code style="font-size:0.8em">status: open/resolving/resolved/timeout</code></td>
+          </tr>
+          <tr>
+            <td><code style="color: var(--blue); font-size: 0.85em;">.../consultations/+/claimed</code></td>
+            <td data-i18n="mqtt.row4.emit">Work-stealing claim (atomic)</td>
+            <td data-i18n="mqtt.row4.pay"><code style="font-size:0.8em">claimed_by, thread_id</code></td>
+          </tr>
+          <tr>
+            <td><code style="color: var(--blue); font-size: 0.85em;">.../consultations/+/completed</code></td>
+            <td data-i18n="mqtt.row5.emit">Claimed task finishes</td>
+            <td data-i18n="mqtt.row5.pay"><code style="font-size:0.8em">agent_id, thread_id, resolution</code></td>
+          </tr>
+          <tr>
+            <td><code style="color: var(--blue); font-size: 0.85em;">coordinator/agents/+/status</code></td>
+            <td data-i18n="mqtt.row6.emit">Agent online / offline</td>
+            <td data-i18n="mqtt.row6.pay"><code style="font-size:0.8em">status, name, modules</code></td>
+          </tr>
+          <tr>
+            <td><code style="color: var(--blue); font-size: 0.85em;">coordinator/broadcast</code></td>
+            <td data-i18n="mqtt.row7.emit">System-wide announcement</td>
+            <td data-i18n="mqtt.row7.pay"><code style="font-size:0.8em">arbitrary JSON</code></td>
+          </tr>
+          <tr>
+            <td><code style="color: var(--blue); font-size: 0.85em;">coordinator/quota/update</code></td>
+            <td data-i18n="mqtt.row8.emit">Anthropic quota refresh</td>
+            <td data-i18n="mqtt.row8.pay"><code style="font-size:0.8em">usage, limit, utilization_pct</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="text-center" style="margin-top: 3rem;">
+      <h3 style="font-size: 1.3rem; margin-bottom: 1rem;" data-i18n="mqtt.flow.title">Push delivery flow</h3>
+    </div>
+
+    <div class="terminal fade-in" style="max-width: 800px;">
+      <div><span class="t-dim"># Coordinator publishes an event</span></div>
+      <div>coordinator<span class="t-dim">.</span>bridge<span class="t-dim">.</span>publish(<span class="t-green">"coordinator/consultations/new"</span>, payload)</div>
+      <div>&nbsp;</div>
+      <div><span class="t-dim"># Broker fans out over TCP 1883 or WS /mqtt</span></div>
+      <div><span class="t-yellow">aedes</span> <span class="t-dim">&rarr; subscribers &rarr;</span> <span class="t-blue">agent-loop queue</span></div>
+      <div>&nbsp;</div>
+      <div><span class="t-dim"># Agent-loop, between two turns</span></div>
+      <div><span class="t-blue">const</span> interrupts = listener<span class="t-dim">.</span>drain()</div>
+      <div><span class="t-blue">const</span> context = buildInterruptContext(interrupts)</div>
+      <div>claude<span class="t-dim">.</span>resume({ prompt: context, model: effort<span class="t-dim">.</span>model })</div>
+      <div>&nbsp;</div>
+      <div><span class="t-green">&#9989; next turn sees "you have a pending thread on types.ts"</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- WHY NOT JUST GIT WORKTREES -->
+<section id="worktrees">
+  <div class="container">
+    <div class="text-center">
+      <h2 class="section-title" data-i18n="worktrees.title">Why not just git worktrees?</h2>
+      <p class="section-sub" data-i18n="worktrees.subtitle">Worktrees are necessary but not sufficient. They solve file access — the coordinator solves coordination.</p>
+    </div>
+    <div class="cards fade-in">
+      <div class="card">
+        <div class="card-icon">&#128194;</div>
+        <h3 data-i18n="worktrees.card1.title">Worktrees prevent file conflicts</h3>
+        <p data-i18n="worktrees.card1.desc">Git worktrees isolate at the filesystem level. Two agents can't overwrite the same file. But they CAN produce logically incompatible changes that merge cleanly and break at runtime.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">&#127919;</div>
+        <h3 data-i18n="worktrees.card2.title">The coordinator prevents intent conflicts</h3>
+        <p data-i18n="worktrees.card2.desc">By announcing intentions before coding, agents know what others are planning. A worktree won't tell Agent B that Agent A is about to change the User interface it depends on.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">&#129309;</div>
+        <h3 data-i18n="worktrees.card3.title">Use both together</h3>
+        <p data-i18n="worktrees.card3.desc">Worktrees handle the filesystem. The coordinator handles the semantics. Together: zero file conflicts AND zero intent conflicts.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SCORING -->
+<section id="scoring">
+  <div class="container">
+    <div class="text-center">
+      <h2 class="section-title" data-i18n="scoring.title">4-layer conflict scoring</h2>
+      <p class="section-sub" data-i18n="scoring.subtitle">Every intent is scored 0–100 against all active agents. Score determines the response.</p>
+    </div>
+    <div class="score-grid fade-in">
+      <div class="score-row">
+        <div class="score-label" data-i18n="scoring.row1.label"><strong>Same file announced</strong> — both agents target the exact same source file</div>
+        <div class="score-badge t-red">100</div>
+        <div class="score-tag tag-red" data-i18n="scoring.row1.tag">Blocking — consult required</div>
+      </div>
+      <div class="score-row">
+        <div class="score-label" data-i18n="scoring.row2.label"><strong>Dependency overlap</strong> — one agent's output is consumed by the other's module</div>
+        <div class="score-badge t-yellow">80</div>
+        <div class="score-tag tag-yellow" data-i18n="scoring.row2.tag">Gray zone — review</div>
+      </div>
+      <div class="score-row">
+        <div class="score-label" data-i18n="scoring.row3.label"><strong>Module overlap</strong> — agents work in the same bounded context or feature area</div>
+        <div class="score-badge t-yellow">30</div>
+        <div class="score-tag tag-yellow" data-i18n="scoring.row3.tag">Gray zone — monitor</div>
+      </div>
+      <div class="score-row">
+        <div class="score-label" data-i18n="scoring.row4.label"><strong>No link</strong> — fully independent tasks, no shared files or modules</div>
+        <div class="score-badge t-green">0</div>
+        <div class="score-tag tag-green" data-i18n="scoring.row4.tag">Pass — proceed safely</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ARCHITECTURE -->
+<section id="architecture">
+  <div class="container">
+    <div class="text-center">
+      <h2 class="section-title" data-i18n="arch.title">Architecture</h2>
+      <p class="section-sub" data-i18n="arch.subtitle">One agent-loop per developer, one coordinator serving MCP + MQTT + dashboard. No sidecars, no liaison Haiku processes burning tokens.</p>
+    </div>
+    <div class="arch-diagram fade-in">
+      <div class="arch-row">
+        <div class="arch-box">Dev A<br/><small>agent-loop</small></div>
+        <div class="arch-arrow">&harr;</div>
+        <div class="arch-box accent">Coordinator<br/><small>MCP + MQTT + SSE</small></div>
+        <div class="arch-arrow">&harr;</div>
+        <div class="arch-box">Dev B<br/><small>agent-loop</small></div>
+      </div>
+      <div class="arch-down">&darr;</div>
+      <div class="arch-row">
+        <div class="arch-box neutral">Aedes broker<br/><small>TCP 1883 / WS /mqtt</small></div>
+        <div class="arch-arrow">&nbsp;</div>
+        <div class="arch-box neutral">Dashboard<br/><small>SSE events :3100/dashboard</small></div>
+      </div>
+    </div>
+    <div class="cards" style="margin-top: 1.25rem;">
+      <div class="card">
+        <h3 data-i18n="arch.card1.title">Agent-loop</h3>
+        <p style="color:var(--muted); font-size:0.9rem;" data-i18n="arch.card1.desc">Programmatic loop that wraps the Claude CLI (spawn-per-turn <code style="color:var(--accent);font-size:0.85em;">claude -p --resume</code>). Holds the MQTT listener, the coordination protocol state machine, and the work-stealing claim logic.</p>
+      </div>
+      <div class="card">
+        <h3 data-i18n="arch.card2.title">Coordinator server</h3>
+        <p style="color:var(--muted); font-size:0.9rem;" data-i18n="arch.card2.desc">Node.js process exposing 26 MCP tools over HTTP/SSE, plus the embedded Aedes MQTT broker. SQLite for state (threads, agents, dependency map, audit log). Pre-flights Anthropic quota before N-agent runs.</p>
+      </div>
+      <div class="card">
+        <h3 data-i18n="arch.card3.title">BCE</h3>
+        <p style="color:var(--muted); font-size:0.9rem;" data-i18n="arch.card3.desc">Composition engine that emits prompt.md + hooks + <code style="color:var(--accent);font-size:0.85em;">.mcp.json</code> from 32 reusable YAML behaviors. Phases (discover/review/execute) and effort profiles are part of the schema.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- DEPLOYMENT MODES -->
+<section id="deploy">
+  <div class="container">
+    <div class="text-center">
+      <h2 class="section-title" data-i18n="deploy.title">Deploy anywhere</h2>
+      <p class="section-sub" data-i18n="deploy.subtitle">From your laptop to your team's infrastructure. Three modes, same experience.</p>
+    </div>
+    <div class="deploy-grid fade-in">
+
+      <!-- Local -->
+      <div class="deploy-card local">
+        <div class="deploy-badge badge-local">&#128187; Local</div>
+        <h3 data-i18n="deploy.local.title">Local mode</h3>
+        <p data-i18n="deploy.local.desc">Everything runs on your machine. Perfect for solo development or trying out the coordinator.</p>
+        <div class="deploy-diagram">
+          <div class="dd-container-label">Your Machine</div>
+          <div class="dd-container">
+            <div class="dd-row">
+              <div class="dd-box dd-muted">claude<br/><small>agent-loop</small></div>
+              <div class="dd-arrow">&harr;</div>
+              <div class="dd-box dd-accent">Coordinator<br/><small>:3100</small></div>
+            </div>
+            <div class="dd-row">
+              <div class="dd-box dd-muted">Aedes broker<br/><small>TCP :1883 / WS /mqtt</small></div>
+              <div class="dd-arrow">&harr;</div>
+              <div class="dd-box dd-accent">Dashboard<br/><small>:3100/dashboard</small></div>
+            </div>
+          </div>
+        </div>
+        <div class="deploy-cmd">mcp-coordinator server start --daemon</div>
+      </div>
+
+      <!-- Team -->
+      <div class="deploy-card team">
+        <div class="deploy-badge badge-team">&#127970; Team</div>
+        <h3 data-i18n="deploy.team.title">Team server</h3>
+        <p data-i18n="deploy.team.desc">Coordinator runs on a shared machine. All developers connect their agent-loops to the same instance.</p>
+        <div class="deploy-diagram">
+          <div class="dd-row">
+            <div class="dd-box">Dev A<br/><small>agent-loop</small></div>
+            <div class="dd-arrow">&harr;</div>
+            <div class="dd-box dd-accent">Server (LAN)<br/><small>Coordinator :3100</small><br/><small>MQTT :1883 / /mqtt</small><br/><small>Dashboard /dashboard</small></div>
+            <div class="dd-arrow">&harr;</div>
+            <div class="dd-box">Dev B<br/><small>agent-loop</small></div>
+          </div>
+          <div class="dd-row" style="margin-top:0.5rem;">
+            <div class="dd-box">Dev C<br/><small>agent-loop</small></div>
+            <div class="dd-arrow">&nearr;</div>
+            <div class="dd-box dd-muted">SQLite + volumes</div>
+          </div>
+        </div>
+        <div class="deploy-cmd">mcp-coordinator init ~/project --url http://192.168.x.x:3100 --name "Alice"</div>
+      </div>
+
+      <!-- Cloud -->
+      <div class="deploy-card cloud">
+        <div class="deploy-badge badge-cloud">&#9729; Cloud</div>
+        <h3 data-i18n="deploy.cloud.title">Cloud hosted</h3>
+        <p data-i18n="deploy.cloud.desc">Coordinator on a VM or container service. Remote teams all coordinate through a single TLS endpoint &mdash; WebSocket MQTT travels on the same HTTPS port.</p>
+        <div class="deploy-diagram">
+          <div class="dd-row">
+            <div class="dd-box">Montreal<br/><small>agent-loop</small></div>
+            <div class="dd-arrow">&harr;</div>
+            <div class="dd-box dd-violet">Cloud (AWS / GCP)<br/><small>Coordinator + Aedes</small><br/><small>WS /mqtt on 443</small><br/><small>TLS + JWT auth</small></div>
+            <div class="dd-arrow">&harr;</div>
+            <div class="dd-box">Toronto<br/><small>agent-loop</small></div>
+          </div>
+          <div class="dd-row" style="margin-top:0.5rem;">
+            <div class="dd-box">Remote<br/><small>agent-loop</small></div>
+            <div class="dd-arrow">&nearr;</div>
+            <div class="dd-box dd-violet">coordinator.team.com</div>
+          </div>
+        </div>
+        <div class="deploy-cmd">mcp-coordinator init ~/project --name "Alice" --url https://coordinator.team.com</div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- DASHBOARD -->
+<section id="dashboard">
+  <div class="container">
+    <div class="text-center">
+      <h2 class="section-title" data-i18n="dashboard.title">Real-time dashboard</h2>
+      <p class="section-sub" data-i18n="dashboard.subtitle">Observe what every agent is doing, what conflicts were detected, and what decisions were reached.</p>
+    </div>
+    <div class="dash-preview fade-in">
+      <div class="dash-header">
+        <div class="agent-status"><span class="dot dot-blue"></span> Alpha — working</div>
+        <div class="agent-status"><span class="dot dot-green"></span> Beta — idle</div>
+        <div class="agent-status"><span class="dot dot-yellow"></span> Gamma — waiting</div>
+        <div class="agent-status"><span class="dot dot-red"></span> Delta — offline</div>
+        <div class="agent-status" style="margin-left: auto; color: var(--muted); font-size: 0.8rem;">mcp-coordinator v0.1.0 &middot; quota 62%</div>
+      </div>
+      <div class="dash-timeline">
+        <div><span class="tl-time">09:41:02</span> <span class="tl-blue">Alpha</span> announced: "Add updated_at to User" &rarr; types.ts, user.service.ts</div>
+        <div><span class="tl-time">09:41:03</span> <span class="tl-blue">Beta</span> announced: "Migrate User schema" &rarr; types.ts, migrations/</div>
+        <div><span class="tl-time">09:41:04</span> <span class="tl-yellow">&#9889; Conflict scored 100</span> (layer 0a) &mdash; same file: types.ts &mdash; thread T-812 opened</div>
+        <div><span class="tl-time">09:41:09</span> <span class="tl-blue">Alpha</span> post_to_thread: "adding a single field, no interface rename"</div>
+        <div><span class="tl-time">09:41:14</span> <span class="tl-green">Beta</span> post_to_thread: "compatible &mdash; I'll add migration after your field lands"</div>
+        <div><span class="tl-time">09:41:21</span> <span class="tl-blue">Alpha</span> propose_resolution &rarr; status resolving</div>
+        <div><span class="tl-time">09:41:38</span> <span class="tl-green">&#9989; Consensus</span> &mdash; Alpha proceeds, Beta waits (38s)</div>
+        <div><span class="tl-time">09:42:05</span> <span class="tl-dim">quota_update</span> &mdash; utilization 62.4% &middot; <span class="tl-dim">+180k tokens last 5min</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- INSTALL -->
+<section id="install">
+  <div class="container">
+    <div class="text-center">
+      <h2 class="section-title" data-i18n="install.title">Get started in 3 steps</h2>
+      <p class="section-sub" data-i18n="install.subtitle">Self-hosted, no cloud dependency. One standalone binary.</p>
+    </div>
+    <div class="install-grid fade-in">
+      <div class="install-card">
+        <div class="install-step" data-i18n="install.step1.label">Step 1</div>
+        <h3 data-i18n="install.step1.title">Install</h3>
+        <p style="color:var(--muted); font-size:0.88rem;" data-i18n="install.step1.desc">Single npm package. No separate broker or database to set up.</p>
+        <div class="code-block">npm install -g mcp-coordinator</div>
+      </div>
+      <div class="install-card">
+        <div class="install-step" data-i18n="install.step2.label">Step 2</div>
+        <h3 data-i18n="install.step2.title">Start the server</h3>
+        <p style="color:var(--muted); font-size:0.88rem;" data-i18n="install.step2.desc">Starts the MCP server, embedded MQTT broker, and dashboard on <code style="color:var(--accent);font-size:0.85em;">localhost:3100</code>.</p>
+        <div class="code-block">mcp-coordinator server start</div>
+      </div>
+      <div class="install-card">
+        <div class="install-step" data-i18n="install.step3.label">Step 3</div>
+        <h3 data-i18n="install.step3.title">Open the dashboard</h3>
+        <p style="color:var(--muted); font-size:0.88rem;" data-i18n="install.step3.desc">Open <code style="color:var(--accent);font-size:0.85em;">http://localhost:3200</code> to see connected agents, open threads, and quota.</p>
+        <div class="code-block">open http://localhost:3200</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- RESULTS -->
+<section id="results">
+  <div class="container">
+    <div class="text-center">
+      <h2 class="section-title" data-i18n="results.title">Validated scenarios</h2>
+      <p class="section-sub" data-i18n="results.subtitle">Four canonical conflict scenarios — all tested, all resolved correctly.</p>
+    </div>
+    <div class="fade-in" style="overflow-x:auto;">
+      <table class="results-table">
+        <thead>
+          <tr>
+            <th data-i18n="results.th.scenario">Scenario</th>
+            <th data-i18n="results.th.desc">Description</th>
+            <th data-i18n="results.th.score">Score</th>
+            <th data-i18n="results.th.outcome">Outcome</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="result-id">S1</span></td>
+            <td data-i18n="results.s1.desc">Same file targeted by two agents simultaneously</td>
+            <td><span class="score-badge t-red">100</span></td>
+            <td><span class="score-tag tag-red" data-i18n="results.s1.outcome">Consultation triggered &rarr; consensus reached</span></td>
+          </tr>
+          <tr>
+            <td><span class="result-id">S3</span></td>
+            <td data-i18n="results.s3.desc">Agent A's module depends on Agent B's current output</td>
+            <td><span class="score-badge t-yellow">80</span></td>
+            <td><span class="score-tag tag-yellow" data-i18n="results.s3.outcome">Gray zone — dependency flagged, agents notified</span></td>
+          </tr>
+          <tr>
+            <td><span class="result-id">S2</span></td>
+            <td data-i18n="results.s2.desc">Both agents work within the same feature module</td>
+            <td><span class="score-badge t-yellow">30</span></td>
+            <td><span class="score-tag tag-yellow" data-i18n="results.s2.outcome">Gray zone — monitored, no blocking</span></td>
+          </tr>
+          <tr>
+            <td><span class="result-id">S4</span></td>
+            <td data-i18n="results.s4.desc">Fully independent tasks, no shared files or modules</td>
+            <td><span class="score-badge t-green">0</span></td>
+            <td><span class="score-tag tag-green" data-i18n="results.s4.outcome">Auto-resolved — both agents proceed</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ROADMAP -->
+<section id="roadmap">
+  <div class="container">
+    <div class="text-center">
+      <h2 class="section-title" data-i18n="roadmap.title">Roadmap</h2>
+      <p class="section-sub" data-i18n="roadmap.subtitle">Where we're going next.</p>
+    </div>
+    <div class="timeline fade-in">
+
+      <div class="timeline-item">
+        <div class="timeline-dot dot-done"></div>
+        <div class="timeline-badge badge-done" data-i18n="roadmap.badge.done">Done</div>
+        <h4 data-i18n="roadmap.v01.title">v0.1 &mdash; Server extraction</h4>
+        <p data-i18n="roadmap.v01.desc">Pure coordinator server extracted from the monorepo. 26 MCP tools, embedded Aedes broker, SQLite state, real-time dashboard. Standalone npm package.</p>
+      </div>
+
+      <div class="timeline-item">
+        <div class="timeline-dot dot-progress"></div>
+        <div class="timeline-badge badge-progress" data-i18n="roadmap.badge.progress">In Progress</div>
+        <h4 data-i18n="roadmap.v02.title">v0.2 &mdash; Hardened auth &amp; TLS</h4>
+        <p data-i18n="roadmap.v02.desc">JWT authentication, TLS support, per-team quota partitioning, remote MQTT over WebSocket. First shared-instance deployments.</p>
+      </div>
+
+      <div class="timeline-item">
+        <div class="timeline-dot dot-planned"></div>
+        <div class="timeline-badge badge-planned" data-i18n="roadmap.badge.planned">Planned</div>
+        <h4 data-i18n="roadmap.v03.title">v0.3 &mdash; Semantic conflict detection</h4>
+        <p data-i18n="roadmap.v03.desc">AST-level analysis layer above filename scoring. Detect API contract changes, interface incompatibilities, and breaking changes before a thread even opens.</p>
+      </div>
+
+      <div class="timeline-item">
+        <div class="timeline-dot dot-planned"></div>
+        <div class="timeline-badge badge-planned" data-i18n="roadmap.badge.planned">Planned</div>
+        <h4 data-i18n="roadmap.v10.title">v1.0 &mdash; Stable API</h4>
+        <p data-i18n="roadmap.v10.desc">Stable MCP tool surface, versioned REST API, migration guides. Cross-repo coordination: shared dependency map across microservices and monorepo boundaries.</p>
+      </div>
+
+      <div class="timeline-item">
+        <div class="timeline-dot dot-future"></div>
+        <div class="timeline-badge badge-future" data-i18n="roadmap.badge.future">Future</div>
+        <h4 data-i18n="roadmap.harbor.title">tengu_harbor push</h4>
+        <p data-i18n="roadmap.harbor.desc">When Anthropic activates <code style="color:var(--accent);font-size:0.85em;">tengu_harbor</code>, server-gated push can shortcut the between-turn drain. Listener code already lives alongside the MQTT bridge.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-links">
+    <a href="https://github.com/swoofer/mcp-coordinator" target="_blank">GitHub</a>
+    <a href="#install">Install</a>
+  </div>
+  <p data-i18n="footer.text">MIT License &nbsp;&middot;&nbsp; Built with <a href="https://claude.ai/code" target="_blank">Claude Code</a> &nbsp;&middot;&nbsp; MCP Coordinator v0.1.x</p>
+</footer>
+
+<script>
+  // --- Scroll-triggered fade-in ---
+  const fadeObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        fadeObserver.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.1 });
+
+  document.querySelectorAll('.fade-in').forEach(el => fadeObserver.observe(el));
+
+  // --- Hero terminal typing animation ---
+  const heroLines = document.querySelectorAll('.hero-term-line');
+  heroLines.forEach((line, i) => {
+    setTimeout(() => { line.classList.add('shown'); }, 500 + i * 1000);
+  });
+
+  // --- Animated stat counters ---
+  const statObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const counters = entry.target.querySelectorAll('strong[data-count]');
+        counters.forEach(el => {
+          const target = parseInt(el.getAttribute('data-count'), 10);
+          const duration = 1200;
+          const start = performance.now();
+          function tick(now) {
+            const elapsed = now - start;
+            const progress = Math.min(elapsed / duration, 1);
+            const eased = 1 - Math.pow(1 - progress, 3);
+            el.textContent = Math.round(eased * target);
+            if (progress < 1) requestAnimationFrame(tick);
+          }
+          requestAnimationFrame(tick);
+        });
+        statObserver.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.3 });
+
+  const heroStats = document.querySelector('.hero-stats');
+  if (heroStats) statObserver.observe(heroStats);
+
+  // --- Copy buttons on code blocks and terminals ---
+  function addCopyButtons() {
+    const targets = document.querySelectorAll('.code-block, .terminal, .dogfood-terminal');
+    targets.forEach(block => {
+      const btn = document.createElement('button');
+      btn.className = 'copy-btn';
+      btn.textContent = 'Copy';
+      btn.addEventListener('click', () => {
+        const text = block.textContent.replace(/^Copy/, '').trim();
+        navigator.clipboard.writeText(text).then(() => {
+          btn.textContent = 'Copied!';
+          setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+        });
+      });
+      block.style.position = 'relative';
+      block.appendChild(btn);
+    });
+  }
+  addCopyButtons();
+
+  // --- Active nav link highlighting ---
+  const navLinks = document.querySelectorAll('.nav-links a[href^="#"]');
+  const sections = document.querySelectorAll('section[id]');
+
+  const navObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const id = entry.target.getAttribute('id');
+        navLinks.forEach(link => {
+          link.classList.toggle('nav-active', link.getAttribute('href') === '#' + id);
+        });
+      }
+    });
+  }, { threshold: 0.3, rootMargin: '-56px 0px -40% 0px' });
+
+  sections.forEach(section => navObserver.observe(section));
+
+  // --- Mobile hamburger menu ---
+  const hamburger = document.querySelector('.hamburger');
+  const navLinksContainer = document.querySelector('.nav-links');
+
+  hamburger.addEventListener('click', () => {
+    navLinksContainer.classList.toggle('open');
+  });
+
+  // Close menu when a link is clicked
+  navLinksContainer.querySelectorAll('a').forEach(link => {
+    link.addEventListener('click', () => {
+      navLinksContainer.classList.remove('open');
+    });
+  });
+
+  // --- i18n translations ---
+  const translations = {
+    en: {
+      "nav.why": "Why",
+      "nav.mqtt": "MQTT",
+      "nav.deploy": "Deploy",
+      "nav.roadmap": "Roadmap",
+      "nav.getstarted": "Get Started",
+      "hero.eyebrow": "Open Source &middot; MIT License &middot; v0.1.x",
+      "hero.subtitle": "Multi-agent coordination for development teams. Zero conflicts, everyone aligned.",
+      "hero.stat.tools": "MCP tools",
+      "hero.stat.tests": "tests",
+      "hero.stat.topics": "MQTT topics",
+      "hero.cta.start": "Get Started",
+      "why.title": "Why MCP Coordinator?",
+      "why.subtitle": "Scale your team's AI agents without the chaos.",
+      "why.block1.title": "Multiple agents, one aligned process",
+      "why.block1.desc": "Run several agents per developer on different tasks. Several developers with their own agents on the same repo. Specialize by role &mdash; one codes, one reviews, one tests. Effort profiles auto-pick Haiku / Sonnet / Opus per phase so you don't waste Opus tokens on coordination chatter.",
+      "why.block2.title": "Agents hear each other through MQTT &mdash; no sidecar",
+      "why.block2.desc": "The agent-loop subscribes to the embedded MQTT broker once. Conflicts, messages, claims and resolutions arrive in real-time and are drained between turns. No separate liaison process, no polling, no extra tokens burned on coordination chatter.",
+      "why.block3.title": "Dogfood everything",
+      "why.block3.desc": "6 agents coordinated via work-stealing phases to rewrite the coordinator's own unit tests from scratch. Another raid found and patched 11 real bugs in the coordinator itself. Zero duplicated work, zero merge conflicts &mdash; all via the coordinator's own announce/MQTT/consensus loop.",
+      "why.block4.title": "See everything, miss nothing",
+      "why.block4.desc": "A live SSE dashboard shows every decision in real-time. Who's working on what, which conflicts were detected, how they were resolved. Per-agent token gauge, Anthropic quota widget, scoring-layer breakdown. Complete traceability &mdash; every coordination decision is logged.",
+      "why.block5.title": "Zero conflicts. Everyone aligned.",
+      "why.block5.desc": "Intent detection before code is written. Impact scoring across 4 layers. Automatic consultation when scores exceed thresholds. The coordinator doesn't replace developers &mdash; it eliminates the chaos when multiple agents work in parallel.",
+      "why.dogfood.title": "La M&ecirc;l&eacute;e run",
+      "why.dogfood.agents": "Agents",
+      "why.dogfood.phases": "Phases",
+      "why.dogfood.threads": "Threads opened",
+      "why.dogfood.messages": "MQTT messages exchanged",
+      "why.dogfood.consensus": "Consensus",
+      "why.dogfood.consensusval": "7 reached &middot; 0 duplicates",
+      "why.dogfood.tests": "Tests produced",
+      "why.dogfood.total": "Total tests (suite)",
+      "problem.title": "The coordination problem",
+      "problem.subtitle": "AI coding agents accelerate individual work &mdash; but create new team-level problems when running in parallel.",
+      "problem.card1.title": "Regressions",
+      "problem.card1.desc": "Two agents touch the same file simultaneously. One's changes silently overwrite the other's. The bug only shows up in review &mdash; or production.",
+      "problem.card2.title": "Duplicated effort",
+      "problem.card2.desc": "Without visibility into each other's intent, two agents implement the same feature with different APIs, different schemas, different assumptions.",
+      "problem.card3.title": "No visibility",
+      "problem.card3.desc": "Nobody knows what the other agents are doing. Plans stay local, decisions are invisible. Misalignment compounds silently until it explodes.",
+      "how.title": "How it works",
+      "how.subtitle": "A lightweight coordination loop that runs before every coding session, not after.",
+      "how.step1.title": "Announce",
+      "how.step1.desc": "Agent declares intent &mdash; task description, target files, affected modules &mdash; before writing a single line of code.",
+      "how.step2.title": "Detect",
+      "how.step2.desc": "The scorer evaluates overlap against all active intents across 4 layers: announced file, dependency, module, semantic proximity.",
+      "how.step3.title": "Consult",
+      "how.step3.desc": "The coordinator publishes the new thread on MQTT. Each affected agent-loop drains the event between turns and posts context, constraints, or a resolution proposal &mdash; no separate sidecar process.",
+      "how.step4.title": "Resolve",
+      "how.step4.desc": "Proposals are approved, contested, or re-proposed. The thread closes on consensus, or auto-resolves in gray zones. All decisions land on the dashboard timeline.",
+      "mqtt.title": "MQTT &mdash; the coordinator's nervous system",
+      "mqtt.subtitle": "Every coordination event fans out on an embedded MQTT broker. Agents subscribe once and drain messages between turns &mdash; zero polling, zero sidecar.",
+      "mqtt.card1.title": "Embedded Aedes broker",
+      "mqtt.card1.desc": "The coordinator ships its own broker &mdash; no Mosquitto, no RabbitMQ to deploy. TCP on port 1883 for local/LAN, WebSocket on /mqtt over the coordinator's HTTP port for remote agents and the Bun binary.",
+      "mqtt.card2.title": "Push, not poll",
+      "mqtt.card2.desc": "The agent-loop subscribes to every coordinator topic at startup. New threads, messages, claims and completions arrive through a queue drained between turns &mdash; latency &lt; 50ms end-to-end with zero wasted tokens.",
+      "mqtt.card3.title": "Self-filter built-in",
+      "mqtt.card3.desc": "Each message carries an agent_id. The listener drops messages from the local agent, so the loop never wakes itself on its own actions. One less tokens-burning rabbit hole.",
+      "mqtt.topics.title": "Topic map",
+      "mqtt.topics.sub": "Eight topics cover every event class. Wildcards (+) let agents subscribe to all threads at once.",
+      "mqtt.th.topic": "Topic",
+      "mqtt.th.emitted": "Emitted when",
+      "mqtt.th.payload": "Key payload",
+      "mqtt.row1.emit": "A thread is opened",
+      "mqtt.row1.pay": "<code style=\"font-size:0.8em\">thread_id, subject, initiator_id, target_files</code>",
+      "mqtt.row2.emit": "Someone posts to a thread",
+      "mqtt.row2.pay": "<code style=\"font-size:0.8em\">agent_id, name, content, type</code>",
+      "mqtt.row3.emit": "Thread transitions state",
+      "mqtt.row3.pay": "<code style=\"font-size:0.8em\">status: open/resolving/resolved/timeout</code>",
+      "mqtt.row4.emit": "Work-stealing claim (atomic)",
+      "mqtt.row4.pay": "<code style=\"font-size:0.8em\">claimed_by, thread_id</code>",
+      "mqtt.row5.emit": "Claimed task finishes",
+      "mqtt.row5.pay": "<code style=\"font-size:0.8em\">agent_id, thread_id, resolution</code>",
+      "mqtt.row6.emit": "Agent online / offline",
+      "mqtt.row6.pay": "<code style=\"font-size:0.8em\">status, name, modules</code>",
+      "mqtt.row7.emit": "System-wide announcement",
+      "mqtt.row7.pay": "<code style=\"font-size:0.8em\">arbitrary JSON</code>",
+      "mqtt.row8.emit": "Anthropic quota refresh",
+      "mqtt.row8.pay": "<code style=\"font-size:0.8em\">usage, limit, utilization_pct</code>",
+      "mqtt.flow.title": "Push delivery flow",
+      "worktrees.title": "Why not just git worktrees?",
+      "worktrees.subtitle": "Worktrees are necessary but not sufficient. They solve file access &mdash; the coordinator solves coordination.",
+      "worktrees.card1.title": "Worktrees prevent file conflicts",
+      "worktrees.card1.desc": "Git worktrees isolate at the filesystem level. Two agents can't overwrite the same file. But they CAN produce logically incompatible changes that merge cleanly and break at runtime.",
+      "worktrees.card2.title": "The coordinator prevents intent conflicts",
+      "worktrees.card2.desc": "By announcing intentions before coding, agents know what others are planning. A worktree won't tell Agent B that Agent A is about to change the User interface it depends on.",
+      "worktrees.card3.title": "Use both together",
+      "worktrees.card3.desc": "Worktrees handle the filesystem. The coordinator handles the semantics. Together: zero file conflicts AND zero intent conflicts.",
+      "scoring.title": "4-layer conflict scoring",
+      "scoring.subtitle": "Every intent is scored 0&ndash;100 against all active agents. Score determines the response.",
+      "scoring.row1.label": "<strong>Same file announced</strong> &mdash; both agents target the exact same source file",
+      "scoring.row1.tag": "Blocking &mdash; consult required",
+      "scoring.row2.label": "<strong>Dependency overlap</strong> &mdash; one agent's output is consumed by the other's module",
+      "scoring.row2.tag": "Gray zone &mdash; review",
+      "scoring.row3.label": "<strong>Module overlap</strong> &mdash; agents work in the same bounded context or feature area",
+      "scoring.row3.tag": "Gray zone &mdash; monitor",
+      "scoring.row4.label": "<strong>No link</strong> &mdash; fully independent tasks, no shared files or modules",
+      "scoring.row4.tag": "Pass &mdash; proceed safely",
+      "arch.title": "Architecture",
+      "arch.subtitle": "One agent-loop per developer, one coordinator serving MCP + MQTT + dashboard. No sidecars, no liaison Haiku processes burning tokens.",
+      "arch.card1.title": "Agent-loop",
+      "arch.card1.desc": "Programmatic loop that wraps the Claude CLI (spawn-per-turn <code style=\"color:var(--accent);font-size:0.85em;\">claude -p --resume</code>). Holds the MQTT listener, the coordination protocol state machine, and the work-stealing claim logic.",
+      "arch.card2.title": "Coordinator server",
+      "arch.card2.desc": "Node.js process exposing 26 MCP tools over HTTP/SSE, plus the embedded Aedes MQTT broker. SQLite for state (threads, agents, dependency map, audit log). Pre-flights Anthropic quota before N-agent runs.",
+      "arch.card3.title": "BCE",
+      "arch.card3.desc": "Composition engine that emits prompt.md + hooks + <code style=\"color:var(--accent);font-size:0.85em;\">.mcp.json</code> from 32 reusable YAML behaviors. Phases (discover/review/execute) and effort profiles are part of the schema.",
+      "deploy.title": "Deploy anywhere",
+      "deploy.subtitle": "From your laptop to your team's infrastructure. Three modes, same experience.",
+      "deploy.local.title": "Local mode",
+      "deploy.local.desc": "Everything runs on your machine. Perfect for solo development or trying out the coordinator.",
+      "deploy.team.title": "Team server",
+      "deploy.team.desc": "Coordinator runs on a shared machine. All developers connect their agents to the same instance.",
+      "deploy.cloud.title": "Cloud hosted",
+      "deploy.cloud.desc": "Coordinator on a VM or container service. Teams across offices or remote developers all coordinate through a single endpoint.",
+      "dashboard.title": "Real-time dashboard",
+      "dashboard.subtitle": "Observe what every agent is doing, what conflicts were detected, and what decisions were reached. Quota widget + token gauges live.",
+      "install.title": "Get started in 3 steps",
+      "install.subtitle": "Self-hosted, no cloud dependency. One standalone binary.",
+      "install.step1.label": "Step 1",
+      "install.step1.title": "Install",
+      "install.step1.desc": "Single npm package. No separate broker or database to set up.",
+      "install.step2.label": "Step 2",
+      "install.step2.title": "Start the server",
+      "install.step2.desc": "Starts the MCP server, embedded MQTT broker, and dashboard on <code style=\"color:var(--accent);font-size:0.85em;\">localhost:3100</code>.",
+      "install.step3.label": "Step 3",
+      "install.step3.title": "Open the dashboard",
+      "install.step3.desc": "Open <code style=\"color:var(--accent);font-size:0.85em;\">http://localhost:3200</code> to see connected agents, open threads, and quota.",
+      "results.title": "Validated scenarios",
+      "results.subtitle": "Four canonical conflict scenarios &mdash; all tested, all resolved correctly.",
+      "results.th.scenario": "Scenario",
+      "results.th.desc": "Description",
+      "results.th.score": "Score",
+      "results.th.outcome": "Outcome",
+      "results.s1.desc": "Same file targeted by two agents simultaneously",
+      "results.s1.outcome": "Consultation triggered &rarr; consensus reached",
+      "results.s3.desc": "Agent A's module depends on Agent B's current output",
+      "results.s3.outcome": "Gray zone &mdash; dependency flagged, agents notified",
+      "results.s2.desc": "Both agents work within the same feature module",
+      "results.s2.outcome": "Gray zone &mdash; monitored, no blocking",
+      "results.s4.desc": "Fully independent tasks, no shared files or modules",
+      "results.s4.outcome": "Auto-resolved &mdash; both agents proceed",
+      "roadmap.title": "Roadmap",
+      "roadmap.subtitle": "Where we're going next.",
+      "roadmap.badge.done": "Done",
+      "roadmap.badge.progress": "In Progress",
+      "roadmap.badge.planned": "Planned",
+      "roadmap.badge.future": "Future",
+      "roadmap.v01.title": "v0.1 — Server extraction",
+      "roadmap.v01.desc": "Pure coordinator server extracted from the monorepo. 26 MCP tools, embedded Aedes broker, SQLite state, real-time dashboard. Standalone npm package.",
+      "roadmap.v02.title": "v0.2 — Hardened auth &amp; TLS",
+      "roadmap.v02.desc": "JWT authentication, TLS support, per-team quota partitioning, remote MQTT over WebSocket. First shared-instance deployments.",
+      "roadmap.v03.title": "v0.3 — Semantic conflict detection",
+      "roadmap.v03.desc": "AST-level analysis layer above filename scoring. Detect API contract changes, interface incompatibilities, and breaking changes before a thread even opens.",
+      "roadmap.v10.title": "v1.0 — Stable API",
+      "roadmap.v10.desc": "Stable MCP tool surface, versioned REST API, migration guides. Cross-repo coordination: shared dependency map across microservices and monorepo boundaries.",
+      "roadmap.harbor.title": "tengu_harbor push",
+      "roadmap.harbor.desc": "When Anthropic activates <code style=\"color:var(--accent);font-size:0.85em;\">tengu_harbor</code>, server-gated push can shortcut the between-turn drain. Listener code already lives alongside the MQTT bridge.",
+      "footer.text": "MIT License &nbsp;&middot;&nbsp; Built with <a href=\"https://claude.ai/code\" target=\"_blank\">Claude Code</a> &nbsp;&middot;&nbsp; MCP Coordinator v0.1.x"
+    },
+    fr: {
+      "nav.why": "Pourquoi",
+      "nav.mqtt": "MQTT",
+      "nav.deploy": "D&eacute;ployer",
+      "nav.roadmap": "Feuille de route",
+      "nav.getstarted": "Commencer",
+      "hero.eyebrow": "Open Source &middot; Licence MIT &middot; v0.1.x",
+      "hero.subtitle": "Coordination multi-agents pour &eacute;quipes de d&eacute;veloppement. Z&eacute;ro conflit, tous align&eacute;s.",
+      "hero.stat.tools": "outils MCP",
+      "hero.stat.tests": "tests",
+      "hero.stat.topics": "topics MQTT",
+      "hero.cta.start": "Commencer",
+      "why.title": "Pourquoi MCP Coordinator?",
+      "why.subtitle": "Faites passer vos agents IA a l'&eacute;chelle sans le chaos.",
+      "why.block1.title": "Plusieurs agents, un seul processus align&eacute;",
+      "why.block1.desc": "Plusieurs agents par d&eacute;veloppeur sur des t&acirc;ches diff&eacute;rentes. Plusieurs d&eacute;veloppeurs sur le m&ecirc;me repo. Sp&eacute;cialisez par r&ocirc;le &mdash; un code, un revoit, un teste.",
+      "why.block2.title": "Les agents s'entendent via MQTT &mdash; sans sidecar",
+      "why.block2.desc": "L'agent-loop s'abonne au broker MQTT int&eacute;gr&eacute; une seule fois. Conflits, messages, claims et r&eacute;solutions arrivent en temps r&eacute;el et sont drain&eacute;s entre les turns. Plus de processus liaison s&eacute;par&eacute;, plus de polling, plus de tokens br&ucirc;l&eacute;s sur la coordination.",
+      "why.block3.title": "On se mange notre propre chien",
+      "why.block3.desc": "6 agents coordonn&eacute;s via les phases work-stealing ont r&eacute;&eacute;crit les tests unitaires du coordinator. Un autre raid a trouv&eacute; et patch&eacute; 11 vrais bugs dans le coordinator lui-m&ecirc;me. Z&eacute;ro doublon, z&eacute;ro conflit de merge &mdash; le tout via la boucle announce/MQTT/consensus du coordinator.",
+      "why.block4.title": "Voyez tout, ne ratez rien",
+      "why.block4.desc": "Un dashboard SSE temps r&eacute;el montre chaque d&eacute;cision. Qui travaille sur quoi, quels conflits ont &eacute;t&eacute; d&eacute;tect&eacute;s, comment ils ont &eacute;t&eacute; r&eacute;solus. Jauge de tokens par agent, widget quota Anthropic, d&eacute;composition par couche de scoring. Tra&ccedil;abilit&eacute; compl&egrave;te.",
+      "why.block5.title": "Z&eacute;ro conflit. Tous align&eacute;s.",
+      "why.block5.desc": "D&eacute;tection d'intention avant que le code soit &eacute;crit. Scoring d'impact sur 4 couches. Consultation automatique quand les scores d&eacute;passent les seuils. Le coordinator ne remplace pas les d&eacute;veloppeurs &mdash; il &eacute;limine le chaos.",
+      "why.dogfood.title": "Run La M&ecirc;l&eacute;e",
+      "why.dogfood.agents": "Agents",
+      "why.dogfood.phases": "Phases",
+      "why.dogfood.threads": "Threads ouverts",
+      "why.dogfood.messages": "Messages MQTT &eacute;chang&eacute;s",
+      "why.dogfood.consensus": "Consensus",
+      "why.dogfood.consensusval": "7 atteints &middot; 0 doublons",
+      "why.dogfood.tests": "Tests produits",
+      "why.dogfood.total": "Total des tests (suite)",
+      "problem.title": "Le probl&egrave;me de coordination",
+      "problem.subtitle": "Les agents IA acc&eacute;l&egrave;rent le travail individuel &mdash; mais cr&eacute;ent de nouveaux probl&egrave;mes d'&eacute;quipe quand ils tournent en parall&egrave;le.",
+      "problem.card1.title": "R&eacute;gressions",
+      "problem.card1.desc": "Deux agents touchent le m&ecirc;me fichier simultan&eacute;ment. Les changements de l'un &eacute;crasent silencieusement ceux de l'autre. Le bug n'appara&icirc;t qu'en revue &mdash; ou en production.",
+      "problem.card2.title": "Effort en double",
+      "problem.card2.desc": "Sans visibilit&eacute; sur les intentions des autres, deux agents impl&eacute;mentent la m&ecirc;me fonctionnalit&eacute; avec des APIs, des sch&eacute;mas et des hypoth&egrave;ses diff&eacute;rentes.",
+      "problem.card3.title": "Aucune visibilit&eacute;",
+      "problem.card3.desc": "Personne ne sait ce que les autres agents font. Les plans restent locaux, les d&eacute;cisions sont invisibles. Le d&eacute;salignement s'accumule silencieusement jusqu'a l'explosion.",
+      "how.title": "Comment &ccedil;a marche",
+      "how.subtitle": "Une boucle de coordination l&eacute;g&egrave;re qui s'ex&eacute;cute avant chaque session de code, pas apr&egrave;s.",
+      "how.step1.title": "Annoncer",
+      "how.step1.desc": "L'agent d&eacute;clare son intention &mdash; description de la t&acirc;che, fichiers cibles, modules affect&eacute;s &mdash; avant d'&eacute;crire une seule ligne de code.",
+      "how.step2.title": "D&eacute;tecter",
+      "how.step2.desc": "Le scorer &eacute;value le chevauchement par rapport a toutes les intentions actives sur 4 couches : fichier annonc&eacute;, d&eacute;pendance, module, proximit&eacute; s&eacute;mantique.",
+      "how.step3.title": "Consulter",
+      "how.step3.desc": "Le coordinator publie le nouveau thread sur MQTT. Chaque agent-loop concern&eacute; draine l'&eacute;v&eacute;nement entre les turns et poste contexte, contraintes ou proposition de r&eacute;solution &mdash; aucun processus sidecar.",
+      "how.step4.title": "R&eacute;soudre",
+      "how.step4.desc": "Les propositions sont approuv&eacute;es, contest&eacute;es ou re-propos&eacute;es. Le thread se ferme sur consensus, ou se r&eacute;sout automatiquement dans les zones grises. Toutes les d&eacute;cisions atterrissent sur la timeline du dashboard.",
+      "mqtt.title": "MQTT &mdash; le syst&egrave;me nerveux du coordinator",
+      "mqtt.subtitle": "Chaque &eacute;v&eacute;nement de coordination est diffus&eacute; sur un broker MQTT int&eacute;gr&eacute;. Les agents s'abonnent une fois et drainent les messages entre les turns &mdash; z&eacute;ro polling, z&eacute;ro sidecar.",
+      "mqtt.card1.title": "Broker Aedes int&eacute;gr&eacute;",
+      "mqtt.card1.desc": "Le coordinator embarque son propre broker &mdash; pas de Mosquitto, pas de RabbitMQ a d&eacute;ployer. TCP sur le port 1883 en local/LAN, WebSocket sur /mqtt via le port HTTP du coordinator pour les agents distants et le binaire Bun.",
+      "mqtt.card2.title": "Push, pas poll",
+      "mqtt.card2.desc": "L'agent-loop s'abonne a tous les topics du coordinator au d&eacute;marrage. Les nouveaux threads, messages, claims et r&eacute;solutions arrivent via une queue drain&eacute;e entre les turns &mdash; latence &lt; 50ms bout-en-bout avec z&eacute;ro token gaspill&eacute;.",
+      "mqtt.card3.title": "Auto-filtre int&eacute;gr&eacute;",
+      "mqtt.card3.desc": "Chaque message porte un agent_id. Le listener ignore les messages de l'agent local, donc la boucle ne se r&eacute;veille jamais sur ses propres actions. Un trou a tokens de moins.",
+      "mqtt.topics.title": "Carte des topics",
+      "mqtt.topics.sub": "Huit topics couvrent chaque classe d'&eacute;v&eacute;nement. Les wildcards (+) permettent aux agents de s'abonner a tous les threads d'un coup.",
+      "mqtt.th.topic": "Topic",
+      "mqtt.th.emitted": "&Eacute;mis quand",
+      "mqtt.th.payload": "Payload cl&eacute;",
+      "mqtt.row1.emit": "Un thread est ouvert",
+      "mqtt.row1.pay": "<code style=\"font-size:0.8em\">thread_id, subject, initiator_id, target_files</code>",
+      "mqtt.row2.emit": "Quelqu'un poste dans un thread",
+      "mqtt.row2.pay": "<code style=\"font-size:0.8em\">agent_id, name, content, type</code>",
+      "mqtt.row3.emit": "Transition d'&eacute;tat du thread",
+      "mqtt.row3.pay": "<code style=\"font-size:0.8em\">status: open/resolving/resolved/timeout</code>",
+      "mqtt.row4.emit": "Claim work-stealing (atomique)",
+      "mqtt.row4.pay": "<code style=\"font-size:0.8em\">claimed_by, thread_id</code>",
+      "mqtt.row5.emit": "Une t&acirc;che claim&eacute;e se termine",
+      "mqtt.row5.pay": "<code style=\"font-size:0.8em\">agent_id, thread_id, resolution</code>",
+      "mqtt.row6.emit": "Agent online / offline",
+      "mqtt.row6.pay": "<code style=\"font-size:0.8em\">status, name, modules</code>",
+      "mqtt.row7.emit": "Annonce syst&egrave;me",
+      "mqtt.row7.pay": "<code style=\"font-size:0.8em\">arbitrary JSON</code>",
+      "mqtt.row8.emit": "Refresh quota Anthropic",
+      "mqtt.row8.pay": "<code style=\"font-size:0.8em\">usage, limit, utilization_pct</code>",
+      "mqtt.flow.title": "Flux de livraison push",
+      "worktrees.title": "Pourquoi pas juste des git worktrees?",
+      "worktrees.subtitle": "Les worktrees sont n&eacute;cessaires mais pas suffisants. Ils r&eacute;solvent l'acc&egrave;s aux fichiers &mdash; le coordinator r&eacute;sout la coordination.",
+      "worktrees.card1.title": "Les worktrees emp&ecirc;chent les conflits de fichiers",
+      "worktrees.card1.desc": "Les git worktrees isolent au niveau du syst&egrave;me de fichiers. Deux agents ne peuvent pas &eacute;craser le m&ecirc;me fichier. Mais ils PEUVENT produire des changements logiquement incompatibles qui se mergent proprement et cassent a l'ex&eacute;cution.",
+      "worktrees.card2.title": "Le coordinator emp&ecirc;che les conflits d'intention",
+      "worktrees.card2.desc": "En annon&ccedil;ant les intentions avant de coder, les agents savent ce que les autres planifient. Un worktree ne dira pas a l'Agent B que l'Agent A va modifier l'interface User dont il d&eacute;pend.",
+      "worktrees.card3.title": "Utilisez les deux ensemble",
+      "worktrees.card3.desc": "Les worktrees g&egrave;rent le syst&egrave;me de fichiers. Le coordinator g&egrave;re la s&eacute;mantique. Ensemble : z&eacute;ro conflit de fichiers ET z&eacute;ro conflit d'intention.",
+      "scoring.title": "Scoring de conflit sur 4 couches",
+      "scoring.subtitle": "Chaque intention est &eacute;valu&eacute;e de 0 a 100 par rapport a tous les agents actifs. Le score d&eacute;termine la r&eacute;ponse.",
+      "scoring.row1.label": "<strong>M&ecirc;me fichier annonc&eacute;</strong> &mdash; les deux agents ciblent exactement le m&ecirc;me fichier source",
+      "scoring.row1.tag": "Bloquant &mdash; consultation requise",
+      "scoring.row2.label": "<strong>Chevauchement de d&eacute;pendance</strong> &mdash; la sortie d'un agent est consomm&eacute;e par le module de l'autre",
+      "scoring.row2.tag": "Zone grise &mdash; revue",
+      "scoring.row3.label": "<strong>Chevauchement de module</strong> &mdash; les agents travaillent dans la m&ecirc;me zone fonctionnelle",
+      "scoring.row3.tag": "Zone grise &mdash; surveillance",
+      "scoring.row4.label": "<strong>Aucun lien</strong> &mdash; t&acirc;ches enti&egrave;rement ind&eacute;pendantes, aucun fichier ou module partag&eacute;",
+      "scoring.row4.tag": "OK &mdash; continuer",
+      "arch.title": "Architecture",
+      "arch.subtitle": "Un agent-loop par d&eacute;veloppeur, un coordinator qui sert MCP + MQTT + dashboard. Pas de sidecars, pas de processus liaison Haiku qui br&ucirc;lent des tokens.",
+      "arch.card1.title": "Agent-loop",
+      "arch.card1.desc": "Boucle programmatique qui enveloppe le CLI Claude (spawn-per-turn <code style=\"color:var(--accent);font-size:0.85em;\">claude -p --resume</code>). Contient le listener MQTT, la machine a &eacute;tats du protocole de coordination et la logique de claim work-stealing.",
+      "arch.card2.title": "Serveur coordinator",
+      "arch.card2.desc": "Processus Node.js qui expose 26 outils MCP via HTTP/SSE, plus le broker MQTT Aedes int&eacute;gr&eacute;. SQLite pour l'&eacute;tat (threads, agents, carte de d&eacute;pendances, audit log). Pre-flight quota Anthropic avant les runs N-agents.",
+      "arch.card3.title": "BCE",
+      "arch.card3.desc": "Moteur de composition qui &eacute;met prompt.md + hooks + <code style=\"color:var(--accent);font-size:0.85em;\">.mcp.json</code> a partir de 32 behaviors YAML r&eacute;utilisables. Les phases (discover/review/execute) et profils d'effort font partie du sch&eacute;ma.",
+      "deploy.title": "D&eacute;ployez partout",
+      "deploy.subtitle": "De votre laptop a l'infra de votre &eacute;quipe. Trois modes, m&ecirc;me exp&eacute;rience.",
+      "deploy.local.title": "Mode local",
+      "deploy.local.desc": "Tout tourne sur votre machine. Parfait pour le d&eacute;veloppement solo ou pour essayer le coordinator.",
+      "deploy.team.title": "Serveur d'&eacute;quipe",
+      "deploy.team.desc": "Le coordinator tourne sur une machine partag&eacute;e. Tous les d&eacute;veloppeurs connectent leurs agents a la m&ecirc;me instance.",
+      "deploy.cloud.title": "H&eacute;berg&eacute; en cloud",
+      "deploy.cloud.desc": "Coordinator sur une VM ou un service de conteneurs. Les &eacute;quipes de diff&eacute;rents bureaux ou les d&eacute;veloppeurs remote se coordonnent via un seul endpoint.",
+      "dashboard.title": "Dashboard temps r&eacute;el",
+      "dashboard.subtitle": "Observez ce que chaque agent fait, quels conflits ont &eacute;t&eacute; d&eacute;tect&eacute;s et quelles d&eacute;cisions ont &eacute;t&eacute; prises. Widget quota + jauges de tokens en direct.",
+      "install.title": "Commencez en 3 &eacute;tapes",
+      "install.subtitle": "Self-hosted, aucune d&eacute;pendance cloud. Un seul binaire standalone.",
+      "install.step1.label": "&Eacute;tape 1",
+      "install.step1.title": "Installer",
+      "install.step1.desc": "Package npm unique. Aucun broker ni base de donn&eacute;es s&eacute;par&eacute;s &agrave; configurer.",
+      "install.step2.label": "&Eacute;tape 2",
+      "install.step2.title": "D&eacute;marrez le serveur",
+      "install.step2.desc": "D&eacute;marre le serveur MCP, le broker MQTT int&eacute;gr&eacute; et le dashboard sur <code style=\"color:var(--accent);font-size:0.85em;\">localhost:3100</code>.",
+      "install.step3.label": "&Eacute;tape 3",
+      "install.step3.title": "Ouvrez le dashboard",
+      "install.step3.desc": "Ouvrez <code style=\"color:var(--accent);font-size:0.85em;\">http://localhost:3200</code> pour voir les agents connect&eacute;s, les threads ouverts et le quota.",
+      "results.title": "Sc&eacute;narios valid&eacute;s",
+      "results.subtitle": "Quatre sc&eacute;narios canoniques de conflit &mdash; tous test&eacute;s, tous r&eacute;solus correctement.",
+      "results.th.scenario": "Sc&eacute;nario",
+      "results.th.desc": "Description",
+      "results.th.score": "Score",
+      "results.th.outcome": "R&eacute;sultat",
+      "results.s1.desc": "M&ecirc;me fichier cibl&eacute; par deux agents simultan&eacute;ment",
+      "results.s1.outcome": "Consultation d&eacute;clench&eacute;e &rarr; consensus atteint",
+      "results.s3.desc": "Le module de l'Agent A d&eacute;pend de la sortie actuelle de l'Agent B",
+      "results.s3.outcome": "Zone grise &mdash; d&eacute;pendance signal&eacute;e, agents notifi&eacute;s",
+      "results.s2.desc": "Les deux agents travaillent dans le m&ecirc;me module fonctionnel",
+      "results.s2.outcome": "Zone grise &mdash; surveill&eacute;, pas de blocage",
+      "results.s4.desc": "T&acirc;ches enti&egrave;rement ind&eacute;pendantes, aucun fichier ou module partag&eacute;",
+      "results.s4.outcome": "Auto-r&eacute;solu &mdash; les deux agents continuent",
+      "roadmap.title": "Feuille de route",
+      "roadmap.subtitle": "Ou on s'en va ensuite.",
+      "roadmap.badge.done": "Fait",
+      "roadmap.badge.progress": "En cours",
+      "roadmap.badge.planned": "Planifi&eacute;",
+      "roadmap.badge.future": "Futur",
+      "roadmap.v01.title": "v0.1 — Extraction du serveur",
+      "roadmap.v01.desc": "Serveur coordinator pur extrait du monorepo. 26 outils MCP, broker Aedes int&eacute;gr&eacute;, &eacute;tat SQLite, dashboard temps r&eacute;el. Package npm standalone.",
+      "roadmap.v02.title": "v0.2 — Auth renforc&eacute;e &amp; TLS",
+      "roadmap.v02.desc": "Authentification JWT, support TLS, partitionnement de quota par &eacute;quipe, MQTT distant via WebSocket. Premiers d&eacute;ploiements instance partag&eacute;e.",
+      "roadmap.v03.title": "v0.3 — D&eacute;tection s&eacute;mantique de conflits",
+      "roadmap.v03.desc": "Couche d'analyse AST au-dessus du scoring par nom de fichier. D&eacute;tecter les changements de contrat API, les incompatibilit&eacute;s d'interface et les breaking changes avant qu'un thread s'ouvre.",
+      "roadmap.v10.title": "v1.0 — API stable",
+      "roadmap.v10.desc": "Surface d'outils MCP stable, API REST versionn&eacute;e, guides de migration. Coordination cross-repo : carte de d&eacute;pendances partag&eacute;e au-del&agrave; des fronti&egrave;res microservices et monorepo.",
+      "roadmap.harbor.title": "Push tengu_harbor",
+      "roadmap.harbor.desc": "Quand Anthropic active <code style=\"color:var(--accent);font-size:0.85em;\">tengu_harbor</code>, le push server-gated pourra court-circuiter le drain entre turns. Le code listener vit d&eacute;j&agrave; a c&ocirc;t&eacute; du bridge MQTT.",
+      "footer.text": "Licence MIT &nbsp;&middot;&nbsp; Construit avec <a href=\"https://claude.ai/code\" target=\"_blank\">Claude Code</a> &nbsp;&middot;&nbsp; MCP Coordinator v0.1.x"
+    },
+    es: {
+      "nav.why": "Por qu&eacute;",
+      "nav.mqtt": "MQTT",
+      "nav.deploy": "Desplegar",
+      "nav.roadmap": "Hoja de ruta",
+      "nav.getstarted": "Empezar",
+      "hero.eyebrow": "C&oacute;digo abierto &middot; Licencia MIT &middot; v0.1.x",
+      "hero.subtitle": "Coordinaci&oacute;n multi-agente para equipos de desarrollo. Cero conflictos, todos alineados.",
+      "hero.stat.tools": "herramientas MCP",
+      "hero.stat.tests": "tests",
+      "hero.stat.topics": "topics MQTT",
+      "hero.cta.start": "Empezar",
+      "why.title": "&iquest;Por qu&eacute; MCP Coordinator?",
+      "why.subtitle": "Escala los agentes IA de tu equipo sin el caos.",
+      "why.block1.title": "Varios agentes, un solo proceso alineado",
+      "why.block1.desc": "Varios agentes por desarrollador en tareas diferentes. Varios desarrolladores con sus propios agentes en el mismo repo. Especializa por rol &mdash; uno codea, uno revisa, uno prueba.",
+      "why.block2.title": "Los agentes se escuchan v&iacute;a MQTT &mdash; sin sidecar",
+      "why.block2.desc": "El agent-loop se suscribe al broker MQTT embebido una sola vez. Conflictos, mensajes, claims y resoluciones llegan en tiempo real y se drenan entre turnos. Sin proceso liaison separado, sin polling, sin tokens extra quemados en coordinaci&oacute;n.",
+      "why.block3.title": "Dogfood en todo",
+      "why.block3.desc": "6 agentes coordinados v&iacute;a fases work-stealing reescribieron los tests unitarios del coordinator desde cero. Otro raid encontr&oacute; y parche&oacute; 11 bugs reales en el coordinator mismo. Cero trabajo duplicado, cero conflictos de merge.",
+      "why.block4.title": "Ve todo, no te pierdas nada",
+      "why.block4.desc": "Un dashboard SSE en vivo muestra cada decisi&oacute;n en tiempo real. Qui&eacute;n trabaja en qu&eacute;, qu&eacute; conflictos se detectaron, c&oacute;mo se resolvieron. Indicador de tokens por agente, widget de cuota Anthropic, desglose por capa de scoring. Trazabilidad completa.",
+      "why.block5.title": "Cero conflictos. Todos alineados.",
+      "why.block5.desc": "Detecci&oacute;n de intenci&oacute;n antes de que se escriba el c&oacute;digo. Scoring de impacto en 4 capas. Consulta autom&aacute;tica cuando los scores superan los umbrales. El coordinator no reemplaza a los desarrolladores &mdash; elimina el caos.",
+      "why.dogfood.title": "Run La M&ecirc;l&eacute;e",
+      "why.dogfood.agents": "Agentes",
+      "why.dogfood.phases": "Fases",
+      "why.dogfood.threads": "Threads abiertos",
+      "why.dogfood.messages": "Mensajes MQTT intercambiados",
+      "why.dogfood.consensus": "Consenso",
+      "why.dogfood.consensusval": "7 alcanzados &middot; 0 duplicados",
+      "why.dogfood.tests": "Tests producidos",
+      "why.dogfood.total": "Total de tests (suite)",
+      "problem.title": "El problema de coordinaci&oacute;n",
+      "problem.subtitle": "Los agentes IA aceleran el trabajo individual &mdash; pero crean nuevos problemas de equipo cuando corren en paralelo.",
+      "problem.card1.title": "Regresiones",
+      "problem.card1.desc": "Dos agentes tocan el mismo archivo simult&aacute;neamente. Los cambios de uno sobrescriben silenciosamente los del otro. El bug solo aparece en revisi&oacute;n &mdash; o en producci&oacute;n.",
+      "problem.card2.title": "Esfuerzo duplicado",
+      "problem.card2.desc": "Sin visibilidad de la intenci&oacute;n del otro, dos agentes implementan la misma funci&oacute;n con APIs, esquemas e hip&oacute;tesis diferentes.",
+      "problem.card3.title": "Sin visibilidad",
+      "problem.card3.desc": "Nadie sabe qu&eacute; hacen los otros agentes. Los planes quedan locales, las decisiones son invisibles. La desalineaci&oacute;n se acumula en silencio hasta explotar.",
+      "how.title": "C&oacute;mo funciona",
+      "how.subtitle": "Un bucle de coordinaci&oacute;n ligero que se ejecuta antes de cada sesi&oacute;n, no despu&eacute;s.",
+      "how.step1.title": "Anunciar",
+      "how.step1.desc": "El agente declara su intenci&oacute;n &mdash; descripci&oacute;n de tarea, archivos objetivo, m&oacute;dulos afectados &mdash; antes de escribir una sola l&iacute;nea de c&oacute;digo.",
+      "how.step2.title": "Detectar",
+      "how.step2.desc": "El scorer eval&uacute;a el solapamiento contra todas las intenciones activas en 4 capas: archivo anunciado, dependencia, m&oacute;dulo, proximidad sem&aacute;ntica.",
+      "how.step3.title": "Consultar",
+      "how.step3.desc": "El coordinator publica el nuevo thread en MQTT. Cada agent-loop afectado drena el evento entre turnos y publica contexto, restricciones o una propuesta &mdash; sin proceso sidecar.",
+      "how.step4.title": "Resolver",
+      "how.step4.desc": "Las propuestas se aprueban, contestan o re-proponen. El thread se cierra en consenso, o se auto-resuelve en zonas grises. Todas las decisiones llegan a la l&iacute;nea de tiempo del dashboard.",
+      "mqtt.title": "MQTT &mdash; el sistema nervioso del coordinator",
+      "mqtt.subtitle": "Cada evento de coordinaci&oacute;n se difunde en un broker MQTT embebido. Los agentes se suscriben una vez y drenan mensajes entre turnos &mdash; sin polling, sin sidecar.",
+      "mqtt.card1.title": "Broker Aedes embebido",
+      "mqtt.card1.desc": "El coordinator trae su propio broker &mdash; sin Mosquitto, sin RabbitMQ que desplegar. TCP en el puerto 1883 para local/LAN, WebSocket en /mqtt sobre el puerto HTTP del coordinator para agentes remotos y el binario Bun.",
+      "mqtt.card2.title": "Push, no poll",
+      "mqtt.card2.desc": "El agent-loop se suscribe a cada topic del coordinator al arrancar. Threads nuevos, mensajes, claims y completados llegan v&iacute;a una cola drenada entre turnos &mdash; latencia &lt; 50ms de punta a punta sin tokens desperdiciados.",
+      "mqtt.card3.title": "Auto-filtro integrado",
+      "mqtt.card3.desc": "Cada mensaje lleva un agent_id. El listener descarta mensajes del agente local, as&iacute; el bucle nunca se despierta por sus propias acciones. Un agujero de tokens menos.",
+      "mqtt.topics.title": "Mapa de topics",
+      "mqtt.topics.sub": "Ocho topics cubren cada clase de evento. Los wildcards (+) permiten suscribirse a todos los threads de una vez.",
+      "mqtt.th.topic": "Topic",
+      "mqtt.th.emitted": "Emitido cuando",
+      "mqtt.th.payload": "Payload clave",
+      "mqtt.row1.emit": "Se abre un thread",
+      "mqtt.row1.pay": "<code style=\"font-size:0.8em\">thread_id, subject, initiator_id, target_files</code>",
+      "mqtt.row2.emit": "Alguien publica en un thread",
+      "mqtt.row2.pay": "<code style=\"font-size:0.8em\">agent_id, name, content, type</code>",
+      "mqtt.row3.emit": "Transici&oacute;n de estado del thread",
+      "mqtt.row3.pay": "<code style=\"font-size:0.8em\">status: open/resolving/resolved/timeout</code>",
+      "mqtt.row4.emit": "Claim work-stealing (at&oacute;mico)",
+      "mqtt.row4.pay": "<code style=\"font-size:0.8em\">claimed_by, thread_id</code>",
+      "mqtt.row5.emit": "Tarea claim termina",
+      "mqtt.row5.pay": "<code style=\"font-size:0.8em\">agent_id, thread_id, resolution</code>",
+      "mqtt.row6.emit": "Agente online / offline",
+      "mqtt.row6.pay": "<code style=\"font-size:0.8em\">status, name, modules</code>",
+      "mqtt.row7.emit": "Anuncio global del sistema",
+      "mqtt.row7.pay": "<code style=\"font-size:0.8em\">arbitrary JSON</code>",
+      "mqtt.row8.emit": "Refresh de cuota Anthropic",
+      "mqtt.row8.pay": "<code style=\"font-size:0.8em\">usage, limit, utilization_pct</code>",
+      "mqtt.flow.title": "Flujo de entrega push",
+      "worktrees.title": "&iquest;Por qu&eacute; no solo git worktrees?",
+      "worktrees.subtitle": "Los worktrees son necesarios pero no suficientes. Resuelven el acceso a archivos &mdash; el coordinator resuelve la coordinaci&oacute;n.",
+      "worktrees.card1.title": "Los worktrees previenen conflictos de archivos",
+      "worktrees.card1.desc": "Los git worktrees aislan a nivel de sistema de archivos. Dos agentes no pueden sobrescribir el mismo archivo. Pero PUEDEN producir cambios l&oacute;gicamente incompatibles que mergean limpiamente y rompen en ejecuci&oacute;n.",
+      "worktrees.card2.title": "El coordinator previene conflictos de intenci&oacute;n",
+      "worktrees.card2.desc": "Al anunciar intenciones antes de codear, los agentes saben lo que otros planean. Un worktree no le dir&aacute; al Agente B que el Agente A va a cambiar la interfaz User de la que depende.",
+      "worktrees.card3.title": "Usa ambos juntos",
+      "worktrees.card3.desc": "Los worktrees manejan el sistema de archivos. El coordinator maneja la sem&aacute;ntica. Juntos: cero conflictos de archivos Y cero conflictos de intenci&oacute;n.",
+      "scoring.title": "Scoring de conflictos en 4 capas",
+      "scoring.subtitle": "Cada intenci&oacute;n se puntu&aacute; de 0 a 100 contra todos los agentes activos. El score determina la respuesta.",
+      "scoring.row1.label": "<strong>Mismo archivo anunciado</strong> &mdash; ambos agentes apuntan exactamente al mismo archivo",
+      "scoring.row1.tag": "Bloqueante &mdash; consulta requerida",
+      "scoring.row2.label": "<strong>Solapamiento de dependencia</strong> &mdash; la salida de uno la consume el m&oacute;dulo del otro",
+      "scoring.row2.tag": "Zona gris &mdash; revisi&oacute;n",
+      "scoring.row3.label": "<strong>Solapamiento de m&oacute;dulo</strong> &mdash; los agentes trabajan en la misma &aacute;rea",
+      "scoring.row3.tag": "Zona gris &mdash; supervisar",
+      "scoring.row4.label": "<strong>Sin enlace</strong> &mdash; tareas totalmente independientes, ning&uacute;n archivo o m&oacute;dulo compartido",
+      "scoring.row4.tag": "OK &mdash; continuar",
+      "arch.title": "Arquitectura",
+      "arch.subtitle": "Un agent-loop por desarrollador, un coordinator que sirve MCP + MQTT + dashboard. Sin sidecars, sin procesos liaison Haiku quemando tokens.",
+      "arch.card1.title": "Agent-loop",
+      "arch.card1.desc": "Bucle program&aacute;tico que envuelve el CLI Claude (spawn-per-turn <code style=\"color:var(--accent);font-size:0.85em;\">claude -p --resume</code>). Contiene el listener MQTT, la m&aacute;quina de estados del protocolo y la l&oacute;gica de claim.",
+      "arch.card2.title": "Servidor coordinator",
+      "arch.card2.desc": "Proceso Node.js que expone 26 herramientas MCP v&iacute;a HTTP/SSE, m&aacute;s el broker MQTT Aedes embebido. SQLite para el estado (threads, agentes, mapa de dependencias, audit log). Pre-flight de cuota Anthropic antes de runs N-agentes.",
+      "arch.card3.title": "BCE",
+      "arch.card3.desc": "Motor de composici&oacute;n que emite prompt.md + hooks + <code style=\"color:var(--accent);font-size:0.85em;\">.mcp.json</code> a partir de 32 behaviors YAML reutilizables. Fases (discover/review/execute) y perfiles de esfuerzo son parte del esquema.",
+      "deploy.title": "Despliega donde quieras",
+      "deploy.subtitle": "Desde tu laptop a la infra de tu equipo. Tres modos, misma experiencia.",
+      "deploy.local.title": "Modo local",
+      "deploy.local.desc": "Todo corre en tu m&aacute;quina. Perfecto para desarrollo solo o para probar el coordinator.",
+      "deploy.team.title": "Servidor de equipo",
+      "deploy.team.desc": "El coordinator corre en una m&aacute;quina compartida. Todos los desarrolladores conectan sus agentes a la misma instancia.",
+      "deploy.cloud.title": "Hosteado en cloud",
+      "deploy.cloud.desc": "Coordinator en una VM o servicio de contenedores. Equipos en oficinas diferentes o desarrolladores remotos se coordinan a trav&eacute;s de un solo endpoint.",
+      "dashboard.title": "Dashboard en tiempo real",
+      "dashboard.subtitle": "Observa lo que cada agente hace, qu&eacute; conflictos se detectaron y qu&eacute; decisiones se tomaron. Widget de cuota + indicadores de tokens en vivo.",
+      "install.title": "Empieza en 3 pasos",
+      "install.subtitle": "Self-hosted, sin dependencia cloud. Un solo binario independiente.",
+      "install.step1.label": "Paso 1",
+      "install.step1.title": "Instalar",
+      "install.step1.desc": "Paquete npm &uacute;nico. Sin broker ni base de datos separados que configurar.",
+      "install.step2.label": "Paso 2",
+      "install.step2.title": "Inicia el servidor",
+      "install.step2.desc": "Inicia el servidor MCP, el broker MQTT embebido y el dashboard en <code style=\"color:var(--accent);font-size:0.85em;\">localhost:3100</code>.",
+      "install.step3.label": "Paso 3",
+      "install.step3.title": "Abre el dashboard",
+      "install.step3.desc": "Abre <code style=\"color:var(--accent);font-size:0.85em;\">http://localhost:3200</code> para ver agentes conectados, hilos abiertos y cuota.",
+      "results.title": "Escenarios validados",
+      "results.subtitle": "Cuatro escenarios can&oacute;nicos de conflicto &mdash; todos probados, todos resueltos correctamente.",
+      "results.th.scenario": "Escenario",
+      "results.th.desc": "Descripci&oacute;n",
+      "results.th.score": "Score",
+      "results.th.outcome": "Resultado",
+      "results.s1.desc": "Mismo archivo apuntado por dos agentes simult&aacute;neamente",
+      "results.s1.outcome": "Consulta activada &rarr; consenso alcanzado",
+      "results.s3.desc": "El m&oacute;dulo del Agente A depende de la salida actual del Agente B",
+      "results.s3.outcome": "Zona gris &mdash; dependencia flagged, agentes notificados",
+      "results.s2.desc": "Ambos agentes trabajan dentro del mismo m&oacute;dulo funcional",
+      "results.s2.outcome": "Zona gris &mdash; monitoreado, sin bloqueo",
+      "results.s4.desc": "Tareas totalmente independientes, sin archivos o m&oacute;dulos compartidos",
+      "results.s4.outcome": "Auto-resuelto &mdash; ambos agentes proceden",
+      "roadmap.title": "Hoja de ruta",
+      "roadmap.subtitle": "A d&oacute;nde vamos ahora.",
+      "roadmap.badge.done": "Hecho",
+      "roadmap.badge.progress": "En progreso",
+      "roadmap.badge.planned": "Planeado",
+      "roadmap.badge.future": "Futuro",
+      "roadmap.v01.title": "v0.1 — Extracci&oacute;n del servidor",
+      "roadmap.v01.desc": "Servidor coordinator puro extra&iacute;do del monorepo. 26 herramientas MCP, broker Aedes embebido, estado SQLite, dashboard en tiempo real. Paquete npm standalone.",
+      "roadmap.v02.title": "v0.2 — Auth reforzada &amp; TLS",
+      "roadmap.v02.desc": "Autenticaci&oacute;n JWT, soporte TLS, particionamiento de cuota por equipo, MQTT remoto v&iacute;a WebSocket. Primeros despliegues de instancia compartida.",
+      "roadmap.v03.title": "v0.3 — Detecci&oacute;n sem&aacute;ntica de conflictos",
+      "roadmap.v03.desc": "Capa de an&aacute;lisis AST sobre el scoring por nombre de archivo. Detectar cambios de contrato API, incompatibilidades de interfaz y breaking changes antes de que un thread se abra.",
+      "roadmap.v10.title": "v1.0 — API estable",
+      "roadmap.v10.desc": "Superficie de herramientas MCP estable, API REST versionada, gu&iacute;as de migraci&oacute;n. Coordinaci&oacute;n cross-repo: mapa de dependencias compartido entre microservicios y monorepos.",
+      "roadmap.harbor.title": "Push tengu_harbor",
+      "roadmap.harbor.desc": "Cuando Anthropic active <code style=\"color:var(--accent);font-size:0.85em;\">tengu_harbor</code>, el push server-gated puede acortar el drenado entre turnos. El c&oacute;digo del listener ya convive con el bridge MQTT.",
+      "footer.text": "Licencia MIT &nbsp;&middot;&nbsp; Construido con <a href=\"https://claude.ai/code\" target=\"_blank\">Claude Code</a> &nbsp;&middot;&nbsp; MCP Coordinator v0.1.x"
+    },
+    de: {
+      "nav.why": "Warum",
+      "nav.mqtt": "MQTT",
+      "nav.deploy": "Deployment",
+      "nav.roadmap": "Roadmap",
+      "nav.getstarted": "Loslegen",
+      "hero.eyebrow": "Open Source &middot; MIT-Lizenz &middot; v0.1.x",
+      "hero.subtitle": "Multi-Agenten-Koordination f&uuml;r Entwicklungsteams. Null Konflikte, alle abgestimmt.",
+      "hero.stat.tools": "MCP-Tools",
+      "hero.stat.tests": "Tests",
+      "hero.stat.topics": "MQTT-Topics",
+      "hero.cta.start": "Loslegen",
+      "why.title": "Warum MCP Coordinator?",
+      "why.subtitle": "Skaliere die KI-Agenten deines Teams ohne das Chaos.",
+      "why.block1.title": "Mehrere Agenten, ein abgestimmter Prozess",
+      "why.block1.desc": "Mehrere Agenten pro Entwickler auf verschiedenen Aufgaben. Mehrere Entwickler mit eigenen Agenten im selben Repo. Spezialisiert nach Rolle &mdash; einer codet, einer reviewed, einer testet.",
+      "why.block2.title": "Agenten h&ouml;ren sich via MQTT &mdash; ohne Sidecar",
+      "why.block2.desc": "Der Agent-Loop abonniert den eingebetteten MQTT-Broker einmal. Konflikte, Nachrichten, Claims und Resolutions kommen in Echtzeit an und werden zwischen Turns gedrained. Kein separater Liaison-Prozess, kein Polling, keine zus&auml;tzlichen Tokens f&uuml;rs Koordinieren.",
+      "why.block3.title": "Dogfood alles",
+      "why.block3.desc": "6 Agenten, via Work-Stealing-Phasen koordiniert, haben die Unit-Tests des Coordinators von Grund auf neu geschrieben. Ein weiterer Raid fand und patchte 11 echte Bugs im Coordinator selbst. Null Doppelarbeit, null Merge-Konflikte.",
+      "why.block4.title": "Alles sehen, nichts verpassen",
+      "why.block4.desc": "Ein Live-SSE-Dashboard zeigt jede Entscheidung in Echtzeit. Wer arbeitet woran, welche Konflikte erkannt wurden, wie sie gel&ouml;st wurden. Token-Anzeige pro Agent, Anthropic-Quota-Widget, Scoring-Schichten-Aufschl&uuml;sselung. Vollst&auml;ndige Nachvollziehbarkeit.",
+      "why.block5.title": "Null Konflikte. Alle abgestimmt.",
+      "why.block5.desc": "Intent-Erkennung bevor Code geschrieben wird. Impact-Scoring auf 4 Schichten. Automatische Konsultation bei Schwellen&uuml;berschreitung. Der Coordinator ersetzt keine Entwickler &mdash; er eliminiert das Chaos.",
+      "why.dogfood.title": "La M&ecirc;l&eacute;e-Lauf",
+      "why.dogfood.agents": "Agenten",
+      "why.dogfood.phases": "Phasen",
+      "why.dogfood.threads": "Er&ouml;ffnete Threads",
+      "why.dogfood.messages": "MQTT-Nachrichten ausgetauscht",
+      "why.dogfood.consensus": "Konsens",
+      "why.dogfood.consensusval": "7 erreicht &middot; 0 Duplikate",
+      "why.dogfood.tests": "Tests produziert",
+      "why.dogfood.total": "Tests gesamt (Suite)",
+      "problem.title": "Das Koordinationsproblem",
+      "problem.subtitle": "KI-Coding-Agenten beschleunigen die Einzelarbeit &mdash; erzeugen aber neue Team-Probleme, wenn sie parallel laufen.",
+      "problem.card1.title": "Regressionen",
+      "problem.card1.desc": "Zwei Agenten bearbeiten dieselbe Datei gleichzeitig. &Auml;nderungen des einen &uuml;berschreiben still die des anderen. Der Bug zeigt sich erst im Review &mdash; oder in Produktion.",
+      "problem.card2.title": "Doppelte Arbeit",
+      "problem.card2.desc": "Ohne Sicht auf die Absicht des anderen implementieren zwei Agenten dasselbe Feature mit verschiedenen APIs, Schemas, Annahmen.",
+      "problem.card3.title": "Keine Sichtbarkeit",
+      "problem.card3.desc": "Niemand wei&szlig;, was die anderen Agenten tun. Pl&auml;ne bleiben lokal, Entscheidungen sind unsichtbar. Fehlabstimmung summiert sich bis zum Knall.",
+      "how.title": "So funktioniert's",
+      "how.subtitle": "Eine leichtgewichtige Koordinationsschleife, die vor jeder Coding-Session l&auml;uft, nicht danach.",
+      "how.step1.title": "Ank&uuml;ndigen",
+      "how.step1.desc": "Der Agent deklariert seine Absicht &mdash; Task-Beschreibung, Zieldateien, betroffene Module &mdash; bevor eine einzige Zeile Code geschrieben wird.",
+      "how.step2.title": "Erkennen",
+      "how.step2.desc": "Der Scorer bewertet &Uuml;berlappung gegen alle aktiven Absichten in 4 Schichten: angek&uuml;ndigte Datei, Abh&auml;ngigkeit, Modul, semantische N&auml;he.",
+      "how.step3.title": "Konsultieren",
+      "how.step3.desc": "Der Coordinator publiziert den neuen Thread auf MQTT. Jeder betroffene Agent-Loop drained das Event zwischen Turns und postet Kontext, Einschr&auml;nkungen oder einen Vorschlag &mdash; kein separater Sidecar-Prozess.",
+      "how.step4.title": "L&ouml;sen",
+      "how.step4.desc": "Vorschl&auml;ge werden akzeptiert, bestritten oder neu vorgeschlagen. Der Thread schlie&szlig;t bei Konsens oder l&ouml;st sich in Graubereichen automatisch auf. Alle Entscheidungen landen in der Dashboard-Timeline.",
+      "mqtt.title": "MQTT &mdash; das Nervensystem des Coordinators",
+      "mqtt.subtitle": "Jedes Koordinationsereignis wird auf einem eingebetteten MQTT-Broker gefanned out. Agenten abonnieren einmal und drainen Nachrichten zwischen Turns &mdash; null Polling, null Sidecar.",
+      "mqtt.card1.title": "Eingebetteter Aedes-Broker",
+      "mqtt.card1.desc": "Der Coordinator bringt seinen eigenen Broker mit &mdash; kein Mosquitto, kein RabbitMQ zum Deployen. TCP auf Port 1883 f&uuml;r lokal/LAN, WebSocket auf /mqtt &uuml;ber den HTTP-Port des Coordinators f&uuml;r Remote-Agenten und das Bun-Binary.",
+      "mqtt.card2.title": "Push, nicht Poll",
+      "mqtt.card2.desc": "Der Agent-Loop abonniert alle Topics beim Start. Neue Threads, Nachrichten, Claims und Completions kommen &uuml;ber eine Queue, die zwischen Turns gedrained wird &mdash; Latenz &lt; 50ms End-to-End, null verschwendete Tokens.",
+      "mqtt.card3.title": "Self-Filter eingebaut",
+      "mqtt.card3.desc": "Jede Nachricht tr&auml;gt eine agent_id. Der Listener verwirft Nachrichten des lokalen Agenten, der Loop wacht nie durch eigene Aktionen auf. Ein Token-Loch weniger.",
+      "mqtt.topics.title": "Topic-Karte",
+      "mqtt.topics.sub": "Acht Topics decken jede Ereignisklasse ab. Wildcards (+) erlauben Agenten, alle Threads auf einmal zu abonnieren.",
+      "mqtt.th.topic": "Topic",
+      "mqtt.th.emitted": "Gesendet wenn",
+      "mqtt.th.payload": "Schl&uuml;ssel-Payload",
+      "mqtt.row1.emit": "Ein Thread wird er&ouml;ffnet",
+      "mqtt.row1.pay": "<code style=\"font-size:0.8em\">thread_id, subject, initiator_id, target_files</code>",
+      "mqtt.row2.emit": "Jemand postet in einem Thread",
+      "mqtt.row2.pay": "<code style=\"font-size:0.8em\">agent_id, name, content, type</code>",
+      "mqtt.row3.emit": "Statuswechsel eines Threads",
+      "mqtt.row3.pay": "<code style=\"font-size:0.8em\">status: open/resolving/resolved/timeout</code>",
+      "mqtt.row4.emit": "Work-Stealing-Claim (atomar)",
+      "mqtt.row4.pay": "<code style=\"font-size:0.8em\">claimed_by, thread_id</code>",
+      "mqtt.row5.emit": "Geclaimte Aufgabe beendet",
+      "mqtt.row5.pay": "<code style=\"font-size:0.8em\">agent_id, thread_id, resolution</code>",
+      "mqtt.row6.emit": "Agent online / offline",
+      "mqtt.row6.pay": "<code style=\"font-size:0.8em\">status, name, modules</code>",
+      "mqtt.row7.emit": "Systemweite Ank&uuml;ndigung",
+      "mqtt.row7.pay": "<code style=\"font-size:0.8em\">arbitrary JSON</code>",
+      "mqtt.row8.emit": "Anthropic-Quota-Refresh",
+      "mqtt.row8.pay": "<code style=\"font-size:0.8em\">usage, limit, utilization_pct</code>",
+      "mqtt.flow.title": "Push-Delivery-Flow",
+      "worktrees.title": "Warum nicht einfach git worktrees?",
+      "worktrees.subtitle": "Worktrees sind notwendig, aber nicht hinreichend. Sie l&ouml;sen Dateizugriff &mdash; der Coordinator l&ouml;st Koordination.",
+      "worktrees.card1.title": "Worktrees verhindern Datei-Konflikte",
+      "worktrees.card1.desc": "Git-Worktrees isolieren auf Dateisystem-Ebene. Zwei Agenten k&ouml;nnen dieselbe Datei nicht &uuml;berschreiben. Aber sie K&Ouml;NNEN logisch inkompatible &Auml;nderungen produzieren, die sauber mergen und zur Laufzeit brechen.",
+      "worktrees.card2.title": "Der Coordinator verhindert Intent-Konflikte",
+      "worktrees.card2.desc": "Indem Absichten vor dem Coden angek&uuml;ndigt werden, wissen Agenten, was andere planen. Ein Worktree sagt Agent B nicht, dass Agent A die User-Schnittstelle &auml;ndert, von der er abh&auml;ngt.",
+      "worktrees.card3.title": "Beides zusammen nutzen",
+      "worktrees.card3.desc": "Worktrees verwalten das Dateisystem. Der Coordinator verwaltet die Semantik. Zusammen: null Datei-Konflikte UND null Intent-Konflikte.",
+      "scoring.title": "4-Schichten-Konflikt-Scoring",
+      "scoring.subtitle": "Jede Absicht wird 0&ndash;100 gegen alle aktiven Agenten bewertet. Der Score bestimmt die Reaktion.",
+      "scoring.row1.label": "<strong>Gleiche Datei angek&uuml;ndigt</strong> &mdash; beide Agenten zielen auf exakt dieselbe Quelldatei",
+      "scoring.row1.tag": "Blockierend &mdash; Konsultation n&ouml;tig",
+      "scoring.row2.label": "<strong>Abh&auml;ngigkeits&uuml;berlappung</strong> &mdash; der Output eines wird vom Modul des anderen konsumiert",
+      "scoring.row2.tag": "Graubereich &mdash; Review",
+      "scoring.row3.label": "<strong>Modul-&Uuml;berlappung</strong> &mdash; Agenten arbeiten im selben Kontext/Feature-Bereich",
+      "scoring.row3.tag": "Graubereich &mdash; beobachten",
+      "scoring.row4.label": "<strong>Keine Verbindung</strong> &mdash; voll unabh&auml;ngige Aufgaben, keine gemeinsamen Dateien oder Module",
+      "scoring.row4.tag": "Pass &mdash; sicher fortfahren",
+      "arch.title": "Architektur",
+      "arch.subtitle": "Ein Agent-Loop pro Entwickler, ein Coordinator, der MCP + MQTT + Dashboard bedient. Keine Sidecars, keine Liaison-Haiku-Prozesse, die Tokens verbrennen.",
+      "arch.card1.title": "Agent-Loop",
+      "arch.card1.desc": "Programmatischer Loop, der das Claude-CLI umh&uuml;llt (spawn-per-turn <code style=\"color:var(--accent);font-size:0.85em;\">claude -p --resume</code>). H&auml;lt den MQTT-Listener, die Koordinationsprotokoll-Statemaschine und die Work-Stealing-Claim-Logik.",
+      "arch.card2.title": "Coordinator-Server",
+      "arch.card2.desc": "Node.js-Prozess, der 26 MCP-Tools &uuml;ber HTTP/SSE und den eingebetteten Aedes-MQTT-Broker bereitstellt. SQLite f&uuml;r den State (Threads, Agenten, Dependency-Map, Audit-Log). Pre-Flight der Anthropic-Quota vor N-Agenten-Runs.",
+      "arch.card3.title": "BCE",
+      "arch.card3.desc": "Kompositions-Engine, die prompt.md + hooks + <code style=\"color:var(--accent);font-size:0.85em;\">.mcp.json</code> aus 32 wiederverwendbaren YAML-Behaviors erzeugt. Phasen (discover/review/execute) und Effort-Profile sind Teil des Schemas.",
+      "deploy.title": "&Uuml;berall deployen",
+      "deploy.subtitle": "Vom Laptop bis zur Team-Infrastruktur. Drei Modi, gleiche Erfahrung.",
+      "deploy.local.title": "Lokaler Modus",
+      "deploy.local.desc": "Alles l&auml;uft auf deiner Maschine. Perfekt f&uuml;r Solo-Entwicklung oder zum Ausprobieren.",
+      "deploy.team.title": "Team-Server",
+      "deploy.team.desc": "Coordinator l&auml;uft auf einer gemeinsamen Maschine. Alle Entwickler verbinden ihre Agenten mit derselben Instanz.",
+      "deploy.cloud.title": "Cloud-gehostet",
+      "deploy.cloud.desc": "Coordinator auf einer VM oder einem Container-Service. Teams in verschiedenen B&uuml;ros oder Remote-Entwickler koordinieren &uuml;ber einen einzigen Endpoint.",
+      "dashboard.title": "Echtzeit-Dashboard",
+      "dashboard.subtitle": "Beobachte, was jeder Agent tut, welche Konflikte erkannt wurden und welche Entscheidungen getroffen wurden. Quota-Widget + Token-Anzeigen live.",
+      "install.title": "In 3 Schritten loslegen",
+      "install.subtitle": "Self-hosted, keine Cloud-Abh&auml;ngigkeit. Ein einzelnes Standalone-Binary.",
+      "install.step1.label": "Schritt 1",
+      "install.step1.title": "Installieren",
+      "install.step1.desc": "Einzelnes npm-Paket. Kein separater Broker oder Datenbank einzurichten.",
+      "install.step2.label": "Schritt 2",
+      "install.step2.title": "Server starten",
+      "install.step2.desc": "Startet den MCP-Server, eingebetteten MQTT-Broker und Dashboard auf <code style=\"color:var(--accent);font-size:0.85em;\">localhost:3100</code>.",
+      "install.step3.label": "Schritt 3",
+      "install.step3.title": "Dashboard &ouml;ffnen",
+      "install.step3.desc": "&Ouml;ffne <code style=\"color:var(--accent);font-size:0.85em;\">http://localhost:3200</code>, um verbundene Agenten, offene Threads und Quota zu sehen.",
+      "results.title": "Validierte Szenarien",
+      "results.subtitle": "Vier kanonische Konfliktszenarien &mdash; alle getestet, alle korrekt aufgel&ouml;st.",
+      "results.th.scenario": "Szenario",
+      "results.th.desc": "Beschreibung",
+      "results.th.score": "Score",
+      "results.th.outcome": "Ergebnis",
+      "results.s1.desc": "Gleiche Datei wird von zwei Agenten gleichzeitig anvisiert",
+      "results.s1.outcome": "Konsultation ausgel&ouml;st &rarr; Konsens erreicht",
+      "results.s3.desc": "Modul von Agent A h&auml;ngt von aktueller Ausgabe von Agent B ab",
+      "results.s3.outcome": "Graubereich &mdash; Abh&auml;ngigkeit markiert, Agenten benachrichtigt",
+      "results.s2.desc": "Beide Agenten arbeiten im selben Feature-Modul",
+      "results.s2.outcome": "Graubereich &mdash; &uuml;berwacht, kein Blocking",
+      "results.s4.desc": "V&ouml;llig unabh&auml;ngige Aufgaben, keine gemeinsamen Dateien oder Module",
+      "results.s4.outcome": "Auto-aufgel&ouml;st &mdash; beide Agenten fahren fort",
+      "roadmap.title": "Roadmap",
+      "roadmap.subtitle": "Wohin es als n&auml;chstes geht.",
+      "roadmap.badge.done": "Erledigt",
+      "roadmap.badge.progress": "In Arbeit",
+      "roadmap.badge.planned": "Geplant",
+      "roadmap.badge.future": "Zukunft",
+      "roadmap.v01.title": "v0.1 — Server-Extraktion",
+      "roadmap.v01.desc": "Reiner Coordinator-Server aus dem Monorepo extrahiert. 26 MCP-Tools, eingebetteter Aedes-Broker, SQLite-State, Echtzeit-Dashboard. Eigenst&auml;ndiges npm-Paket.",
+      "roadmap.v02.title": "v0.2 — Auth-H&auml;rtung &amp; TLS",
+      "roadmap.v02.desc": "JWT-Authentifizierung, TLS-Unterst&uuml;tzung, Quota-Partitionierung pro Team, Remote-MQTT &uuml;ber WebSocket. Erste Shared-Instance-Deployments.",
+      "roadmap.v03.title": "v0.3 — Semantische Konflikterkennung",
+      "roadmap.v03.desc": "AST-Analyse-Schicht &uuml;ber dem Dateinamen-Scoring. API-Vertrags&auml;nderungen, Interface-Inkompatibilit&auml;ten und Breaking Changes erkennen, bevor ein Thread &ouml;ffnet.",
+      "roadmap.v10.title": "v1.0 — Stabile API",
+      "roadmap.v10.desc": "Stabile MCP-Tool-Oberfl&auml;che, versionierte REST-API, Migrationsleitf&auml;den. Cross-Repo-Koordination: geteilte Dependency-Map &uuml;ber Microservices und Monorepo-Grenzen.",
+      "roadmap.harbor.title": "tengu_harbor-Push",
+      "roadmap.harbor.desc": "Wenn Anthropic <code style=\"color:var(--accent);font-size:0.85em;\">tengu_harbor</code> aktiviert, kann Server-gated Push das Between-Turn-Drain abk&uuml;rzen. Listener-Code liegt bereits neben der MQTT-Bridge.",
+      "footer.text": "MIT-Lizenz &nbsp;&middot;&nbsp; Gebaut mit <a href=\"https://claude.ai/code\" target=\"_blank\">Claude Code</a> &nbsp;&middot;&nbsp; MCP Coordinator v0.1.x"
+    },
+    zh: {
+      "nav.why": "为什么",
+      "nav.mqtt": "MQTT",
+      "nav.deploy": "部署",
+      "nav.roadmap": "路线图",
+      "nav.getstarted": "开始使用",
+      "hero.eyebrow": "开源 &middot; MIT 许可证 &middot; v0.1.x",
+      "hero.subtitle": "面向开发团队的多智能体协调。零冲突，全员对齐。",
+      "hero.stat.tools": "MCP 工具",
+      "hero.stat.tests": "测试",
+      "hero.stat.topics": "MQTT 主题",
+      "hero.cta.start": "开始使用",
+      "why.title": "为什么选择 MCP Coordinator？",
+      "why.subtitle": "扩展团队的 AI 智能体，不带来混乱。",
+      "why.block1.title": "多个智能体，一个对齐的流程",
+      "why.block1.desc": "每个开发者运行多个智能体处理不同任务。多个开发者在同一仓库中使用各自的智能体。按角色专业化 &mdash; 一个编码、一个审查、一个测试。Effort profiles 按阶段自动选择 Haiku / Sonnet / Opus &mdash; 不会在协调闲聊上浪费 Opus tokens。",
+      "why.block2.title": "智能体通过 MQTT 互相沟通 &mdash; 无需 sidecar",
+      "why.block2.desc": "agent-loop 一次订阅嵌入式 MQTT broker。冲突、消息、认领和解决方案实时到达，并在轮次间被消费。没有单独的 liaison 进程，没有轮询，没有协调闲聊浪费的额外 tokens。",
+      "why.block3.title": "全面自己吃狗粮",
+      "why.block3.desc": "6 个通过 work-stealing 阶段协调的智能体从零重写了 coordinator 自己的单元测试。另一次 raid 发现并修补了 coordinator 本身的 11 个真实 bug。零重复工作，零合并冲突。",
+      "why.block4.title": "看见一切，不漏细节",
+      "why.block4.desc": "实时 SSE 仪表板展示每个决策。谁在做什么，检测到哪些冲突，如何解决。每个智能体的 token 量表、Anthropic 配额小部件、评分层细分。完整可追溯性。",
+      "why.block5.title": "零冲突。全员对齐。",
+      "why.block5.desc": "在代码写出之前检测意图。4 层影响评分。分数超阈值时自动协商。coordinator 不取代开发者 &mdash; 它消除混乱。",
+      "why.dogfood.title": "La M&ecirc;l&eacute;e 运行",
+      "why.dogfood.agents": "智能体",
+      "why.dogfood.phases": "阶段",
+      "why.dogfood.threads": "打开的线程",
+      "why.dogfood.messages": "交换的 MQTT 消息",
+      "why.dogfood.consensus": "共识",
+      "why.dogfood.consensusval": "达成 7 &middot; 0 重复",
+      "why.dogfood.tests": "生成的测试",
+      "why.dogfood.total": "测试总数（套件）",
+      "problem.title": "协调问题",
+      "problem.subtitle": "AI 编码智能体加速个人工作 &mdash; 但并行运行时在团队层面制造新问题。",
+      "problem.card1.title": "回归",
+      "problem.card1.desc": "两个智能体同时触碰同一文件。一个的更改悄悄覆盖另一个。bug 只在审查或生产时才显现。",
+      "problem.card2.title": "重复工作",
+      "problem.card2.desc": "没有对彼此意图的可见性，两个智能体用不同 API、不同 schema、不同假设实现同一特性。",
+      "problem.card3.title": "无可见性",
+      "problem.card3.desc": "没人知道其他智能体在做什么。计划本地保留，决策不可见。错位静悄悄累积直到爆炸。",
+      "how.title": "工作原理",
+      "how.subtitle": "一个轻量协调循环，在每次编码会话之前运行，而非之后。",
+      "how.step1.title": "宣告",
+      "how.step1.desc": "智能体声明意图 &mdash; 任务描述、目标文件、受影响模块 &mdash; 在写下一行代码之前。",
+      "how.step2.title": "检测",
+      "how.step2.desc": "打分器在 4 层上评估重叠：宣告文件、依赖、模块、语义邻近度。",
+      "how.step3.title": "协商",
+      "how.step3.desc": "coordinator 在 MQTT 上发布新线程。每个受影响的 agent-loop 在轮次间消费该事件，并发布上下文、约束或解决方案提案 &mdash; 无单独 sidecar 进程。",
+      "how.step4.title": "解决",
+      "how.step4.desc": "提案被批准、反对或重新提议。在达成共识时线程关闭，或在灰色区域自动解决。所有决策都落在仪表板时间线上。",
+      "mqtt.title": "MQTT &mdash; coordinator 的神经系统",
+      "mqtt.subtitle": "每个协调事件在嵌入式 MQTT broker 上扩散。智能体订阅一次并在轮次间消费消息 &mdash; 零轮询，零 sidecar。",
+      "mqtt.card1.title": "嵌入式 Aedes broker",
+      "mqtt.card1.desc": "coordinator 自带 broker &mdash; 无需部署 Mosquitto 或 RabbitMQ。本地/局域网 TCP 端口 1883，远程智能体和 Bun 二进制通过 coordinator HTTP 端口的 /mqtt WebSocket。",
+      "mqtt.card2.title": "推送，非轮询",
+      "mqtt.card2.desc": "agent-loop 启动时订阅所有 coordinator 主题。新线程、消息、认领和完成通过在轮次间消费的队列到达 &mdash; 端到端延迟 &lt; 50ms，零浪费 tokens。",
+      "mqtt.card3.title": "内置自过滤",
+      "mqtt.card3.desc": "每条消息带 agent_id。监听器丢弃本地智能体的消息，循环绝不会因自己的动作醒来。少一个 tokens 黑洞。",
+      "mqtt.topics.title": "主题映射",
+      "mqtt.topics.sub": "8 个主题涵盖每类事件。通配符 (+) 让智能体一次订阅所有线程。",
+      "mqtt.th.topic": "主题",
+      "mqtt.th.emitted": "何时发射",
+      "mqtt.th.payload": "关键负载",
+      "mqtt.row1.emit": "打开了一个线程",
+      "mqtt.row1.pay": "<code style=\"font-size:0.8em\">thread_id, subject, initiator_id, target_files</code>",
+      "mqtt.row2.emit": "有人在线程里发帖",
+      "mqtt.row2.pay": "<code style=\"font-size:0.8em\">agent_id, name, content, type</code>",
+      "mqtt.row3.emit": "线程状态转换",
+      "mqtt.row3.pay": "<code style=\"font-size:0.8em\">status: open/resolving/resolved/timeout</code>",
+      "mqtt.row4.emit": "work-stealing 认领（原子）",
+      "mqtt.row4.pay": "<code style=\"font-size:0.8em\">claimed_by, thread_id</code>",
+      "mqtt.row5.emit": "认领的任务完成",
+      "mqtt.row5.pay": "<code style=\"font-size:0.8em\">agent_id, thread_id, resolution</code>",
+      "mqtt.row6.emit": "智能体上线 / 下线",
+      "mqtt.row6.pay": "<code style=\"font-size:0.8em\">status, name, modules</code>",
+      "mqtt.row7.emit": "系统级广播",
+      "mqtt.row7.pay": "<code style=\"font-size:0.8em\">arbitrary JSON</code>",
+      "mqtt.row8.emit": "Anthropic 配额刷新",
+      "mqtt.row8.pay": "<code style=\"font-size:0.8em\">usage, limit, utilization_pct</code>",
+      "mqtt.flow.title": "推送交付流程",
+      "worktrees.title": "为什么不只用 git worktrees？",
+      "worktrees.subtitle": "worktrees 是必要但不充分的。它们解决文件访问 &mdash; coordinator 解决协调。",
+      "worktrees.card1.title": "worktrees 防止文件冲突",
+      "worktrees.card1.desc": "git worktrees 在文件系统层隔离。两个智能体不能覆盖同一文件。但它们可以产生逻辑上不兼容的更改，干净合并却在运行时破坏。",
+      "worktrees.card2.title": "coordinator 防止意图冲突",
+      "worktrees.card2.desc": "通过在编码前宣告意图，智能体知道其他人在计划什么。worktree 不会告诉 Agent B Agent A 即将更改它依赖的 User 接口。",
+      "worktrees.card3.title": "一起使用",
+      "worktrees.card3.desc": "worktrees 处理文件系统。coordinator 处理语义。合起来：零文件冲突且零意图冲突。",
+      "scoring.title": "4 层冲突评分",
+      "scoring.subtitle": "每个意图针对所有活跃智能体评 0&ndash;100 分。分数决定响应。",
+      "scoring.row1.label": "<strong>宣告同一文件</strong> &mdash; 两个智能体目标完全相同的源文件",
+      "scoring.row1.tag": "阻塞 &mdash; 需要协商",
+      "scoring.row2.label": "<strong>依赖重叠</strong> &mdash; 一个智能体的输出被另一个的模块消费",
+      "scoring.row2.tag": "灰色区 &mdash; 审查",
+      "scoring.row3.label": "<strong>模块重叠</strong> &mdash; 智能体在同一上下文或特性区工作",
+      "scoring.row3.tag": "灰色区 &mdash; 监控",
+      "scoring.row4.label": "<strong>无关联</strong> &mdash; 完全独立的任务，没有共享文件或模块",
+      "scoring.row4.tag": "通过 &mdash; 安全继续",
+      "arch.title": "架构",
+      "arch.subtitle": "每个开发者一个 agent-loop，一个 coordinator 服务 MCP + MQTT + 仪表板。无 sidecars，无燃烧 tokens 的 liaison Haiku 进程。",
+      "arch.card1.title": "Agent-loop",
+      "arch.card1.desc": "包装 Claude CLI 的程序循环（spawn-per-turn <code style=\"color:var(--accent);font-size:0.85em;\">claude -p --resume</code>）。持有 MQTT 监听器、协调协议状态机和 work-stealing 认领逻辑。",
+      "arch.card2.title": "Coordinator 服务器",
+      "arch.card2.desc": "通过 HTTP/SSE 暴露 26 个 MCP 工具的 Node.js 进程，加上嵌入式 Aedes MQTT broker。SQLite 存储状态（线程、智能体、依赖图、审计日志）。N 个智能体运行前预检 Anthropic 配额。",
+      "arch.card3.title": "BCE",
+      "arch.card3.desc": "从 32 个可复用 YAML behaviors 生成 prompt.md + hooks + <code style=\"color:var(--accent);font-size:0.85em;\">.mcp.json</code> 的组合引擎。阶段（discover/review/execute）和 effort profiles 是 schema 的一部分。",
+      "deploy.title": "到处部署",
+      "deploy.subtitle": "从你的笔记本到团队基础设施。三种模式，相同体验。",
+      "deploy.local.title": "本地模式",
+      "deploy.local.desc": "一切在你的机器上运行。非常适合个人开发或试用 coordinator。",
+      "deploy.team.title": "团队服务器",
+      "deploy.team.desc": "coordinator 在共享机器上运行。所有开发者将他们的智能体连接到同一实例。",
+      "deploy.cloud.title": "云托管",
+      "deploy.cloud.desc": "coordinator 在 VM 或容器服务上。跨办公室的团队或远程开发者都通过一个端点协调。",
+      "dashboard.title": "实时仪表板",
+      "dashboard.subtitle": "观察每个智能体在做什么、检测到的冲突以及达成的决策。配额小部件 + token 量表实时。",
+      "install.title": "3 步开始",
+      "install.subtitle": "自托管，无云依赖。单个独立二进制。",
+      "install.step1.label": "步骤 1",
+      "install.step1.title": "安装",
+      "install.step1.desc": "单一 npm 包。无需配置单独的 broker 或数据库。",
+      "install.step2.label": "步骤 2",
+      "install.step2.title": "启动服务器",
+      "install.step2.desc": "启动 MCP 服务器、嵌入式 MQTT broker 和仪表板，监听 <code style=\"color:var(--accent);font-size:0.85em;\">localhost:3100</code>。",
+      "install.step3.label": "步骤 3",
+      "install.step3.title": "打开仪表板",
+      "install.step3.desc": "打开 <code style=\"color:var(--accent);font-size:0.85em;\">http://localhost:3200</code> 查看已连接的智能体、打开的线程和配额。",
+      "results.title": "验证的场景",
+      "results.subtitle": "四个规范的冲突场景 &mdash; 全部测试、全部正确解决。",
+      "results.th.scenario": "场景",
+      "results.th.desc": "描述",
+      "results.th.score": "分数",
+      "results.th.outcome": "结果",
+      "results.s1.desc": "两个智能体同时针对同一文件",
+      "results.s1.outcome": "触发协商 &rarr; 达成共识",
+      "results.s3.desc": "智能体 A 的模块依赖智能体 B 的当前输出",
+      "results.s3.outcome": "灰色区 &mdash; 依赖被标记，智能体被通知",
+      "results.s2.desc": "两个智能体在同一特性模块内工作",
+      "results.s2.outcome": "灰色区 &mdash; 监控，无阻塞",
+      "results.s4.desc": "完全独立的任务，没有共享文件或模块",
+      "results.s4.outcome": "自动解决 &mdash; 两个智能体都继续",
+      "roadmap.title": "路线图",
+      "roadmap.subtitle": "接下来去哪。",
+      "roadmap.badge.done": "已完成",
+      "roadmap.badge.progress": "进行中",
+      "roadmap.badge.planned": "已计划",
+      "roadmap.badge.future": "未来",
+      "roadmap.v01.title": "v0.1 — 服务器提取",
+      "roadmap.v01.desc": "从 monorepo 中提取的纯 coordinator 服务器。26 个 MCP 工具、嵌入式 Aedes broker、SQLite 状态、实时仪表板。独立 npm 包。",
+      "roadmap.v02.title": "v0.2 — 强化认证与 TLS",
+      "roadmap.v02.desc": "JWT 认证、TLS 支持、按团队配额分区、通过 WebSocket 的远程 MQTT。首批共享实例部署。",
+      "roadmap.v03.title": "v0.3 — 语义冲突检测",
+      "roadmap.v03.desc": "在文件名评分之上的 AST 级分析层。线程打开前检测 API 契约变化、接口不兼容和破坏性更改。",
+      "roadmap.v10.title": "v1.0 — 稳定 API",
+      "roadmap.v10.desc": "稳定的 MCP 工具接口、版本化 REST API、迁移指南。跨仓库协调：跨微服务和 monorepo 边界的共享依赖图。",
+      "roadmap.harbor.title": "tengu_harbor 推送",
+      "roadmap.harbor.desc": "当 Anthropic 激活 <code style=\"color:var(--accent);font-size:0.85em;\">tengu_harbor</code> 时，server-gated push 可以短路轮次间的消费。监听器代码已在 MQTT bridge 旁就位。",
+      "footer.text": "MIT 许可证 &nbsp;&middot;&nbsp; 用 <a href=\"https://claude.ai/code\" target=\"_blank\">Claude Code</a> 构建 &nbsp;&middot;&nbsp; MCP Coordinator v0.1.x"
+    },
+    ja: {
+      "nav.why": "なぜ",
+      "nav.mqtt": "MQTT",
+      "nav.deploy": "デプロイ",
+      "nav.roadmap": "ロードマップ",
+      "nav.getstarted": "始める",
+      "hero.eyebrow": "オープンソース &middot; MIT ライセンス &middot; v0.1.x",
+      "hero.subtitle": "開発チーム向けマルチエージェント連携。ゼロコンフリクト、全員整列。",
+      "hero.stat.tools": "MCP ツール",
+      "hero.stat.tests": "テスト",
+      "hero.stat.topics": "MQTT トピック",
+      "hero.cta.start": "始める",
+      "why.title": "なぜ MCP Coordinator?",
+      "why.subtitle": "チームの AI エージェントをカオスなしでスケールしよう。",
+      "why.block1.title": "複数のエージェント、一つの整列したプロセス",
+      "why.block1.desc": "開発者ごとに複数のエージェントで異なるタスクを。同じリポジトリで複数の開発者がそれぞれのエージェントを。役割で特化 &mdash; 一人はコード、一人はレビュー、一人はテスト。Effort profile がフェーズごとに Haiku / Sonnet / Opus を自動選択 &mdash; 連携のおしゃべりで Opus トークンを無駄にしない。",
+      "why.block2.title": "エージェントは MQTT で互いに話す &mdash; サイドカーなし",
+      "why.block2.desc": "agent-loop は埋込み MQTT ブローカーに一度だけ購読。コンフリクト、メッセージ、claim、解決策がリアルタイムで到着し、ターン間にドレーンされる。別の liaison プロセスなし、ポーリングなし、連携のおしゃべりで余計なトークンを燃やさない。",
+      "why.block3.title": "すべてを自分で食う",
+      "why.block3.desc": "6 つのエージェントが work-stealing フェーズで連携し、coordinator 自身のユニットテストをゼロから書き直した。別の raid は coordinator 自身の実バグを 11 個見つけて修正。重複作業ゼロ、マージコンフリクトゼロ。",
+      "why.block4.title": "すべてを見る、何も逃さない",
+      "why.block4.desc": "ライブ SSE ダッシュボードがすべての決定をリアルタイムで表示。誰が何に取り組んでいるか、どのコンフリクトが検出されたか、どう解決されたか。エージェントごとのトークンゲージ、Anthropic クォータウィジェット、スコアリング層の内訳。完全なトレーサビリティ。",
+      "why.block5.title": "ゼロコンフリクト。全員整列。",
+      "why.block5.desc": "コードが書かれる前にインテント検出。4 層のインパクトスコアリング。スコアが閾値を超えたら自動協議。coordinator は開発者を置き換えない &mdash; カオスを排除する。",
+      "why.dogfood.title": "La M&ecirc;l&eacute;e ラン",
+      "why.dogfood.agents": "エージェント",
+      "why.dogfood.phases": "フェーズ",
+      "why.dogfood.threads": "開いたスレッド",
+      "why.dogfood.messages": "交換された MQTT メッセージ",
+      "why.dogfood.consensus": "コンセンサス",
+      "why.dogfood.consensusval": "7 達成 &middot; 0 重複",
+      "why.dogfood.tests": "生成テスト",
+      "why.dogfood.total": "テスト合計（スイート）",
+      "problem.title": "連携の問題",
+      "problem.subtitle": "AI コーディングエージェントは個人作業を加速する &mdash; が、並列で走るとチームレベルの新しい問題を生む。",
+      "problem.card1.title": "リグレッション",
+      "problem.card1.desc": "2 つのエージェントが同時に同じファイルを触る。一方の変更が静かにもう一方を上書き。バグはレビュー &mdash; またはプロダクション &mdash; でしか現れない。",
+      "problem.card2.title": "重複作業",
+      "problem.card2.desc": "互いの意図が見えないまま、2 つのエージェントが異なる API、異なる schema、異なる前提で同じ機能を実装。",
+      "problem.card3.title": "可視性なし",
+      "problem.card3.desc": "他のエージェントが何をしているか誰も知らない。計画はローカルに残り、決定は不可視。ズレが静かに蓄積し爆発する。",
+      "how.title": "仕組み",
+      "how.subtitle": "各コーディングセッションの前に走る軽量な連携ループ。後ではない。",
+      "how.step1.title": "宣言",
+      "how.step1.desc": "エージェントは意図を宣言する &mdash; タスク記述、対象ファイル、影響モジュール &mdash; 1 行のコードを書く前に。",
+      "how.step2.title": "検出",
+      "how.step2.desc": "スコアラーは 4 層でアクティブな意図との重なりを評価：宣言ファイル、依存、モジュール、セマンティック近接。",
+      "how.step3.title": "協議",
+      "how.step3.desc": "coordinator が新しいスレッドを MQTT に公開。影響を受ける各 agent-loop はターン間にイベントをドレーンし、コンテキスト、制約、解決案をポスト &mdash; 別のサイドカープロセスなし。",
+      "how.step4.title": "解決",
+      "how.step4.desc": "提案は承認、異議、再提案される。コンセンサスでスレッドは閉じ、グレーゾーンでは自動解決。すべての決定はダッシュボードのタイムラインに記録される。",
+      "mqtt.title": "MQTT &mdash; coordinator の神経系",
+      "mqtt.subtitle": "すべての連携イベントは埋込み MQTT ブローカー上に配信される。エージェントは一度購読し、ターン間でメッセージをドレーンする &mdash; ポーリングゼロ、サイドカーゼロ。",
+      "mqtt.card1.title": "埋込み Aedes ブローカー",
+      "mqtt.card1.desc": "coordinator は自前のブローカーを同梱 &mdash; Mosquitto も RabbitMQ も配置不要。ローカル/LAN は TCP ポート 1883、リモートエージェントや Bun バイナリは coordinator の HTTP ポート上の WebSocket /mqtt。",
+      "mqtt.card2.title": "プッシュ、ポーリングではない",
+      "mqtt.card2.desc": "agent-loop は起動時にすべての coordinator トピックを購読する。新しいスレッド、メッセージ、claim、完了はターン間にドレーンされるキュー経由で届く &mdash; エンドツーエンドレイテンシー &lt; 50ms、トークンの無駄ゼロ。",
+      "mqtt.card3.title": "セルフフィルター内蔵",
+      "mqtt.card3.desc": "各メッセージは agent_id を持つ。リスナーはローカルエージェントからのメッセージを破棄するので、ループが自分のアクションで目覚めることはない。トークンの穴が一つ減る。",
+      "mqtt.topics.title": "トピックマップ",
+      "mqtt.topics.sub": "8 トピックが各イベントクラスをカバー。ワイルドカード (+) でエージェントはすべてのスレッドを一度に購読できる。",
+      "mqtt.th.topic": "トピック",
+      "mqtt.th.emitted": "発行条件",
+      "mqtt.th.payload": "主ペイロード",
+      "mqtt.row1.emit": "スレッドが開かれた",
+      "mqtt.row1.pay": "<code style=\"font-size:0.8em\">thread_id, subject, initiator_id, target_files</code>",
+      "mqtt.row2.emit": "誰かがスレッドにポスト",
+      "mqtt.row2.pay": "<code style=\"font-size:0.8em\">agent_id, name, content, type</code>",
+      "mqtt.row3.emit": "スレッドの状態遷移",
+      "mqtt.row3.pay": "<code style=\"font-size:0.8em\">status: open/resolving/resolved/timeout</code>",
+      "mqtt.row4.emit": "work-stealing claim（アトミック）",
+      "mqtt.row4.pay": "<code style=\"font-size:0.8em\">claimed_by, thread_id</code>",
+      "mqtt.row5.emit": "claim したタスクが完了",
+      "mqtt.row5.pay": "<code style=\"font-size:0.8em\">agent_id, thread_id, resolution</code>",
+      "mqtt.row6.emit": "エージェントのオン / オフライン",
+      "mqtt.row6.pay": "<code style=\"font-size:0.8em\">status, name, modules</code>",
+      "mqtt.row7.emit": "システム全体のアナウンス",
+      "mqtt.row7.pay": "<code style=\"font-size:0.8em\">arbitrary JSON</code>",
+      "mqtt.row8.emit": "Anthropic クォータ更新",
+      "mqtt.row8.pay": "<code style=\"font-size:0.8em\">usage, limit, utilization_pct</code>",
+      "mqtt.flow.title": "プッシュ配信フロー",
+      "worktrees.title": "なぜ git worktrees だけではダメ？",
+      "worktrees.subtitle": "worktrees は必要だが十分ではない。ファイルアクセスを解決する &mdash; coordinator は連携を解決する。",
+      "worktrees.card1.title": "worktrees はファイルコンフリクトを防ぐ",
+      "worktrees.card1.desc": "git worktrees はファイルシステムレベルで分離する。2 つのエージェントは同じファイルを上書きできない。しかし論理的に互換性のない変更がきれいにマージされ実行時に壊れることはある。",
+      "worktrees.card2.title": "coordinator は意図のコンフリクトを防ぐ",
+      "worktrees.card2.desc": "コーディング前に意図を宣言することで、エージェントは他が計画していることを知る。worktree はエージェント B に、エージェント A が依存する User インターフェースを変えようとしていることを教えてくれない。",
+      "worktrees.card3.title": "両方を一緒に使う",
+      "worktrees.card3.desc": "worktrees がファイルシステムを、coordinator がセマンティクスを扱う。合わせて：ファイルコンフリクトゼロかつ意図コンフリクトゼロ。",
+      "scoring.title": "4 層コンフリクトスコアリング",
+      "scoring.subtitle": "各意図はすべてのアクティブエージェントに対して 0 &ndash; 100 でスコア。スコアが応答を決定する。",
+      "scoring.row1.label": "<strong>同じファイルが宣言された</strong> &mdash; 両エージェントがまったく同じソースファイルを狙う",
+      "scoring.row1.tag": "ブロッキング &mdash; 協議が必要",
+      "scoring.row2.label": "<strong>依存の重なり</strong> &mdash; 一方の出力が他方のモジュールで消費される",
+      "scoring.row2.tag": "グレーゾーン &mdash; レビュー",
+      "scoring.row3.label": "<strong>モジュールの重なり</strong> &mdash; エージェントが同じコンテキスト/フィーチャー領域で作業",
+      "scoring.row3.tag": "グレーゾーン &mdash; 監視",
+      "scoring.row4.label": "<strong>リンクなし</strong> &mdash; 完全に独立したタスク、共有ファイルやモジュールなし",
+      "scoring.row4.tag": "パス &mdash; 安全に続行",
+      "arch.title": "アーキテクチャ",
+      "arch.subtitle": "開発者ごとに 1 つの agent-loop、MCP + MQTT + ダッシュボードを提供する 1 つの coordinator。サイドカーなし、トークンを燃やす liaison Haiku プロセスなし。",
+      "arch.card1.title": "Agent-loop",
+      "arch.card1.desc": "Claude CLI をラップするプログラムループ（spawn-per-turn <code style=\"color:var(--accent);font-size:0.85em;\">claude -p --resume</code>）。MQTT リスナー、連携プロトコルの状態マシン、work-stealing claim のロジックを保持。",
+      "arch.card2.title": "Coordinator サーバー",
+      "arch.card2.desc": "26 個の MCP ツールを HTTP/SSE で公開する Node.js プロセス、埋込み Aedes MQTT ブローカー付き。状態用 SQLite（スレッド、エージェント、依存マップ、監査ログ）。N エージェント実行前に Anthropic クォータをプリフライト。",
+      "arch.card3.title": "BCE",
+      "arch.card3.desc": "32 個の再利用可能な YAML behavior から prompt.md + hooks + <code style=\"color:var(--accent);font-size:0.85em;\">.mcp.json</code> を出力する合成エンジン。フェーズ (discover/review/execute) と effort profile はスキーマの一部。",
+      "deploy.title": "どこでもデプロイ",
+      "deploy.subtitle": "ラップトップからチームインフラまで。3 つのモード、同じ体験。",
+      "deploy.local.title": "ローカルモード",
+      "deploy.local.desc": "すべてあなたのマシンで走る。ソロ開発や coordinator のお試しに最適。",
+      "deploy.team.title": "チームサーバー",
+      "deploy.team.desc": "coordinator が共有マシンで走る。すべての開発者がエージェントを同じインスタンスに接続。",
+      "deploy.cloud.title": "クラウドホスト",
+      "deploy.cloud.desc": "coordinator が VM やコンテナサービス上。別オフィスのチームやリモート開発者が一つのエンドポイントで連携。",
+      "dashboard.title": "リアルタイムダッシュボード",
+      "dashboard.subtitle": "各エージェントの動作、検出されたコンフリクト、下された判断を観察。クォータウィジェット + トークンゲージがライブ。",
+      "install.title": "3 ステップで開始",
+      "install.subtitle": "セルフホスト、クラウド依存なし。単一スタンドアロンバイナリ。",
+      "install.step1.label": "ステップ 1",
+      "install.step1.title": "インストール",
+      "install.step1.desc": "単一の npm パッケージ。別途ブローカーやデータベースの設定不要。",
+      "install.step2.label": "ステップ 2",
+      "install.step2.title": "サーバーを起動",
+      "install.step2.desc": "MCP サーバー、埋込み MQTT ブローカー、ダッシュボードを <code style=\"color:var(--accent);font-size:0.85em;\">localhost:3100</code> で起動。",
+      "install.step3.label": "ステップ 3",
+      "install.step3.title": "ダッシュボードを開く",
+      "install.step3.desc": "<code style=\"color:var(--accent);font-size:0.85em;\">http://localhost:3200</code> を開いて、接続エージェント、オープンスレッド、クォータを確認。",
+      "results.title": "検証済みシナリオ",
+      "results.subtitle": "4 つの標準的なコンフリクトシナリオ &mdash; すべてテスト済み、すべて正しく解決。",
+      "results.th.scenario": "シナリオ",
+      "results.th.desc": "説明",
+      "results.th.score": "スコア",
+      "results.th.outcome": "結果",
+      "results.s1.desc": "2 つのエージェントが同時に同じファイルを対象",
+      "results.s1.outcome": "協議トリガー &rarr; コンセンサス達成",
+      "results.s3.desc": "エージェント A のモジュールがエージェント B の現在の出力に依存",
+      "results.s3.outcome": "グレーゾーン &mdash; 依存関係をフラグ、エージェントに通知",
+      "results.s2.desc": "両エージェントが同じ機能モジュール内で作業",
+      "results.s2.outcome": "グレーゾーン &mdash; 監視中、ブロックなし",
+      "results.s4.desc": "完全に独立したタスク、共有ファイルやモジュールなし",
+      "results.s4.outcome": "自動解決 &mdash; 両エージェントが続行",
+      "roadmap.title": "ロードマップ",
+      "roadmap.subtitle": "次の目標。",
+      "roadmap.badge.done": "完了",
+      "roadmap.badge.progress": "進行中",
+      "roadmap.badge.planned": "計画中",
+      "roadmap.badge.future": "将来",
+      "roadmap.v01.title": "v0.1 — サーバー抽出",
+      "roadmap.v01.desc": "モノレポから抽出した純粋な coordinator サーバー。26 MCP ツール、埋込み Aedes ブローカー、SQLite 状態、リアルタイムダッシュボード。スタンドアロン npm パッケージ。",
+      "roadmap.v02.title": "v0.2 — 認証強化 &amp; TLS",
+      "roadmap.v02.desc": "JWT 認証、TLS サポート、チーム別クォータ分割、WebSocket 経由のリモート MQTT。初の共有インスタンスデプロイメント。",
+      "roadmap.v03.title": "v0.3 — セマンティックコンフリクト検出",
+      "roadmap.v03.desc": "ファイル名スコアリングの上の AST レベル分析層。スレッドが開く前に API 契約変更、インターフェース非互換、破壊的変更を検出。",
+      "roadmap.v10.title": "v1.0 — 安定 API",
+      "roadmap.v10.desc": "安定した MCP ツール表面、バージョン管理された REST API、マイグレーションガイド。クロスリポジトリ連携：マイクロサービスと monorepo 境界を跨ぐ共有依存マップ。",
+      "roadmap.harbor.title": "tengu_harbor プッシュ",
+      "roadmap.harbor.desc": "Anthropic が <code style=\"color:var(--accent);font-size:0.85em;\">tengu_harbor</code> を有効化すると、server-gated プッシュがターン間ドレーンを短絡できる。リスナーコードはすでに MQTT bridge の隣に存在。",
+      "footer.text": "MIT ライセンス &nbsp;&middot;&nbsp; <a href=\"https://claude.ai/code\" target=\"_blank\">Claude Code</a> で構築 &nbsp;&middot;&nbsp; MCP Coordinator v0.1.x"
+    }
+  };
+
+  // --- Language switching ---
+  function setLanguage(lang) {
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      const key = el.getAttribute('data-i18n');
+      if (translations[lang] && translations[lang][key]) {
+        el.innerHTML = translations[lang][key];
+      }
+    });
+    document.querySelectorAll('.lang-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.lang === lang);
+    });
+    localStorage.setItem('lang', lang);
+    document.documentElement.lang = lang;
+  }
+
+  // Language button click handlers
+  document.querySelectorAll('.lang-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      setLanguage(btn.dataset.lang);
+    });
+  });
+
+  // Init from localStorage or browser language
+  const savedLang = localStorage.getItem('lang') || navigator.language.slice(0, 2);
+  const supportedLangs = ['en', 'fr', 'es', 'de', 'zh', 'ja'];
+  setLanguage(supportedLangs.includes(savedLang) ? savedLang : 'en');
+</script>
+
 </body>
 </html>
