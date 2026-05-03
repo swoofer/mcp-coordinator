@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>mcp-coordinator — Embedded MQTT broker + MCP server</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #060b18;
+      --bg-alt: #0a1120;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #60a5fa;
+      --border: rgba(255,255,255,0.08);
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .container { max-width: 960px; margin: 0 auto; padding: 4rem 2rem; }
+    h1 { font-size: 3rem; margin-bottom: 1rem; letter-spacing: -0.02em; }
+    h2 { font-size: 1.5rem; margin: 2.5rem 0 1rem; color: var(--accent); }
+    .lead { color: var(--muted); font-size: 1.25rem; margin-bottom: 2rem; max-width: 640px; }
+    pre {
+      background: var(--bg-alt);
+      border: 1px solid var(--border);
+      padding: 1.25rem;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-size: 0.9rem;
+      margin: 1rem 0;
+    }
+    code { font-family: 'Fira Code', 'JetBrains Mono', monospace; color: var(--accent); }
+    pre code { color: var(--text); }
+    ul { padding-left: 1.5rem; margin: 1rem 0; }
+    li { margin: 0.5rem 0; }
+    .related {
+      margin-top: 4rem;
+      padding-top: 2rem;
+      border-top: 1px solid var(--border);
+    }
+    .related p { margin: 0.75rem 0; color: var(--muted); }
+    .related strong { color: var(--text); }
+    footer {
+      margin-top: 4rem;
+      padding-top: 2rem;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.875rem;
+    }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <h1>mcp-coordinator</h1>
+    <p class="lead">Embedded MQTT broker + MCP server for multi-agent coordination.</p>
+
+    <h2>Quick start</h2>
+    <pre><code>npm install -g mcp-coordinator
+mcp-coordinator server start
+mcp-coordinator dashboard</code></pre>
+
+    <h2>What it does</h2>
+    <p>When multiple AI agents work on the same repository in parallel, they need a coordination layer to avoid stepping on each other. mcp-coordinator provides:</p>
+    <ul>
+      <li>Embedded MQTT broker for real-time agent-to-agent messaging.</li>
+      <li>MCP server (HTTP/SSE + STDIO) exposing 26 tools for announcement, conflict detection, consultation, and quota tracking.</li>
+      <li>SQLite-backed state for thread persistence.</li>
+      <li>Live dashboard showing connected agents, open consultations, file activity, quota.</li>
+    </ul>
+
+    <h2>Client-agnostic</h2>
+    <p>The server speaks the MCP protocol and MQTT — any MCP-compatible agent can connect: Claude Code, Cursor, Cline, Aider, custom scripts.</p>
+
+    <p style="margin-top: 2rem;"><a href="https://github.com/swoofer/mcp-coordinator">View on GitHub</a> · <a href="https://www.npmjs.com/package/mcp-coordinator">npm</a></p>
+
+    <section class="related">
+      <h2>Related projects</h2>
+      <p><strong><a href="https://github.com/swoofer/promptweave">@swoofer/promptweave</a></strong> — YAML composer for agent prompts, hooks, and MCP configs.</p>
+      <p><strong><a href="https://github.com/swoofer/essaim">essaim</a></strong> — end-to-end orchestrator (coming soon). Ships the reference catalog of coordinator-aware behaviors.</p>
+    </section>
+
+    <footer>
+      <p>Released under the MIT License.</p>
+    </footer>
+  </main>
+</body>
+</html>
