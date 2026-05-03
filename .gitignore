@@ -1,0 +1,15 @@
+node_modules/
+dist/
+coverage/
+*.log
+*.tgz
+.DS_Store
+.env
+.env.local
+.vscode/
+.idea/
+data/
+coordinator.db
+coordinator.db-*
+data-test-*/
+tmp-data/
