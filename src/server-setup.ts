@@ -16,7 +16,8 @@ import { AgentActivityTracker } from "./agent-activity.js";
 import { QuotaCache } from "./quota/quota-cache.js";
 import type { CoordinatorConfig, AgentContext } from "./types.js";
 import { createLogger, type Logger } from "./logger.js";
-import { VERSION } from "./paths-stub.js";
+import { getVersion } from "../cli/version.js";
+const VERSION = getVersion();
 
 export interface CoordinatorServices {
   logger: Logger;

@@ -12,8 +12,24 @@ import { createLogger, type Logger } from "./logger.js";
 import { initAuth, authenticateRequest, createToken, refreshToken, revokeAgent, setAuthLogger, type AuthResult } from "./auth.js";
 import { assessPlanQuality } from "./plan-quality.js";
 import type { CoordinatorEvent } from "./types.js";
-import { VERSION } from "./paths-stub.js";
+import { getVersion } from "../cli/version.js";
+const VERSION = getVersion();
 import { startEmbeddedMqttBroker } from "./mqtt-broker.js";
+
+const SERVER_FILE_DIR = path.dirname(__filename);
+
+async function getDashboardDir(): Promise<string> {
+  // src/serve-http.ts (tsx) → dashboard/public is at ../dashboard/public
+  // dist/src/serve-http.js → dashboard/public is at ../../dashboard/public
+  // Walk up until we find a directory containing dashboard/public/index.html.
+  let dir = SERVER_FILE_DIR;
+  while (dir !== path.dirname(dir)) {
+    const candidate = path.resolve(dir, "dashboard", "public", "index.html");
+    if (existsSync(candidate)) return path.resolve(dir, "dashboard", "public");
+    dir = path.dirname(dir);
+  }
+  throw new Error(`mcp-coordinator: could not locate dashboard/public/ from ${SERVER_FILE_DIR}`);
+}
 
 const PORT = parseInt(process.env.PORT || "3100");
 const DATA_DIR = process.env.COORDINATOR_DATA_DIR || "./data";
@@ -654,8 +670,7 @@ export async function startServer(opts?: ServerOptions): Promise<void> {
 
     try {
       if (url === "/dashboard" || url.startsWith("/dashboard/")) {
-        const { PROJECT_ROOT } = await import("./paths-stub.js");
-        const dashboardDir = path.resolve(PROJECT_ROOT, "dashboard/public");
+        const dashboardDir = await getDashboardDir();
         const filePath = url === "/dashboard" || url === "/dashboard/"
           ? path.join(dashboardDir, "index.html")
           : path.join(dashboardDir, url.replace("/dashboard/", ""));
