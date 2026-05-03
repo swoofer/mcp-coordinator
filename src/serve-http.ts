@@ -4,7 +4,12 @@ import { execSync } from "child_process";
 import path from "path";
 import { readFileSync, existsSync } from "fs";
 import { fileURLToPath } from "url";
-const __filename = fileURLToPath(import.meta.url);
+let __filename: string;
+try {
+  __filename = fileURLToPath(import.meta.url);
+} catch {
+  __filename = process.cwd();
+}
 const __dirname = path.dirname(__filename);
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createServices, createMcpServer, CoordinatorServices } from "./server-setup.js";
@@ -670,7 +675,14 @@ export async function startServer(opts?: ServerOptions): Promise<void> {
 
     try {
       if (url === "/dashboard" || url.startsWith("/dashboard/")) {
-        const dashboardDir = await getDashboardDir();
+        const dashboardDir = await getDashboardDir().catch((err) => {
+          httpLog.warn({ err }, "Dashboard not found");
+          return null;
+        });
+        if (!dashboardDir) {
+          json(res, { error: "dashboard not available" }, 404);
+          return;
+        }
         const filePath = url === "/dashboard" || url === "/dashboard/"
           ? path.join(dashboardDir, "index.html")
           : path.join(dashboardDir, url.replace("/dashboard/", ""));
