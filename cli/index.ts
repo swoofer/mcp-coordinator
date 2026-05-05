@@ -4,6 +4,7 @@ import { createServerProgram } from "./server/index.js";
 import { createDashboardCommand } from "./dashboard.js";
 import { createInitCommand } from "./init.js";
 import { createDoctorCommand } from "./doctor.js";
+import { createUninstallCommand } from "./uninstall.js";
 import { getVersion } from "./version.js";
 
 const program = new Command();
@@ -16,5 +17,6 @@ program.addCommand(createInitCommand());
 program.addCommand(createServerProgram());
 program.addCommand(createDashboardCommand());
 program.addCommand(createDoctorCommand());
+program.addCommand(createUninstallCommand());
 
 program.parse();

@@ -242,6 +242,7 @@ Two distribution channels:
 | Command | Description |
 |---------|-------------|
 | `mcp-coordinator init [--url <url>] [--write-mcp-config <path>] [--write-claude-md <path>]` | First-time setup — create config dir, default `config.json`, print/write the `.mcp.json` snippet, optionally scaffold a sample `CLAUDE.md` |
+| `mcp-coordinator uninstall [--mcp-config <path>] [--claude-md <path>] [--purge] [--force]` | Remove integrations: drop `coordinator` entry from a `.mcp.json`, strip the coordination section from a `CLAUDE.md`, or `--purge` the `~/.mcp-coordinator/` directory entirely |
 | `mcp-coordinator server start [--port N] [--data-dir PATH] [--daemon]` | Start the coordinator (foreground or daemon) |
 | `mcp-coordinator server stop` | Stop the coordinator |
 | `mcp-coordinator server status` | PID, port, online agents, open threads |
@@ -517,6 +518,23 @@ Logging level is controlled by `LOG_LEVEL` (`debug`, `info`, `warn`, `error` —
 ```bash
 NODE_ENV=development LOG_LEVEL=debug mcp-coordinator server start
 ```
+
+### Removing the integration (per-project or globally)
+
+Symmetric to `init`, the `uninstall` command undoes what was added without touching anything you wrote yourself.
+
+```bash
+# Remove coordinator from a project's .mcp.json AND strip its section from CLAUDE.md
+mcp-coordinator uninstall --mcp-config ~/my-repo --claude-md ~/my-repo
+
+# Wipe the global config dir (~/.mcp-coordinator/) entirely — config + data + logs + pid file
+mcp-coordinator uninstall --purge          # asks for confirmation
+mcp-coordinator uninstall --purge --force  # skip the prompt, useful in scripts
+```
+
+`--mcp-config <path>` reads `<path>/.mcp.json`, removes only the `coordinator` server entry (other servers untouched), and deletes the file if it ends up empty. `--claude-md <path>` removes only the block between the `<!-- mcp-coordinator:coordination-section -->` sentinels — it never touches text you authored. Combine flags as needed; if the resulting `CLAUDE.md` is empty, it's deleted.
+
+To remove the npm package itself: `npm uninstall -g mcp-coordinator`.
 
 ### Running multiple coordinators on the same machine
 
