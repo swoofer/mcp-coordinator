@@ -1,6 +1,6 @@
 {
   "name": "mcp-coordinator",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Embedded MQTT broker + MCP server for multi-agent coordination",
   "type": "module",
   "license": "MIT",
