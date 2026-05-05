@@ -367,43 +367,73 @@ If you'd rather embed the instructions yourself (or you're not using Claude Code
 
 That's all you need to start coordinating. The dashboard shows live who's doing what; the SQLite database persists threads across sessions; conflicts are detected before code is written.
 
-### End-to-end example: two Claudes coordinating in real time
+### Push vs polling — important architectural note
 
-Two terminals, same repo, both Claude Code sessions wired to the same local coordinator:
+Vanilla Claude Code talks to mcp-coordinator over MCP (HTTP/stdio request-response). It **does not subscribe to MQTT**. That means events the coordinator publishes on MQTT (`coordinator/consultations/new`, etc.) are not auto-delivered to a Claude Code session — Claude has to **poll** the coordinator to discover new activity. The polling pattern is:
+
+- `announce_work` returns the thread ID immediately if a conflict is detected — that's the most important checkpoint
+- After that, periodic calls to `coordinator_status` / `list_threads` / `get_thread_updates` surface new posts on threads you're a participant in
+- The CLAUDE.md scaffolded by `mcp-coordinator init --write-claude-md` instructs Claude to do exactly this polling
+
+If you want **real-time push** (every coordination event interrupting Claude between turns instead of waiting for a poll), use [essaim](https://github.com/swoofer/essaim). essaim ships an agent-loop wrapper that subscribes to the MQTT broker and injects events into the turn flow automatically. mcp-coordinator alone supports the polling model — which is sufficient for most use cases (2-3 Claude sessions on a small team) and zero-config to set up.
+
+### End-to-end example: two Claudes coordinating (polling model)
+
+Two terminals, same repo, both Claude Code sessions wired to the same local coordinator. Both sessions have a `CLAUDE.md` scaffolded by `mcp-coordinator init --write-claude-md`, which instructs Claude to register, announce, and poll. The conversation below is what each Claude does — the human user just asks each Claude to make a change.
 
 ```
 TERMINAL 1 (Alice)                        TERMINAL 2 (Bob)
-                                          
+
 $ claude                                  $ claude
 > "Add updated_at to User type in         > "Migrate User schema"
    src/models/user.ts"                       (touches src/models/user.ts)
 
-[Alice's session calls]                   [Bob's session calls]
+[Alice's Claude]                          [Bob's Claude]
 register_agent(name="Alice", ...)         register_agent(name="Bob", ...)
-announce_work(                            announce_work(
-  target_files: ["src/models/user.ts"]      target_files: ["src/models/user.ts",
-)                                                          "migrations/004.sql"]
+announce_work(
+  target_files: ["src/models/user.ts"]
+)
+→ response: { thread_id: null,
+              concerned_agents: [] }      announce_work(
+                                            target_files: ["src/models/user.ts",
+                                                           "migrations/004.sql"]
                                           )
-[coordinator detects same-file overlap → score 100, opens thread T-1]
-
-[Alice and Bob both receive the thread interrupt at their next turn]
-get_thread(T-1)                           get_thread(T-1)
-post_to_thread(T-1, type="context",       post_to_thread(T-1, type="context",
-  content="adding 1 field, no rename")      content="full schema migration; can
+                                          → response: { thread_id: "T-1",
+                                                        concerned_agents: ["alice"],
+                                                        score: 100, layer: "0a" }
+                                          [Bob sees the conflict in the response]
+                                          get_thread("T-1")
+                                          post_to_thread("T-1", type: "context",
+                                            content: "full schema migration; can
                                             wait for your field to land first")
-[both see each other's posts]
 
-propose_resolution(                        approve_resolution(T-1)
-  T-1, content="Alice's field first,
+[Alice writes the field, then before                                            
+ next major action the CLAUDE.md says
+ "poll coordinator_status"]
+coordinator_status()
+→ response: shows T-1 with Bob's post
+get_thread("T-1")
+post_to_thread("T-1", type: "context",
+  content: "adding 1 field at line 42,
+  no rename. Done in 5 min.")
+propose_resolution("T-1",
+  content: "Alice's field first,
   Bob runs migration after")
 
-[thread → resolved, MQTT broadcasts]
+                                          [Bob's CLAUDE.md polling step]
+                                          coordinator_status()
+                                          → shows T-1 in 'resolving' state
+                                          get_thread("T-1")
+                                          approve_resolution("T-1")
 
-[Alice writes the field]                  [Bob waits, then runs migration]
+[Alice's next poll]
+coordinator_status()
+→ T-1 status = 'resolved'
+[Alice writes the field]                  [Bob writes the migration]
 log_action_summary(...)                   log_action_summary(...)
 ```
 
-The dashboard at `http://localhost:3100/dashboard/` plays the entire timeline live. `mcp-coordinator server logs -f` (in a third terminal) tails the daemon log if you want to see the protocol-level events.
+The dashboard at `http://localhost:3100/dashboard/` plays the entire timeline live. `mcp-coordinator server logs -f` (in a third terminal) tails the daemon log if you want to see the protocol-level events. If polling cadence is too coarse and you find Claude missing posts, switch to essaim's agent-loop, which delivers MQTT events automatically.
 
 ### Team setup walkthrough — shared coordinator with JWT
 

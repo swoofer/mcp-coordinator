@@ -9,38 +9,79 @@ You share a coordinator with other Claude Code sessions on this repo. Use the
 \`coordinator\` MCP tools to announce work and resolve conflicts before writing
 code.
 
+### How coordination flows (important — read first)
+
+You communicate with the coordinator over MCP (request/response). You do NOT
+receive automatic push notifications. To stay aware of what other agents are
+doing, you must **poll** at the right moments:
+
+- **Session start** — call \`register_agent\` once.
+- **Before any source-file change** — call \`announce_work\`. The response tells
+  you immediately if a thread was opened (conflict detected). If yes, react.
+- **Before resuming work after a non-trivial pause** (e.g., before a new
+  feature, between phases, after returning from a sub-task) — call
+  \`coordinator_status\` to see if anyone has posted to threads you're a
+  participant in. New posts may need your reply or vote.
+- **Anytime you suspect activity** — call \`list_threads\` or
+  \`coordinator_status\` to scan for open threads.
+
+If you skip the polling step, you can still write code, but you may miss a
+question another agent posted on a thread you opened. The dashboard
+(\`http://localhost:3100/dashboard\`) is the human's view of all activity if
+you want a quick visual.
+
 ### Before any source-file change
 
-1. Call \`register_agent\` once per session, with your name and the modules you
-   plan to touch.
+1. (Once per session) Call \`register_agent\` with your name and the modules
+   you plan to touch.
 2. Call \`announce_work\` with:
    - \`subject\`: short description of the change
    - \`target_files\`: files you will modify
    - \`depends_on_files\` (optional): files whose interface you depend on
    - \`target_modules\`: bounded contexts you'll touch
-3. If the coordinator opens a thread (consultation triggered), wait for the
-   resolution before writing code. Read the thread with \`get_thread\`, post
-   context via \`post_to_thread\`, and either \`approve_resolution\` or
-   \`contest_resolution\` once a proposal exists.
+3. **Read the response carefully**. If \`thread_id\` is present, a conflict
+   was detected — DO NOT proceed to code. Instead:
+   - Call \`get_thread(thread_id)\` to see what other agents have said.
+   - Call \`post_to_thread\` with \`type: "context"\` to share your plan and
+     constraints.
+   - Wait for the other agent to acknowledge. Poll \`get_thread_updates\` or
+     \`coordinator_status\` until the thread reaches \`resolving\`.
+   - When a resolution is proposed, call \`approve_resolution\` or
+     \`contest_resolution\` (with reason).
+   - Only proceed to code once the thread is \`resolved\`.
 4. After completing a meaningful change, call \`log_action_summary\` to update
    the dashboard timeline.
 
-### When another agent is already working on your file
+### Polling for thread updates (the most-missed step)
 
-Don't override silently. \`post_to_thread\` to ask, then wait for their reply
-before proceeding. If the thread is in \`resolving\` state, vote on the
-resolution rather than writing code.
+Whenever you've opened a thread or are a participant in one, the other agents
+may post new context. They cannot push to you — you must check. A reasonable
+cadence:
+
+- **Whenever you call any other coordinator tool** (announce_work,
+  log_action_summary, etc.), spend one extra call on
+  \`coordinator_status\` and scan for open threads where the latest message is
+  from someone else.
+- **Before each major task transition** (finishing one feature, starting the
+  next), call \`list_threads\` or \`coordinator_status\` once.
+
+A useful pattern: after every 3-5 file edits, run
+\`coordinator_status\` once to confirm no thread you opened is still waiting on
+your input.
 
 ### Tools you'll reach for most
 
 - \`coordinator_status\` — full system snapshot (agents, threads, files, quota)
 - \`announce_work\` / \`post_to_thread\` / \`approve_resolution\` /
   \`contest_resolution\` — consultation flow
+- \`get_thread_updates\` — fetch only new posts since a timestamp
 - \`hot_files\` — files multiple agents are editing
 - \`check_file_conflict\` — quick check before opening a file
 
-The dashboard at the coordinator URL (default
-\`http://localhost:3100/dashboard\`) shows everything live.
+If you want push-based coordination (real-time interrupts between agent
+turns instead of polling), see [essaim](https://github.com/swoofer/essaim) —
+it ships an agent-loop wrapper that subscribes to the coordinator's MQTT
+broker and injects events into your turn flow automatically.
 `;
 
 export function createInitCommand(): Command {
