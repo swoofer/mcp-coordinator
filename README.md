@@ -8,7 +8,7 @@
 [![npm](https://img.shields.io/npm/v/mcp-coordinator.svg)](https://www.npmjs.com/package/mcp-coordinator)
 [![Tests](https://github.com/swoofer/mcp-coordinator/actions/workflows/test.yml/badge.svg)](https://github.com/swoofer/mcp-coordinator/actions)
 
-[Problem](#the-problem) · [How It Works](#how-it-works) · [MQTT Layer](#mqtt-communication-layer) · [Scoring](#impact-scoring) · [MCP Tools](#mcp-tools) · [CLI](#cli) · [Quota](#anthropic-quota-pre-flight) · [Observability](#token-observability) · [Dashboard](#dashboard) · [Config](#configuration) · [Auth](#authentication) · [Dev](#development)
+[Getting started](#getting-started) · [Problem](#the-problem) · [How It Works](#how-it-works) · [MQTT Layer](#mqtt-communication-layer) · [Scoring](#impact-scoring) · [MCP Tools](#mcp-tools) · [CLI](#cli) · [Standalone use](#standalone-use--without-an-orchestrator) · [Quota](#anthropic-quota-pre-flight) · [Dashboard](#dashboard) · [Config](#configuration) · [Auth](#authentication)
 
 </div>
 
@@ -26,6 +26,32 @@ When multiple developers each use an AI coding agent in parallel on the same rep
 Each agent works in isolation. None of them know what the others are doing.
 
 mcp-coordinator fixes this by giving agents a **shared nervous system over MQTT** — they announce intentions before coding, conflicts are detected before a single line is written, and agents see each other's actions in real-time to agree on an approach.
+
+It works **with or without** an orchestrator on top. Use it standalone with any MCP client (Claude Code, Cursor, Cline, Aider) — see [Standalone use](#standalone-use--without-an-orchestrator). Or pair it with [essaim](https://github.com/swoofer/essaim) when you want pre-composed agent profiles, work-stealing templates, and a behavior catalog.
+
+---
+
+## Getting started
+
+```bash
+# 1. Install
+npm install -g mcp-coordinator
+
+# 2. First-time setup — creates ~/.mcp-coordinator/, writes a default config,
+#    and prints a .mcp.json snippet for your MCP client.
+mcp-coordinator init
+
+# 3. Start the server (foreground or --daemon for background)
+mcp-coordinator server start --daemon
+
+# 4. Verify
+mcp-coordinator server status
+mcp-coordinator dashboard      # opens http://localhost:3100/dashboard
+```
+
+Step 2 is idempotent — re-running `init` won't overwrite an existing config. The snippet it prints goes into your MCP client's config (e.g., `~/.claude/.mcp.json` for Claude Code). If you'd rather not copy-paste, run `mcp-coordinator init --write-mcp-config <project-path>` and the snippet is written to `<project-path>/.mcp.json` (merging if the file already exists).
+
+After step 4, every Claude Code (or other MCP-compatible) session connected to this coordinator can call all 26 tools (`register_agent`, `announce_work`, `post_to_thread`, `coordinator_status`, ...). For the full multi-Claude or team setup, see [Standalone use](#standalone-use--without-an-orchestrator).
 
 ---
 
@@ -215,6 +241,7 @@ Two distribution channels:
 
 | Command | Description |
 |---------|-------------|
+| `mcp-coordinator init [--url <url>] [--write-mcp-config <path>]` | First-time setup — create config dir, default `config.json`, print/write the `.mcp.json` snippet for your MCP client |
 | `mcp-coordinator server start [--port N] [--data-dir PATH] [--daemon]` | Start the coordinator (foreground or daemon) |
 | `mcp-coordinator server stop` | Stop the coordinator |
 | `mcp-coordinator server status` | PID, port, online agents, open threads |
@@ -244,6 +271,90 @@ await startServer({
   dataDir: "./coordinator-data",
 });
 ```
+
+---
+
+## Standalone use — without an orchestrator
+
+You don't need an orchestrator. mcp-coordinator works on its own with any MCP-compatible client — Claude Code, Cursor, Cline, Aider, custom scripts. The two most common setups:
+
+### Solo developer, multiple Claude Code sessions
+
+You're running 2-3 Claude Code sessions in parallel on the same repo and want them to see each other's work. One coordinator instance handles all of them.
+
+```bash
+# In one terminal: start the coordinator
+mcp-coordinator server start --daemon
+```
+
+Then add the coordinator to each Claude Code session's `.mcp.json` (located at `~/.claude/.mcp.json` for the global config, or `<your-project>/.mcp.json` for per-project):
+
+```json
+{
+  "mcpServers": {
+    "coordinator": {
+      "type": "http",
+      "url": "http://localhost:3100/mcp"
+    }
+  }
+}
+```
+
+Each Claude session now has access to all 26 coordination tools (`register_agent`, `announce_work`, `post_to_thread`, etc.). Open `mcp-coordinator dashboard` in a browser to watch real-time activity across your sessions.
+
+### Team setup — shared coordinator on LAN
+
+One person hosts the coordinator on a shared machine; teammates point their Claude at it.
+
+Host:
+
+```bash
+# Bind to all interfaces; default is 127.0.0.1
+COORDINATOR_BIND=0.0.0.0 mcp-coordinator server start --daemon
+```
+
+Each teammate's `.mcp.json` points to the host's IP:
+
+```json
+{
+  "mcpServers": {
+    "coordinator": {
+      "type": "http",
+      "url": "http://192.168.1.42:3100/mcp"
+    }
+  }
+}
+```
+
+For internet-facing or multi-tenant deployments, enable JWT auth (see [Authentication](#authentication)). Each teammate registers via `POST /api/auth/register` with the team's `COORDINATOR_REGISTRATION_SECRET`, gets a Bearer token, and adds it to their `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "coordinator": {
+      "type": "http",
+      "url": "https://coordinator.example.com/mcp",
+      "headers": { "Authorization": "Bearer <your-token>" }
+    }
+  }
+}
+```
+
+### Telling Claude to use the coordinator tools
+
+Without a behavior catalog (which is what [essaim](https://github.com/swoofer/essaim) ships), you instruct Claude manually. Add to your project's `CLAUDE.md` (or per-session system prompt):
+
+> Before modifying any source file, register with the coordinator MCP server:
+>
+> 1. Call `register_agent` with your name and the modules you'll touch
+> 2. Call `announce_work` describing what you'll do, listing target files (and `depends_on_files` if applicable)
+> 3. If a thread is created (consultation triggered), wait for the resolution before writing code
+> 4. After a meaningful change, call `log_action_summary` to update the dashboard timeline
+> 5. If another agent is already working on a file you need to touch, post a question to the thread via `post_to_thread` and wait for their response before proceeding
+>
+> Use the `coordinator_status` tool to see current activity at any time.
+
+That's all you need to start coordinating. The dashboard shows live who's doing what; the SQLite database persists threads across sessions; conflicts are detected before code is written.
 
 ---
 
