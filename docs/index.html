@@ -1400,6 +1400,11 @@
         <p data-i18n="how.step4.desc">Proposals are approved, contested, or re-proposed. The thread closes on consensus, or auto-resolves in gray zones. All decisions land on the dashboard timeline.</p>
       </div>
     </div>
+    <div class="text-center" style="margin-top: 3rem; padding: 1.25rem 1.5rem; border: 1px solid rgba(96,165,250,0.3); border-radius: 8px; background: rgba(96,165,250,0.05); max-width: 760px; margin-left: auto; margin-right: auto;">
+      <h3 style="font-size: 1.1rem; margin-bottom: 0.6rem; color: var(--text);" data-i18n="how.modes.title">Two ways to consume coordination events</h3>
+      <p style="font-size: 0.92rem; color: var(--muted); line-height: 1.55;" data-i18n="how.modes.desc"><strong style="color: var(--text);">Polling</strong> &mdash; vanilla Claude Code, Cursor, Cline, ...: agents call <code style="color:var(--accent);font-size:0.9em;">announce_work</code> and inspect the response, then periodically call <code style="color:var(--accent);font-size:0.9em;">coordinator_status</code> to discover thread updates. Zero-config; works with any MCP client. <br/><br/><strong style="color: var(--text);">Push</strong> &mdash; <a href="https://github.com/swoofer/essaim" style="color:var(--accent);">essaim</a> and similar wrappers: an agent-loop subscribes to the embedded MQTT broker, injecting coordination events between agent turns automatically &mdash; real-time, no polling needed.</p>
+    </div>
+
   </div>
 </section>
 
@@ -1720,8 +1725,8 @@
 <section id="install">
   <div class="container">
     <div class="text-center">
-      <h2 class="section-title" data-i18n="install.title">Get started in 3 steps</h2>
-      <p class="section-sub" data-i18n="install.subtitle">Self-hosted, no cloud dependency. One standalone binary.</p>
+      <h2 class="section-title" data-i18n="install.title">Get started in 4 steps</h2>
+      <p class="section-sub" data-i18n="install.subtitle">Self-hosted, no cloud dependency. From npm install to a coordinated session in under a minute.</p>
     </div>
     <div class="install-grid fade-in">
       <div class="install-card">
@@ -1732,15 +1737,21 @@
       </div>
       <div class="install-card">
         <div class="install-step" data-i18n="install.step2.label">Step 2</div>
-        <h3 data-i18n="install.step2.title">Start the server</h3>
-        <p style="color:var(--muted); font-size:0.88rem;" data-i18n="install.step2.desc">Starts the MCP server, embedded MQTT broker, and dashboard on <code style="color:var(--accent);font-size:0.85em;">localhost:3100</code>.</p>
-        <div class="code-block">mcp-coordinator server start</div>
+        <h3 data-i18n="install.step2.title">First-time setup</h3>
+        <p style="color:var(--muted); font-size:0.88rem;" data-i18n="install.step2.desc">Creates the config dir, writes a default config.json, and prints (or writes) the .mcp.json snippet for your MCP client (Claude Code, Cursor, Cline, ...).</p>
+        <div class="code-block">mcp-coordinator init</div>
       </div>
       <div class="install-card">
         <div class="install-step" data-i18n="install.step3.label">Step 3</div>
-        <h3 data-i18n="install.step3.title">Open the dashboard</h3>
-        <p style="color:var(--muted); font-size:0.88rem;" data-i18n="install.step3.desc">Open <code style="color:var(--accent);font-size:0.85em;">http://localhost:3200</code> to see connected agents, open threads, and quota.</p>
-        <div class="code-block">open http://localhost:3200</div>
+        <h3 data-i18n="install.step3.title">Start the server</h3>
+        <p style="color:var(--muted); font-size:0.88rem;" data-i18n="install.step3.desc">Starts the MCP server, embedded MQTT broker, and dashboard on <code style="color:var(--accent);font-size:0.85em;">localhost:3100</code>. <code style="color:var(--accent);font-size:0.85em;">--daemon</code> backgrounds the process.</p>
+        <div class="code-block">mcp-coordinator server start --daemon</div>
+      </div>
+      <div class="install-card">
+        <div class="install-step" data-i18n="install.step4.label">Step 4</div>
+        <h3 data-i18n="install.step4.title">Verify and open</h3>
+        <p style="color:var(--muted); font-size:0.88rem;" data-i18n="install.step4.desc">Health check: config valid, server up, MCP responds, MQTT accepting connections. Then open the dashboard.</p>
+        <div class="code-block">mcp-coordinator doctor && mcp-coordinator dashboard</div>
       </div>
     </div>
   </div>
@@ -2067,17 +2078,17 @@
       "deploy.cloud.desc": "Coordinator on a VM or container service. Teams across offices or remote developers all coordinate through a single endpoint.",
       "dashboard.title": "Real-time dashboard",
       "dashboard.subtitle": "Observe what every agent is doing, what conflicts were detected, and what decisions were reached. Quota widget + token gauges live.",
-      "install.title": "Get started in 3 steps",
-      "install.subtitle": "Self-hosted, no cloud dependency. One standalone binary.",
+      "install.title": "Get started in 4 steps",
+      "install.subtitle": "Self-hosted, no cloud dependency. From npm install to a coordinated session in under a minute.",
       "install.step1.label": "Step 1",
       "install.step1.title": "Install",
       "install.step1.desc": "Single npm package. No separate broker or database to set up.",
       "install.step2.label": "Step 2",
-      "install.step2.title": "Start the server",
-      "install.step2.desc": "Starts the MCP server, embedded MQTT broker, and dashboard on <code style=\"color:var(--accent);font-size:0.85em;\">localhost:3100</code>.",
+      "install.step2.title": "First-time setup",
+      "install.step2.desc": "Creates the config dir, writes a default config.json, and prints (or writes) the .mcp.json snippet for your MCP client (Claude Code, Cursor, Cline, ...).",
       "install.step3.label": "Step 3",
-      "install.step3.title": "Open the dashboard",
-      "install.step3.desc": "Open <code style=\"color:var(--accent);font-size:0.85em;\">http://localhost:3200</code> to see connected agents, open threads, and quota.",
+      "install.step3.title": "Start the server",
+      "install.step3.desc": "Starts the MCP server, embedded MQTT broker, and dashboard on <code style=\"color:var(--accent);font-size:0.85em;\">localhost:3100</code>. <code style=\"color:var(--accent);font-size:0.85em;\">--daemon</code> backgrounds the process.",
       "results.title": "Validated scenarios",
       "results.subtitle": "Four canonical conflict scenarios &mdash; all tested, all resolved correctly.",
       "results.th.scenario": "Scenario",
@@ -2109,6 +2120,16 @@
       "roadmap.harbor.title": "tengu_harbor push",
       "roadmap.harbor.desc": "When Anthropic activates <code style=\"color:var(--accent);font-size:0.85em;\">tengu_harbor</code>, server-gated push can shortcut the between-turn drain. Listener code already lives alongside the MQTT bridge.",
       "footer.text": "MIT License &nbsp;&middot;&nbsp; Built with <a href=\"https://claude.ai/code\" target=\"_blank\">Claude Code</a> &nbsp;&middot;&nbsp; MCP Coordinator v0.1.x"
+      "install.step4.label": "Step 4",
+
+      "install.step4.title": "Verify and open",
+
+      "install.step4.desc": "Health check: config valid, server up, MCP responds, MQTT accepting connections. Then open the dashboard.",
+
+      "how.modes.title": "Two ways to consume coordination events",
+
+      "how.modes.desc": "<strong style=\"color: var(--text);\">Polling</strong> &mdash; vanilla Claude Code, Cursor, Cline, ...: agents call <code style=\"color:var(--accent);font-size:0.9em;\">announce_work</code> and inspect the response, then periodically call <code style=\"color:var(--accent);font-size:0.9em;\">coordinator_status</code> to discover thread updates. Zero-config; works with any MCP client. <br/><br/><strong style=\"color: var(--text);\">Push</strong> &mdash; <a href=\"https://github.com/swoofer/essaim\" style=\"color:var(--accent);\">essaim</a> and similar wrappers: an agent-loop subscribes to the embedded MQTT broker, injecting coordination events between agent turns automatically &mdash; real-time, no polling needed.",
+
     },
     fr: {
       "nav.why": "Pourquoi",
@@ -2227,17 +2248,17 @@
       "deploy.cloud.desc": "Coordinator sur une VM ou un service de conteneurs. Les &eacute;quipes de diff&eacute;rents bureaux ou les d&eacute;veloppeurs remote se coordonnent via un seul endpoint.",
       "dashboard.title": "Dashboard temps r&eacute;el",
       "dashboard.subtitle": "Observez ce que chaque agent fait, quels conflits ont &eacute;t&eacute; d&eacute;tect&eacute;s et quelles d&eacute;cisions ont &eacute;t&eacute; prises. Widget quota + jauges de tokens en direct.",
-      "install.title": "Commencez en 3 &eacute;tapes",
-      "install.subtitle": "Self-hosted, aucune d&eacute;pendance cloud. Un seul binaire standalone.",
-      "install.step1.label": "&Eacute;tape 1",
+      "install.title": "Démarrez en 4 étapes",
+      "install.subtitle": "Auto-hébergé, aucune dépendance cloud. De npm install à une session coordonnée en moins d'une minute.",
+      "install.step1.label": "Étape 1",
       "install.step1.title": "Installer",
-      "install.step1.desc": "Package npm unique. Aucun broker ni base de donn&eacute;es s&eacute;par&eacute;s &agrave; configurer.",
-      "install.step2.label": "&Eacute;tape 2",
-      "install.step2.title": "D&eacute;marrez le serveur",
-      "install.step2.desc": "D&eacute;marre le serveur MCP, le broker MQTT int&eacute;gr&eacute; et le dashboard sur <code style=\"color:var(--accent);font-size:0.85em;\">localhost:3100</code>.",
-      "install.step3.label": "&Eacute;tape 3",
-      "install.step3.title": "Ouvrez le dashboard",
-      "install.step3.desc": "Ouvrez <code style=\"color:var(--accent);font-size:0.85em;\">http://localhost:3200</code> pour voir les agents connect&eacute;s, les threads ouverts et le quota.",
+      "install.step1.desc": "Un seul paquet npm. Aucun broker ou base de données séparé à configurer.",
+      "install.step2.label": "Étape 2",
+      "install.step2.title": "Configuration initiale",
+      "install.step2.desc": "Crée le dossier de config, écrit un config.json par défaut, et imprime (ou écrit) le snippet .mcp.json pour votre client MCP (Claude Code, Cursor, Cline, ...).",
+      "install.step3.label": "Étape 3",
+      "install.step3.title": "Démarrer le serveur",
+      "install.step3.desc": "Démarre le serveur MCP, le broker MQTT embarqué, et le dashboard sur <code style=\"color:var(--accent);font-size:0.85em;\">localhost:3100</code>. <code style=\"color:var(--accent);font-size:0.85em;\">--daemon</code> met le processus en arrière-plan.",
       "results.title": "Sc&eacute;narios valid&eacute;s",
       "results.subtitle": "Quatre sc&eacute;narios canoniques de conflit &mdash; tous test&eacute;s, tous r&eacute;solus correctement.",
       "results.th.scenario": "Sc&eacute;nario",
@@ -2269,6 +2290,16 @@
       "roadmap.harbor.title": "Push tengu_harbor",
       "roadmap.harbor.desc": "Quand Anthropic active <code style=\"color:var(--accent);font-size:0.85em;\">tengu_harbor</code>, le push server-gated pourra court-circuiter le drain entre turns. Le code listener vit d&eacute;j&agrave; a c&ocirc;t&eacute; du bridge MQTT.",
       "footer.text": "Licence MIT &nbsp;&middot;&nbsp; Construit avec <a href=\"https://claude.ai/code\" target=\"_blank\">Claude Code</a> &nbsp;&middot;&nbsp; MCP Coordinator v0.1.x"
+      "install.step4.label": "Étape 4",
+
+      "install.step4.title": "Vérifier et ouvrir",
+
+      "install.step4.desc": "Health check : config valide, serveur démarré, MCP répond, MQTT accepte les connexions. Puis ouvre le dashboard.",
+
+      "how.modes.title": "Deux façons de consommer les événements de coordination",
+
+      "how.modes.desc": "<strong style=\"color: var(--text);\">Polling</strong> &mdash; Claude Code, Cursor, Cline... vanille : les agents appellent <code style=\"color:var(--accent);font-size:0.9em;\">announce_work</code> et inspectent la réponse, puis appellent périodiquement <code style=\"color:var(--accent);font-size:0.9em;\">coordinator_status</code> pour détecter les nouveautés sur les threads. Zéro configuration ; marche avec n'importe quel client MCP. <br/><br/><strong style=\"color: var(--text);\">Push</strong> &mdash; <a href=\"https://github.com/swoofer/essaim\" style=\"color:var(--accent);\">essaim</a> et wrappers similaires : un agent-loop s'abonne au broker MQTT embarqué et injecte les événements de coordination entre les turns de l'agent automatiquement &mdash; temps réel, aucun polling.",
+
     },
     es: {
       "nav.why": "Por qu&eacute;",
@@ -2387,17 +2418,17 @@
       "deploy.cloud.desc": "Coordinator en una VM o servicio de contenedores. Equipos en oficinas diferentes o desarrolladores remotos se coordinan a trav&eacute;s de un solo endpoint.",
       "dashboard.title": "Dashboard en tiempo real",
       "dashboard.subtitle": "Observa lo que cada agente hace, qu&eacute; conflictos se detectaron y qu&eacute; decisiones se tomaron. Widget de cuota + indicadores de tokens en vivo.",
-      "install.title": "Empieza en 3 pasos",
-      "install.subtitle": "Self-hosted, sin dependencia cloud. Un solo binario independiente.",
+      "install.title": "Empiece en 4 pasos",
+      "install.subtitle": "Auto-alojado, sin dependencia de la nube. De npm install a una sesión coordinada en menos de un minuto.",
       "install.step1.label": "Paso 1",
       "install.step1.title": "Instalar",
-      "install.step1.desc": "Paquete npm &uacute;nico. Sin broker ni base de datos separados que configurar.",
+      "install.step1.desc": "Un solo paquete npm. Sin broker ni base de datos separados que configurar.",
       "install.step2.label": "Paso 2",
-      "install.step2.title": "Inicia el servidor",
-      "install.step2.desc": "Inicia el servidor MCP, el broker MQTT embebido y el dashboard en <code style=\"color:var(--accent);font-size:0.85em;\">localhost:3100</code>.",
+      "install.step2.title": "Configuración inicial",
+      "install.step2.desc": "Crea el directorio de configuración, escribe un config.json por defecto e imprime (o escribe) el snippet .mcp.json para su cliente MCP (Claude Code, Cursor, Cline, ...).",
       "install.step3.label": "Paso 3",
-      "install.step3.title": "Abre el dashboard",
-      "install.step3.desc": "Abre <code style=\"color:var(--accent);font-size:0.85em;\">http://localhost:3200</code> para ver agentes conectados, hilos abiertos y cuota.",
+      "install.step3.title": "Iniciar el servidor",
+      "install.step3.desc": "Inicia el servidor MCP, el broker MQTT embebido y el dashboard en <code style=\"color:var(--accent);font-size:0.85em;\">localhost:3100</code>. <code style=\"color:var(--accent);font-size:0.85em;\">--daemon</code> ejecuta el proceso en segundo plano.",
       "results.title": "Escenarios validados",
       "results.subtitle": "Cuatro escenarios can&oacute;nicos de conflicto &mdash; todos probados, todos resueltos correctamente.",
       "results.th.scenario": "Escenario",
@@ -2429,6 +2460,16 @@
       "roadmap.harbor.title": "Push tengu_harbor",
       "roadmap.harbor.desc": "Cuando Anthropic active <code style=\"color:var(--accent);font-size:0.85em;\">tengu_harbor</code>, el push server-gated puede acortar el drenado entre turnos. El c&oacute;digo del listener ya convive con el bridge MQTT.",
       "footer.text": "Licencia MIT &nbsp;&middot;&nbsp; Construido con <a href=\"https://claude.ai/code\" target=\"_blank\">Claude Code</a> &nbsp;&middot;&nbsp; MCP Coordinator v0.1.x"
+      "install.step4.label": "Paso 4",
+
+      "install.step4.title": "Verificar y abrir",
+
+      "install.step4.desc": "Comprobación de salud: config válida, servidor activo, MCP responde, MQTT acepta conexiones. Luego abre el dashboard.",
+
+      "how.modes.title": "Dos formas de consumir los eventos de coordinación",
+
+      "how.modes.desc": "<strong style=\"color: var(--text);\">Polling</strong> &mdash; Claude Code, Cursor, Cline... estándar: los agents llaman <code style=\"color:var(--accent);font-size:0.9em;\">announce_work</code> e inspeccionan la respuesta, luego llaman periódicamente <code style=\"color:var(--accent);font-size:0.9em;\">coordinator_status</code> para descubrir actualizaciones de threads. Sin configuración; funciona con cualquier cliente MCP. <br/><br/><strong style=\"color: var(--text);\">Push</strong> &mdash; <a href=\"https://github.com/swoofer/essaim\" style=\"color:var(--accent);\">essaim</a> y wrappers similares: un agent-loop se suscribe al broker MQTT embebido e inyecta eventos de coordinación entre los turnos del agent automáticamente &mdash; en tiempo real, sin polling.",
+
     },
     de: {
       "nav.why": "Warum",
@@ -2547,17 +2588,17 @@
       "deploy.cloud.desc": "Coordinator auf einer VM oder einem Container-Service. Teams in verschiedenen B&uuml;ros oder Remote-Entwickler koordinieren &uuml;ber einen einzigen Endpoint.",
       "dashboard.title": "Echtzeit-Dashboard",
       "dashboard.subtitle": "Beobachte, was jeder Agent tut, welche Konflikte erkannt wurden und welche Entscheidungen getroffen wurden. Quota-Widget + Token-Anzeigen live.",
-      "install.title": "In 3 Schritten loslegen",
-      "install.subtitle": "Self-hosted, keine Cloud-Abh&auml;ngigkeit. Ein einzelnes Standalone-Binary.",
+      "install.title": "Loslegen in 4 Schritten",
+      "install.subtitle": "Selbst-gehostet, keine Cloud-Abhängigkeit. Von npm install zur koordinierten Session in unter einer Minute.",
       "install.step1.label": "Schritt 1",
       "install.step1.title": "Installieren",
-      "install.step1.desc": "Einzelnes npm-Paket. Kein separater Broker oder Datenbank einzurichten.",
+      "install.step1.desc": "Ein einzelnes npm-Paket. Kein separater Broker oder Datenbank-Setup nötig.",
       "install.step2.label": "Schritt 2",
-      "install.step2.title": "Server starten",
-      "install.step2.desc": "Startet den MCP-Server, eingebetteten MQTT-Broker und Dashboard auf <code style=\"color:var(--accent);font-size:0.85em;\">localhost:3100</code>.",
+      "install.step2.title": "Erstkonfiguration",
+      "install.step2.desc": "Erstellt das Konfigurationsverzeichnis, schreibt eine Standard-config.json und gibt (oder schreibt) den .mcp.json-Snippet für Ihren MCP-Client aus (Claude Code, Cursor, Cline, ...).",
       "install.step3.label": "Schritt 3",
-      "install.step3.title": "Dashboard &ouml;ffnen",
-      "install.step3.desc": "&Ouml;ffne <code style=\"color:var(--accent);font-size:0.85em;\">http://localhost:3200</code>, um verbundene Agenten, offene Threads und Quota zu sehen.",
+      "install.step3.title": "Server starten",
+      "install.step3.desc": "Startet den MCP-Server, den eingebetteten MQTT-Broker und das Dashboard auf <code style=\"color:var(--accent);font-size:0.85em;\">localhost:3100</code>. <code style=\"color:var(--accent);font-size:0.85em;\">--daemon</code> bringt den Prozess in den Hintergrund.",
       "results.title": "Validierte Szenarien",
       "results.subtitle": "Vier kanonische Konfliktszenarien &mdash; alle getestet, alle korrekt aufgel&ouml;st.",
       "results.th.scenario": "Szenario",
@@ -2589,6 +2630,16 @@
       "roadmap.harbor.title": "tengu_harbor-Push",
       "roadmap.harbor.desc": "Wenn Anthropic <code style=\"color:var(--accent);font-size:0.85em;\">tengu_harbor</code> aktiviert, kann Server-gated Push das Between-Turn-Drain abk&uuml;rzen. Listener-Code liegt bereits neben der MQTT-Bridge.",
       "footer.text": "MIT-Lizenz &nbsp;&middot;&nbsp; Gebaut mit <a href=\"https://claude.ai/code\" target=\"_blank\">Claude Code</a> &nbsp;&middot;&nbsp; MCP Coordinator v0.1.x"
+      "install.step4.label": "Schritt 4",
+
+      "install.step4.title": "Prüfen und öffnen",
+
+      "install.step4.desc": "Health Check: Konfig gültig, Server läuft, MCP antwortet, MQTT akzeptiert Verbindungen. Dann das Dashboard öffnen.",
+
+      "how.modes.title": "Zwei Wege, Koordinations-Events zu konsumieren",
+
+      "how.modes.desc": "<strong style=\"color: var(--text);\">Polling</strong> &mdash; Vanilla Claude Code, Cursor, Cline, ...: Agents rufen <code style=\"color:var(--accent);font-size:0.9em;\">announce_work</code> auf und prüfen die Antwort, dann periodisch <code style=\"color:var(--accent);font-size:0.9em;\">coordinator_status</code> für Thread-Updates. Null Konfiguration; funktioniert mit jedem MCP-Client. <br/><br/><strong style=\"color: var(--text);\">Push</strong> &mdash; <a href=\"https://github.com/swoofer/essaim\" style=\"color:var(--accent);\">essaim</a> und ähnliche Wrapper: Eine Agent-Loop abonniert den eingebetteten MQTT-Broker und injiziert Koordinations-Events zwischen Agent-Turns automatisch &mdash; Echtzeit, kein Polling nötig.",
+
     },
     zh: {
       "nav.why": "为什么",
@@ -2707,17 +2758,17 @@
       "deploy.cloud.desc": "coordinator 在 VM 或容器服务上。跨办公室的团队或远程开发者都通过一个端点协调。",
       "dashboard.title": "实时仪表板",
       "dashboard.subtitle": "观察每个智能体在做什么、检测到的冲突以及达成的决策。配额小部件 + token 量表实时。",
-      "install.title": "3 步开始",
-      "install.subtitle": "自托管，无云依赖。单个独立二进制。",
-      "install.step1.label": "步骤 1",
+      "install.title": "四步即可开始",
+      "install.subtitle": "自托管，无云依赖。从 npm install 到协调会话不到一分钟。",
+      "install.step1.label": "第 1 步",
       "install.step1.title": "安装",
-      "install.step1.desc": "单一 npm 包。无需配置单独的 broker 或数据库。",
-      "install.step2.label": "步骤 2",
-      "install.step2.title": "启动服务器",
-      "install.step2.desc": "启动 MCP 服务器、嵌入式 MQTT broker 和仪表板，监听 <code style=\"color:var(--accent);font-size:0.85em;\">localhost:3100</code>。",
-      "install.step3.label": "步骤 3",
-      "install.step3.title": "打开仪表板",
-      "install.step3.desc": "打开 <code style=\"color:var(--accent);font-size:0.85em;\">http://localhost:3200</code> 查看已连接的智能体、打开的线程和配额。",
+      "install.step1.desc": "单个 npm 包。无需配置独立的 broker 或数据库。",
+      "install.step2.label": "第 2 步",
+      "install.step2.title": "首次设置",
+      "install.step2.desc": "创建配置目录，写入默认 config.json，并打印（或写入）.mcp.json 片段供 MCP 客户端（Claude Code、Cursor、Cline 等）使用。",
+      "install.step3.label": "第 3 步",
+      "install.step3.title": "启动服务器",
+      "install.step3.desc": "在 <code style=\"color:var(--accent);font-size:0.85em;\">localhost:3100</code> 启动 MCP 服务器、嵌入式 MQTT broker 和 dashboard。<code style=\"color:var(--accent);font-size:0.85em;\">--daemon</code> 让进程后台运行。",
       "results.title": "验证的场景",
       "results.subtitle": "四个规范的冲突场景 &mdash; 全部测试、全部正确解决。",
       "results.th.scenario": "场景",
@@ -2749,6 +2800,16 @@
       "roadmap.harbor.title": "tengu_harbor 推送",
       "roadmap.harbor.desc": "当 Anthropic 激活 <code style=\"color:var(--accent);font-size:0.85em;\">tengu_harbor</code> 时，server-gated push 可以短路轮次间的消费。监听器代码已在 MQTT bridge 旁就位。",
       "footer.text": "MIT 许可证 &nbsp;&middot;&nbsp; 用 <a href=\"https://claude.ai/code\" target=\"_blank\">Claude Code</a> 构建 &nbsp;&middot;&nbsp; MCP Coordinator v0.1.x"
+      "install.step4.label": "第 4 步",
+
+      "install.step4.title": "验证并打开",
+
+      "install.step4.desc": "健康检查：config 有效、服务器在线、MCP 响应、MQTT 接受连接。然后打开 dashboard。",
+
+      "how.modes.title": "消费协调事件的两种方式",
+
+      "how.modes.desc": "<strong style=\"color: var(--text);\">轮询</strong> &mdash; vanilla Claude Code、Cursor、Cline 等：agent 调用 <code style=\"color:var(--accent);font-size:0.9em;\">announce_work</code> 并检查响应，然后定期调用 <code style=\"color:var(--accent);font-size:0.9em;\">coordinator_status</code> 发现 thread 更新。零配置；适用于任何 MCP 客户端。<br/><br/><strong style=\"color: var(--text);\">推送</strong> &mdash; <a href=\"https://github.com/swoofer/essaim\" style=\"color:var(--accent);\">essaim</a> 和类似的封装器：agent-loop 订阅嵌入式 MQTT broker，在 agent 的 turn 之间自动注入协调事件 &mdash; 实时，无需轮询。",
+
     },
     ja: {
       "nav.why": "なぜ",
@@ -2867,17 +2928,17 @@
       "deploy.cloud.desc": "coordinator が VM やコンテナサービス上。別オフィスのチームやリモート開発者が一つのエンドポイントで連携。",
       "dashboard.title": "リアルタイムダッシュボード",
       "dashboard.subtitle": "各エージェントの動作、検出されたコンフリクト、下された判断を観察。クォータウィジェット + トークンゲージがライブ。",
-      "install.title": "3 ステップで開始",
-      "install.subtitle": "セルフホスト、クラウド依存なし。単一スタンドアロンバイナリ。",
+      "install.title": "4 ステップで始める",
+      "install.subtitle": "セルフホスト、クラウド依存なし。npm install から協調セッション開始まで 1 分未満。",
       "install.step1.label": "ステップ 1",
       "install.step1.title": "インストール",
-      "install.step1.desc": "単一の npm パッケージ。別途ブローカーやデータベースの設定不要。",
+      "install.step1.desc": "単一の npm パッケージ。別のブローカーやデータベースのセットアップは不要。",
       "install.step2.label": "ステップ 2",
-      "install.step2.title": "サーバーを起動",
-      "install.step2.desc": "MCP サーバー、埋込み MQTT ブローカー、ダッシュボードを <code style=\"color:var(--accent);font-size:0.85em;\">localhost:3100</code> で起動。",
+      "install.step2.title": "初回セットアップ",
+      "install.step2.desc": "config ディレクトリ作成、デフォルト config.json 書き出し、MCP クライアント (Claude Code、Cursor、Cline など) 用の .mcp.json スニペットを出力（または書き込み）。",
       "install.step3.label": "ステップ 3",
-      "install.step3.title": "ダッシュボードを開く",
-      "install.step3.desc": "<code style=\"color:var(--accent);font-size:0.85em;\">http://localhost:3200</code> を開いて、接続エージェント、オープンスレッド、クォータを確認。",
+      "install.step3.title": "サーバーを起動",
+      "install.step3.desc": "<code style=\"color:var(--accent);font-size:0.85em;\">localhost:3100</code> で MCP サーバー、組み込み MQTT ブローカー、ダッシュボードを起動。<code style=\"color:var(--accent);font-size:0.85em;\">--daemon</code> でバックグラウンド実行。",
       "results.title": "検証済みシナリオ",
       "results.subtitle": "4 つの標準的なコンフリクトシナリオ &mdash; すべてテスト済み、すべて正しく解決。",
       "results.th.scenario": "シナリオ",
@@ -2909,6 +2970,16 @@
       "roadmap.harbor.title": "tengu_harbor プッシュ",
       "roadmap.harbor.desc": "Anthropic が <code style=\"color:var(--accent);font-size:0.85em;\">tengu_harbor</code> を有効化すると、server-gated プッシュがターン間ドレーンを短絡できる。リスナーコードはすでに MQTT bridge の隣に存在。",
       "footer.text": "MIT ライセンス &nbsp;&middot;&nbsp; <a href=\"https://claude.ai/code\" target=\"_blank\">Claude Code</a> で構築 &nbsp;&middot;&nbsp; MCP Coordinator v0.1.x"
+      "install.step4.label": "ステップ 4",
+
+      "install.step4.title": "確認して開く",
+
+      "install.step4.desc": "ヘルスチェック：config 妥当・サーバー稼働・MCP 応答・MQTT 接続受付。その後ダッシュボードを開く。",
+
+      "how.modes.title": "協調イベントを取り込む 2 つの方法",
+
+      "how.modes.desc": "<strong style=\"color: var(--text);\">ポーリング</strong> &mdash; vanilla Claude Code、Cursor、Cline など：agent が <code style=\"color:var(--accent);font-size:0.9em;\">announce_work</code> を呼んで応答を確認し、定期的に <code style=\"color:var(--accent);font-size:0.9em;\">coordinator_status</code> を呼んで thread の更新を取得。設定不要、任意の MCP クライアントで動作。<br/><br/><strong style=\"color: var(--text);\">プッシュ</strong> &mdash; <a href=\"https://github.com/swoofer/essaim\" style=\"color:var(--accent);\">essaim</a> や類似ラッパー：agent-loop が組み込み MQTT ブローカーをサブスクライブし、agent の turn 間に協調イベントを自動的に注入 &mdash; リアルタイム、ポーリング不要。",
+
     }
   };
 
