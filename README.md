@@ -241,11 +241,13 @@ Two distribution channels:
 
 | Command | Description |
 |---------|-------------|
-| `mcp-coordinator init [--url <url>] [--write-mcp-config <path>]` | First-time setup — create config dir, default `config.json`, print/write the `.mcp.json` snippet for your MCP client |
+| `mcp-coordinator init [--url <url>] [--write-mcp-config <path>] [--write-claude-md <path>]` | First-time setup — create config dir, default `config.json`, print/write the `.mcp.json` snippet, optionally scaffold a sample `CLAUDE.md` |
 | `mcp-coordinator server start [--port N] [--data-dir PATH] [--daemon]` | Start the coordinator (foreground or daemon) |
 | `mcp-coordinator server stop` | Stop the coordinator |
 | `mcp-coordinator server status` | PID, port, online agents, open threads |
+| `mcp-coordinator server logs [-n N] [-f]` | Tail the daemon log at `~/.mcp-coordinator/logs/server.log` |
 | `mcp-coordinator dashboard` | Open `http://localhost:3100/dashboard` |
+| `mcp-coordinator doctor [--host H] [--port P] [--mqtt-port P]` | Health check: config, server liveness, `/health`, `/mcp` initialize, dashboard, MQTT broker |
 | `mcp-coordinator --version` | Print the installed version |
 
 ### Quick start
@@ -342,7 +344,16 @@ For internet-facing or multi-tenant deployments, enable JWT auth (see [Authentic
 
 ### Telling Claude to use the coordinator tools
 
-Without a behavior catalog (which is what [essaim](https://github.com/swoofer/essaim) ships), you instruct Claude manually. Add to your project's `CLAUDE.md` (or per-session system prompt):
+Without a behavior catalog (which is what [essaim](https://github.com/swoofer/essaim) ships), you instruct Claude manually. Easiest path:
+
+```bash
+# In your project root — scaffolds CLAUDE.md with coordinator instructions
+mcp-coordinator init --write-claude-md ~/my-repo --write-mcp-config ~/my-repo
+```
+
+This appends a clearly-marked `mcp-coordinator:coordination-section` block to `~/my-repo/CLAUDE.md` (creating it if absent, replacing the section if it already exists). Combined with `--write-mcp-config`, your project is fully wired in one command.
+
+If you'd rather embed the instructions yourself (or you're not using Claude Code), the section reads roughly:
 
 > Before modifying any source file, register with the coordinator MCP server:
 >
@@ -355,6 +366,160 @@ Without a behavior catalog (which is what [essaim](https://github.com/swoofer/es
 > Use the `coordinator_status` tool to see current activity at any time.
 
 That's all you need to start coordinating. The dashboard shows live who's doing what; the SQLite database persists threads across sessions; conflicts are detected before code is written.
+
+### End-to-end example: two Claudes coordinating in real time
+
+Two terminals, same repo, both Claude Code sessions wired to the same local coordinator:
+
+```
+TERMINAL 1 (Alice)                        TERMINAL 2 (Bob)
+                                          
+$ claude                                  $ claude
+> "Add updated_at to User type in         > "Migrate User schema"
+   src/models/user.ts"                       (touches src/models/user.ts)
+
+[Alice's session calls]                   [Bob's session calls]
+register_agent(name="Alice", ...)         register_agent(name="Bob", ...)
+announce_work(                            announce_work(
+  target_files: ["src/models/user.ts"]      target_files: ["src/models/user.ts",
+)                                                          "migrations/004.sql"]
+                                          )
+[coordinator detects same-file overlap → score 100, opens thread T-1]
+
+[Alice and Bob both receive the thread interrupt at their next turn]
+get_thread(T-1)                           get_thread(T-1)
+post_to_thread(T-1, type="context",       post_to_thread(T-1, type="context",
+  content="adding 1 field, no rename")      content="full schema migration; can
+                                            wait for your field to land first")
+[both see each other's posts]
+
+propose_resolution(                        approve_resolution(T-1)
+  T-1, content="Alice's field first,
+  Bob runs migration after")
+
+[thread → resolved, MQTT broadcasts]
+
+[Alice writes the field]                  [Bob waits, then runs migration]
+log_action_summary(...)                   log_action_summary(...)
+```
+
+The dashboard at `http://localhost:3100/dashboard/` plays the entire timeline live. `mcp-coordinator server logs -f` (in a third terminal) tails the daemon log if you want to see the protocol-level events.
+
+### Team setup walkthrough — shared coordinator with JWT
+
+Full step-by-step for a team running a coordinator on a shared host with internet-facing or multi-tenant access. Adjust to your network/TLS reality.
+
+**Step 1 (host) — generate secrets**
+
+```bash
+# 32+ char shared secret; put in your secrets manager and inject as env vars
+JWT_SECRET=$(openssl rand -hex 32)
+REGISTRATION_SECRET=$(openssl rand -hex 32)
+ADMIN_SECRET=$(openssl rand -hex 32)
+```
+
+**Step 2 (host) — start the coordinator with auth enabled**
+
+```bash
+COORDINATOR_AUTH_ENABLED=true \
+COORDINATOR_JWT_SECRET="$JWT_SECRET" \
+COORDINATOR_REGISTRATION_SECRET="$REGISTRATION_SECRET" \
+COORDINATOR_ADMIN_SECRET="$ADMIN_SECRET" \
+COORDINATOR_BIND=0.0.0.0 \
+mcp-coordinator server start --daemon --port 3100
+```
+
+(Front the server with TLS via nginx/Caddy/etc. for internet exposure. Local LAN can use plain HTTP.)
+
+**Step 3 (each teammate) — request a token**
+
+```bash
+curl -X POST https://coordinator.example.com/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"agent_name":"alice","registration_secret":"<REGISTRATION_SECRET shared via team channel>"}'
+# Response: { "agent_id": "alice-abc123", "token": "eyJ...", "expires_at": "...", "role": "agent" }
+```
+
+**Step 4 (each teammate) — wire `.mcp.json`**
+
+```json
+{
+  "mcpServers": {
+    "coordinator": {
+      "type": "http",
+      "url": "https://coordinator.example.com/mcp",
+      "headers": { "Authorization": "Bearer <paste-token-here>" }
+    }
+  }
+}
+```
+
+**Step 5 (each teammate) — run `init --write-claude-md` to scaffold project instructions**, OR add the coordination section to their existing `CLAUDE.md`.
+
+**Step 6 (each teammate) — verify**: `mcp-coordinator doctor --host coordinator.example.com --port 443` should show all checks green from any laptop.
+
+**Token rotation**: tokens expire per `COORDINATOR_JWT_EXPIRY` (default 24h). Refresh via `POST /api/auth/refresh` with the current Bearer token. The admin can revoke a specific agent via `POST /api/auth/revoke` (admin token required).
+
+### Logs and debugging
+
+The daemon writes to `~/.mcp-coordinator/logs/server.log`. Tail it:
+
+```bash
+mcp-coordinator server logs           # last 50 lines
+mcp-coordinator server logs -n 200    # last 200 lines
+mcp-coordinator server logs -f        # follow (Ctrl+C to stop)
+```
+
+For a one-shot check that everything is wired up correctly (config valid, server up, MCP responds, dashboard reachable, MQTT accepting connections), use the doctor:
+
+```bash
+mcp-coordinator doctor
+```
+
+`doctor` exits non-zero if any check fails and prints actionable hints next to each failure. Probe a remote coordinator with `--host` and `--port`:
+
+```bash
+mcp-coordinator doctor --host coordinator.example.com --port 443 --mqtt-port 1883
+```
+
+Logging level is controlled by `LOG_LEVEL` (`debug`, `info`, `warn`, `error` — default `info`). Set `NODE_ENV=development` for human-readable pretty logs:
+
+```bash
+NODE_ENV=development LOG_LEVEL=debug mcp-coordinator server start
+```
+
+### Running multiple coordinators on the same machine
+
+Useful for per-project isolation — every project gets its own ephemeral coordinator with no cross-contamination. Pick distinct ports + data dirs:
+
+```bash
+# Project A
+PORT=3110 \
+COORDINATOR_MQTT_TCP_PORT=11883 \
+mcp-coordinator server start --daemon --data-dir ./.mcp-coordinator-A
+
+# Project B (different terminal)
+PORT=3120 \
+COORDINATOR_MQTT_TCP_PORT=12883 \
+mcp-coordinator server start --daemon --data-dir ./.mcp-coordinator-B
+```
+
+The default `~/.mcp-coordinator/server.pid` only tracks ONE daemon at a time. For multi-instance runs, pass `--data-dir` explicitly to each instance — the PID file lives next to the data dir, so multiple instances don't fight over the same file. To stop a specific instance, `cd` to its data dir's parent and run `mcp-coordinator server stop` from there, OR `kill $(cat ./.mcp-coordinator-A/../server.pid)`.
+
+In each project's `.mcp.json`, point at the project's coordinator:
+
+```json
+{
+  "mcpServers": {
+    "coordinator": {
+      "type": "http",
+      "url": "http://localhost:3110/mcp"
+    }
+  }
+}
+```
+
+This pattern works well alongside `essaim`, which uses Strategy A (in-process) and starts its own ephemeral coordinator per `essaim run` — there's no port conflict because essaim picks an isolated dir by default.
 
 ---
 
