@@ -1276,34 +1276,38 @@
       <!-- Block 2: Automatic coordination (reversed) -->
       <div class="feature-block reverse fade-in">
         <div class="feature-text">
-          <h3 data-i18n="why.block2.title">Agents hear each other through MQTT &mdash; no sidecar</h3>
-          <p data-i18n="why.block2.desc">The agent-loop subscribes to the embedded MQTT broker once. Conflicts, messages, claims and resolutions arrive in real-time and are drained between turns. No separate liaison process, no polling, no extra tokens burned on coordination chatter.</p>
+          <h3 data-i18n="why.block2.title">Polling default, push when you want it</h3>
+          <p data-i18n="why.block2.desc">Vanilla MCP clients (Claude Code, Cursor, Cline, Aider) consume coordination by polling: <code style="color:var(--accent);font-size:0.9em;">announce_work</code> returns conflicts immediately, and a periodic <code style="color:var(--accent);font-size:0.9em;">coordinator_status</code> surfaces thread updates. Wrap the coordinator with <a href="https://github.com/swoofer/essaim" style="color:var(--accent);">essaim</a>'s agent-loop and the embedded MQTT broker pushes events between agent turns automatically &mdash; same protocol, two consumption models.</p>
         </div>
         <div class="feature-terminal">
-          <div><span class="t-blue">Worker Alpha</span> <span class="t-dim">&rarr;</span> announce_work(<span class="t-green">"Refactor auth"</span>)</div>
-          <div><span class="t-dim">mqtt</span> <span class="t-blue">coordinator/consultations/new</span> <span class="t-yellow">score 100</span></div>
-          <div><span class="t-dim">push &rarr; Beta's loop queue</span></div>
-          <div><span class="t-green">Agent Beta</span> <span class="t-dim">&rarr;</span> post_to_thread(<span class="t-green">"compatible, will rebase"</span>)</div>
-          <div><span class="t-green">&#9989; propose_resolution</span> <span class="t-dim">&rarr; approved in 38s</span></div>
+          <div><span class="t-blue">Alice</span> <span class="t-dim">&rarr;</span> announce_work(<span class="t-green">"refactor auth"</span>)</div>
+          <div><span class="t-dim">&larr;</span> { thread_id: <span class="t-yellow">"T-1"</span>, score: 100 }</div>
+          <div><span class="t-blue">Alice</span> <span class="t-dim">&rarr;</span> post_to_thread(<span class="t-green">"5 files, 10 min"</span>)</div>
+          <div><span class="t-dim">[Bob's session, next major action]</span></div>
+          <div><span class="t-blue">Bob</span> <span class="t-dim">&rarr;</span> coordinator_status() <span class="t-dim">// poll</span></div>
+          <div><span class="t-blue">Bob</span> <span class="t-dim">&rarr;</span> approve_resolution(<span class="t-yellow">"T-1"</span>)</div>
+          <div><span class="t-green">&#9989;</span> <span class="t-dim">resolved &mdash; both proceed</span></div>
         </div>
+      </div>
       </div>
 
       <!-- Block 3: Simulate real scenarios -->
       <div class="feature-block fade-in">
         <div class="feature-text">
-          <h3 data-i18n="why.block3.title">Dogfood everything</h3>
-          <p data-i18n="why.block3.desc">6 agents coordinated via work-stealing phases to rewrite the coordinator's own unit tests from scratch. Another raid found and patched 11 real bugs in the coordinator itself. Zero duplicated work, zero merge conflicts &mdash; all via the coordinator's own announce/MQTT/consensus loop.</p>
+          <h3 data-i18n="why.block3.title">Standalone or orchestrated &mdash; your choice</h3>
+          <p data-i18n="why.block3.desc">Run mcp-coordinator alone with any MCP client for solo or small-team coordination &mdash; <code style="color:var(--accent);font-size:0.9em;">npm install -g mcp-coordinator</code>, <code style="color:var(--accent);font-size:0.9em;">init</code>, paste the snippet into your <code style="color:var(--accent);font-size:0.9em;">.mcp.json</code>, done. Or scale up with <a href="https://github.com/swoofer/essaim" style="color:var(--accent);">essaim</a> for spawn-N-agents-in-one-command orchestration with phase-based work-stealing and a 32-behavior catalog. Same protocol; pick your level of automation.</p>
         </div>
-        <div class="results-card">
-          <h4 data-i18n="why.dogfood.title">La M&ecirc;l&eacute;e run</h4>
-          <div class="result-line"><span data-i18n="why.dogfood.agents">Agents</span><span>6 (agent-loop)</span></div>
-          <div class="result-line"><span data-i18n="why.dogfood.phases">Phases</span><span>discover &rarr; execute</span></div>
-          <div class="result-line"><span data-i18n="why.dogfood.threads">Threads opened</span><span>8</span></div>
-          <div class="result-line"><span data-i18n="why.dogfood.messages">MQTT messages exchanged</span><span>25</span></div>
-          <div class="result-line highlight"><span data-i18n="why.dogfood.consensus">Consensus</span><span data-i18n="why.dogfood.consensusval">7 reached &middot; 0 duplicates</span></div>
-          <div class="result-line"><span data-i18n="why.dogfood.tests">Tests produced</span><span>~2 400 lines</span></div>
-          <div class="result-line"><span data-i18n="why.dogfood.total">Total tests (suite)</span><span>652</span></div>
+        <div class="feature-terminal">
+          <div><span class="t-dim">### standalone (vanilla Claude Code) ###</span></div>
+          <div><span class="t-dim">$</span> <span class="t-green">mcp-coordinator</span> init --write-mcp-config ~/repo</div>
+          <div><span class="t-dim">$</span> <span class="t-green">mcp-coordinator</span> server start --daemon</div>
+          <div><span class="t-dim">$</span> claude <span class="t-dim"># in ~/repo</span></div>
+          <div></div>
+          <div><span class="t-dim">### orchestrated (essaim) ###</span></div>
+          <div><span class="t-dim">$</span> <span class="t-green">essaim</span> run swarm -p ~/repo --agents 3</div>
+          <div><span class="t-green">&#9889;</span> <span class="t-dim">3 coordinated agents spawn, discover, work-steal</span></div>
         </div>
+      </div>
       </div>
 
       <!-- Block 4: Real-time visibility (reversed) -->
@@ -1978,24 +1982,15 @@
       "why.title": "Why MCP Coordinator?",
       "why.subtitle": "Scale your team's AI agents without the chaos.",
       "why.block1.title": "Multiple agents, one aligned process",
-      "why.block1.desc": "Run several agents per developer on different tasks. Several developers with their own agents on the same repo. Specialize by role &mdash; one codes, one reviews, one tests. Effort profiles auto-pick Haiku / Sonnet / Opus per phase so you don't waste Opus tokens on coordination chatter.",
-      "why.block2.title": "Agents hear each other through MQTT &mdash; no sidecar",
-      "why.block2.desc": "The agent-loop subscribes to the embedded MQTT broker once. Conflicts, messages, claims and resolutions arrive in real-time and are drained between turns. No separate liaison process, no polling, no extra tokens burned on coordination chatter.",
-      "why.block3.title": "Dogfood everything",
-      "why.block3.desc": "6 agents coordinated via work-stealing phases to rewrite the coordinator's own unit tests from scratch. Another raid found and patched 11 real bugs in the coordinator itself. Zero duplicated work, zero merge conflicts &mdash; all via the coordinator's own announce/MQTT/consensus loop.",
+      "why.block1.desc": "Run several agents per developer on different tasks. Several developers with their own agents on the same repo. Specialize by role — one codes, one reviews, one tests.",
+      "why.block2.title": "Polling default, push when you want it",
+      "why.block2.desc": "Vanilla MCP clients (Claude Code, Cursor, Cline, Aider) consume coordination by polling: <code style=\"color:var(--accent);font-size:0.9em;\">announce_work</code> returns conflicts immediately, and a periodic <code style=\"color:var(--accent);font-size:0.9em;\">coordinator_status</code> surfaces thread updates. Wrap the coordinator with <a href=\"https://github.com/swoofer/essaim\" style=\"color:var(--accent);\">essaim</a>'s agent-loop and the embedded MQTT broker pushes events between agent turns automatically — same protocol, two consumption models.",
+      "why.block3.title": "Standalone or orchestrated — your choice",
+      "why.block3.desc": "Run mcp-coordinator alone with any MCP client for solo or small-team coordination — <code style=\"color:var(--accent);font-size:0.9em;\">npm install -g mcp-coordinator</code>, <code style=\"color:var(--accent);font-size:0.9em;\">init</code>, paste the snippet into your <code style=\"color:var(--accent);font-size:0.9em;\">.mcp.json</code>, done. Or scale up with <a href=\"https://github.com/swoofer/essaim\" style=\"color:var(--accent);\">essaim</a> for spawn-N-agents-in-one-command orchestration with phase-based work-stealing and a 32-behavior catalog. Same protocol; pick your level of automation.",
       "why.block4.title": "See everything, miss nothing",
       "why.block4.desc": "A live SSE dashboard shows every decision in real-time. Who's working on what, which conflicts were detected, how they were resolved. Per-agent token gauge, Anthropic quota widget, scoring-layer breakdown. Complete traceability &mdash; every coordination decision is logged.",
       "why.block5.title": "Zero conflicts. Everyone aligned.",
       "why.block5.desc": "Intent detection before code is written. Impact scoring across 4 layers. Automatic consultation when scores exceed thresholds. The coordinator doesn't replace developers &mdash; it eliminates the chaos when multiple agents work in parallel.",
-      "why.dogfood.title": "La M&ecirc;l&eacute;e run",
-      "why.dogfood.agents": "Agents",
-      "why.dogfood.phases": "Phases",
-      "why.dogfood.threads": "Threads opened",
-      "why.dogfood.messages": "MQTT messages exchanged",
-      "why.dogfood.consensus": "Consensus",
-      "why.dogfood.consensusval": "7 reached &middot; 0 duplicates",
-      "why.dogfood.tests": "Tests produced",
-      "why.dogfood.total": "Total tests (suite)",
       "problem.title": "The coordination problem",
       "problem.subtitle": "AI coding agents accelerate individual work &mdash; but create new team-level problems when running in parallel.",
       "problem.card1.title": "Regressions",
@@ -2148,24 +2143,15 @@
       "why.title": "Pourquoi MCP Coordinator?",
       "why.subtitle": "Faites passer vos agents IA a l'&eacute;chelle sans le chaos.",
       "why.block1.title": "Plusieurs agents, un seul processus align&eacute;",
-      "why.block1.desc": "Plusieurs agents par d&eacute;veloppeur sur des t&acirc;ches diff&eacute;rentes. Plusieurs d&eacute;veloppeurs sur le m&ecirc;me repo. Sp&eacute;cialisez par r&ocirc;le &mdash; un code, un revoit, un teste.",
-      "why.block2.title": "Les agents s'entendent via MQTT &mdash; sans sidecar",
-      "why.block2.desc": "L'agent-loop s'abonne au broker MQTT int&eacute;gr&eacute; une seule fois. Conflits, messages, claims et r&eacute;solutions arrivent en temps r&eacute;el et sont drain&eacute;s entre les turns. Plus de processus liaison s&eacute;par&eacute;, plus de polling, plus de tokens br&ucirc;l&eacute;s sur la coordination.",
-      "why.block3.title": "On se mange notre propre chien",
-      "why.block3.desc": "6 agents coordonn&eacute;s via les phases work-stealing ont r&eacute;&eacute;crit les tests unitaires du coordinator. Un autre raid a trouv&eacute; et patch&eacute; 11 vrais bugs dans le coordinator lui-m&ecirc;me. Z&eacute;ro doublon, z&eacute;ro conflit de merge &mdash; le tout via la boucle announce/MQTT/consensus du coordinator.",
+      "why.block1.desc": "Plusieurs agents par développeur sur des tâches différentes. Plusieurs développeurs sur le même repo. Spécialisez par rôle — un code, un revoit, un teste.",
+      "why.block2.title": "Polling par défaut, push quand vous le voulez",
+      "why.block2.desc": "Les clients MCP vanille (Claude Code, Cursor, Cline, Aider) consomment la coordination par polling : <code style=\"color:var(--accent);font-size:0.9em;\">announce_work</code> retourne les conflits immédiatement, et un <code style=\"color:var(--accent);font-size:0.9em;\">coordinator_status</code> périodique fait remonter les updates de threads. Enveloppez le coordinator avec l'agent-loop d'<a href=\"https://github.com/swoofer/essaim\" style=\"color:var(--accent);\">essaim</a> et le broker MQTT intégré pousse les événements entre les turns agent automatiquement — même protocole, deux modèles de consommation.",
+      "why.block3.title": "Standalone ou orchestré — votre choix",
+      "why.block3.desc": "Lancez mcp-coordinator seul avec n'importe quel client MCP pour la coordination solo ou petite équipe — <code style=\"color:var(--accent);font-size:0.9em;\">npm install -g mcp-coordinator</code>, <code style=\"color:var(--accent);font-size:0.9em;\">init</code>, collez le snippet dans votre <code style=\"color:var(--accent);font-size:0.9em;\">.mcp.json</code>, terminé. Ou passez à l'échelle avec <a href=\"https://github.com/swoofer/essaim\" style=\"color:var(--accent);\">essaim</a> pour orchestrer N agents en une commande avec work-stealing phasé et un catalogue de 32 behaviors. Même protocole ; choisissez votre niveau d'automatisation.",
       "why.block4.title": "Voyez tout, ne ratez rien",
       "why.block4.desc": "Un dashboard SSE temps r&eacute;el montre chaque d&eacute;cision. Qui travaille sur quoi, quels conflits ont &eacute;t&eacute; d&eacute;tect&eacute;s, comment ils ont &eacute;t&eacute; r&eacute;solus. Jauge de tokens par agent, widget quota Anthropic, d&eacute;composition par couche de scoring. Tra&ccedil;abilit&eacute; compl&egrave;te.",
       "why.block5.title": "Z&eacute;ro conflit. Tous align&eacute;s.",
       "why.block5.desc": "D&eacute;tection d'intention avant que le code soit &eacute;crit. Scoring d'impact sur 4 couches. Consultation automatique quand les scores d&eacute;passent les seuils. Le coordinator ne remplace pas les d&eacute;veloppeurs &mdash; il &eacute;limine le chaos.",
-      "why.dogfood.title": "Run La M&ecirc;l&eacute;e",
-      "why.dogfood.agents": "Agents",
-      "why.dogfood.phases": "Phases",
-      "why.dogfood.threads": "Threads ouverts",
-      "why.dogfood.messages": "Messages MQTT &eacute;chang&eacute;s",
-      "why.dogfood.consensus": "Consensus",
-      "why.dogfood.consensusval": "7 atteints &middot; 0 doublons",
-      "why.dogfood.tests": "Tests produits",
-      "why.dogfood.total": "Total des tests (suite)",
       "problem.title": "Le probl&egrave;me de coordination",
       "problem.subtitle": "Les agents IA acc&eacute;l&egrave;rent le travail individuel &mdash; mais cr&eacute;ent de nouveaux probl&egrave;mes d'&eacute;quipe quand ils tournent en parall&egrave;le.",
       "problem.card1.title": "R&eacute;gressions",
@@ -2318,24 +2304,15 @@
       "why.title": "&iquest;Por qu&eacute; MCP Coordinator?",
       "why.subtitle": "Escala los agentes IA de tu equipo sin el caos.",
       "why.block1.title": "Varios agentes, un solo proceso alineado",
-      "why.block1.desc": "Varios agentes por desarrollador en tareas diferentes. Varios desarrolladores con sus propios agentes en el mismo repo. Especializa por rol &mdash; uno codea, uno revisa, uno prueba.",
-      "why.block2.title": "Los agentes se escuchan v&iacute;a MQTT &mdash; sin sidecar",
-      "why.block2.desc": "El agent-loop se suscribe al broker MQTT embebido una sola vez. Conflictos, mensajes, claims y resoluciones llegan en tiempo real y se drenan entre turnos. Sin proceso liaison separado, sin polling, sin tokens extra quemados en coordinaci&oacute;n.",
-      "why.block3.title": "Dogfood en todo",
-      "why.block3.desc": "6 agentes coordinados v&iacute;a fases work-stealing reescribieron los tests unitarios del coordinator desde cero. Otro raid encontr&oacute; y parche&oacute; 11 bugs reales en el coordinator mismo. Cero trabajo duplicado, cero conflictos de merge.",
+      "why.block1.desc": "Varios agents por desarrollador en tareas diferentes. Varios desarrolladores con sus propios agents en el mismo repo. Especialice por rol — uno codifica, uno revisa, uno prueba.",
+      "why.block2.title": "Polling por defecto, push cuando lo desee",
+      "why.block2.desc": "Los clientes MCP estándar (Claude Code, Cursor, Cline, Aider) consumen la coordinación por polling: <code style=\"color:var(--accent);font-size:0.9em;\">announce_work</code> retorna los conflictos inmediatamente, y un <code style=\"color:var(--accent);font-size:0.9em;\">coordinator_status</code> periódico expone las actualizaciones de threads. Envuelva el coordinator con el agent-loop de <a href=\"https://github.com/swoofer/essaim\" style=\"color:var(--accent);\">essaim</a> y el broker MQTT embebido empuja eventos entre los turnos del agent automáticamente — mismo protocolo, dos modelos de consumo.",
+      "why.block3.title": "Independiente u orquestado — su elección",
+      "why.block3.desc": "Ejecute mcp-coordinator solo con cualquier cliente MCP para coordinación en solitario o de equipo pequeño — <code style=\"color:var(--accent);font-size:0.9em;\">npm install -g mcp-coordinator</code>, <code style=\"color:var(--accent);font-size:0.9em;\">init</code>, pegue el snippet en su <code style=\"color:var(--accent);font-size:0.9em;\">.mcp.json</code>, listo. O escale con <a href=\"https://github.com/swoofer/essaim\" style=\"color:var(--accent);\">essaim</a> para orquestar N agents en un comando con work-stealing por fases y un catálogo de 32 behaviors. Mismo protocolo; elija su nivel de automatización.",
       "why.block4.title": "Ve todo, no te pierdas nada",
       "why.block4.desc": "Un dashboard SSE en vivo muestra cada decisi&oacute;n en tiempo real. Qui&eacute;n trabaja en qu&eacute;, qu&eacute; conflictos se detectaron, c&oacute;mo se resolvieron. Indicador de tokens por agente, widget de cuota Anthropic, desglose por capa de scoring. Trazabilidad completa.",
       "why.block5.title": "Cero conflictos. Todos alineados.",
       "why.block5.desc": "Detecci&oacute;n de intenci&oacute;n antes de que se escriba el c&oacute;digo. Scoring de impacto en 4 capas. Consulta autom&aacute;tica cuando los scores superan los umbrales. El coordinator no reemplaza a los desarrolladores &mdash; elimina el caos.",
-      "why.dogfood.title": "Run La M&ecirc;l&eacute;e",
-      "why.dogfood.agents": "Agentes",
-      "why.dogfood.phases": "Fases",
-      "why.dogfood.threads": "Threads abiertos",
-      "why.dogfood.messages": "Mensajes MQTT intercambiados",
-      "why.dogfood.consensus": "Consenso",
-      "why.dogfood.consensusval": "7 alcanzados &middot; 0 duplicados",
-      "why.dogfood.tests": "Tests producidos",
-      "why.dogfood.total": "Total de tests (suite)",
       "problem.title": "El problema de coordinaci&oacute;n",
       "problem.subtitle": "Los agentes IA aceleran el trabajo individual &mdash; pero crean nuevos problemas de equipo cuando corren en paralelo.",
       "problem.card1.title": "Regresiones",
@@ -2488,24 +2465,15 @@
       "why.title": "Warum MCP Coordinator?",
       "why.subtitle": "Skaliere die KI-Agenten deines Teams ohne das Chaos.",
       "why.block1.title": "Mehrere Agenten, ein abgestimmter Prozess",
-      "why.block1.desc": "Mehrere Agenten pro Entwickler auf verschiedenen Aufgaben. Mehrere Entwickler mit eigenen Agenten im selben Repo. Spezialisiert nach Rolle &mdash; einer codet, einer reviewed, einer testet.",
-      "why.block2.title": "Agenten h&ouml;ren sich via MQTT &mdash; ohne Sidecar",
-      "why.block2.desc": "Der Agent-Loop abonniert den eingebetteten MQTT-Broker einmal. Konflikte, Nachrichten, Claims und Resolutions kommen in Echtzeit an und werden zwischen Turns gedrained. Kein separater Liaison-Prozess, kein Polling, keine zus&auml;tzlichen Tokens f&uuml;rs Koordinieren.",
-      "why.block3.title": "Dogfood alles",
-      "why.block3.desc": "6 Agenten, via Work-Stealing-Phasen koordiniert, haben die Unit-Tests des Coordinators von Grund auf neu geschrieben. Ein weiterer Raid fand und patchte 11 echte Bugs im Coordinator selbst. Null Doppelarbeit, null Merge-Konflikte.",
+      "why.block1.desc": "Mehrere Agents pro Entwickler auf verschiedenen Aufgaben. Mehrere Entwickler mit eigenen Agents im selben Repo. Spezialisierung nach Rolle — einer codiert, einer reviewt, einer testet.",
+      "why.block2.title": "Polling als Standard, Push wenn Sie wollen",
+      "why.block2.desc": "Vanilla MCP-Clients (Claude Code, Cursor, Cline, Aider) konsumieren Koordination durch Polling: <code style=\"color:var(--accent);font-size:0.9em;\">announce_work</code> gibt Konflikte sofort zurück, und ein periodisches <code style=\"color:var(--accent);font-size:0.9em;\">coordinator_status</code> bringt Thread-Updates an die Oberfläche. Wrappen Sie den Coordinator mit <a href=\"https://github.com/swoofer/essaim\" style=\"color:var(--accent);\">essaim</a>'s Agent-Loop und der eingebettete MQTT-Broker pusht Events zwischen Agent-Turns automatisch — gleiches Protokoll, zwei Konsumtionsmodelle.",
+      "why.block3.title": "Eigenständig oder orchestriert — Ihre Wahl",
+      "why.block3.desc": "Führen Sie mcp-coordinator allein mit jedem MCP-Client für Solo- oder kleine-Team-Koordination aus — <code style=\"color:var(--accent);font-size:0.9em;\">npm install -g mcp-coordinator</code>, <code style=\"color:var(--accent);font-size:0.9em;\">init</code>, fügen Sie den Snippet in Ihre <code style=\"color:var(--accent);font-size:0.9em;\">.mcp.json</code> ein, fertig. Oder skalieren Sie mit <a href=\"https://github.com/swoofer/essaim\" style=\"color:var(--accent);\">essaim</a> für Spawn-N-Agents-in-einem-Befehl-Orchestrierung mit phasenbasiertem Work-Stealing und einem 32-Behavior-Katalog. Gleiches Protokoll; wählen Sie Ihre Automatisierungsstufe.",
       "why.block4.title": "Alles sehen, nichts verpassen",
       "why.block4.desc": "Ein Live-SSE-Dashboard zeigt jede Entscheidung in Echtzeit. Wer arbeitet woran, welche Konflikte erkannt wurden, wie sie gel&ouml;st wurden. Token-Anzeige pro Agent, Anthropic-Quota-Widget, Scoring-Schichten-Aufschl&uuml;sselung. Vollst&auml;ndige Nachvollziehbarkeit.",
       "why.block5.title": "Null Konflikte. Alle abgestimmt.",
       "why.block5.desc": "Intent-Erkennung bevor Code geschrieben wird. Impact-Scoring auf 4 Schichten. Automatische Konsultation bei Schwellen&uuml;berschreitung. Der Coordinator ersetzt keine Entwickler &mdash; er eliminiert das Chaos.",
-      "why.dogfood.title": "La M&ecirc;l&eacute;e-Lauf",
-      "why.dogfood.agents": "Agenten",
-      "why.dogfood.phases": "Phasen",
-      "why.dogfood.threads": "Er&ouml;ffnete Threads",
-      "why.dogfood.messages": "MQTT-Nachrichten ausgetauscht",
-      "why.dogfood.consensus": "Konsens",
-      "why.dogfood.consensusval": "7 erreicht &middot; 0 Duplikate",
-      "why.dogfood.tests": "Tests produziert",
-      "why.dogfood.total": "Tests gesamt (Suite)",
       "problem.title": "Das Koordinationsproblem",
       "problem.subtitle": "KI-Coding-Agenten beschleunigen die Einzelarbeit &mdash; erzeugen aber neue Team-Probleme, wenn sie parallel laufen.",
       "problem.card1.title": "Regressionen",
@@ -2658,24 +2626,15 @@
       "why.title": "为什么选择 MCP Coordinator？",
       "why.subtitle": "扩展团队的 AI 智能体，不带来混乱。",
       "why.block1.title": "多个智能体，一个对齐的流程",
-      "why.block1.desc": "每个开发者运行多个智能体处理不同任务。多个开发者在同一仓库中使用各自的智能体。按角色专业化 &mdash; 一个编码、一个审查、一个测试。Effort profiles 按阶段自动选择 Haiku / Sonnet / Opus &mdash; 不会在协调闲聊上浪费 Opus tokens。",
-      "why.block2.title": "智能体通过 MQTT 互相沟通 &mdash; 无需 sidecar",
-      "why.block2.desc": "agent-loop 一次订阅嵌入式 MQTT broker。冲突、消息、认领和解决方案实时到达，并在轮次间被消费。没有单独的 liaison 进程，没有轮询，没有协调闲聊浪费的额外 tokens。",
-      "why.block3.title": "全面自己吃狗粮",
-      "why.block3.desc": "6 个通过 work-stealing 阶段协调的智能体从零重写了 coordinator 自己的单元测试。另一次 raid 发现并修补了 coordinator 本身的 11 个真实 bug。零重复工作，零合并冲突。",
+      "why.block1.desc": "每个开发者运行多个 agent 处理不同任务。多名开发者在同一 repo 上各自带 agent。按角色专门化 —— 一个写代码、一个审查、一个测试。",
+      "why.block2.title": "默认轮询，需要时推送",
+      "why.block2.desc": "原生 MCP 客户端（Claude Code、Cursor、Cline、Aider）通过轮询消费协调：<code style=\"color:var(--accent);font-size:0.9em;\">announce_work</code> 立即返回冲突，定期调用 <code style=\"color:var(--accent);font-size:0.9em;\">coordinator_status</code> 浮现 thread 更新。用 <a href=\"https://github.com/swoofer/essaim\" style=\"color:var(--accent);\">essaim</a> 的 agent-loop 包装 coordinator，嵌入式 MQTT broker 自动在 agent turn 之间推送事件 —— 相同协议，两种消费模式。",
+      "why.block3.title": "独立或编排 —— 由您选择",
+      "why.block3.desc": "用任何 MCP 客户端独立运行 mcp-coordinator 进行个人或小团队协调 —— <code style=\"color:var(--accent);font-size:0.9em;\">npm install -g mcp-coordinator</code>，<code style=\"color:var(--accent);font-size:0.9em;\">init</code>，把片段粘贴到您的 <code style=\"color:var(--accent);font-size:0.9em;\">.mcp.json</code>，完成。或者用 <a href=\"https://github.com/swoofer/essaim\" style=\"color:var(--accent);\">essaim</a> 扩展以单命令生成 N 个 agent 编排，带阶段式 work-stealing 和 32 个 behavior 目录。相同协议；选择您的自动化级别。",
       "why.block4.title": "看见一切，不漏细节",
       "why.block4.desc": "实时 SSE 仪表板展示每个决策。谁在做什么，检测到哪些冲突，如何解决。每个智能体的 token 量表、Anthropic 配额小部件、评分层细分。完整可追溯性。",
       "why.block5.title": "零冲突。全员对齐。",
       "why.block5.desc": "在代码写出之前检测意图。4 层影响评分。分数超阈值时自动协商。coordinator 不取代开发者 &mdash; 它消除混乱。",
-      "why.dogfood.title": "La M&ecirc;l&eacute;e 运行",
-      "why.dogfood.agents": "智能体",
-      "why.dogfood.phases": "阶段",
-      "why.dogfood.threads": "打开的线程",
-      "why.dogfood.messages": "交换的 MQTT 消息",
-      "why.dogfood.consensus": "共识",
-      "why.dogfood.consensusval": "达成 7 &middot; 0 重复",
-      "why.dogfood.tests": "生成的测试",
-      "why.dogfood.total": "测试总数（套件）",
       "problem.title": "协调问题",
       "problem.subtitle": "AI 编码智能体加速个人工作 &mdash; 但并行运行时在团队层面制造新问题。",
       "problem.card1.title": "回归",
@@ -2828,24 +2787,15 @@
       "why.title": "なぜ MCP Coordinator?",
       "why.subtitle": "チームの AI エージェントをカオスなしでスケールしよう。",
       "why.block1.title": "複数のエージェント、一つの整列したプロセス",
-      "why.block1.desc": "開発者ごとに複数のエージェントで異なるタスクを。同じリポジトリで複数の開発者がそれぞれのエージェントを。役割で特化 &mdash; 一人はコード、一人はレビュー、一人はテスト。Effort profile がフェーズごとに Haiku / Sonnet / Opus を自動選択 &mdash; 連携のおしゃべりで Opus トークンを無駄にしない。",
-      "why.block2.title": "エージェントは MQTT で互いに話す &mdash; サイドカーなし",
-      "why.block2.desc": "agent-loop は埋込み MQTT ブローカーに一度だけ購読。コンフリクト、メッセージ、claim、解決策がリアルタイムで到着し、ターン間にドレーンされる。別の liaison プロセスなし、ポーリングなし、連携のおしゃべりで余計なトークンを燃やさない。",
-      "why.block3.title": "すべてを自分で食う",
-      "why.block3.desc": "6 つのエージェントが work-stealing フェーズで連携し、coordinator 自身のユニットテストをゼロから書き直した。別の raid は coordinator 自身の実バグを 11 個見つけて修正。重複作業ゼロ、マージコンフリクトゼロ。",
+      "why.block1.desc": "開発者ごとに複数の agent を別々のタスクで稼働。複数の開発者が同じリポジトリで自分の agent を持つ。ロールで専門化 —— 一人が実装、一人がレビュー、一人がテスト。",
+      "why.block2.title": "デフォルトはポーリング、必要に応じてプッシュ",
+      "why.block2.desc": "バニラ MCP クライアント（Claude Code、Cursor、Cline、Aider）はポーリングで協調を取り込みます：<code style=\"color:var(--accent);font-size:0.9em;\">announce_work</code> が競合を即座に返し、定期的な <code style=\"color:var(--accent);font-size:0.9em;\">coordinator_status</code> が thread の更新を浮上させます。<a href=\"https://github.com/swoofer/essaim\" style=\"color:var(--accent);\">essaim</a> の agent-loop で coordinator をラップすれば、組み込み MQTT ブローカーが agent ターン間にイベントを自動プッシュ — 同じプロトコル、2 つの消費モデル。",
+      "why.block3.title": "スタンドアロンかオーケストレーション — 選択は自由",
+      "why.block3.desc": "任意の MCP クライアントで mcp-coordinator を単独実行 — ソロや小チームの協調用途に <code style=\"color:var(--accent);font-size:0.9em;\">npm install -g mcp-coordinator</code>、<code style=\"color:var(--accent);font-size:0.9em;\">init</code>、生成されたスニペットを <code style=\"color:var(--accent);font-size:0.9em;\">.mcp.json</code> に貼って完了。または <a href=\"https://github.com/swoofer/essaim\" style=\"color:var(--accent);\">essaim</a> でスケールアップし、単一コマンドで N 個の agent をスポーン、フェーズ式 work-stealing と 32 behavior カタログ付き。同じプロトコル、自動化レベルはお好みで。",
       "why.block4.title": "すべてを見る、何も逃さない",
       "why.block4.desc": "ライブ SSE ダッシュボードがすべての決定をリアルタイムで表示。誰が何に取り組んでいるか、どのコンフリクトが検出されたか、どう解決されたか。エージェントごとのトークンゲージ、Anthropic クォータウィジェット、スコアリング層の内訳。完全なトレーサビリティ。",
       "why.block5.title": "ゼロコンフリクト。全員整列。",
       "why.block5.desc": "コードが書かれる前にインテント検出。4 層のインパクトスコアリング。スコアが閾値を超えたら自動協議。coordinator は開発者を置き換えない &mdash; カオスを排除する。",
-      "why.dogfood.title": "La M&ecirc;l&eacute;e ラン",
-      "why.dogfood.agents": "エージェント",
-      "why.dogfood.phases": "フェーズ",
-      "why.dogfood.threads": "開いたスレッド",
-      "why.dogfood.messages": "交換された MQTT メッセージ",
-      "why.dogfood.consensus": "コンセンサス",
-      "why.dogfood.consensusval": "7 達成 &middot; 0 重複",
-      "why.dogfood.tests": "生成テスト",
-      "why.dogfood.total": "テスト合計（スイート）",
       "problem.title": "連携の問題",
       "problem.subtitle": "AI コーディングエージェントは個人作業を加速する &mdash; が、並列で走るとチームレベルの新しい問題を生む。",
       "problem.card1.title": "リグレッション",
