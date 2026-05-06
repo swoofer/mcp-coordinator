@@ -1826,10 +1826,10 @@
       </div>
 
       <div class="timeline-item">
-        <div class="timeline-dot dot-progress"></div>
-        <div class="timeline-badge badge-progress" data-i18n="roadmap.badge.progress">In Progress</div>
-        <h4 data-i18n="roadmap.v02.title">v0.2 &mdash; Hardened auth &amp; TLS</h4>
-        <p data-i18n="roadmap.v02.desc">JWT authentication, TLS support, per-team quota partitioning, remote MQTT over WebSocket. First shared-instance deployments.</p>
+        <div class="timeline-dot dot-done"></div>
+        <div class="timeline-badge badge-done" data-i18n="roadmap.badge.done">Done</div>
+        <h4 data-i18n="roadmap.v02.title">v0.2 &mdash; Standalone autonomy</h4>
+        <p data-i18n="roadmap.v02.desc">First-time setup via <code style="color:var(--accent);font-size:0.85em;">init</code> (writes config + .mcp.json snippet, scaffolds CLAUDE.md), health check via <code style="color:var(--accent);font-size:0.85em;">doctor</code>, daemon log tailing via <code style="color:var(--accent);font-size:0.85em;">server logs</code>, symmetric <code style="color:var(--accent);font-size:0.85em;">uninstall</code>. Vanilla MCP clients (Claude Code, Cursor, Cline) coordinate via polling out of the box; essaim's agent-loop adds push.</p>
       </div>
 
       <div class="timeline-item">
@@ -1840,8 +1840,8 @@
       </div>
 
       <div class="timeline-item">
-        <div class="timeline-dot dot-planned"></div>
-        <div class="timeline-badge badge-planned" data-i18n="roadmap.badge.planned">Planned</div>
+        <div class="timeline-dot dot-future"></div>
+        <div class="timeline-badge badge-future" data-i18n="roadmap.badge.future">Future</div>
         <h4 data-i18n="roadmap.v10.title">v1.0 &mdash; Stable API</h4>
         <p data-i18n="roadmap.v10.desc">Stable MCP tool surface, versioned REST API, migration guides. Cross-repo coordination: shared dependency map across microservices and monorepo boundaries.</p>
       </div>
@@ -2108,8 +2108,8 @@
       "roadmap.badge.future": "Future",
       "roadmap.v01.title": "v0.1 — Server extraction",
       "roadmap.v01.desc": "Pure coordinator server extracted from the monorepo. 26 MCP tools, embedded Aedes broker, SQLite state, real-time dashboard. Standalone npm package.",
-      "roadmap.v02.title": "v0.2 — Hardened auth &amp; TLS",
-      "roadmap.v02.desc": "JWT authentication, TLS support, per-team quota partitioning, remote MQTT over WebSocket. First shared-instance deployments.",
+      "roadmap.v02.title": "v0.2 &mdash; Standalone autonomy",
+      "roadmap.v02.desc": "First-time setup via <code style=\"color:var(--accent);font-size:0.85em;\">init</code> (writes config + .mcp.json snippet, scaffolds CLAUDE.md), health check via <code style=\"color:var(--accent);font-size:0.85em;\">doctor</code>, daemon log tailing via <code style=\"color:var(--accent);font-size:0.85em;\">server logs</code>, symmetric <code style=\"color:var(--accent);font-size:0.85em;\">uninstall</code>. Vanilla MCP clients (Claude Code, Cursor, Cline) coordinate via polling out of the box; essaim's agent-loop adds push.",
       "roadmap.v03.title": "v0.3 — Semantic conflict detection",
       "roadmap.v03.desc": "AST-level analysis layer above filename scoring. Detect API contract changes, interface incompatibilities, and breaking changes before a thread even opens.",
       "roadmap.v10.title": "v1.0 — Stable API",
@@ -2269,8 +2269,8 @@
       "roadmap.badge.future": "Futur",
       "roadmap.v01.title": "v0.1 — Extraction du serveur",
       "roadmap.v01.desc": "Serveur coordinator pur extrait du monorepo. 26 outils MCP, broker Aedes int&eacute;gr&eacute;, &eacute;tat SQLite, dashboard temps r&eacute;el. Package npm standalone.",
-      "roadmap.v02.title": "v0.2 — Auth renforc&eacute;e &amp; TLS",
-      "roadmap.v02.desc": "Authentification JWT, support TLS, partitionnement de quota par &eacute;quipe, MQTT distant via WebSocket. Premiers d&eacute;ploiements instance partag&eacute;e.",
+      "roadmap.v02.title": "v0.2 &mdash; Autonomie standalone",
+      "roadmap.v02.desc": "Configuration initiale via <code style=\"color:var(--accent);font-size:0.85em;\">init</code> (écrit config + snippet .mcp.json, scaffolde CLAUDE.md), health check via <code style=\"color:var(--accent);font-size:0.85em;\">doctor</code>, tail des logs daemon via <code style=\"color:var(--accent);font-size:0.85em;\">server logs</code>, <code style=\"color:var(--accent);font-size:0.85em;\">uninstall</code> symétrique. Les clients MCP vanille (Claude Code, Cursor, Cline) coordonnent par polling out-of-the-box ; l'agent-loop d'essaim ajoute le push.",
       "roadmap.v03.title": "v0.3 — D&eacute;tection s&eacute;mantique de conflits",
       "roadmap.v03.desc": "Couche d'analyse AST au-dessus du scoring par nom de fichier. D&eacute;tecter les changements de contrat API, les incompatibilit&eacute;s d'interface et les breaking changes avant qu'un thread s'ouvre.",
       "roadmap.v10.title": "v1.0 — API stable",
@@ -2430,8 +2430,8 @@
       "roadmap.badge.future": "Futuro",
       "roadmap.v01.title": "v0.1 — Extracci&oacute;n del servidor",
       "roadmap.v01.desc": "Servidor coordinator puro extra&iacute;do del monorepo. 26 herramientas MCP, broker Aedes embebido, estado SQLite, dashboard en tiempo real. Paquete npm standalone.",
-      "roadmap.v02.title": "v0.2 — Auth reforzada &amp; TLS",
-      "roadmap.v02.desc": "Autenticaci&oacute;n JWT, soporte TLS, particionamiento de cuota por equipo, MQTT remoto v&iacute;a WebSocket. Primeros despliegues de instancia compartida.",
+      "roadmap.v02.title": "v0.2 &mdash; Autonomía standalone",
+      "roadmap.v02.desc": "Configuración inicial vía <code style=\"color:var(--accent);font-size:0.85em;\">init</code> (escribe config + snippet .mcp.json, scaffolda CLAUDE.md), health check vía <code style=\"color:var(--accent);font-size:0.85em;\">doctor</code>, tail de logs daemon vía <code style=\"color:var(--accent);font-size:0.85em;\">server logs</code>, <code style=\"color:var(--accent);font-size:0.85em;\">uninstall</code> simétrico. Los clientes MCP estándar (Claude Code, Cursor, Cline) coordinan por polling de fábrica; el agent-loop de essaim añade push.",
       "roadmap.v03.title": "v0.3 — Detecci&oacute;n sem&aacute;ntica de conflictos",
       "roadmap.v03.desc": "Capa de an&aacute;lisis AST sobre el scoring por nombre de archivo. Detectar cambios de contrato API, incompatibilidades de interfaz y breaking changes antes de que un thread se abra.",
       "roadmap.v10.title": "v1.0 — API estable",
@@ -2591,8 +2591,8 @@
       "roadmap.badge.future": "Zukunft",
       "roadmap.v01.title": "v0.1 — Server-Extraktion",
       "roadmap.v01.desc": "Reiner Coordinator-Server aus dem Monorepo extrahiert. 26 MCP-Tools, eingebetteter Aedes-Broker, SQLite-State, Echtzeit-Dashboard. Eigenst&auml;ndiges npm-Paket.",
-      "roadmap.v02.title": "v0.2 — Auth-H&auml;rtung &amp; TLS",
-      "roadmap.v02.desc": "JWT-Authentifizierung, TLS-Unterst&uuml;tzung, Quota-Partitionierung pro Team, Remote-MQTT &uuml;ber WebSocket. Erste Shared-Instance-Deployments.",
+      "roadmap.v02.title": "v0.2 &mdash; Standalone-Autonomie",
+      "roadmap.v02.desc": "Erstkonfiguration via <code style=\"color:var(--accent);font-size:0.85em;\">init</code> (schreibt Konfig + .mcp.json-Snippet, scaffolded CLAUDE.md), Health Check via <code style=\"color:var(--accent);font-size:0.85em;\">doctor</code>, Daemon-Log-Tailing via <code style=\"color:var(--accent);font-size:0.85em;\">server logs</code>, symmetrisches <code style=\"color:var(--accent);font-size:0.85em;\">uninstall</code>. Vanilla-MCP-Clients (Claude Code, Cursor, Cline) koordinieren out-of-the-box per Polling; essaims Agent-Loop fügt Push hinzu.",
       "roadmap.v03.title": "v0.3 — Semantische Konflikterkennung",
       "roadmap.v03.desc": "AST-Analyse-Schicht &uuml;ber dem Dateinamen-Scoring. API-Vertrags&auml;nderungen, Interface-Inkompatibilit&auml;ten und Breaking Changes erkennen, bevor ein Thread &ouml;ffnet.",
       "roadmap.v10.title": "v1.0 — Stabile API",
@@ -2752,8 +2752,8 @@
       "roadmap.badge.future": "未来",
       "roadmap.v01.title": "v0.1 — 服务器提取",
       "roadmap.v01.desc": "从 monorepo 中提取的纯 coordinator 服务器。26 个 MCP 工具、嵌入式 Aedes broker、SQLite 状态、实时仪表板。独立 npm 包。",
-      "roadmap.v02.title": "v0.2 — 强化认证与 TLS",
-      "roadmap.v02.desc": "JWT 认证、TLS 支持、按团队配额分区、通过 WebSocket 的远程 MQTT。首批共享实例部署。",
+      "roadmap.v02.title": "v0.2 — 独立自主",
+      "roadmap.v02.desc": "通过 <code style=\"color:var(--accent);font-size:0.85em;\">init</code> 进行首次设置（写入 config + .mcp.json 片段、生成 CLAUDE.md）、通过 <code style=\"color:var(--accent);font-size:0.85em;\">doctor</code> 健康检查、通过 <code style=\"color:var(--accent);font-size:0.85em;\">server logs</code> 跟踪 daemon 日志、对称的 <code style=\"color:var(--accent);font-size:0.85em;\">uninstall</code>。原生 MCP 客户端（Claude Code、Cursor、Cline）开箱即用通过轮询协调；essaim 的 agent-loop 添加推送。",
       "roadmap.v03.title": "v0.3 — 语义冲突检测",
       "roadmap.v03.desc": "在文件名评分之上的 AST 级分析层。线程打开前检测 API 契约变化、接口不兼容和破坏性更改。",
       "roadmap.v10.title": "v1.0 — 稳定 API",
@@ -2913,8 +2913,8 @@
       "roadmap.badge.future": "将来",
       "roadmap.v01.title": "v0.1 — サーバー抽出",
       "roadmap.v01.desc": "モノレポから抽出した純粋な coordinator サーバー。26 MCP ツール、埋込み Aedes ブローカー、SQLite 状態、リアルタイムダッシュボード。スタンドアロン npm パッケージ。",
-      "roadmap.v02.title": "v0.2 — 認証強化 &amp; TLS",
-      "roadmap.v02.desc": "JWT 認証、TLS サポート、チーム別クォータ分割、WebSocket 経由のリモート MQTT。初の共有インスタンスデプロイメント。",
+      "roadmap.v02.title": "v0.2 — スタンドアロン自律",
+      "roadmap.v02.desc": "<code style=\"color:var(--accent);font-size:0.85em;\">init</code> による初回セットアップ（config と .mcp.json スニペット書き出し、CLAUDE.md スキャフォールド）、<code style=\"color:var(--accent);font-size:0.85em;\">doctor</code> によるヘルスチェック、<code style=\"color:var(--accent);font-size:0.85em;\">server logs</code> でデーモンログを tail、対称的な <code style=\"color:var(--accent);font-size:0.85em;\">uninstall</code>。バニラ MCP クライアント（Claude Code、Cursor、Cline）はそのままポーリングで協調可能。essaim の agent-loop が push を追加。",
       "roadmap.v03.title": "v0.3 — セマンティックコンフリクト検出",
       "roadmap.v03.desc": "ファイル名スコアリングの上の AST レベル分析層。スレッドが開く前に API 契約変更、インターフェース非互換、破壊的変更を検出。",
       "roadmap.v10.title": "v1.0 — 安定 API",
