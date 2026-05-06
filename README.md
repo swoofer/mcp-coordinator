@@ -7,6 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![npm](https://img.shields.io/npm/v/mcp-coordinator.svg)](https://www.npmjs.com/package/mcp-coordinator)
 [![Tests](https://github.com/swoofer/mcp-coordinator/actions/workflows/test.yml/badge.svg)](https://github.com/swoofer/mcp-coordinator/actions)
+[![SafeSkill 82/100](https://img.shields.io/badge/SafeSkill-82%2F100_Passes%20with%20Notes-yellow)](https://safeskill.dev/scan/swoofer-mcp-coordinator)
 
 [Getting started](#getting-started) · [Problem](#the-problem) · [How It Works](#how-it-works) · [MQTT Layer](#mqtt-communication-layer) · [Scoring](#impact-scoring) · [MCP Tools](#mcp-tools) · [CLI](#cli) · [Standalone use](#standalone-use--without-an-orchestrator) · [Quota](#anthropic-quota-pre-flight) · [Dashboard](#dashboard) · [Config](#configuration) · [Auth](#authentication)
 
