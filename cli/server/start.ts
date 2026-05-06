@@ -29,10 +29,23 @@ export function createServerStartCommand(): Command {
         const isBun = typeof (globalThis as Record<string, unknown>).Bun !== "undefined";
         const cmd = isBun ? process.execPath : process.execPath;
         const args = isBun ? ["server", "start"] : [process.argv[1], "server", "start"];
+        // Only forward the env vars the daemon actually needs.
+        // Avoids leaking unrelated parent-process env into the spawned child.
+        const childEnv: Record<string, string> = {
+          PATH: process.env.PATH ?? "",
+          HOME: process.env.HOME ?? process.env.USERPROFILE ?? "",
+          PORT: String(port),
+          COORDINATOR_DATA_DIR: dataDir,
+        };
+        for (const k of Object.keys(process.env)) {
+          if (k.startsWith("COORDINATOR_") || k === "NODE_ENV" || k === "LOG_LEVEL") {
+            childEnv[k] = process.env[k] as string;
+          }
+        }
         const child = spawn(cmd, args, {
           detached: true,
           stdio: ["ignore", logFd, logFd],
-          env: { ...process.env, PORT: String(port), COORDINATOR_DATA_DIR: dataDir },
+          env: childEnv,
         });
 
         // Write PID file

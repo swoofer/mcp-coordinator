@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { exec } from "child_process";
+import { spawn } from "child_process";
 
 export function createDashboardCommand(): Command {
   return new Command("dashboard")
@@ -7,10 +7,14 @@ export function createDashboardCommand(): Command {
     .action(() => {
       const url = "http://localhost:3100/dashboard";
       console.log(`Dashboard: ${url}`);
-      const cmd =
-        process.platform === "darwin"
-          ? `open "${url}"`
-          : `xdg-open "${url}" 2>/dev/null`;
-      exec(cmd, () => {});
+      // Use spawn with an argv array (no shell) so the URL is never
+      // interpolated into a shell command — eliminates command-injection risk.
+      const opener =
+        process.platform === "darwin" ? "open"
+        : process.platform === "win32" ? "explorer.exe"
+        : "xdg-open";
+      const child = spawn(opener, [url], { stdio: "ignore", detached: true });
+      child.on("error", () => {});
+      child.unref();
     });
 }

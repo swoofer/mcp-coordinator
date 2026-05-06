@@ -532,7 +532,7 @@ mcp-coordinator uninstall --purge          # asks for confirmation
 mcp-coordinator uninstall --purge --force  # skip the prompt, useful in scripts
 ```
 
-`--mcp-config <path>` reads `<path>/.mcp.json`, removes only the `coordinator` server entry (other servers untouched), and deletes the file if it ends up empty. `--claude-md <path>` removes only the block between the `<!-- mcp-coordinator:coordination-section -->` sentinels — it never touches text you authored. Combine flags as needed; if the resulting `CLAUDE.md` is empty, it's deleted.
+`--mcp-config <path>` reads `<path>/.mcp.json`, removes only the `coordinator` server entry (other servers untouched), and deletes the file if it ends up empty. `--claude-md <path>` removes only the block delimited by the `mcp-coordinator:coordination-section` sentinels (rendered as HTML comments around the section) — it never touches text you authored. Combine flags as needed; if the resulting `CLAUDE.md` is empty, it's deleted.
 
 To remove the npm package itself: `npm uninstall -g mcp-coordinator`.
 

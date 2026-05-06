@@ -1,6 +1,5 @@
 ﻿import { createServer, IncomingMessage, ServerResponse } from "http";
 import { randomUUID, timingSafeEqual } from "crypto";
-import { execSync } from "child_process";
 import path from "path";
 import { readFileSync, existsSync } from "fs";
 import { fileURLToPath } from "url";
@@ -71,9 +70,11 @@ function json(res: ServerResponse, data: unknown, status = 200): void {
 }
 
 function decodeJwtPayload(token: string): Record<string, unknown> {
+  // Used only on tokens we just minted ourselves (to read the `exp` claim
+  // before returning it to the client). Real verification of inbound tokens
+  // happens in `authenticateRequest` via jose.jwtVerify().
   const base64url = token.split(".")[1];
-  const base64 = base64url.replace(/-/g, "+").replace(/_/g, "/");
-  return JSON.parse(atob(base64));
+  return JSON.parse(Buffer.from(base64url, "base64url").toString("utf-8"));
 }
 
 function safeEqual(a: string, b: string): boolean {

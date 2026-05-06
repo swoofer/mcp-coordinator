@@ -13,3 +13,4 @@ coordinator.db
 coordinator.db-*
 data-test-*/
 tmp-data/
+scan.pdf
