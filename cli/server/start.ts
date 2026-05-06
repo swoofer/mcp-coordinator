@@ -30,18 +30,27 @@ export function createServerStartCommand(): Command {
         const cmd = isBun ? process.execPath : process.execPath;
         const args = isBun ? ["server", "start"] : [process.argv[1], "server", "start"];
         // Only forward the env vars the daemon actually needs.
-        // Avoids leaking unrelated parent-process env into the spawned child.
+        // Each var is read explicitly (no Object.keys / dynamic indexing into
+        // process.env) so the daemon can't inherit unrelated parent-process
+        // secrets such as AWS_*, GITHUB_TOKEN, OPENAI_API_KEY, etc.
         const childEnv: Record<string, string> = {
           PATH: process.env.PATH ?? "",
           HOME: process.env.HOME ?? process.env.USERPROFILE ?? "",
           PORT: String(port),
           COORDINATOR_DATA_DIR: dataDir,
         };
-        for (const k of Object.keys(process.env)) {
-          if (k.startsWith("COORDINATOR_") || k === "NODE_ENV" || k === "LOG_LEVEL") {
-            childEnv[k] = process.env[k] as string;
-          }
-        }
+        const fwd = (key: string, value: string | undefined): void => {
+          if (value !== undefined) childEnv[key] = value;
+        };
+        fwd("NODE_ENV", process.env.NODE_ENV);
+        fwd("LOG_LEVEL", process.env.LOG_LEVEL);
+        fwd("COORDINATOR_AUTH_ENABLED", process.env.COORDINATOR_AUTH_ENABLED);
+        fwd("COORDINATOR_JWT_SECRET", process.env.COORDINATOR_JWT_SECRET);
+        fwd("COORDINATOR_JWT_EXPIRY", process.env.COORDINATOR_JWT_EXPIRY);
+        fwd("COORDINATOR_REGISTRATION_SECRET", process.env.COORDINATOR_REGISTRATION_SECRET);
+        fwd("COORDINATOR_ADMIN_SECRET", process.env.COORDINATOR_ADMIN_SECRET);
+        fwd("COORDINATOR_MQTT_TCP_PORT", process.env.COORDINATOR_MQTT_TCP_PORT);
+        fwd("COORDINATOR_MQTT_WS_PATH", process.env.COORDINATOR_MQTT_WS_PATH);
         const child = spawn(cmd, args, {
           detached: true,
           stdio: ["ignore", logFd, logFd],

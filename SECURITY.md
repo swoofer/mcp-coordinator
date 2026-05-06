@@ -78,6 +78,25 @@ All env-var reads use the `COORDINATOR_*` prefix and are read at startup
 into local constants. Nothing is forwarded over the network. The complete
 set of recognized env vars is documented in the README.
 
+### Cross-file "taint flows" from config.ts
+
+Some scanners report critical taint flows of the form
+`os.homedir() → http.request()` or `fs.readFileSync() → child_process.spawn()`
+because `cli/config.ts` is imported by `cli/doctor.ts`, `cli/server/start.ts`
+and `cli/server/status.ts`. The actual data flow is much narrower:
+
+- `homedir()` is used only to compute the config directory path
+  (`~/.mcp-coordinator/`). The home-dir string itself never reaches the
+  network or any spawned process — it stays in the filesystem layer.
+- `readFileSync(configPath)` parses a JSON config. Only the integer `port`
+  field is ever passed to `fetch`, `http.request`, or `spawn` (as part of
+  the localhost URL or PORT env var). User secrets and home-dir contents
+  are never forwarded.
+
+The scanner's flow analysis is import-graph-based, not data-flow-based, so
+any function called by a module that imported `config.ts` is treated as a
+sink for everything `config.ts` reads. These reports can be ignored.
+
 ## Outbound network calls
 
 The only outbound HTTP request the package can make is to
