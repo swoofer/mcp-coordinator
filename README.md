@@ -826,7 +826,18 @@ dashboard/public/   # Single-file web dashboard
 ## Related projects
 
 - **[@swoofer/promptweave](https://github.com/swoofer/promptweave)** — YAML composer for assembling agent prompts, hooks, and MCP configs. Use it with mcp-coordinator-aware behaviors from essaim.
-- **[essaim](https://github.com/swoofer/essaim)** *(coming soon)* — end-to-end orchestrator that spawns N coordinated agents using `@swoofer/promptweave` + `mcp-coordinator`. Ships the reference catalog of coordinator-aware behaviors.
+- **[essaim](https://github.com/swoofer/essaim)** — end-to-end orchestrator that spawns N coordinated agents using `@swoofer/promptweave` + `mcp-coordinator`. Ships the reference catalog of coordinator-aware behaviors.
+
+---
+
+## Support
+
+Solo maintainer. If this project saves you time, consider supporting development:
+
+- [GitHub Sponsors](https://github.com/sponsors/swoofer)
+- [Buy Me A Coffee](https://buymeacoffee.com/swoofer)
+
+A star on the repo also helps surface the project to other developers.
 
 ---
 
