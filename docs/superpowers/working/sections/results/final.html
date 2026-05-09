@@ -1,0 +1,61 @@
+<section id="results">
+  <div class="container">
+    <div class="text-center">
+      <h2 class="section-title" data-i18n="results.title">Tested coordination scenarios</h2>
+      <p class="section-sub" data-i18n="results.subtitle">Four canonical conflict patterns, each run end-to-end with two real agents to verify score, thread state, and resolution.</p>
+    </div>
+    <div class="fade-in results-table-wrap">
+      <table class="results-table">
+        <caption class="sr-only" data-i18n="results.caption">Tested coordination scenarios with scores and outcomes</caption>
+        <thead>
+          <tr>
+            <th scope="col" data-i18n="results.th.scenario">Scenario</th>
+            <th scope="col" data-i18n="results.th.desc">Description</th>
+            <th scope="col" data-i18n="results.th.score">Score</th>
+            <th scope="col" data-i18n="results.th.outcome">Outcome</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="result-id">S1</span></td>
+            <td data-i18n="results.s1.desc">Two agents announce work on the same file at the same moment</td>
+            <td><span class="score-badge t-red">100</span></td>
+            <td><span class="score-tag tag-red" data-i18n="results.s1.outcome">Consultation thread opens, both agents post context, consensus reached, both proceed</span></td>
+          </tr>
+          <tr>
+            <td><span class="result-id">S2</span></td>
+            <td data-i18n="results.s2.desc">Two agents announce work inside the same feature module</td>
+            <td><span class="score-badge t-yellow">30</span></td>
+            <td><span class="score-tag tag-yellow" data-i18n="results.s2.outcome">Auto-resolved, both agents notified for awareness</span></td>
+          </tr>
+          <tr>
+            <td><span class="result-id">S3</span></td>
+            <td data-i18n="results.s3.desc">Agent A's module depends on Agent B's current output</td>
+            <td><span class="score-badge t-yellow">80</span></td>
+            <td><span class="score-tag tag-yellow" data-i18n="results.s3.outcome">Dependency flagged, dependent agent waits or replans</span></td>
+          </tr>
+          <tr>
+            <td><span class="result-id">S4</span></td>
+            <td data-i18n="results.s4.desc">Fully independent tasks, no shared files or modules</td>
+            <td><span class="score-badge t-green">0</span></td>
+            <td><span class="score-tag tag-green" data-i18n="results.s4.outcome">No conflict detected, both agents proceed in parallel</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="perf-metrics text-center">
+      <div class="perf-row">
+        <span class="perf-item"><strong data-i18n="results.perf.label.detection">Detection</strong> <span data-i18n="results.perf.value.detection">&lt;5ms</span></span>
+        <span class="perf-sep">&middot;</span>
+        <span class="perf-item"><strong data-i18n="results.perf.label.mqtt">MQTT push</strong> <span data-i18n="results.perf.value.mqtt">&lt;50ms</span></span>
+        <span class="perf-sep">&middot;</span>
+        <span class="perf-item"><strong data-i18n="results.perf.label.consensus">Full consensus</strong> <span data-i18n="results.perf.value.consensus">30-45s</span></span>
+        <span class="perf-sep">&middot;</span>
+        <span class="perf-item"><strong data-i18n="results.perf.label.tests">Test suite</strong> <span data-i18n="results.perf.value.tests">216 unit tests across 18 files</span></span>
+      </div>
+      <p class="perf-metrics-link">
+        <a href="https://github.com/swoofer/mcp-coordinator/tree/main/tests" rel="noopener noreferrer" data-i18n="results.perf.link">Browse the test suite on GitHub →</a>
+      </p>
+    </div>
+  </div>
+</section>

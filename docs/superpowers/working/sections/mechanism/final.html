@@ -1,0 +1,222 @@
+<!-- MECHANISM (§4) — triple fusion of #how-it-works + #scoring + #mqtt -->
+<section id="mechanism">
+  <span id="how-it-works" class="anchor-alias"></span>
+  <span id="mqtt" class="anchor-alias"></span>
+  <span id="scoring" class="anchor-alias"></span>
+  <div class="container">
+    <div class="text-center">
+      <h2 class="section-title" data-i18n="mechanism.title">How it works</h2>
+      <p class="section-sub" data-i18n="mechanism.subtitle">Four steps run before any code is written, then a score decides who consults.</p>
+    </div>
+
+    <!-- Sub-block 1: 4 steps -->
+    <div class="steps fade-in">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-icon" aria-hidden="true">📢</div>
+        <h3 data-i18n="mechanism.step1.title">Announce</h3>
+        <p data-i18n="mechanism.step1.desc">The agent declares intent: task, target files, affected modules. No code yet.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-icon" aria-hidden="true">🎯</div>
+        <h3 data-i18n="mechanism.step2.title">Detect</h3>
+        <p data-i18n="mechanism.step2.desc">The scorer checks every active announcement across six layers and returns a 0-to-100 impact score.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-icon" aria-hidden="true">💬</div>
+        <h3 data-i18n="mechanism.step3.title">Consult</h3>
+        <p data-i18n="mechanism.step3.desc">The coordinator opens a consultation thread and publishes it to the MQTT broker. Each concerned agent reads the event between turns and posts context, constraints, or a resolution. No sidecar process required.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-icon" aria-hidden="true">✅</div>
+        <h3 data-i18n="mechanism.step4.title">Resolve</h3>
+        <p data-i18n="mechanism.step4.desc">Proposals are approved, contested, or re-proposed. The thread closes on consensus. Every decision lands on the dashboard timeline.</p>
+      </div>
+    </div>
+
+    <!-- Sub-block 2: scoring -->
+    <div class="text-center" style="margin-top: 4rem;">
+      <h3 style="font-size: 1.4rem; margin-bottom: 0.5rem;" data-i18n="mechanism.scoring.title">Impact score</h3>
+      <p class="section-sub" data-i18n="mechanism.scoring.subtitle">Every announcement is scored 0 to 100 against active work. The score decides the response.</p>
+    </div>
+    <div class="score-grid fade-in">
+      <div class="score-row">
+        <div class="score-label" data-i18n="mechanism.score1.label"><strong>Same file announced</strong> — both agents target the exact same source file</div>
+        <div class="score-badge t-red">100</div>
+        <div class="score-tag tag-red" data-i18n="mechanism.score1.tag">Blocking — consult required</div>
+      </div>
+      <div class="score-row">
+        <div class="score-label" data-i18n="mechanism.score2.label"><strong>Dependency overlap</strong> — one agent's output is consumed by the other's module</div>
+        <div class="score-badge t-yellow">80</div>
+        <div class="score-tag tag-yellow" data-i18n="mechanism.score2.tag">Gray zone — review</div>
+      </div>
+      <div class="score-row">
+        <div class="score-label" data-i18n="mechanism.score3.label"><strong>Module overlap</strong> — agents work in the same bounded context or feature area</div>
+        <div class="score-badge t-yellow">30</div>
+        <div class="score-tag tag-yellow" data-i18n="mechanism.score3.tag">Gray zone — monitor</div>
+      </div>
+      <div class="score-row">
+        <div class="score-label" data-i18n="mechanism.score4.label"><strong>No link</strong> — fully independent tasks, no shared files or modules</div>
+        <div class="score-badge t-green">0</div>
+        <div class="score-tag tag-green" data-i18n="mechanism.score4.tag">Pass — proceed safely</div>
+      </div>
+    </div>
+    <p class="text-center" style="color: var(--muted); font-size: 0.85rem; margin-top: 1.5rem;" data-i18n="mechanism.scoring.footnote">Six layers, most severe wins. <a href="https://github.com/swoofer/mcp-coordinator#impact-scoring" style="color:var(--accent);" rel="noopener noreferrer">Full details on GitHub →</a></p>
+
+    <!-- Sub-block 3: real-time push (collapsible, advanced) -->
+    <details class="mechanism-advanced">
+      <summary data-i18n="mechanism.advanced.summary">Real-time push: MQTT topics and delivery flow</summary>
+      <p class="advanced-intro" data-i18n="mechanism.advanced.intro">An embedded MQTT broker fans every event to subscribers. Eight topics, end-to-end latency under 50ms.</p>
+
+      <div class="fade-in results-table-wrap">
+        <table class="results-table dense">
+          <caption class="sr-only" data-i18n="mechanism.advanced.table.caption">MQTT topics emitted by the coordinator</caption>
+          <thead>
+            <tr>
+              <th scope="col" data-i18n="mechanism.advanced.th.topic">Topic</th>
+              <th scope="col" data-i18n="mechanism.advanced.th.emitted">Emitted when</th>
+              <th scope="col" data-i18n="mechanism.advanced.th.payload">Key payload</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code class="mqtt-topic">coordinator/consultations/new</code></td>
+              <td data-i18n="mechanism.advanced.row1.emit">A thread is opened</td>
+              <td data-i18n="mechanism.advanced.row1.pay"><code style="font-size:0.8em">thread_id, subject, initiator_id, target_files</code></td>
+            </tr>
+            <tr>
+              <td><code class="mqtt-topic">.../consultations/+/messages</code></td>
+              <td data-i18n="mechanism.advanced.row2.emit">Someone posts to a thread</td>
+              <td data-i18n="mechanism.advanced.row2.pay"><code style="font-size:0.8em">agent_id, name, content, type</code></td>
+            </tr>
+            <tr>
+              <td><code class="mqtt-topic">.../consultations/+/status</code></td>
+              <td data-i18n="mechanism.advanced.row3.emit">Thread transitions state</td>
+              <td data-i18n="mechanism.advanced.row3.pay"><code style="font-size:0.8em">status: open/resolving/resolved/timeout</code></td>
+            </tr>
+            <tr>
+              <td><code class="mqtt-topic">.../consultations/+/claimed</code></td>
+              <td data-i18n="mechanism.advanced.row4.emit">Work-stealing claim (atomic)</td>
+              <td data-i18n="mechanism.advanced.row4.pay"><code style="font-size:0.8em">claimed_by, thread_id</code></td>
+            </tr>
+            <tr>
+              <td><code class="mqtt-topic">.../consultations/+/completed</code></td>
+              <td data-i18n="mechanism.advanced.row5.emit">Claimed task finishes</td>
+              <td data-i18n="mechanism.advanced.row5.pay"><code style="font-size:0.8em">agent_id, thread_id, resolution</code></td>
+            </tr>
+            <tr>
+              <td><code class="mqtt-topic">coordinator/agents/+/status</code></td>
+              <td data-i18n="mechanism.advanced.row6.emit">Agent online / offline</td>
+              <td data-i18n="mechanism.advanced.row6.pay"><code style="font-size:0.8em">status, name, modules</code></td>
+            </tr>
+            <tr>
+              <td><code class="mqtt-topic">coordinator/broadcast</code></td>
+              <td data-i18n="mechanism.advanced.row7.emit">System-wide announcement</td>
+              <td data-i18n="mechanism.advanced.row7.pay"><code style="font-size:0.8em">arbitrary JSON</code></td>
+            </tr>
+            <tr>
+              <td><code class="mqtt-topic">coordinator/quota/update</code></td>
+              <td data-i18n="mechanism.advanced.row8.emit">Anthropic quota refresh</td>
+              <td data-i18n="mechanism.advanced.row8.pay"><code style="font-size:0.8em">usage, limit, utilization_pct</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4 class="text-center" style="font-size: 1.1rem; margin: 2rem 0 1rem;" data-i18n="mechanism.advanced.flow.title">Push delivery flow</h4>
+
+      <div class="terminal fade-in" style="max-width: 800px;">
+        <div><span class="t-dim"># Coordinator publishes an event</span></div>
+        <div>coordinator<span class="t-dim">.</span>bridge<span class="t-dim">.</span>publish(<span class="t-green">"coordinator/consultations/new"</span>, payload)</div>
+        <div>&nbsp;</div>
+        <div><span class="t-dim"># Broker fans out over TCP 1883 or WS /mqtt</span></div>
+        <div><span class="t-yellow">aedes</span> <span class="t-dim">&rarr; subscribers &rarr;</span> <span class="t-blue">agent-loop queue</span></div>
+        <div>&nbsp;</div>
+        <div><span class="t-dim"># Agent-loop, between turns</span></div>
+        <div><span class="t-blue">const</span> interrupts = listener<span class="t-dim">.</span>drain()</div>
+        <div><span class="t-blue">const</span> context = buildInterruptContext(interrupts)</div>
+        <div>claude<span class="t-dim">.</span>resume({ prompt: context, model: effort<span class="t-dim">.</span>model })</div>
+        <div>&nbsp;</div>
+        <div><span class="t-green">&#9989; next turn sees "you have a pending thread on types.ts"</span></div>
+      </div>
+    </details>
+
+    <!-- Closing CTA -->
+    <div class="mechanism-cta text-center" style="margin-top: 3rem;">
+      <a href="#start" class="btn btn-primary" data-i18n="mechanism.cta.primary">Run it locally in 60 seconds</a>
+      <a href="#faq" class="btn-text" data-i18n="mechanism.cta.secondary">Read the FAQ</a>
+    </div>
+  </div>
+</section>
+
+<!-- HANDOFF[visual-designer]: fold into main <style> cascade at merge. -->
+<style data-merge-target="main-cascade">
+  /* Collapsible advanced sub-block (Sub-block 3) */
+  .mechanism-advanced {
+    margin-top: 4rem;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: rgba(96,165,250,0.04);
+  }
+  .mechanism-advanced > summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 1rem 1.5rem;
+    font-weight: 600;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    border-radius: 10px;
+  }
+  .mechanism-advanced > summary::-webkit-details-marker { display: none; }
+  .mechanism-advanced > summary::before {
+    content: "▸";
+    color: var(--text);
+    font-size: 0.9em;
+    transition: transform 0.18s ease;
+    display: inline-block;
+  }
+  .mechanism-advanced[open] > summary::before { transform: rotate(90deg); }
+  .mechanism-advanced > summary:hover { background: rgba(96,165,250,0.08); }
+  .mechanism-advanced > summary:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .mechanism-advanced > *:not(summary) {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+  .mechanism-advanced > *:last-child { padding-bottom: 1.5rem; }
+  .mechanism-advanced .advanced-intro {
+    color: var(--muted);
+    font-size: 0.95rem;
+    margin: 0.5rem 0 1.5rem 0;
+    max-width: 760px;
+  }
+
+  /* MQTT topic code cell — class-ified from 8 inline duplicates */
+  .mqtt-topic { color: var(--blue); font-size: 0.85em; }
+
+  /* CTA cluster — text-only secondary link styled like a button */
+  .btn-text {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.7rem 1.25rem;
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--accent);
+    background: transparent;
+    border: 0;
+    border-radius: 8px;
+    transition: opacity 0.2s, transform 0.15s;
+  }
+  .btn-text:hover { opacity: 0.85; transform: translateY(-1px); text-decoration: underline; }
+  .btn-text:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .mechanism-cta { display: flex; justify-content: center; gap: 1rem; flex-wrap: wrap; }
+</style>

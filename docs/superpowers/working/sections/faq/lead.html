@@ -1,0 +1,152 @@
+<!-- FAQ -->
+<section id="faq">
+  <div class="container">
+    <div class="text-center">
+      <h2 class="section-title" data-i18n="faq.title">FAQ</h2>
+      <p class="section-sub" data-i18n="faq.subtitle">Quick answers to common questions about coordination, deployment, and integration.</p>
+    </div>
+
+    <div class="faq-list fade-in">
+
+      <details class="faq-item">
+        <summary class="faq-q" data-i18n="faq.q1">Does this replace git worktrees?</summary>
+        <div class="faq-a" data-i18n="faq.a1">No. Worktrees solve filesystem isolation; mcp-coordinator solves intent coordination. Use both.</div>
+      </details>
+
+      <details class="faq-item">
+        <summary class="faq-q" data-i18n="faq.q2">Is it production-ready?</summary>
+        <div class="faq-a" data-i18n="faq.a2">216 unit tests across 4 conflict scenarios, MIT-licensed, semver, <code>doctor</code> command, structured Pino logs.</div>
+      </details>
+
+      <details class="faq-item">
+        <summary class="faq-q" data-i18n="faq.q3">What does it cost?</summary>
+        <div class="faq-a" data-i18n="faq.a3">MIT-licensed and free. Self-hosted on your machine, your LAN, or your cloud.</div>
+      </details>
+
+      <details class="faq-item">
+        <summary class="faq-q" data-i18n="faq.q4">Which MCP clients work?</summary>
+        <div class="faq-a" data-i18n="faq.a4">Any MCP 2024-11-05 client: Claude Code, Cursor, Cline, Aider, custom scripts. HTTP/SSE or stdio.</div>
+      </details>
+
+      <details class="faq-item">
+        <summary class="faq-q" data-i18n="faq.q5">Can multiple repos share one coordinator?</summary>
+        <div class="faq-a" data-i18n="faq.a5">Yes via shared LAN or self-hosted cloud deployment. Cross-repo first-class support is on the roadmap (v1.0).</div>
+      </details>
+
+      <details class="faq-item">
+        <summary class="faq-q" data-i18n="faq.q6">Is auth or JWT required?</summary>
+        <div class="faq-a" data-i18n="faq.a6">Local mode: no. Team or cloud mode: opt-in HS256 JWT via <a href="https://github.com/panva/jose">jose</a>.</div>
+      </details>
+
+      <details class="faq-item">
+        <summary class="faq-q" data-i18n="faq.q7">How is this different from Aider or Cline's own coordination?</summary>
+        <div class="faq-a" data-i18n="faq.a7">Aider and Cline are single-process with no cross-session awareness. mcp-coordinator gives them shared state via the MQTT broker.</div>
+      </details>
+
+      <details class="faq-item">
+        <summary class="faq-q" data-i18n="faq.q8">Yet another tool to maintain?</summary>
+        <div class="faq-a" data-i18n="faq.a8">One <code>npm install -g</code>. Embedded MQTT broker, SQLite, and dashboard ship in the package. Zero sidecar. Symmetric <code>uninstall</code> removes everything cleanly.</div>
+      </details>
+
+      <details class="faq-item">
+        <summary class="faq-q" data-i18n="faq.q9">What if the coordinator goes down?</summary>
+        <div class="faq-a" data-i18n="faq.a9">Agents fail open and keep working as if uninstalled. Local SQLite resumes on restart, no replay required.</div>
+      </details>
+
+      <details class="faq-item">
+        <summary class="faq-q" data-i18n="faq.q10">Will my agent lose context between turns?</summary>
+        <div class="faq-a" data-i18n="faq.a10">No. Coordinator events arrive between turns via MQTT push or polling. Your agent reads them and re-enters its turn loop with new context appended.</div>
+      </details>
+
+    </div>
+  </div>
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Does this replace git worktrees?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "No. Worktrees solve filesystem isolation; mcp-coordinator solves intent coordination. Use both."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Is it production-ready?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "216 unit tests across 4 conflict scenarios, MIT-licensed, semver, doctor command, structured Pino logs."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "What does it cost?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "MIT-licensed and free. Self-hosted on your machine, your LAN, or your cloud."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Which MCP clients work?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Any MCP 2024-11-05 client: Claude Code, Cursor, Cline, Aider, custom scripts. HTTP/SSE or stdio."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Can multiple repos share one coordinator?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes via shared LAN or self-hosted cloud deployment. Cross-repo first-class support is on the roadmap (v1.0)."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Is auth or JWT required?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Local mode: no. Team or cloud mode: opt-in HS256 JWT via jose."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How is this different from Aider or Cline's own coordination?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Aider and Cline are single-process with no cross-session awareness. mcp-coordinator gives them shared state via the MQTT broker."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Yet another tool to maintain?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "One npm install -g. Embedded MQTT broker, SQLite, and dashboard ship in the package. Zero sidecar. Symmetric uninstall removes everything cleanly."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "What if the coordinator goes down?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Agents fail open and keep working as if uninstalled. Local SQLite resumes on restart, no replay required."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Will my agent lose context between turns?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "No. Coordinator events arrive between turns via MQTT push or polling. Your agent reads them and re-enters its turn loop with new context appended."
+        }
+      }
+    ]
+  }
+  </script>
+</section>

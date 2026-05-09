@@ -1,0 +1,157 @@
+<section id="templates">
+  <div class="container">
+    <div class="text-center">
+      <h2 class="section-title" data-i18n="templates.title">Coordination patterns</h2>
+      <p class="section-sub" data-i18n="templates.subtitle">Pre-built coordination shapes for common multi-agent scenarios. Composable with essaim behaviors.</p>
+    </div>
+    <div class="tmpl-grid fade-in">
+
+      <div class="tmpl-card">
+        <div class="tmpl-header">
+          <div class="tmpl-icon parallel" aria-hidden="true">&#9783;</div>
+          <div class="tmpl-name" data-i18n="templates.parallel.name">Parallel</div>
+        </div>
+        <p class="tmpl-desc" data-i18n="templates.parallel.desc">All agents start at once. They consult through the MQTT broker the moment two announcements overlap.</p>
+        <pre class="tmpl-flow"><span class="fl-blue">[A]</span> <span class="fl-blue">[B]</span> <span class="fl-blue">[C]</span> <span class="fl-blue">[D]</span>
+ <span class="fl-dim">|</span>   <span class="fl-dim">|</span>   <span class="fl-dim">|</span>   <span class="fl-dim">|</span>
+ <span class="fl-green">&rarr;</span> overlap on <span class="fl-yellow">types.ts</span>
+ <span class="fl-dim">|</span>   <span class="fl-dim">|</span>
+ <span class="fl-green">consultation</span></pre>
+        <div class="tmpl-meta">
+          <span class="tmpl-tag tag-agents" data-i18n="templates.parallel.tagAgents">4-8 agents</span>
+          <span class="tmpl-tag tag-mode" data-i18n="templates.parallel.tagMode">mode: parallel</span>
+          <span class="tmpl-tag tag-profile" data-i18n="templates.parallel.tagProfile">profile: coder</span>
+        </div>
+        <div class="tmpl-behaviors">
+          <div class="tmpl-layer">
+            <div class="tmpl-layer-bar foundation"></div>
+            <div class="tmpl-layer-text"><strong data-i18n="templates.layer.foundation">Foundation</strong> <span data-i18n="templates.parallel.foundation">announce, consult, resolve</span></div>
+          </div>
+          <div class="tmpl-layer">
+            <div class="tmpl-layer-bar pattern"></div>
+            <div class="tmpl-layer-text"><strong data-i18n="templates.layer.pattern">Pattern</strong> <span data-i18n="templates.parallel.pattern">contend on overlap</span></div>
+          </div>
+          <div class="tmpl-layer">
+            <div class="tmpl-layer-bar mission"></div>
+            <div class="tmpl-layer-text"><strong data-i18n="templates.layer.mission">Mission</strong> <span data-i18n="templates.parallel.mission">ship feature batch</span></div>
+          </div>
+          <div class="tmpl-layer">
+            <div class="tmpl-layer-bar safety"></div>
+            <div class="tmpl-layer-text"><strong data-i18n="templates.layer.safety">Safety</strong> <span data-i18n="templates.parallel.safety">block on impact &ge; 80</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tmpl-card">
+        <div class="tmpl-header">
+          <div class="tmpl-icon sequential" aria-hidden="true">&rarr;</div>
+          <div class="tmpl-name" data-i18n="templates.sequential.name">Sequential</div>
+        </div>
+        <p class="tmpl-desc" data-i18n="templates.sequential.desc">Agents work in declared order. Each one consumes the prior agent's output before announcing its own work.</p>
+        <pre class="tmpl-flow"><span class="fl-blue">[A]</span> <span class="fl-green">&rarr;</span> <span class="fl-blue">[B]</span> <span class="fl-green">&rarr;</span> <span class="fl-blue">[C]</span>
+ <span class="fl-dim">spec</span>   <span class="fl-dim">code</span>   <span class="fl-dim">test</span>
+ <span class="fl-yellow">handoff</span> between turns</pre>
+        <div class="tmpl-meta">
+          <span class="tmpl-tag tag-agents" data-i18n="templates.sequential.tagAgents">2-5 agents</span>
+          <span class="tmpl-tag tag-mode" data-i18n="templates.sequential.tagMode">mode: sequential</span>
+          <span class="tmpl-tag tag-profile" data-i18n="templates.sequential.tagProfile">profile: pipeline</span>
+        </div>
+        <div class="tmpl-behaviors">
+          <div class="tmpl-layer">
+            <div class="tmpl-layer-bar foundation"></div>
+            <div class="tmpl-layer-text"><strong data-i18n="templates.layer.foundation">Foundation</strong> <span data-i18n="templates.sequential.foundation">announce, consult, resolve</span></div>
+          </div>
+          <div class="tmpl-layer">
+            <div class="tmpl-layer-bar pattern"></div>
+            <div class="tmpl-layer-text"><strong data-i18n="templates.layer.pattern">Pattern</strong> <span data-i18n="templates.sequential.pattern">wait for upstream resolve</span></div>
+          </div>
+          <div class="tmpl-layer">
+            <div class="tmpl-layer-bar mission"></div>
+            <div class="tmpl-layer-text"><strong data-i18n="templates.layer.mission">Mission</strong> <span data-i18n="templates.sequential.mission">spec &rarr; code &rarr; test</span></div>
+          </div>
+          <div class="tmpl-layer">
+            <div class="tmpl-layer-bar safety"></div>
+            <div class="tmpl-layer-text"><strong data-i18n="templates.layer.safety">Safety</strong> <span data-i18n="templates.sequential.safety">stop chain on failed step</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tmpl-card">
+        <div class="tmpl-header">
+          <div class="tmpl-icon hierarchy" aria-hidden="true">&#9783;</div>
+          <div class="tmpl-name" data-i18n="templates.hierarchy.name">Hierarchy</div>
+        </div>
+        <p class="tmpl-desc" data-i18n="templates.hierarchy.desc">A lead agent splits the mission and dispatches subtasks. Subordinates announce work, consult, and report back.</p>
+        <pre class="tmpl-flow">      <span class="fl-green">[lead]</span>
+     <span class="fl-dim">/</span>  <span class="fl-dim">|</span>  <span class="fl-dim">\</span>
+  <span class="fl-blue">[A]</span> <span class="fl-blue">[B]</span> <span class="fl-blue">[C]</span>
+   <span class="fl-yellow">&uarr;</span>   <span class="fl-yellow">&uarr;</span>   <span class="fl-yellow">&uarr;</span>
+   <span class="fl-dim">report results</span></pre>
+        <div class="tmpl-meta">
+          <span class="tmpl-tag tag-agents" data-i18n="templates.hierarchy.tagAgents">1+N agents</span>
+          <span class="tmpl-tag tag-mode" data-i18n="templates.hierarchy.tagMode">mode: hierarchy</span>
+          <span class="tmpl-tag tag-profile" data-i18n="templates.hierarchy.tagProfile">profile: lead-dispatch</span>
+        </div>
+        <div class="tmpl-behaviors">
+          <div class="tmpl-layer">
+            <div class="tmpl-layer-bar foundation"></div>
+            <div class="tmpl-layer-text"><strong data-i18n="templates.layer.foundation">Foundation</strong> <span data-i18n="templates.hierarchy.foundation">announce, consult, resolve</span></div>
+          </div>
+          <div class="tmpl-layer">
+            <div class="tmpl-layer-bar pattern"></div>
+            <div class="tmpl-layer-text"><strong data-i18n="templates.layer.pattern">Pattern</strong> <span data-i18n="templates.hierarchy.pattern">lead dispatches, workers report</span></div>
+          </div>
+          <div class="tmpl-layer">
+            <div class="tmpl-layer-bar mission"></div>
+            <div class="tmpl-layer-text"><strong data-i18n="templates.layer.mission">Mission</strong> <span data-i18n="templates.hierarchy.mission">decompose then assemble</span></div>
+          </div>
+          <div class="tmpl-layer">
+            <div class="tmpl-layer-bar safety"></div>
+            <div class="tmpl-layer-text"><strong data-i18n="templates.layer.safety">Safety</strong> <span data-i18n="templates.hierarchy.safety">lead vetoes risky merges</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tmpl-card">
+        <div class="tmpl-header">
+          <div class="tmpl-icon readonly" aria-hidden="true">&#128065;</div>
+          <div class="tmpl-name" data-i18n="templates.readonly.name">Read-only</div>
+        </div>
+        <p class="tmpl-desc" data-i18n="templates.readonly.desc">Observer agents watch the timeline. They post warnings or comments without ever announcing their own work.</p>
+        <pre class="tmpl-flow"><span class="fl-blue">[A]</span> <span class="fl-blue">[B]</span> <span class="fl-blue">[C]</span> <span class="fl-dim">working</span>
+ <span class="fl-dim">|</span>   <span class="fl-dim">|</span>   <span class="fl-dim">|</span>
+<span class="fl-green">[obs]</span> reads timeline
+ <span class="fl-yellow">&rarr;</span> comment, warn</pre>
+        <div class="tmpl-meta">
+          <span class="tmpl-tag tag-agents" data-i18n="templates.readonly.tagAgents">0..many</span>
+          <span class="tmpl-tag tag-mode" data-i18n="templates.readonly.tagMode">mode: readonly</span>
+          <span class="tmpl-tag tag-profile" data-i18n="templates.readonly.tagProfile">profile: reviewer</span>
+          <span class="tmpl-tag tag-rule" data-i18n="templates.readonly.tagRule">no writes</span>
+        </div>
+        <div class="tmpl-behaviors">
+          <div class="tmpl-layer">
+            <div class="tmpl-layer-bar foundation"></div>
+            <div class="tmpl-layer-text"><strong data-i18n="templates.layer.foundation">Foundation</strong> <span data-i18n="templates.readonly.foundation">subscribe, read events</span></div>
+          </div>
+          <div class="tmpl-layer">
+            <div class="tmpl-layer-bar pattern"></div>
+            <div class="tmpl-layer-text"><strong data-i18n="templates.layer.pattern">Pattern</strong> <span data-i18n="templates.readonly.pattern">observe without announcing</span></div>
+          </div>
+          <div class="tmpl-layer">
+            <div class="tmpl-layer-bar mission"></div>
+            <div class="tmpl-layer-text"><strong data-i18n="templates.layer.mission">Mission</strong> <span data-i18n="templates.readonly.mission">review, audit, comment</span></div>
+          </div>
+          <div class="tmpl-layer">
+            <div class="tmpl-layer-bar safety"></div>
+            <div class="tmpl-layer-text"><strong data-i18n="templates.layer.safety">Safety</strong> <span data-i18n="templates.readonly.safety">refuse all write tools</span></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+    <p class="text-center" style="margin-top: 1.5rem; color: var(--muted); font-size: 0.9rem;">
+      <span data-i18n="templates.footnote">Each pattern composes with essaim behaviors.</span>
+      <a href="https://github.com/swoofer/essaim/tree/main/behaviors" rel="noopener noreferrer" data-i18n="templates.footnoteLink">See the full catalog &rarr;</a>
+    </p>
+  </div>
+</section>

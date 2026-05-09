@@ -1,0 +1,41 @@
+<section id="solution">
+  <div class="container">
+    <div class="text-center">
+      <h2 class="section-title" data-i18n="solution.title">See it run live</h2>
+      <p class="section-sub" data-i18n="solution.subtitle">Four agents stay aligned in real time without chat tools, merge gymnastics, or shared spreadsheets.</p>
+    </div>
+
+    <div class="mini-dash is-playing fade-in" id="solution-mock" aria-label="Live dashboard demo">
+      <div class="mini-dash-agents">
+        <div class="mini-dash-agent"><span class="dot dot-blue" aria-hidden="true"></span> Alpha</div>
+        <div class="mini-dash-agent"><span class="dot dot-green" aria-hidden="true"></span> Beta</div>
+        <div class="mini-dash-agent"><span class="dot dot-yellow" aria-hidden="true"></span> Gamma</div>
+        <div class="mini-dash-agent"><span class="dot dot-red" aria-hidden="true"></span> Delta</div>
+      </div>
+      <div class="mini-dash-timeline">
+        <div class="mini-dash-row"><span class="tl-time">10:42:01</span> <span class="tl-blue">Alpha</span> announced <code>src/api/auth.ts</code></div>
+        <div class="mini-dash-row"><span class="tl-time">10:42:01</span> <span class="tl-yellow">&#9888; overlap detected &mdash; Beta paused</span></div>
+        <div class="mini-dash-row"><span class="tl-time">10:42:14</span> <span class="tl-blue">consultation thread</span> opened &mdash; Alpha &harr; Beta</div>
+        <div class="mini-dash-row"><span class="tl-time">10:43:08</span> <span class="tl-green">&#10003; consensus reached &mdash; both proceed</span></div>
+      </div>
+      <div class="mini-dash-metrics">
+        <strong>1</strong> consultation &nbsp;&middot;&nbsp; <strong>1</strong> conflict caught &nbsp;&middot;&nbsp; <strong>67s</strong> to consensus
+      </div>
+    </div>
+
+    <div class="text-center" style="margin-top:1rem;">
+      <button type="button" class="btn btn-outline btn-replay" id="solution-replay" aria-controls="solution-mock" data-i18n-aria-label="solution.replay.aria" aria-label="Replay the dashboard demo">
+        <span aria-hidden="true">&#x21BB;</span> <span data-i18n="solution.replay.label">Play again</span>
+      </button>
+    </div>
+
+    <div class="feature-highlight fade-in" style="margin-top:3rem;">
+      <h3 data-i18n="solution.highlight.title">Conflicts caught before code is written</h3>
+      <p data-i18n="solution.highlight.desc">Every announcement reaches every concerned agent before they open a file. Overlaps surface as a paused turn, not a midnight rollback.</p>
+    </div>
+
+    <p class="text-center solution-deeplink" style="margin-top:1.75rem;">
+      <a href="#mechanism" class="text-link" data-i18n="solution.deeplink">Want the technical details? &rarr; How it works</a>
+    </p>
+  </div>
+</section>

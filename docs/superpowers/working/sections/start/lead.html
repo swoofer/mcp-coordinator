@@ -1,0 +1,67 @@
+<section id="start">
+  <span id="install" class="anchor-alias"></span>
+  <span id="dashboard" class="anchor-alias"></span>
+  <div class="container">
+    <div class="text-center">
+      <h2 class="section-title" data-i18n="start.title">Get started</h2>
+      <p class="section-sub" data-i18n="start.subtitle">One npm package. Embedded broker, dashboard, and SQLite. From install to a coordinated session in under a minute.</p>
+    </div>
+
+    <!-- 4 install steps (kept order — tutorial) -->
+    <div class="install-grid fade-in">
+      <div class="install-card">
+        <div class="install-step" data-i18n="start.step1.label">Step 1</div>
+        <h3 data-i18n="start.step1.title">Install</h3>
+        <p style="color:var(--muted); font-size:0.88rem;" data-i18n="start.step1.desc">One npm package. No separate broker, no database to provision.</p>
+        <div class="code-block">npm install -g mcp-coordinator</div>
+      </div>
+      <div class="install-card">
+        <div class="install-step" data-i18n="start.step2.label">Step 2</div>
+        <h3 data-i18n="start.step2.title">First-time setup</h3>
+        <p style="color:var(--muted); font-size:0.88rem;" data-i18n="start.step2.desc">Creates the config directory, writes a default <code style="color:var(--accent);font-size:0.85em;">config.json</code>, and prints the <code style="color:var(--accent);font-size:0.85em;">.mcp.json</code> snippet for your MCP client (Claude Code, Cursor, Cline). Add <code style="color:var(--accent);font-size:0.85em;">--write-mcp-config &lt;path&gt;</code> to merge the snippet straight into a project's <code style="color:var(--accent);font-size:0.85em;">.mcp.json</code>.</p>
+        <div class="code-block">mcp-coordinator init</div>
+      </div>
+      <div class="install-card">
+        <div class="install-step" data-i18n="start.step3.label">Step 3</div>
+        <h3 data-i18n="start.step3.title">Start the server</h3>
+        <p style="color:var(--muted); font-size:0.88rem;" data-i18n="start.step3.desc">Boots the MCP server, embedded MQTT broker, and dashboard on <code style="color:var(--accent);font-size:0.85em;">localhost:3100</code>. <code style="color:var(--accent);font-size:0.85em;">--daemon</code> backgrounds the process and writes logs to the config directory.</p>
+        <div class="code-block">mcp-coordinator server start --daemon</div>
+      </div>
+      <div class="install-card">
+        <div class="install-step" data-i18n="start.step4.label">Step 4</div>
+        <h3 data-i18n="start.step4.title">Verify and open</h3>
+        <p style="color:var(--muted); font-size:0.88rem;" data-i18n="start.step4.desc">Doctor checks config, server, MCP responses, and MQTT connections. Then it opens the dashboard at <code style="color:var(--accent);font-size:0.85em;">localhost:3100/dashboard</code>.</p>
+        <div class="code-block">mcp-coordinator doctor &amp;&amp; mcp-coordinator dashboard</div>
+      </div>
+    </div>
+    <p class="install-note text-center" style="color:var(--muted); font-size:0.88rem; margin-top:1.5rem;" data-i18n="start.note"><code style="color:var(--accent);font-size:0.85em;">git worktree add ../feature-x main</code> and run each agent in its own worktree &mdash; mcp-coordinator handles "who's editing types.ts"; worktrees handle "no two agents fighting the same inode."</p>
+
+    <!-- Dashboard preview (moved from #dashboard) -->
+    <h3 class="section-subtitle" style="margin-top: 3rem;" data-i18n="start.dash.title">What you'll see in 60 seconds</h3>
+    <figure class="dash-preview fade-in" role="img" aria-label="Sample dashboard view: four agents tracked live, with a conflict resolved in 38 seconds" data-i18n-aria="start.dash.aria">
+      <div class="dash-header">
+        <div class="agent-status"><span class="dot dot-blue" aria-hidden="true"></span> Alpha &mdash; working</div>
+        <div class="agent-status"><span class="dot dot-green" aria-hidden="true"></span> Beta &mdash; idle</div>
+        <div class="agent-status"><span class="dot dot-yellow" aria-hidden="true"></span> Gamma &mdash; waiting</div>
+        <div class="agent-status"><span class="dot dot-red" aria-hidden="true"></span> Delta &mdash; offline</div>
+        <div class="agent-status" style="margin-left: auto; color: var(--muted); font-size: 0.8rem;">mcp-coordinator v0.2.1 &middot; quota 62%</div>
+      </div>
+      <div class="dash-timeline">
+        <div><span class="tl-time">09:41:02</span> <span class="tl-blue">Alpha</span> announced: "Add updated_at to User" &rarr; types.ts, user.service.ts</div>
+        <div><span class="tl-time">09:41:03</span> <span class="tl-blue">Beta</span> announced: "Migrate User schema" &rarr; types.ts, migrations/</div>
+        <div><span class="tl-time">09:41:04</span> <span class="tl-yellow">&#9889; Conflict scored 100</span> &mdash; same file: types.ts &mdash; thread T-812 opened</div>
+        <div><span class="tl-time">09:41:09</span> <span class="tl-blue">Alpha</span> post_to_thread: "adding a single field, no interface rename"</div>
+        <div><span class="tl-time">09:41:14</span> <span class="tl-green">Beta</span> post_to_thread: "compatible &mdash; I'll add migration after your field lands"</div>
+        <div><span class="tl-time">09:41:21</span> <span class="tl-blue">Alpha</span> propose_resolution &rarr; status resolving</div>
+        <div><span class="tl-time">09:41:38</span> <span class="tl-green">&#10003; Consensus</span> &mdash; Alpha proceeds, Beta waits (38s)</div>
+        <div><span class="tl-time">09:42:05</span> <span class="tl-dim">quota_update</span> &mdash; utilization 62.4% &middot; <span class="tl-dim">+180k tokens last 5min</span></div>
+      </div>
+    </figure>
+
+    <!-- Closing CTA cluster (synthesis §8 row 4) -->
+    <div class="start-cta text-center" style="margin-top: 3rem;">
+      <a href="https://github.com/swoofer/mcp-coordinator" target="_blank" rel="noopener noreferrer" class="btn btn-outline" data-i18n="start.cta.star">Star on GitHub</a>
+      <a href="https://github.com/swoofer/mcp-coordinator/issues" target="_blank" rel="noopener noreferrer" class="btn-text" data-i18n="start.cta.issue">Open an issue</a>
+    </div>
+  </div>
+</section>

@@ -1,0 +1,72 @@
+<!-- ROADMAP -->
+<section id="roadmap">
+  <div class="container">
+    <div class="text-center">
+      <h2 class="section-title" data-i18n="roadmap.title">Roadmap</h2>
+      <p class="section-sub" data-i18n="roadmap.subtitle">Shipped, in flight, and what comes after.</p>
+    </div>
+    <div class="timeline fade-in">
+
+      <div class="timeline-item">
+        <div class="timeline-dot dot-done" aria-hidden="true"></div>
+        <div class="timeline-badge badge-done" data-i18n="roadmap.badge.done">Shipped</div>
+        <h4 data-i18n="roadmap.v01.title">v0.1 — Server extraction</h4>
+        <p data-i18n="roadmap.v01.desc">26 MCP tools, embedded Aedes broker, SQLite state, real-time dashboard. Standalone npm package.</p>
+        <p class="timeline-meta">
+          <span data-i18n="roadmap.v01.date">Shipped May 2026</span>
+          <span aria-hidden="true">·</span>
+          <a href="https://github.com/swoofer/mcp-coordinator/releases/tag/v0.1.0" target="_blank" rel="noopener noreferrer" data-i18n="roadmap.v01.link" aria-label="v0.1.0 release on GitHub">v0.1.0 release</a>
+        </p>
+      </div>
+
+      <div class="timeline-item">
+        <div class="timeline-dot dot-done" aria-hidden="true"></div>
+        <div class="timeline-badge badge-done" data-i18n="roadmap.badge.done">Shipped</div>
+        <h4 data-i18n="roadmap.v02.title">v0.2 — Standalone autonomy</h4>
+        <p data-i18n="roadmap.v02.desc">First-run <code>init</code>, <code>doctor</code> diagnostics, daemon log tailing via <code>server logs</code>, symmetric <code>uninstall</code>. Vanilla MCP clients (Claude Code, Cursor, Cline) coordinate via polling out of the box; essaim's agent-loop adds push.</p>
+        <p class="timeline-meta">
+          <span data-i18n="roadmap.v02.date">Shipped May 2026</span>
+          <span aria-hidden="true">·</span>
+          <a href="https://github.com/swoofer/mcp-coordinator/releases/tag/v0.2.0" target="_blank" rel="noopener noreferrer" data-i18n="roadmap.v02.link" aria-label="v0.2.0 release on GitHub">v0.2.0 release</a>
+        </p>
+      </div>
+
+      <div class="timeline-item">
+        <div class="timeline-dot dot-planned" aria-hidden="true"></div>
+        <div class="timeline-badge badge-planned" data-i18n="roadmap.badge.planned">Planned</div>
+        <h4 data-i18n="roadmap.v03.title">v0.3 — Semantic conflict detection</h4>
+        <p data-i18n="roadmap.v03.desc">AST-level analysis on top of filename scoring. Detect API contract changes, interface incompatibilities, and breaking changes before a thread even opens.</p>
+        <p class="timeline-meta">
+          <span data-i18n="roadmap.v03.date">Target Q3 2026</span>
+          <span aria-hidden="true">·</span>
+          <a href="https://github.com/swoofer/mcp-coordinator/issues?q=is%3Aissue+label%3Av0.3" target="_blank" rel="noopener noreferrer" data-i18n="roadmap.v03.link" aria-label="v0.3 issues on GitHub">Track on GitHub</a>
+        </p>
+      </div>
+
+      <div class="timeline-item">
+        <div class="timeline-dot dot-future" aria-hidden="true"></div>
+        <div class="timeline-badge badge-future" data-i18n="roadmap.badge.future">Future</div>
+        <h4 data-i18n="roadmap.v10.title">v1.0 — Stable API + cross-repo coordination</h4>
+        <p data-i18n="roadmap.v10.desc">Frozen public API, versioned REST endpoints, migration guides. Coordination across multiple repositories from a single MQTT broker.</p>
+        <p class="timeline-meta">
+          <span data-i18n="roadmap.v10.date">Date TBD</span>
+          <span aria-hidden="true">·</span>
+          <a href="https://github.com/swoofer/mcp-coordinator/issues?q=is%3Aissue+label%3Av1.0" target="_blank" rel="noopener noreferrer" data-i18n="roadmap.v10.link" aria-label="v1.0 issues on GitHub">Track on GitHub</a>
+        </p>
+      </div>
+
+      <div class="timeline-item">
+        <div class="timeline-dot dot-future" aria-hidden="true"></div>
+        <div class="timeline-badge badge-future" data-i18n="roadmap.badge.future">Future</div>
+        <h4 data-i18n="roadmap.harbor.title">Server-gated push (when available)</h4>
+        <p data-i18n="roadmap.harbor.desc">Native integration with Anthropic's forthcoming server-side push channel (internally tracked as <code>tengu_harbor</code>). Listener code already lives alongside the MQTT bridge. The moment it ships, mcp-coordinator plugs in.</p>
+        <p class="timeline-meta">
+          <span data-i18n="roadmap.harbor.date">Date TBD · upstream-gated</span>
+          <span aria-hidden="true">·</span>
+          <a href="https://github.com/swoofer/mcp-coordinator/issues?q=is%3Aissue+tengu_harbor" target="_blank" rel="noopener noreferrer" data-i18n="roadmap.harbor.link" aria-label="tengu_harbor issues on GitHub">Track on GitHub</a>
+        </p>
+      </div>
+
+    </div>
+  </div>
+</section>

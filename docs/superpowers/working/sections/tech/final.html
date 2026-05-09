@@ -1,0 +1,115 @@
+<section id="tech">
+  <span id="architecture" class="anchor-alias"></span>
+  <span id="deploy" class="anchor-alias"></span>
+  <div class="container">
+    <div class="text-center">
+      <h2 class="section-title" data-i18n="tech.title">Architecture &amp; deployment</h2>
+      <p class="section-sub" data-i18n="tech.subtitle">One agent-loop per developer, one coordinator serving MCP, MQTT, and the dashboard, same shape from laptop to cloud.</p>
+    </div>
+
+    <!-- Sub-block A: Architecture -->
+    <h3 class="section-subtitle" data-i18n="tech.arch.title">The shape of a coordinated session</h3>
+    <div class="arch-diagram fade-in">
+      <div class="arch-row">
+        <div class="arch-box">Dev A<br/><small>agent-loop</small></div>
+        <div class="arch-arrow" aria-hidden="true">&harr;</div>
+        <div class="arch-box accent">Coordinator<br/><small>MCP + MQTT + SSE</small></div>
+        <div class="arch-arrow" aria-hidden="true">&harr;</div>
+        <div class="arch-box">Dev B<br/><small>agent-loop</small></div>
+      </div>
+      <div class="arch-down" aria-hidden="true">&darr;</div>
+      <div class="arch-row">
+        <div class="arch-box neutral">Aedes broker<br/><small>TCP 1883 / WS /mqtt</small></div>
+        <div class="arch-arrow" aria-hidden="true">&nbsp;</div>
+        <div class="arch-box neutral">Dashboard<br/><small>SSE events :3100/dashboard</small></div>
+      </div>
+    </div>
+    <div class="cards">
+      <div class="card">
+        <h3 data-i18n="tech.arch.card1.title">Agent-loop</h3>
+        <p data-i18n="tech.arch.card1.desc">A programmatic loop wrapping the Claude CLI (spawn-per-turn <code>claude -p --resume</code>). Holds the MQTT listener, the protocol state machine, and the work-stealing claim logic. Use <a href="https://github.com/swoofer/essaim" target="_blank" rel="noopener noreferrer">essaim</a>'s loop, or roll your own.</p>
+      </div>
+      <div class="card">
+        <h3 data-i18n="tech.arch.card2.title">Coordinator server</h3>
+        <p data-i18n="tech.arch.card2.desc">A Node.js process exposing 26 MCP tools over HTTP/SSE, with the embedded Aedes MQTT broker. SQLite stores threads, agents, and the dependency map. Anthropic quota is pre-flighted before multi-agent runs.</p>
+      </div>
+      <div class="card">
+        <h3 data-i18n="tech.arch.card3.title">Dashboard</h3>
+        <p data-i18n="tech.arch.card3.desc">A live SSE stream at <code>localhost:3100/dashboard</code>. Per-agent activity, scoring breakdown, quota widget, decision timeline. No auth in local mode; JWT-gated for cloud.</p>
+      </div>
+    </div>
+
+    <!-- Sub-block B: Deploy modes -->
+    <h3 class="section-subtitle" data-i18n="tech.deploy.title">Three modes, one experience</h3>
+    <div class="deploy-grid fade-in">
+
+      <!-- Local -->
+      <div class="deploy-card local">
+        <div class="deploy-badge badge-local"><span aria-hidden="true">&#128187;</span> Local</div>
+        <h3 data-i18n="tech.deploy.local.title">Local mode</h3>
+        <p data-i18n="tech.deploy.local.desc">Coordinator, broker, and dashboard on your machine. Best for solo work or trying mcp-coordinator before bringing teammates in.</p>
+        <div class="deploy-diagram">
+          <div class="dd-container-label">Your Machine</div>
+          <div class="dd-container">
+            <div class="dd-row">
+              <div class="dd-box dd-muted">claude<br/><small>agent-loop</small></div>
+              <div class="dd-arrow" aria-hidden="true">&harr;</div>
+              <div class="dd-box dd-accent">Coordinator<br/><small>:3100</small></div>
+            </div>
+            <div class="dd-row">
+              <div class="dd-box dd-muted">MQTT broker<br/><small>Aedes &middot; :1883 / /mqtt</small></div>
+              <div class="dd-arrow" aria-hidden="true">&harr;</div>
+              <div class="dd-box dd-accent">Dashboard<br/><small>:3100/dashboard</small></div>
+            </div>
+          </div>
+        </div>
+        <div class="deploy-cmd"><code>mcp-coordinator server start --daemon</code></div>
+      </div>
+
+      <!-- Team -->
+      <div class="deploy-card team">
+        <div class="deploy-badge badge-team"><span aria-hidden="true">&#127970;</span> Team</div>
+        <h3 data-i18n="tech.deploy.team.title">Team server</h3>
+        <p data-i18n="tech.deploy.team.desc">One coordinator on a shared LAN machine. Every developer's agent-loop connects to the same instance. Every announcement, every consultation, visible to the whole team.</p>
+        <div class="deploy-diagram">
+          <div class="dd-row">
+            <div class="dd-box">Dev A<br/><small>agent-loop</small></div>
+            <div class="dd-arrow" aria-hidden="true">&harr;</div>
+            <div class="dd-box dd-accent">Server (LAN)<br/><small>Coordinator :3100</small><br/><small>MQTT :1883 / /mqtt</small><br/><small>Dashboard /dashboard</small></div>
+            <div class="dd-arrow" aria-hidden="true">&harr;</div>
+            <div class="dd-box">Dev B<br/><small>agent-loop</small></div>
+          </div>
+          <div class="dd-row dd-row-secondary">
+            <div class="dd-box">Dev C<br/><small>agent-loop</small></div>
+            <div class="dd-arrow" aria-hidden="true">&nearr;</div>
+            <div class="dd-box dd-muted">SQLite + volumes</div>
+          </div>
+        </div>
+        <div class="deploy-cmd"><code>mcp-coordinator init ~/project --url http://192.168.x.x:3100 --name "Alice"</code></div>
+      </div>
+
+      <!-- Cloud -->
+      <div class="deploy-card cloud">
+        <div class="deploy-badge badge-cloud"><span aria-hidden="true">&#9729;</span> Cloud</div>
+        <h3 data-i18n="tech.deploy.cloud.title">Cloud hosted</h3>
+        <p data-i18n="tech.deploy.cloud.desc">Self-hosted on a VM or container. Remote teams coordinate through one TLS endpoint, with WebSocket MQTT on port 443. JWT-gated.</p>
+        <div class="deploy-diagram">
+          <div class="dd-row">
+            <div class="dd-box">Montreal<br/><small>agent-loop</small></div>
+            <div class="dd-arrow" aria-hidden="true">&harr;</div>
+            <div class="dd-box dd-violet">Cloud (AWS / GCP)<br/><small>Coordinator + Aedes</small><br/><small>WS /mqtt on 443</small><br/><small>TLS + JWT auth</small></div>
+            <div class="dd-arrow" aria-hidden="true">&harr;</div>
+            <div class="dd-box">Toronto<br/><small>agent-loop</small></div>
+          </div>
+          <div class="dd-row dd-row-secondary">
+            <div class="dd-box">Remote<br/><small>agent-loop</small></div>
+            <div class="dd-arrow" aria-hidden="true">&nearr;</div>
+            <div class="dd-box dd-violet">coordinator.team.com</div>
+          </div>
+        </div>
+        <div class="deploy-cmd"><code>mcp-coordinator init ~/project --name "Alice" --url https://coordinator.team.com</code></div>
+      </div>
+
+    </div>
+  </div>
+</section>

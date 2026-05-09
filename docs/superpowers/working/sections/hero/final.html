@@ -1,0 +1,65 @@
+<!-- NAV-REPLACEMENT START -->
+<nav>
+  <div class="nav-logo">
+    <span aria-hidden="true">&#x2B21;</span> MCP Coordinator
+  </div>
+  <button class="hamburger" type="button" aria-label="Menu" aria-expanded="false" aria-controls="primary-nav">
+    <span aria-hidden="true">&#9776;</span>
+  </button>
+  <div id="primary-nav" class="nav-links">
+    <a href="#mechanism" data-i18n="nav.how">How</a>
+    <a href="#templates" data-i18n="nav.patterns">Patterns</a>
+    <a href="#compare" data-i18n="nav.compare">Compare</a>
+    <a href="#tech" data-i18n="nav.arch">Architecture</a>
+    <a href="#faq" data-i18n="nav.faq">FAQ</a>
+    <a href="#roadmap" data-i18n="nav.roadmap">Roadmap</a>
+    <a href="https://github.com/swoofer/mcp-coordinator" target="_blank" rel="noopener noreferrer">GitHub</a>
+    <a href="#start" class="btn-sm" data-i18n="nav.getstarted">Get Started</a>
+    <div class="lang-switcher" role="group" aria-label="Language">
+      <button class="lang-btn active" type="button" data-lang="en" lang="en" aria-pressed="true">EN</button>
+      <button class="lang-btn" type="button" data-lang="fr" lang="fr" aria-pressed="false">FR</button>
+      <button class="lang-btn" type="button" data-lang="es" lang="es" aria-pressed="false">ES</button>
+      <button class="lang-btn" type="button" data-lang="de" lang="de" aria-pressed="false">DE</button>
+      <button class="lang-btn" type="button" data-lang="zh" lang="zh" aria-pressed="false">中文</button>
+      <button class="lang-btn" type="button" data-lang="ja" lang="ja" aria-pressed="false">JA</button>
+    </div>
+  </div>
+</nav>
+<!-- NAV-REPLACEMENT END -->
+
+<!-- HERO-SECTION START -->
+<section id="hero">
+  <div class="container">
+    <div class="hero-eyebrow">
+      <span data-i18n="hero.eyebrow">Open Source &middot; MIT &middot; v0.2.x</span>
+    </div>
+    <h1 data-i18n="hero.h1">Zero conflicts. Every agent aligned.</h1>
+    <p class="hero-subtitle" data-i18n="hero.subtitle">5 agents, 1 codebase, 0 merge conflicts: the MCP server that keeps parallel Claude Code, Cursor, and Cline agents aligned.</p>
+
+    <div class="hero-stats">
+      <div class="stat-pill"><strong data-i18n="hero.stat.latency">&lt;50ms push latency</strong></div>
+      <div class="stat-pill"><strong data-i18n="hero.stat.sidecar">Zero sidecar</strong></div>
+      <div class="stat-pill"><strong data-i18n="hero.stat.client">Any MCP client</strong></div>
+    </div>
+
+    <figure aria-label="Live demo: two agents detect a conflict and reach consensus in 38 seconds" data-i18n-aria="hero.terminal.aria">
+      <div class="terminal" id="hero-terminal">
+        <div class="hero-term-line"><span class="t-blue">agent-alpha</span> <span class="t-dim">&rarr;</span> announce_work(<span class="t-green">"Add updated_at column to User"</span>, <span class="t-yellow">types.ts</span>)</div>
+        <div class="hero-term-line"><span class="t-red">&#9888;</span> <span class="t-yellow">conflict detected</span> <span class="t-dim">&mdash;</span> <span class="t-blue">agent-beta</span> is editing <span class="t-yellow">types.ts</span> right now</div>
+        <div class="hero-term-line"><span class="t-blue">agent-beta</span> <span class="t-dim">&rarr;</span> <span class="t-green">"compatible with my change, I'll add the migration after yours lands"</span></div>
+        <div class="hero-term-line"><span class="t-green">&#10003;</span> both proceed <span class="t-dim">&mdash;</span> <span class="t-green">consensus in 38s</span></div>
+      </div>
+    </figure>
+
+    <div class="hero-cta">
+      <a href="#start" class="btn btn-primary" data-i18n="hero.cta.start">Get Started</a>
+      <a href="#solution" class="btn btn-outline" data-i18n="hero.cta.seelive">See it live</a>
+      <a href="https://github.com/swoofer/mcp-coordinator" target="_blank" rel="noopener noreferrer" class="btn btn-ghost">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        <span data-i18n="hero.cta.github">Star on GitHub</span>
+        <img src="https://img.shields.io/github/stars/swoofer/mcp-coordinator?style=flat-square&label=&color=2a3144&labelColor=10131c" alt="" width="38" height="20" loading="lazy" decoding="async" aria-hidden="true">
+      </a>
+    </div>
+  </div>
+</section>
+<!-- HERO-SECTION END -->

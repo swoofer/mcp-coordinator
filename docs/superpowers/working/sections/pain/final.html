@@ -1,0 +1,27 @@
+<section id="pain">
+  <span id="why" class="anchor-alias"></span>
+  <span id="problem" class="anchor-alias"></span>
+  <div class="container">
+    <div class="text-center">
+      <h2 class="section-title" data-i18n="pain.title">The coordination pain</h2>
+      <p class="section-sub" data-i18n="pain.subtitle">Parallel agents without shared awareness produce three failure modes that ship to production.</p>
+    </div>
+    <div class="cards fade-in">
+      <div class="card">
+        <div class="card-icon" aria-hidden="true">&#128165;</div>
+        <h3 data-i18n="pain.card1.title">Silent regressions</h3>
+        <p data-i18n="pain.card1.desc">Tuesday 3pm. Alice's agent ships <code>User.updated_at</code>. Four minutes later, Bob's agent renames <code>User.id</code>. Tests pass. Prod breaks at 2am because the migration order was wrong.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon" aria-hidden="true">&#128257;</div>
+        <h3 data-i18n="pain.card2.title">Duplicated effort</h3>
+        <p data-i18n="pain.card2.desc">Two agents both implement retry logic. Agent A picks exponential backoff (250ms&rarr;8s). Agent B picks linear (500ms, 5 retries). Code review surfaces the divergence &mdash; 800k tokens in.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon" aria-hidden="true">&#128064;</div>
+        <h3 data-i18n="pain.card3.title">No visibility</h3>
+        <p data-i18n="pain.card3.desc">Tom asks his agent: &ldquo;is anyone else working on auth?&rdquo; The agent answers: &ldquo;I have no way to know.&rdquo; Tom shrugs and proceeds. Carol's agent did the same thing 20 minutes ago.</p>
+      </div>
+    </div>
+  </div>
+</section>

@@ -1,0 +1,44 @@
+<!-- COMPARE — Why not alternatives? -->
+<section id="compare">
+  <span id="worktrees" class="anchor-alias"></span>
+  <div class="container">
+    <div class="text-center">
+      <h2 class="section-title" data-i18n="compare.title">Why not alternatives?</h2>
+      <p class="section-sub" data-i18n="compare.subtitle">Worktrees, lockfiles, CI, orchestrators — none of them know your agent's intent.</p>
+    </div>
+    <div class="cards fade-in">
+      <div class="card">
+        <div class="card-icon" aria-hidden="true"><span aria-hidden="true">&#128194;</span></div>
+        <h3 data-i18n="compare.card1.title">…git worktrees?</h3>
+        <p data-i18n="compare.card1.desc">No. Worktrees isolate filesystems. mcp-coordinator coordinates intent. A clean merge of two incompatible designs still ships a broken runtime. Use both.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon" aria-hidden="true"><span aria-hidden="true">&#128101;</span></div>
+        <h3 data-i18n="compare.card2.title">…Claude Code subagents?</h3>
+        <p data-i18n="compare.card2.desc">Subagents coordinate inside one Claude Code session. mcp-coordinator coordinates any MCP client across any session, machine, or vendor. Cursor and Claude Code on different laptops can share one consultation thread.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon" aria-hidden="true"><span aria-hidden="true">&#128172;</span></div>
+        <h3 data-i18n="compare.card3.title">…Slack and manual coordination?</h3>
+        <p data-i18n="compare.card3.desc">Slack works because humans read it. Your agent doesn't. mcp-coordinator lets the agent itself ask "is anyone touching this file?" before writing — at a cost of a few milliseconds.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon" aria-hidden="true"><span aria-hidden="true">&#128737;</span></div>
+        <h3 data-i18n="compare.card4.title">…CI gates and branch protection?</h3>
+        <p data-i18n="compare.card4.desc">CI catches the conflict after both agents have already burned tokens writing incompatible code. mcp-coordinator catches it before a single line is written. CI is the safety net; this is the harness.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon" aria-hidden="true"><span aria-hidden="true">&#129517;</span></div>
+        <h3 data-i18n="compare.card5.title">…multi-agent orchestrators?</h3>
+        <p data-i18n="compare.card5.desc">Orchestrators run agents; mcp-coordinator is the protocol they speak. essaim composes with mcp-coordinator natively. AutoGen and CrewAI ship without conflict detection — pair them with mcp-coordinator and they stop colliding.</p>
+      </div>
+    </div>
+    <div class="compare-cta text-center" style="margin-top: 3rem;">
+      <span data-i18n="compare.cta.lede" style="display:block; margin-bottom: 0.75rem; color: var(--muted); font-size: 0.9rem;">One command to start coordinating:</span>
+      <div style="display:inline-flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:1rem;">
+        <code class="code-block">npm install -g mcp-coordinator</code>
+        <a href="#start" class="btn btn-primary" data-i18n="compare.cta.button">Install in one command</a>
+      </div>
+    </div>
+  </div>
+</section>
