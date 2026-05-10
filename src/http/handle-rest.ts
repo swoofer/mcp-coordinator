@@ -461,20 +461,38 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
                     : sinceParam.endsWith("d") ? parseInt(sinceParam) * 60 * 24
                     : 60 * 24;
     const db = getDb();
-    const layers = db.prepare(
-      `SELECT layer, COUNT(*) AS fire_count, AVG(score) AS avg_score
-       FROM layer_firings
-       WHERE fired_at > datetime('now', '-' || ? || ' minutes')
-       GROUP BY layer
+    const rows = db.prepare(
+      `SELECT
+         lf.layer,
+         COUNT(*) AS fire_count,
+         AVG(lf.score) AS avg_score,
+         SUM(CASE WHEN json_extract(e.payload, '$.resolution_type') = 'auto_resolved' THEN 1 ELSE 0 END) AS auto_resolved,
+         SUM(CASE WHEN json_extract(e.payload, '$.resolution_type') = 'consensus' THEN 1 ELSE 0 END) AS consensus,
+         SUM(CASE WHEN json_extract(e.payload, '$.resolution_type') = 'timeout' THEN 1 ELSE 0 END) AS timeout_count,
+         SUM(CASE WHEN json_extract(e.payload, '$.resolution_type') IN ('agent_departure','closed') THEN 1 ELSE 0 END) AS cancelled
+       FROM layer_firings lf
+       LEFT JOIN events e
+         ON e.type = 'thread_resolved'
+         AND json_extract(e.payload, '$.thread_id') = lf.thread_id
+       WHERE lf.fired_at > datetime('now', '-' || ? || ' minutes')
+       GROUP BY lf.layer
        ORDER BY fire_count DESC`
-    ).all(sinceMin) as Array<{ layer: string; fire_count: number; avg_score: number }>;
+    ).all(sinceMin) as Array<{
+      layer: string; fire_count: number; avg_score: number;
+      auto_resolved: number; consensus: number; timeout_count: number; cancelled: number;
+    }>;
     json(res, {
       window: { since: sinceParam, now: new Date().toISOString() },
-      layers: layers.map(l => ({
-        layer: l.layer,
-        fire_count: l.fire_count,
-        avg_score: l.avg_score,
-        outcomes: { auto_resolved: 0, consensus: 0, timeout: 0, cancelled: 0 },
+      layers: rows.map(r => ({
+        layer: r.layer,
+        fire_count: r.fire_count,
+        avg_score: r.avg_score,
+        outcomes: {
+          auto_resolved: r.auto_resolved,
+          consensus: r.consensus,
+          timeout: r.timeout_count,
+          cancelled: r.cancelled,
+        },
       })),
     });
 
