@@ -14,6 +14,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { createServices, createMcpServer, CoordinatorServices } from "./server-setup.js";
 import { createLogger, type Logger } from "./logger.js";
 import { initAuth, authenticateRequest, createToken, refreshToken, revokeAgent, setAuthLogger, type AuthResult } from "./auth.js";
+import { canResetDb } from "./reset-guard.js";
 import { assessPlanQuality } from "./plan-quality.js";
 import type { CoordinatorEvent } from "./types.js";
 import { getVersion } from "../cli/version.js";
@@ -438,6 +439,15 @@ async function handleRest(req: IncomingMessage, res: ServerResponse): Promise<vo
     }
 
   } else if (url === "/api/reset") {
+    // B4 fix: gate destructive reset when AUTH is disabled.
+    // When AUTH_ENABLED=true, ADMIN_ONLY_ROUTES already enforced upstream
+    // by authenticateRequest (see auth.ts). This guard covers the AUTH off case.
+    if (!canResetDb(process.env, AUTH_ENABLED)) {
+      json(res, {
+        error: "Forbidden: /api/reset requires NODE_ENV=test, COORDINATOR_ALLOW_RESET=true, or COORDINATOR_AUTH_ENABLED with admin token",
+      }, 403);
+      return;
+    }
     // Reset all tables for clean test run (disable FK checks to avoid ordering issues)
     const db = (await import("./database.js")).getDb();
     db.exec("PRAGMA foreign_keys = OFF");
