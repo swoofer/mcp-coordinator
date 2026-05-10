@@ -1767,16 +1767,16 @@
     <!-- v0.5 capabilities highlight -->
     <div class="cards fade-in" style="margin-top: 2.5rem;">
       <div class="card">
-        <h3>In-flight awareness <span style="font-size:0.75rem; font-weight:400; color:var(--accent); margin-left:0.4rem;">v0.5</span></h3>
-        <p>Hook-based PreToolUse + PostToolUse hooks let the coordinator see agents <strong>start</strong> editing files — not just when they finish. Conflicts surface before bytes are written, not after.</p>
+        <h3 data-i18n="mechanism.v05.inflight.title">In-flight awareness <span style="font-size:0.75rem; font-weight:400; color:var(--accent); margin-left:0.4rem;">v0.5</span></h3>
+        <p data-i18n="mechanism.v05.inflight.body">Hook-based PreToolUse + PostToolUse hooks let the coordinator see agents <strong>start</strong> editing files — not just when they finish. Conflicts surface before bytes are written, not after.</p>
       </div>
       <div class="card">
-        <h3>Symbol-aware scoring <span style="font-size:0.75rem; font-weight:400; color:var(--accent); margin-left:0.4rem;">v0.3+</span></h3>
-        <p>tree-sitter parses 15 languages (TS/TSX/JS/JSX/Python/Go/Rust/Java/C#/C/C++/Ruby/PHP/Kotlin/Swift/Bash). Two agents editing the same file but different functions get an annotated reason — not a silent block.</p>
+        <h3 data-i18n="mechanism.v05.symbol.title">Symbol-aware scoring <span style="font-size:0.75rem; font-weight:400; color:var(--accent); margin-left:0.4rem;">v0.3+</span></h3>
+        <p data-i18n="mechanism.v05.symbol.body">tree-sitter parses 15 languages (TS/TSX/JS/JSX/Python/Go/Rust/Java/C#/C/C++/Ruby/PHP/Kotlin/Swift/Bash). Two agents editing the same file but different functions get an annotated reason — not a silent block.</p>
       </div>
       <div class="card">
-        <h3>Git co-change scoring <span style="font-size:0.75rem; font-weight:400; color:var(--accent); margin-left:0.4rem;">v0.5</span></h3>
-        <p>Files that move together in git history (config + consumer, fixture + test) are scored as related: impact 60 if &gt;50% co-change, 40 if &gt;20%. Catches regressions invisible to filename matching.</p>
+        <h3 data-i18n="mechanism.v05.cochange.title">Git co-change scoring <span style="font-size:0.75rem; font-weight:400; color:var(--accent); margin-left:0.4rem;">v0.5</span></h3>
+        <p data-i18n="mechanism.v05.cochange.body">Files that move together in git history (config + consumer, fixture + test) are scored as related: impact 60 if &gt;50% co-change, 40 if &gt;20%. Catches regressions invisible to filename matching.</p>
       </div>
     </div>
 
@@ -2373,13 +2373,13 @@
       </details>
 
       <details class="faq-item">
-        <summary class="faq-q">Which programming languages does conflict detection support?</summary>
-        <div class="faq-a">v0.5.0 ships with 15 languages via tree-sitter: TypeScript, TSX, JavaScript, JSX, Python, Go, Rust, Java, C#, C, C++, Ruby, PHP, Kotlin, and Swift. A strategy-registry pattern makes adding more languages a one-file contribution. Bash is supported for script-level awareness.</div>
+        <summary class="faq-q" data-i18n="faq.q11">Which programming languages does conflict detection support?</summary>
+        <div class="faq-a" data-i18n="faq.a11">v0.5.0 ships with 15 languages via tree-sitter: TypeScript, TSX, JavaScript, JSX, Python, Go, Rust, Java, C#, C, C++, Ruby, PHP, Kotlin, and Swift. A strategy-registry pattern makes adding more languages a one-file contribution. Bash is supported for script-level awareness.</div>
       </details>
 
       <details class="faq-item">
-        <summary class="faq-q">How does conflict detection work under the hood?</summary>
-        <div class="faq-a">Six scoring layers are evaluated in order; the most severe wins. Layer 0: exact file match (100). Layer 0.5: symbol-aware AST overlap — same file, different functions yields a score with an annotated reason rather than a silent block. Layer 1: dependency graph overlap (80). Layer 2: module boundary overlap (30). Layer 3: recent-edits heuristic. Layer 4 (v0.5): git co-change — files that have moved together in commit history score 60 (&gt;50% co-change) or 40 (&gt;20% co-change).</div>
+        <summary class="faq-q" data-i18n="faq.q12">How does conflict detection work under the hood?</summary>
+        <div class="faq-a" data-i18n="faq.a12">Six scoring layers are evaluated in order; the most severe wins. Layer 0: exact file match (100). Layer 0.5: symbol-aware AST overlap — same file, different functions yields a score with an annotated reason rather than a silent block. Layer 1: dependency graph overlap (80). Layer 2: module boundary overlap (30). Layer 3: recent-edits heuristic. Layer 4 (v0.5): git co-change — files that have moved together in commit history score 60 (&gt;50% co-change) or 40 (&gt;20% co-change).</div>
       </details>
 
     </div>
@@ -2510,48 +2510,48 @@
       <div class="timeline-item">
         <div class="timeline-dot dot-done" aria-hidden="true"></div>
         <div class="timeline-badge badge-done" data-i18n="roadmap.badge.done">Shipped</div>
-        <h4>v0.3 — Semantic conflict detection</h4>
-        <p>AST-level analysis on top of filename scoring via tree-sitter. Detects API contract changes and interface incompatibilities before a thread opens. Symbol-aware scoring: same file, different functions = annotated reason, not a silent block. 15 languages supported (TS/TSX/JS/JSX/Python/Go/Rust/Java/C#/C/C++/Ruby/PHP/Kotlin/Swift).</p>
+        <h4 data-i18n="roadmap.v03.title">v0.3 — Semantic conflict detection</h4>
+        <p data-i18n="roadmap.v03.desc">AST-level analysis on top of filename scoring via tree-sitter. Detects API contract changes and interface incompatibilities before a thread opens. Symbol-aware scoring: same file, different functions = annotated reason, not a silent block. 15 languages supported (TS/TSX/JS/JSX/Python/Go/Rust/Java/C#/C/C++/Ruby/PHP/Kotlin/Swift).</p>
         <p class="timeline-meta">
-          <span>Shipped May 2026</span>
+          <span data-i18n="roadmap.v03.date">Shipped May 2026</span>
           <span aria-hidden="true">·</span>
-          <a href="https://github.com/swoofer/mcp-coordinator/releases" target="_blank" rel="noopener noreferrer" aria-label="v0.3 release on GitHub">v0.3.0 release</a>
+          <a href="https://github.com/swoofer/mcp-coordinator/releases" target="_blank" rel="noopener noreferrer" data-i18n="roadmap.v03.link" aria-label="v0.3 release on GitHub">v0.3.0 release</a>
         </p>
       </div>
 
       <div class="timeline-item">
         <div class="timeline-dot dot-done" aria-hidden="true"></div>
         <div class="timeline-badge badge-done" data-i18n="roadmap.badge.done">Shipped</div>
-        <h4>v0.4 — Dashboard redesign &amp; operability</h4>
-        <p>Full landing page and dashboard redesign. New "Conflict signals" panel with per-layer firing counts over the last 24 h. Extended <code>/readyz</code> with <code>tree_sitter</code> and <code>git_cochange</code> health blocks. 5 new Prometheus metrics, 8 new env vars / CLI flags, PRAGMA user_version downgrade guard, and 413 body-size cap.</p>
+        <h4 data-i18n="roadmap.v04.title">v0.4 — Dashboard redesign &amp; operability</h4>
+        <p data-i18n="roadmap.v04.desc">Full landing page and dashboard redesign. New "Conflict signals" panel with per-layer firing counts over the last 24 h. Extended <code>/readyz</code> with <code>tree_sitter</code> and <code>git_cochange</code> health blocks. 5 new Prometheus metrics, 8 new env vars / CLI flags, PRAGMA user_version downgrade guard, and 413 body-size cap.</p>
         <p class="timeline-meta">
-          <span>Shipped May 2026</span>
+          <span data-i18n="roadmap.v04.date">Shipped May 2026</span>
           <span aria-hidden="true">·</span>
-          <a href="https://github.com/swoofer/mcp-coordinator/releases" target="_blank" rel="noopener noreferrer" aria-label="v0.4 release on GitHub">v0.4.0 release</a>
+          <a href="https://github.com/swoofer/mcp-coordinator/releases" target="_blank" rel="noopener noreferrer" data-i18n="roadmap.v04.link" aria-label="v0.4 release on GitHub">v0.4.0 release</a>
         </p>
       </div>
 
       <div class="timeline-item">
         <div class="timeline-dot dot-done" aria-hidden="true"></div>
         <div class="timeline-badge badge-done" data-i18n="roadmap.badge.done">Shipped</div>
-        <h4>v0.5 — In-flight awareness &amp; git co-change</h4>
-        <p>Hook-based PreToolUse + PostToolUse: the coordinator sees agents <em>start</em> editing, not just finish. Git co-change scoring: files that share commit history (config + consumer, fixture + test) get impact score 60 if &gt;50% co-change, 40 if &gt;20%. 392-test suite across 46 files.</p>
+        <h4 data-i18n="roadmap.v05.title">v0.5 — In-flight awareness &amp; git co-change</h4>
+        <p data-i18n="roadmap.v05.desc">Hook-based PreToolUse + PostToolUse: the coordinator sees agents <em>start</em> editing, not just finish. Git co-change scoring: files that share commit history (config + consumer, fixture + test) get impact score 60 if &gt;50% co-change, 40 if &gt;20%. 392-test suite across 46 files.</p>
         <p class="timeline-meta">
-          <span>Shipped May 2026</span>
+          <span data-i18n="roadmap.v05.date">Shipped May 2026</span>
           <span aria-hidden="true">·</span>
-          <a href="https://github.com/swoofer/mcp-coordinator/releases/tag/v0.5.0" target="_blank" rel="noopener noreferrer" aria-label="v0.5.0 release on GitHub">v0.5.0 release</a>
+          <a href="https://github.com/swoofer/mcp-coordinator/releases/tag/v0.5.0" target="_blank" rel="noopener noreferrer" data-i18n="roadmap.v05.link" aria-label="v0.5.0 release on GitHub">v0.5.0 release</a>
         </p>
       </div>
 
       <div class="timeline-item">
         <div class="timeline-dot dot-planned" aria-hidden="true"></div>
         <div class="timeline-badge badge-planned" data-i18n="roadmap.badge.planned">Planned</div>
-        <h4>LLM Reasoner — gray-zone arbitration (opt-in)</h4>
-        <p>A gated, opt-in layer that sends ambiguous gray-zone conflicts to a small LLM for structured arbitration. Design phase — will ship after one month of v0.5.0 telemetry confirms the ROI justifies the latency trade-off.</p>
+        <h4 data-i18n="roadmap.llm.title">LLM Reasoner — gray-zone arbitration (opt-in)</h4>
+        <p data-i18n="roadmap.llm.desc">A gated, opt-in layer that sends ambiguous gray-zone conflicts to a small LLM for structured arbitration. Design phase — will ship after one month of v0.5.0 telemetry confirms the ROI justifies the latency trade-off.</p>
         <p class="timeline-meta">
-          <span>In design · gated on v0.5.0 telemetry</span>
+          <span data-i18n="roadmap.llm.date">In design · gated on v0.5.0 telemetry</span>
           <span aria-hidden="true">·</span>
-          <a href="https://github.com/swoofer/mcp-coordinator/issues?q=is%3Aissue+label%3Av1.0" target="_blank" rel="noopener noreferrer" aria-label="v1.0 issues on GitHub">Follow on GitHub</a>
+          <a href="https://github.com/swoofer/mcp-coordinator/issues?q=is%3Aissue+label%3Av1.0" target="_blank" rel="noopener noreferrer" data-i18n="roadmap.llm.link" aria-label="v1.0 issues on GitHub">Follow on GitHub</a>
         </p>
       </div>
 
@@ -2762,6 +2762,12 @@
       "mechanism.advanced.row8.emit": "Anthropic quota refresh",
       "mechanism.advanced.row8.pay": "<code class=\"ic\">usage, limit, utilization_pct</code>",
       "mechanism.advanced.flow.title": "Push delivery flow",
+      "mechanism.v05.inflight.title": "In-flight awareness",
+      "mechanism.v05.inflight.body": "Hook-based PreToolUse + PostToolUse hooks let the coordinator see agents <strong>start</strong> editing files — not just when they finish. Conflicts surface before bytes are written, not after.",
+      "mechanism.v05.symbol.title": "Symbol-aware scoring",
+      "mechanism.v05.symbol.body": "tree-sitter parses 15 languages (TS/TSX/JS/JSX/Python/Go/Rust/Java/C#/C/C++/Ruby/PHP/Kotlin/Swift/Bash). Two agents editing the same file but different functions get an annotated reason — not a silent block.",
+      "mechanism.v05.cochange.title": "Git co-change scoring",
+      "mechanism.v05.cochange.body": "Files that move together in git history (config + consumer, fixture + test) are scored as related: impact 60 if &gt;50% co-change, 40 if &gt;20%. Catches regressions invisible to filename matching.",
       "mechanism.cta.primary": "Run it locally in 60 seconds",
       "mechanism.cta.secondary": "Read the FAQ",
       "templates.title": "Coordination patterns",
@@ -2928,6 +2934,10 @@
       "roadmap.v03.desc": "AST-level analysis via tree-sitter across 15 languages. Symbol-aware scoring: same file, different functions = annotated reason, not a silent block.",
       "roadmap.v03.date": "Shipped May 2026",
       "roadmap.v03.link": "v0.3.0 release",
+      "roadmap.v04.title": "v0.4 — Dashboard redesign &amp; operability",
+      "roadmap.v04.desc": "Full landing page and dashboard redesign. Conflict signals panel with per-layer firing counts. Extended /readyz with tree_sitter and git_cochange health blocks. 5 new Prometheus metrics.",
+      "roadmap.v04.date": "Shipped May 2026",
+      "roadmap.v04.link": "v0.4.0 release",
       "roadmap.v05.title": "v0.5 — In-flight awareness &amp; git co-change",
       "roadmap.v05.desc": "Hook-based PreToolUse/PostToolUse for real-time edit awareness. Git co-change scoring for historically coupled files. 392 tests across 46 files.",
       "roadmap.v05.date": "Shipped May 2026",
