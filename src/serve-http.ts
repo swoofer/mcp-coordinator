@@ -564,6 +564,11 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
       log.warn({ err }, "Error stopping timeout sweeper");
     }
     try {
+      services.workingFiles.stopSweeper();
+    } catch (err) {
+      log.warn({ err }, "Error stopping working-files sweeper");
+    }
+    try {
       const { closeDb } = await import("./database.js");
       closeDb?.();
     } catch (err) {

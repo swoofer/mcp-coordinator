@@ -21,6 +21,7 @@ import { MqttBridge } from "./mqtt-bridge.js";
 import { assessPlanQuality } from "./plan-quality.js";
 import { AgentActivityTracker } from "./agent-activity.js";
 import { QuotaCache } from "./quota/quota-cache.js";
+import { WorkingFilesTracker } from "./working-files-tracker.js";
 import { Metrics } from "./metrics.js";
 import type { CoordinatorConfig, AgentContext } from "./types.js";
 import { createLogger, type Logger } from "./logger.js";
@@ -36,6 +37,7 @@ export interface CoordinatorServices {
   depMap: DependencyMapper;
   fileTracker: FileTracker;
   impactScorer: ImpactScorer;
+  workingFiles: WorkingFilesTracker;
   introspection: IntrospectionManager;
   contextProvider: SummaryContextProvider;
   sseEmitter: SseEmitter;
@@ -55,6 +57,8 @@ export function createServices(config: CoordinatorConfig): CoordinatorServices {
   const consultation = new Consultation(logger.child({ component: "consultation" }));
   const depMap = new DependencyMapper();
   const fileTracker = new FileTracker();
+  const workingFiles = new WorkingFilesTracker(logger.child({ component: "working-files" }));
+  workingFiles.startSweeper(parseInt(process.env.COORDINATOR_WORKING_FILES_SWEEP_INTERVAL_MS || "60000", 10));
   const impactScorer = new ImpactScorer(registry, fileTracker, consultation);
   const introspection = new IntrospectionManager();
   const conflictDetector = new ConflictDetector(consultation, depMap, fileTracker, logger.child({ component: "conflict" }));
@@ -113,7 +117,7 @@ export function createServices(config: CoordinatorConfig): CoordinatorServices {
 
   return {
     logger, registry, activityTracker, consultation, conflictDetector,
-    depMap, fileTracker, impactScorer, introspection, contextProvider, sseEmitter, mqttBridge, quotaCache, metrics,
+    depMap, fileTracker, impactScorer, workingFiles, introspection, contextProvider, sseEmitter, mqttBridge, quotaCache, metrics,
   };
 }
 

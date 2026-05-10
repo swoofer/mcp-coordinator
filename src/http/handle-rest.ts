@@ -402,6 +402,23 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
       json(res, { registered: true, status: agent.status, activity: activity.activity_status });
     }
 
+  } else if (url === "/api/working-files/start" && req.method === "POST") {
+    if (typeof body.agent_id !== "string" || typeof body.file_path !== "string") {
+      json(res, { error: "agent_id and file_path required" }, 400);
+      return;
+    }
+    const ttl = parseInt(process.env.COORDINATOR_WORKING_FILES_TTL_MIN || "30", 10);
+    services.workingFiles.start(body.agent_id as string, body.file_path as string, ttl);
+    json(res, { ok: true });
+
+  } else if (url === "/api/working-files/stop" && req.method === "POST") {
+    if (typeof body.agent_id !== "string" || typeof body.file_path !== "string") {
+      json(res, { error: "agent_id and file_path required" }, 400);
+      return;
+    }
+    services.workingFiles.stop(body.agent_id as string, body.file_path as string);
+    json(res, { ok: true });
+
   } else if (url === "/api/status") {
     const online = registry.listOnline();
     const openThreads = consultation.listThreads({ status: "open" });
