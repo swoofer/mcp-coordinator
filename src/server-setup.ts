@@ -59,7 +59,7 @@ export function createServices(config: CoordinatorConfig): CoordinatorServices {
   const fileTracker = new FileTracker();
   const workingFiles = new WorkingFilesTracker(logger.child({ component: "working-files" }));
   workingFiles.startSweeper(parseInt(process.env.COORDINATOR_WORKING_FILES_SWEEP_INTERVAL_MS || "60000", 10));
-  const impactScorer = new ImpactScorer(registry, fileTracker, consultation);
+  const impactScorer = new ImpactScorer(registry, fileTracker, consultation, workingFiles);
   const introspection = new IntrospectionManager();
   const conflictDetector = new ConflictDetector(consultation, depMap, fileTracker, logger.child({ component: "conflict" }));
   const contextProvider = new SummaryContextProvider(registry, consultation, fileTracker);

@@ -1,6 +1,7 @@
 import type { AgentRegistry } from "./agent-registry.js";
 import type { FileTracker } from "./file-tracker.js";
 import type { Consultation } from "./consultation.js";
+import type { WorkingFilesTracker } from "./working-files-tracker.js";
 
 export interface ImpactScore {
   agent_id: string;
@@ -38,7 +39,8 @@ export class ImpactScorer {
   constructor(
     private registry: AgentRegistry,
     private fileTracker: FileTracker,
-    private consultation?: Consultation
+    private consultation?: Consultation,
+    private workingFiles?: WorkingFilesTracker,
   ) {}
 
   score(params: AnnounceParams): ImpactScore[] {
@@ -68,6 +70,10 @@ export class ImpactScorer {
     ];
     const fileToAgents = filesToIndex.length > 0
       ? this.fileTracker.getFileToAgentsIndex(filesToIndex, params.agent_id, FILE_ACTIVITY_WINDOW_MINUTES)
+      : new Map<string, Set<string>>();
+
+    const inFlightToAgents = this.workingFiles
+      ? this.workingFiles.getIndex(filesToIndex, params.agent_id)
       : new Map<string, Set<string>>();
 
     // O2: bound the resolved-thread query to a recency window. Without this,
@@ -135,12 +141,17 @@ export class ImpactScorer {
         }
       }
 
-      // Layer 1: Same file recently modified (score 100) — uses pre-built index.
+      // Layer 1: Same file recently modified (file_activity) OR currently in flight (working_files).
       for (const targetFile of params.target_files) {
-        const agentsForFile = fileToAgents.get(targetFile);
-        if (agentsForFile && agentsForFile.has(agent.id)) {
+        const recentAgents = fileToAgents.get(targetFile);
+        const inFlightAgents = inFlightToAgents.get(targetFile);
+        if (recentAgents && recentAgents.has(agent.id)) {
           maxScore = Math.max(maxScore, 100);
-          reasons.push(`same file: ${targetFile}`);
+          reasons.push(`same file (recent): ${targetFile}`);
+        }
+        if (inFlightAgents && inFlightAgents.has(agent.id)) {
+          maxScore = Math.max(maxScore, 100);
+          reasons.push(`same file (in flight): ${targetFile}`);
         }
       }
 

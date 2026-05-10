@@ -501,6 +501,10 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
   services.mqttBridge.onOffline((agentId) => {
     services.registry.setOffline(agentId);
     services.consultation.handleAgentDeparture(agentId);
+    // Clear in-flight working_files AFTER consultation cleanup so any future
+    // consultation logic that might inspect working_files state for this agent
+    // sees the pre-cleanup view.
+    services.workingFiles.clearForAgent(agentId);
     services.sseEmitter.emit("agent_offline", { agent_id: agentId });
   });
 
