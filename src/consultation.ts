@@ -78,44 +78,54 @@ export class Consultation {
     const db = getDb();
     const id = randomUUID();
 
-    // Find expected respondents: online agents (not initiator) whose modules overlap
-    const onlineAgents = db
-      .prepare("SELECT id, modules FROM agents WHERE status = 'online' AND id != ?")
-      .all(params.agent_id) as { id: string; modules: string }[];
+    // B1 fix: SELECT respondents + INSERT thread must be atomic w.r.t. agent
+    // registry mutations (registerAgent / setOffline). Without a transaction,
+    // a race between announce and a concurrent setOffline produces a thread
+    // whose expected_respondents contains an agent that just went away — the
+    // thread then stays open forever waiting for an absent voter.
+    const tx = db.transaction(() => {
+      const onlineAgents = db
+        .prepare("SELECT id, modules FROM agents WHERE status = 'online' AND id != ?")
+        .all(params.agent_id) as { id: string; modules: string }[];
 
-    const respondents = onlineAgents.filter((agent) => {
-      const agentModules: string[] = JSON.parse(agent.modules);
-      return params.target_modules.some((tm) =>
-        agentModules.some((am) => am === tm || am.startsWith(tm + "/") || tm.startsWith(am + "/"))
+      const respondents = onlineAgents.filter((agent) => {
+        const agentModules: string[] = JSON.parse(agent.modules);
+        return params.target_modules.some((tm) =>
+          agentModules.some((am) => am === tm || am.startsWith(tm + "/") || tm.startsWith(am + "/"))
+        );
+      });
+
+      const respondentIds = respondents.map((r) => r.id);
+      // Directed dispatch skips module-based auto-resolve: if the thread is
+      // explicitly aimed at an agent, we keep it open for them regardless of
+      // what the module scorer finds.
+      const assignedTo = params.assigned_to ?? null;
+      const keepOpen = params.keep_open || assignedTo !== null;
+      const autoResolve = respondentIds.length === 0 && !keepOpen;
+
+      db.prepare(
+        `INSERT INTO threads (id, initiator_id, subject, plan, target_modules, target_files, status, expected_respondents, resolved_at, depends_on_files, exports_affected, timeout_seconds, assigned_to)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(
+        id,
+        params.agent_id,
+        params.subject,
+        params.plan || null,
+        JSON.stringify(params.target_modules),
+        JSON.stringify(params.target_files),
+        autoResolve ? "resolved" : "open",
+        JSON.stringify(respondentIds),
+        autoResolve ? new Date().toISOString() : null,
+        JSON.stringify(params.depends_on_files || []),
+        JSON.stringify(params.exports_affected || []),
+        keepOpen ? 0 : 600,
+        assignedTo,
       );
+
+      return { autoResolve, respondentIds, assignedTo };
     });
 
-    const respondentIds = respondents.map((r) => r.id);
-    // Directed dispatch skips module-based auto-resolve: if the thread is
-    // explicitly aimed at an agent, we keep it open for them regardless of
-    // what the module scorer finds.
-    const assignedTo = params.assigned_to ?? null;
-    const keepOpen = params.keep_open || assignedTo !== null;
-    const autoResolve = respondentIds.length === 0 && !keepOpen;
-
-    db.prepare(
-      `INSERT INTO threads (id, initiator_id, subject, plan, target_modules, target_files, status, expected_respondents, resolved_at, depends_on_files, exports_affected, timeout_seconds, assigned_to)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(
-      id,
-      params.agent_id,
-      params.subject,
-      params.plan || null,
-      JSON.stringify(params.target_modules),
-      JSON.stringify(params.target_files),
-      autoResolve ? "resolved" : "open",
-      JSON.stringify(respondentIds),
-      autoResolve ? new Date().toISOString() : null,
-      JSON.stringify(params.depends_on_files || []),
-      JSON.stringify(params.exports_affected || []),
-      keepOpen ? 0 : 600,
-      assignedTo,
-    );
+    const { autoResolve, respondentIds, assignedTo } = tx();
 
     this.log.info({
       thread_id: id,
@@ -200,15 +210,23 @@ export class Consultation {
     if (thread.status !== "resolving")
       throw new Error(`Thread is ${thread.status}, not resolving`);
 
-    // Post approve message
-    this.postResolutionMessage(threadId, agentId, "approve", "Approved");
-    this.log.debug({ thread_id: threadId, agent_id: agentId }, "Resolution approved");
+    // B1 fix: post + check + transition must be atomic, else two concurrent
+    // approvals each see "all approved" and fire emitResolution twice. Using
+    // a transaction + UPDATE ... WHERE status='resolving' (CAS) ensures only
+    // the first transaction wins the consensus race; the loser's UPDATE
+    // affects 0 rows and emit is suppressed.
+    const tx = db.transaction(() => {
+      this.postResolutionMessage(threadId, agentId, "approve", "Approved");
+      if (!this.allRespondentsApproved(threadId)) return false;
+      const res = db
+        .prepare("UPDATE threads SET status = 'resolved', resolved_at = ? WHERE id = ? AND status = 'resolving'")
+        .run(new Date().toISOString(), threadId);
+      return res.changes > 0;
+    });
 
-    // Check if all expected respondents have approved
-    if (this.allRespondentsApproved(threadId)) {
-      db.prepare(
-        "UPDATE threads SET status = 'resolved', resolved_at = ? WHERE id = ?"
-      ).run(new Date().toISOString(), threadId);
+    const wonRace = tx();
+    this.log.debug({ thread_id: threadId, agent_id: agentId }, "Resolution approved");
+    if (wonRace) {
       this.emitResolution(threadId, "consensus", agentId, agentName || agentId);
     }
   }
