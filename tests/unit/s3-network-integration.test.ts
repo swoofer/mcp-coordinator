@@ -91,8 +91,9 @@ describe("S3 - HTTP integration tests for B4 (reset guard) end-to-end", () => {
 
     const res = await httpRequest({ port, method: "GET", path: "/health" });
     expect(res.status).toBe(200);
-    const body = res.bodyJson() as { status: string; version: string };
-    expect(body.status).toBe("ok");
+    const body = res.bodyJson() as { status: string; version: string; uptime_seconds: number };
+    expect(body.status).toBe("alive");
+    expect(body.uptime_seconds).toBeGreaterThanOrEqual(0);
     expect(body.version).toBeDefined();
   });
 
