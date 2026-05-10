@@ -18,22 +18,44 @@ export class MqttBridge {
   private onOfflineHandler: ((agentId: string) => void) | null = null;
   private listeners = new Map<string, AgentListener>();
   private log: Logger;
+  private agentId: string = "coordinator-internal";
+  /**
+   * P1: track the last threadId we retained on `coordinator/consultations/new`.
+   * The topic is fixed (not per-thread), so retain holds only the LAST event.
+   * `clearRetainedConsultation(threadId)` only clears when it matches, so a
+   * later consultation isn't accidentally wiped by a stale resolve callback.
+   */
+  private lastRetainedConsultationThreadId: string | null = null;
 
   constructor(logger?: Logger) {
     this.log = logger || silentLogger;
   }
 
-  async connect(config: { url: string; username?: string; password?: string }): Promise<void> {
+  async connect(config: { url: string; username?: string; password?: string; agentId?: string }): Promise<void> {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error("MQTT connection timeout"));
       }, 5000);
 
+      // P1 fix: LWT requires a stable agent identifier. Default to
+      // "coordinator-internal" which matches the auth identity used by
+      // serve-http for the embedded broker bridge.
+      this.agentId = config.agentId || "coordinator-internal";
+
       this.client = mqtt.connect(config.url, {
-        clientId: `coordinator-${Date.now()}`,
+        clientId: `${this.agentId}-${Date.now()}`,
         clean: true,
         username: config.username,
         password: config.password,
+        // P1 fix: register Last Will & Testament so a crashed/disconnected
+        // bridge automatically broadcasts offline status. Without this the
+        // agent appears online indefinitely after an unexpected disconnect.
+        will: {
+          topic: `coordinator/agents/${this.agentId}/status`,
+          payload: Buffer.from(JSON.stringify({ status: "offline", reason: "lwt_unexpected" })),
+          qos: 1,
+          retain: false,
+        },
       });
 
       this.client.on("connect", () => {
@@ -105,14 +127,40 @@ export class MqttBridge {
 
   publishConsultation(threadId: string, agentId: string, subject: string, targetModules: string[]): void {
     if (!this.client || !this.connected) return;
+    // P1 fix: QoS 1 (at-least-once) so consultation events survive transient
+    // disconnects. retain=true so a coordinator/subscriber restart can rebuild
+    // the active state without an event-history replay.
+    this.lastRetainedConsultationThreadId = threadId;
     this.client.publish(
       "coordinator/consultations/new",
-      JSON.stringify({ thread_id: threadId, agent_id: agentId, subject, target_modules: targetModules })
+      JSON.stringify({ thread_id: threadId, agent_id: agentId, subject, target_modules: targetModules }),
+      { qos: 1, retain: true }
     );
+  }
+
+  /**
+   * P1 fix: clear the retained `coordinator/consultations/new` event when the
+   * matching thread resolves. The topic is fixed (not per-thread), so retain
+   * holds only the LAST consultation — clearing here means a coordinator
+   * restart after resolution doesn't re-broadcast a stale "new" event.
+   *
+   * No-op when the supplied threadId doesn't match the currently retained one
+   * (a newer consultation has already overwritten it).
+   */
+  clearRetainedConsultation(threadId: string): void {
+    if (!this.client || !this.connected) return;
+    if (this.lastRetainedConsultationThreadId !== threadId) return;
+    this.client.publish(
+      "coordinator/consultations/new",
+      "",
+      { qos: 1, retain: true }
+    );
+    this.lastRetainedConsultationThreadId = null;
   }
 
   publishMessage(threadId: string, agentId: string, type: string, content: string): void {
     if (!this.client || !this.connected) return;
+    // QoS 0: high-frequency chat-style traffic, lossy-OK.
     this.client.publish(
       `coordinator/consultations/${threadId}/messages`,
       JSON.stringify({ agent_id: agentId, type, content })
@@ -121,10 +169,11 @@ export class MqttBridge {
 
   publishResolution(threadId: string, status: string, summary: string): void {
     if (!this.client || !this.connected) return;
+    // P1 fix: QoS 1 (at-least-once) — resolution is a state-change event.
     this.client.publish(
       `coordinator/consultations/${threadId}/status`,
       JSON.stringify({ status, summary }),
-      { retain: true }
+      { qos: 1, retain: true }
     );
   }
 
@@ -147,17 +196,22 @@ export class MqttBridge {
 
   publishTaskClaimed(threadId: string, claimedBy: string): void {
     if (!this.client || !this.connected) return;
+    // P1 fix: QoS 1 — claim is a coordination state-change. Loss would mean
+    // multiple agents think a task is unclaimed.
     this.client.publish(
       `coordinator/consultations/${threadId}/claimed`,
-      JSON.stringify({ agent_id: claimedBy, claimed_by: claimedBy, claimed_at: new Date().toISOString() })
+      JSON.stringify({ agent_id: claimedBy, claimed_by: claimedBy, claimed_at: new Date().toISOString() }),
+      { qos: 1 }
     );
   }
 
   publishTaskCompleted(threadId: string, completedBy: string, summary: string): void {
     if (!this.client || !this.connected) return;
+    // P1 fix: QoS 1 — completion is a coordination state-change.
     this.client.publish(
       `coordinator/consultations/${threadId}/completed`,
-      JSON.stringify({ agent_id: completedBy, completed_by: completedBy, summary })
+      JSON.stringify({ agent_id: completedBy, completed_by: completedBy, summary }),
+      { qos: 1 }
     );
   }
 
@@ -168,6 +222,7 @@ export class MqttBridge {
    */
   publishQuotaUpdate(info: unknown): void {
     if (!this.client || !this.connected) return;
+    // QoS 0: high-frequency telemetry, lossy-OK (the next refresh overwrites).
     this.client.publish("coordinator/quota/update", JSON.stringify(info));
   }
 

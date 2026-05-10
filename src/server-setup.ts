@@ -104,6 +104,11 @@ export function createServices(config: CoordinatorConfig): CoordinatorServices {
     if (event.resolution_type !== "auto_resolved") {
       mqttBridge.publishResolution(event.thread_id, "resolved", event.resolution_summary || "");
     }
+    // P1 fix: clear the retained `coordinator/consultations/new` event so a
+    // coordinator restart doesn't re-broadcast a consultation that's already
+    // been resolved. No-op when the retained slot holds a different (newer)
+    // thread.
+    mqttBridge.clearRetainedConsultation(event.thread_id);
   });
 
   return {

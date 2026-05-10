@@ -186,6 +186,16 @@ function writeSseEvent(res: ServerResponse, event: CoordinatorEvent): void {
   res.write(`id: ${event.id}\nevent: ${event.type}\ndata: ${data}\n\n`);
 }
 
+// P3: heartbeat interval in ms. Default 30s — well under nginx/Cloudflare's
+// typical 60s idle SSE timeout, but infrequent enough to add negligible
+// bandwidth (one ":keep-alive\n\n" comment is ~16 bytes).
+const SSE_HEARTBEAT_MS = (() => {
+  const raw = process.env.COORDINATOR_SSE_HEARTBEAT_MS;
+  if (!raw) return 30_000;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : 30_000;
+})();
+
 function handleSse(req: IncomingMessage, res: ServerResponse): void {
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
@@ -208,7 +218,27 @@ function handleSse(req: IncomingMessage, res: ServerResponse): void {
     writeSseEvent(res, event);
   });
 
-  req.on("close", () => unsubscribe());
+  // P3: heartbeat. Browsers ignore the `:` comment line per the SSE spec,
+  // but it counts as activity for intermediate proxies that would otherwise
+  // kill an idle connection after ~60s. Wrapped in try/catch because once
+  // the socket is half-closed res.write throws synchronously.
+  const heartbeat = setInterval(() => {
+    try {
+      res.write(":keep-alive\n\n");
+    } catch {
+      // Connection already torn down — req.on("close") will clean up shortly.
+    }
+  }, SSE_HEARTBEAT_MS);
+  // Don't keep the event loop alive solely for heartbeats; without unref()
+  // a still-open SSE connection at process shutdown delays exit.
+  if (typeof heartbeat.unref === "function") heartbeat.unref();
+
+  req.on("close", () => {
+    // P3: clear the interval BEFORE unsubscribing so a heartbeat tick that
+    // fires between close and unsubscribe can't write to a dead socket.
+    clearInterval(heartbeat);
+    unsubscribe();
+  });
 }
 
 export interface ServerOptions {
@@ -439,6 +469,9 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
     url: `mqtt://127.0.0.1:${mqttTcpPort}`,
     username: AUTH_ENABLED ? "coordinator-internal" : undefined,
     password: internalToken,
+    // P1 fix: stable agent identity for LWT topic
+    // (`coordinator/agents/coordinator-internal/status`).
+    agentId: "coordinator-internal",
   });
   services.mqttBridge.onOffline((agentId) => {
     services.registry.setOffline(agentId);

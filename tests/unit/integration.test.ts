@@ -323,7 +323,11 @@ describe("Integration: Conflict Detection + Dependencies", () => {
 });
 
 describe("Integration: SSE Events", () => {
-  it("emits events for full lifecycle", () => {
+  // P3: SseEmitter fans out via setImmediate now — drain the queue before
+  // asserting on listener side effects.
+  const flushSse = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+  it("emits events for full lifecycle", async () => {
     const emitted: { type: string; payload: any }[] = [];
     sseEmitter.addListener((event) => {
       emitted.push({ type: event.type, payload: JSON.parse(event.payload) });
@@ -337,6 +341,7 @@ describe("Integration: SSE Events", () => {
     sseEmitter.emit("resolution_proposed", { thread_id: "t1", agent_id: "a1", summary: "plan" });
     sseEmitter.emit("thread_resolved", { thread_id: "t1", resolution: "plan" });
 
+    await flushSse();
     expect(emitted).toHaveLength(6);
     expect(emitted.map(e => e.type)).toEqual([
       "agent_online", "thread_opened", "impact_scored",
