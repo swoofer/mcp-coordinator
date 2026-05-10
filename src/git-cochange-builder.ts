@@ -4,6 +4,7 @@ import { existsSync } from "fs";
 import path from "path";
 import { getDb } from "./database.js";
 import { silentLogger, type Logger } from "./logger.js";
+import type { Metrics } from "./metrics.js";
 
 const DEFAULT_DENYLIST = [
   /package-lock\.json$/, /pnpm-lock\.yaml$/, /yarn\.lock$/, /\.lock$/,
@@ -19,6 +20,7 @@ interface BuilderOpts {
   refreshMs?: number;
   retryMs?: number;
   logger?: Logger;
+  metrics?: Metrics;
 }
 
 export class GitCochangeBuilder {
@@ -29,6 +31,7 @@ export class GitCochangeBuilder {
   private refreshMs: number;
   private retryMs: number;
   private log: Logger;
+  private metrics?: Metrics;
   private timer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(opts: BuilderOpts) {
@@ -39,6 +42,7 @@ export class GitCochangeBuilder {
     this.refreshMs = opts.refreshMs ?? 1800000;
     this.retryMs = opts.retryMs ?? 300000;
     this.log = opts.logger || silentLogger;
+    this.metrics = opts.metrics;
   }
 
   /** Build once. Resolves after persistence. */
@@ -50,12 +54,14 @@ export class GitCochangeBuilder {
     if (!existsSync(path.join(this.repoRoot, ".git"))) {
       this.log.info({}, "Layer 4 unavailable: no .git");
       setMeta("available", "false");
+      this.metrics?.gitCochangeBuilds.inc({ outcome: "failed" });
       return;
     }
 
     if (existsSync(path.join(this.repoRoot, ".git", "shallow"))) {
       this.log.info({}, "Layer 4 unavailable: shallow clone");
       setMeta("available", "false");
+      this.metrics?.gitCochangeBuilds.inc({ outcome: "shallow_skipped" });
       return;
     }
 
@@ -65,12 +71,14 @@ export class GitCochangeBuilder {
       this.log.warn({ err }, "git log failed");
       setMeta("available", "false");
       setMeta("last_error", String((err as Error).message));
+      this.metrics?.gitCochangeBuilds.inc({ outcome: "failed" });
       return;
     }
 
     if (stdout === "TIMEOUT") {
       setMeta("available", "stale_partial");
       this.log.warn({}, "git log timed out — Layer 4 stale_partial");
+      this.metrics?.gitCochangeBuilds.inc({ outcome: "timeout" });
       return;
     }
 
@@ -89,6 +97,8 @@ export class GitCochangeBuilder {
     insertMany();
     setMeta("available", "true");
     setMeta("last_built_at", new Date().toISOString());
+    this.metrics?.gitCochangeBuilds.inc({ outcome: "success" });
+    this.metrics?.gitCochangePairs.set(pairs.size);
   }
 
   private runGitLog(): Promise<string> {

@@ -56,12 +56,14 @@ export function createServices(config: CoordinatorConfig): CoordinatorServices {
 
   const logger = createLogger();
 
+  const metrics = new Metrics();
+
   const registry = new AgentRegistry();
   const activityTracker = new AgentActivityTracker(registry);
   const consultation = new Consultation(logger.child({ component: "consultation" }));
   const depMap = new DependencyMapper();
   const fileTracker = new FileTracker();
-  const workingFiles = new WorkingFilesTracker(logger.child({ component: "working-files" }));
+  const workingFiles = new WorkingFilesTracker(logger.child({ component: "working-files" }), metrics);
   workingFiles.startSweeper(parseInt(process.env.COORDINATOR_WORKING_FILES_SWEEP_INTERVAL_MS || "60000", 10));
   const impactScorer = new ImpactScorer(registry, fileTracker, consultation, workingFiles);
   const introspection = new IntrospectionManager();
@@ -69,14 +71,13 @@ export function createServices(config: CoordinatorConfig): CoordinatorServices {
   const contextProvider = new SummaryContextProvider(registry, consultation, fileTracker);
   const sseEmitter = new SseEmitter();
   const mqttBridge = new MqttBridge(logger.child({ component: "mqtt" }));
-  const metrics = new Metrics();
 
-  const treeSitter = new TreeSitterExtractor();
+  const treeSitter = new TreeSitterExtractor(metrics);
   treeSitter.load().catch(() => { /* errors are logged inside; status() reflects state */ });
 
   const repoRoot = process.env.COORDINATOR_REPO_ROOT;
   const gitCochange = repoRoot
-    ? new GitCochangeBuilder({ repoRoot, logger: logger.child({ component: "gitcc" }) })
+    ? new GitCochangeBuilder({ repoRoot, logger: logger.child({ component: "gitcc" }), metrics })
     : null;
   gitCochange?.startScheduler();
 

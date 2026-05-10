@@ -666,6 +666,20 @@ Resolution priority (highest to lowest): CLI flag → env var → config.json �
 | `COORDINATOR_ADMIN_SECRET` | — | Separate secret for admin token creation |
 | `MAX_QUOTA_PCT` | `95` | Pre-flight abort threshold for Anthropic quota |
 
+### Environment variables (v0.6)
+
+| Variable | Default | Effect |
+|---|---|---|
+| `COORDINATOR_REPO_ROOT` | (unset → team-mode) | Repo root for path-guard, FS fallback, Layer 4 |
+| `COORDINATOR_MAX_BODY_BYTES` | `1048576` | parseBody hard cap |
+| `COORDINATOR_LAYER4_DENYLIST` | (uses defaults) | Comma-separated globs appended to denylist |
+| `COORDINATOR_LAYER4_SINCE_DAYS` | `7` | git log --since window |
+| `COORDINATOR_LAYER4_MAX_COMMITS` | `2000` | git log --max-count |
+| `COORDINATOR_LAYER4_REFRESH_INTERVAL_MS` | `1800000` | Refresh on success |
+| `COORDINATOR_LAYER4_RETRY_MS` | `300000` | Retry on timeout |
+| `COORDINATOR_WORKING_FILES_TTL_MIN` | `30` | working_files claim TTL |
+| `COORDINATOR_WORKING_FILES_SWEEP_INTERVAL_MS` | `60000` | TTL sweeper tick |
+
 ---
 
 ## Structured Logging

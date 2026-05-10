@@ -1,4 +1,5 @@
 import path from "path";
+import type { Metrics } from "./metrics.js";
 
 interface Grammar {
   parser: any;
@@ -22,6 +23,11 @@ export class TreeSitterExtractor {
   private ready = false;
   private grammarsLoaded = 0;
   private totalGrammars = 7;
+  private metrics?: Metrics;
+
+  constructor(metrics?: Metrics) {
+    this.metrics = metrics;
+  }
 
   async load(): Promise<void> {
     const tryLoad = async (key: string, modName: string, sub?: string) => {
@@ -73,9 +79,14 @@ export class TreeSitterExtractor {
     if (!grammar) return null;
     let tree: any;
     try { tree = grammar.parser.parse(content); }
-    catch { return null; }
-    if (!tree || !tree.rootNode) return null;
-    if (tree.rootNode.hasError) return null;
+    catch {
+      this.metrics?.treeSitterParseFailures.inc();
+      return null;
+    }
+    if (!tree || !tree.rootNode || tree.rootNode.hasError) {
+      this.metrics?.treeSitterParseFailures.inc();
+      return null;
+    }
     const symbols: string[] = [];
     this.walk(tree.rootNode, symbols, key, path.basename(filePath, ext));
     return symbols.slice(0, 200);

@@ -1,5 +1,6 @@
 import { getDb } from "./database.js";
 import { silentLogger, type Logger } from "./logger.js";
+import type { Metrics } from "./metrics.js";
 
 /**
  * Tracks files an agent is currently editing (between PreToolUse and
@@ -15,9 +16,11 @@ import { silentLogger, type Logger } from "./logger.js";
 export class WorkingFilesTracker {
   private sweeperHandle: ReturnType<typeof setInterval> | null = null;
   private log: Logger;
+  private metrics?: Metrics;
 
-  constructor(logger?: Logger) {
+  constructor(logger?: Logger, metrics?: Metrics) {
     this.log = logger || silentLogger;
+    this.metrics = metrics;
   }
 
   /**
@@ -27,6 +30,8 @@ export class WorkingFilesTracker {
    */
   start(agentId: string, filePath: string, ttlMinutes: number): void {
     const db = getDb();
+    const existing = db.prepare("SELECT 1 FROM working_files WHERE agent_id = ? AND file_path = ?")
+      .get(agentId, filePath);
     db.prepare(
       `INSERT INTO working_files (agent_id, file_path, started_at, last_activity_at, claim_until)
        VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '+' || CAST(? AS TEXT) || ' minutes'))
@@ -34,6 +39,7 @@ export class WorkingFilesTracker {
          last_activity_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
          claim_until      = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '+' || CAST(? AS TEXT) || ' minutes')`
     ).run(agentId, filePath, ttlMinutes, ttlMinutes);
+    this.metrics?.workingFilesStarts.inc({ result: existing ? "updated" : "inserted" });
   }
 
   /**
@@ -50,7 +56,12 @@ export class WorkingFilesTracker {
   sweepExpired(): number {
     const db = getDb();
     const result = db.prepare("DELETE FROM working_files WHERE claim_until < strftime('%Y-%m-%dT%H:%M:%SZ', 'now')").run();
-    return Number(result.changes ?? 0);
+    const evicted = Number(result.changes ?? 0);
+    if (this.metrics) {
+      const count = (db.prepare("SELECT COUNT(*) AS c FROM working_files").get() as any).c;
+      this.metrics.workingFilesActive.set(count);
+    }
+    return evicted;
   }
 
   /** Called when an agent goes offline (MQTT LWT). Returns rows deleted. */
