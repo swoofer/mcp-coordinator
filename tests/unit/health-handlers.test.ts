@@ -82,10 +82,14 @@ describe("handleReadyz", () => {
     expect(res.statusCode).toBe(200);
     const body = res.body as Record<string, unknown>;
     expect(body.status).toBe("ready");
-    expect(body.checks).toEqual({
-      db: { ok: true },
-      mqtt: { ok: true },
-    });
+    const checks = body.checks as Record<string, unknown>;
+    expect(checks.db).toEqual({ ok: true });
+    expect(checks.mqtt).toEqual({ ok: true });
+    // tree_sitter and git_cochange are present but optional — don't gate readiness
+    expect(checks).toHaveProperty("tree_sitter");
+    expect(checks).toHaveProperty("git_cochange");
+    expect((checks.tree_sitter as Record<string, unknown>).optional).toBe(true);
+    expect((checks.git_cochange as Record<string, unknown>).optional).toBe(true);
   });
 
   it("returns 503 not_ready when DB throws", () => {
@@ -165,8 +169,8 @@ describe("handleReadyz", () => {
     // Both responses have the same `checks` keys — uniform shape regardless of status.
     const okChecks = (okRes.body as { checks: object }).checks;
     const downChecks = (downRes.body as { checks: object }).checks;
-    expect(Object.keys(okChecks).sort()).toEqual(["db", "mqtt"]);
-    expect(Object.keys(downChecks).sort()).toEqual(["db", "mqtt"]);
+    expect(Object.keys(okChecks).sort()).toEqual(["db", "git_cochange", "mqtt", "tree_sitter"]);
+    expect(Object.keys(downChecks).sort()).toEqual(["db", "git_cochange", "mqtt", "tree_sitter"]);
   });
 });
 

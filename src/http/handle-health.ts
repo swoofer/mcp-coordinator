@@ -28,6 +28,8 @@ const STARTED_AT_MS = Date.now();
 interface ReadinessChecks {
   db: { ok: boolean; error?: string };
   mqtt: { ok: boolean; error?: string };
+  tree_sitter: { ok: boolean; grammars_loaded: number; total_grammars: number; optional: true; error?: string };
+  git_cochange: { available: boolean; status: string; optional: true };
 }
 
 const VERSION = getVersion();
@@ -59,11 +61,13 @@ export function handleLivez(_req: IncomingMessage, res: ServerResponse): void {
 export function handleReadyz(
   _req: IncomingMessage,
   res: ServerResponse,
-  services: Pick<CoordinatorServices, "mqttBridge">,
+  services: Pick<CoordinatorServices, "mqttBridge" | "treeSitter" | "gitCochange">,
 ): void {
   const checks: ReadinessChecks = {
     db: { ok: false },
     mqtt: { ok: false },
+    tree_sitter: { ok: false, grammars_loaded: 0, total_grammars: 7, optional: true },
+    git_cochange: { available: false, status: "unavailable", optional: true },
   };
 
   try {
@@ -86,6 +90,30 @@ export function handleReadyz(
     checks.mqtt.error = (err as Error).message;
   }
 
+  // Optional: tree-sitter status (does NOT gate readiness — Layer 0.5 degrades gracefully)
+  try {
+    if (services.treeSitter) {
+      checks.tree_sitter = services.treeSitter.status();
+    }
+  } catch {
+    // keep default { ok: false, grammars_loaded: 0, total_grammars: 7, optional: true }
+  }
+
+  // Optional: git_cochange availability (does NOT gate readiness — Layer 4 degrades gracefully)
+  try {
+    const row = getDb()
+      .prepare("SELECT v FROM git_cochange_meta WHERE k = ?")
+      .get("available") as { v: string } | undefined;
+    checks.git_cochange = {
+      available: row?.v === "true",
+      status: row?.v ?? "unavailable",
+      optional: true,
+    };
+  } catch {
+    // keep default { available: false, status: "unavailable", optional: true }
+  }
+
+  // Gating: only db + mqtt block readiness. tree_sitter and git_cochange are reported but optional.
   const allOk = checks.db.ok && checks.mqtt.ok;
   json(
     res,
