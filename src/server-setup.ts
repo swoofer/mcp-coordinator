@@ -21,6 +21,7 @@ import { MqttBridge } from "./mqtt-bridge.js";
 import { assessPlanQuality } from "./plan-quality.js";
 import { AgentActivityTracker } from "./agent-activity.js";
 import { QuotaCache } from "./quota/quota-cache.js";
+import { Metrics } from "./metrics.js";
 import type { CoordinatorConfig, AgentContext } from "./types.js";
 import { createLogger, type Logger } from "./logger.js";
 import { getVersion } from "../cli/version.js";
@@ -40,6 +41,7 @@ export interface CoordinatorServices {
   sseEmitter: SseEmitter;
   mqttBridge: MqttBridge;
   quotaCache: QuotaCache;
+  metrics: Metrics;
 }
 
 /** Create shared services (once at startup). */
@@ -59,6 +61,7 @@ export function createServices(config: CoordinatorConfig): CoordinatorServices {
   const contextProvider = new SummaryContextProvider(registry, consultation, fileTracker);
   const sseEmitter = new SseEmitter();
   const mqttBridge = new MqttBridge(logger.child({ component: "mqtt" }));
+  const metrics = new Metrics();
 
   // Quota cache â€” macOS-only for now, Linux/Windows stubs return 503 via the
   // /api/quota handler so raids keep running without a quota guardrail there.
@@ -85,8 +88,9 @@ export function createServices(config: CoordinatorConfig): CoordinatorServices {
     else if (event.type === "agent_offline") quotaCache.onAgentInactive();
   });
 
-  // Centralized resolution â†’ SSE + MQTT
+  // Centralized resolution â†’ SSE + MQTT + metrics
   consultation.onResolve((event) => {
+    metrics.recordThreadResolved(event.resolution_type);
     sseEmitter.emit("thread_resolved", {
       thread_id: event.thread_id,
       resolution_type: event.resolution_type,
@@ -100,11 +104,16 @@ export function createServices(config: CoordinatorConfig): CoordinatorServices {
     if (event.resolution_type !== "auto_resolved") {
       mqttBridge.publishResolution(event.thread_id, "resolved", event.resolution_summary || "");
     }
+    // P1 fix: clear the retained `coordinator/consultations/new` event so a
+    // coordinator restart doesn't re-broadcast a consultation that's already
+    // been resolved. No-op when the retained slot holds a different (newer)
+    // thread.
+    mqttBridge.clearRetainedConsultation(event.thread_id);
   });
 
   return {
     logger, registry, activityTracker, consultation, conflictDetector,
-    depMap, fileTracker, impactScorer, introspection, contextProvider, sseEmitter, mqttBridge, quotaCache,
+    depMap, fileTracker, impactScorer, introspection, contextProvider, sseEmitter, mqttBridge, quotaCache, metrics,
   };
 }
 

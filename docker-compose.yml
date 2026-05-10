@@ -1,0 +1,62 @@
+# mcp-coordinator — single-node compose example
+#
+# Production overrides (NOT enabled by default):
+#   - TLS: terminate at a reverse proxy (Caddy, Traefik, nginx) in front of
+#     the coordinator. The coordinator itself speaks plain HTTP; never expose
+#     port 3100 directly to the internet.
+#   - Auth: set COORDINATOR_AUTH_ENABLED=true plus the three secrets below
+#     (JWT_SECRET >= 32 chars, REGISTRATION_SECRET, ADMIN_SECRET). When auth
+#     is on, MQTT CONNECT requires a JWT in the password field too.
+#   - MQTT exposure: 1883 below is plain MQTT — keep it on a private network
+#     or front it with a TLS-terminating proxy (mqtts://) for remote clients.
+#
+# Bring up:    docker compose up -d
+# Logs:        docker compose logs -f coordinator
+# Tear down:   docker compose down            (keeps the volume)
+# Wipe data:   docker compose down -v         (drops the volume)
+
+services:
+  coordinator:
+    # Build from the repo root by default. To pin a published image instead,
+    # comment `build:` out and uncomment `image:`.
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # image: ghcr.io/swoofer/mcp-coordinator:latest
+    container_name: mcp-coordinator
+    restart: unless-stopped
+    ports:
+      - "3100:3100"   # HTTP: MCP + REST + SSE + dashboard
+      - "1883:1883"   # MQTT TCP broker (move to expose-only behind a proxy)
+    environment:
+      # 0.0.0.0 so the HTTP server is reachable from outside the container.
+      # Docker's bridge network handles isolation; bind to the host loopback
+      # by mapping `127.0.0.1:3100:3100` above if you only want host access.
+      COORDINATOR_BIND: "0.0.0.0"
+      NODE_ENV: production
+      # --- Auth (optional) ---------------------------------------------------
+      # COORDINATOR_AUTH_ENABLED: "true"
+      # COORDINATOR_JWT_SECRET: "${COORDINATOR_JWT_SECRET}"            # >=32 chars
+      # COORDINATOR_REGISTRATION_SECRET: "${COORDINATOR_REGISTRATION_SECRET}"
+      # COORDINATOR_ADMIN_SECRET: "${COORDINATOR_ADMIN_SECRET}"
+      # COORDINATOR_JWT_EXPIRY: "24h"
+    volumes:
+      # Named volume keeps SQLite + registration files across container
+      # rebuilds. To bind-mount a host path instead, replace with
+      # `- ./data:/data`. Either way, /data must be writable by uid 1001
+      # (the `coordinator` user inside the image).
+      - mcp-coordinator-data:/data
+    # Reuses the HEALTHCHECK baked into the image. Compose surfaces the
+    # status via `docker compose ps` and gates `depends_on: condition:
+    # service_healthy` for downstream services.
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3100/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+volumes:
+  mcp-coordinator-data:
+    # Anonymous-ish named volume; Docker manages the lifecycle. Switch to
+    # `driver: local` with `driver_opts` for NFS / specific filesystems.

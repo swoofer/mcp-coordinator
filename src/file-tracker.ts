@@ -49,6 +49,40 @@ export class FileTracker {
     return { conflict: rows.length > 0, agents: rows.map((r) => r.agent_id) };
   }
 
+  /**
+   * P2 perf: batch lookup of recent file→agents activity. Replaces N
+   * `checkFileConflict` calls (one per file) with a single SQL query, then
+   * builds an in-memory reverse index. The impact scorer uses this so its
+   * per-file inner loop is O(1) Map.get() rather than O(F) SQL round-trips.
+   *
+   * Excludes the calling agent (so the scorer doesn't flag the announcer
+   * against themselves). Returns Map<file_path, Set<agent_id>>.
+   */
+  getFileToAgentsIndex(filePaths: string[], excludeAgentId: string, withinMinutes: number = 30): Map<string, Set<string>> {
+    const index = new Map<string, Set<string>>();
+    if (filePaths.length === 0) return index;
+    const db = getDb();
+    // Dynamic IN-list — better-sqlite3 binds each ? positionally. Cheap because
+    // the impact scorer only passes target_files + depends_on_files (typically
+    // a handful of files per announce_work call).
+    const placeholders = filePaths.map(() => "?").join(",");
+    const rows = db.prepare(
+      `SELECT DISTINCT file_path, agent_id FROM file_activity
+       WHERE file_path IN (${placeholders})
+       AND agent_id != ?
+       AND created_at > datetime('now', '-' || ? || ' minutes')`
+    ).all(...filePaths, excludeAgentId, withinMinutes) as { file_path: string; agent_id: string }[];
+    for (const r of rows) {
+      let set = index.get(r.file_path);
+      if (!set) {
+        set = new Set();
+        index.set(r.file_path, set);
+      }
+      set.add(r.agent_id);
+    }
+    return index;
+  }
+
   fileToModule(filePath: string): string {
     // Strip leading / so "/server/src/x.ts" and "server/src/x.ts" produce the
     // same module name. Without this, split("/") on an absolute path yields

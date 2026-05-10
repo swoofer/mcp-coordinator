@@ -24,6 +24,16 @@ interface AnnounceParams {
   exports_affected?: string[];
 }
 
+// Layer 0 (announced-intent) recency window. Resolved threads older than this
+// are excluded — yesterday's resolved work shouldn't trigger today's scoring.
+// Aligned with file-tracker's default conflict window per the audit guidance.
+const LAYER_0_WINDOW_MINUTES = 30;
+// Layer 1 / 2 (file-activity) recency window. Preserved at 60 minutes to keep
+// strict behavioral parity with the original scorer (the prior implementation
+// hard-coded 60 in the checkFileConflict calls). Performance optimizations
+// must not change scoring outcomes for existing callers.
+const FILE_ACTIVITY_WINDOW_MINUTES = 60;
+
 export class ImpactScorer {
   constructor(
     private registry: AgentRegistry,
@@ -36,73 +46,99 @@ export class ImpactScorer {
       .listOnline()
       .filter((a) => a.id !== params.agent_id);
 
+    if (onlineAgents.length === 0) return [];
+
+    // O1: cache parsed agent.modules JSON ONCE per scoring call.
+    // Previously each agent's modules were JSON.parse'd inside the hot path
+    // (Layer 3), which is O(A) parses for A agents. With Layer 0 also reading
+    // thread.target_files / depends_on_files per agent, the original code
+    // re-parsed agent state up to ~4·A times per call.
+    const moduleCache = new Map<string, string[]>();
+    for (const a of onlineAgents) {
+      moduleCache.set(a.id, JSON.parse(a.modules));
+    }
+
+    // O3: pre-compute file → set<agent_id> for every file we'll inspect.
+    // Replaces N `checkFileConflict` calls (each = 1 SQL round-trip) with a
+    // single batched query, and turns the inner per-agent file check into
+    // an O(1) Set.has() lookup.
+    const filesToIndex = [
+      ...params.target_files,
+      ...(params.depends_on_files || []),
+    ];
+    const fileToAgents = filesToIndex.length > 0
+      ? this.fileTracker.getFileToAgentsIndex(filesToIndex, params.agent_id, FILE_ACTIVITY_WINDOW_MINUTES)
+      : new Map<string, Set<string>>();
+
+    // O2: bound the resolved-thread query to a recency window. Without this,
+    // listThreads({status:'resolved'}) returns ALL historical resolved threads
+    // (unbounded growth). The Layer 0 filter only keeps threads where the
+    // initiator is the currently-evaluated agent, but the SQL still scanned
+    // every row before the JS filter ran. Since-bound at the SQL layer.
+    let activeThreadsByAgent: Map<string, ThreadLike[]> | null = null;
+    if (this.consultation) {
+      const allActive = [
+        ...this.consultation.listThreads({ status: "open" }),
+        ...this.consultation.listThreads({ status: "resolving" }),
+        ...this.consultation.listThreads({ status: "resolved", since_minutes: LAYER_0_WINDOW_MINUTES }),
+      ];
+      // Group by initiator_id so the per-agent loop is O(threads-for-this-agent)
+      // rather than O(all-active-threads). Avoids an outer-product scan over
+      // (agents × threads) when both sets are large.
+      activeThreadsByAgent = new Map();
+      for (const t of allActive) {
+        const list = activeThreadsByAgent.get(t.initiator_id);
+        if (list) {
+          list.push(t);
+        } else {
+          activeThreadsByAgent.set(t.initiator_id, [t]);
+        }
+      }
+    }
+
     return onlineAgents.map((agent) => {
-      const agentModules: string[] = JSON.parse(agent.modules);
+      const agentModules = moduleCache.get(agent.id)!;
       const reasons: string[] = [];
       let maxScore = 0;
 
       // Layer 0: Announced intent overlap (checks active threads from this agent).
-      // Resolved threads older than LAYER_0_RESOLVED_WINDOW_MS are excluded —
-      // yesterday's resolved work shouldn't trigger today's scoring.
-      if (this.consultation) {
-        const LAYER_0_RESOLVED_WINDOW_MS = 30 * 60 * 1000; // 30 minutes
-        const now = Date.now();
-        // SQLite datetime('now') returns UTC without a TZ suffix. new Date(str)
-        // parses it as local time by default — causing a local-offset skew.
-        // Normalize by treating the space as T and appending Z.
-        const parseSqliteUtc = (s: string): number => {
-          const iso = /[Tt]/.test(s) ? s : s.replace(" ", "T");
-          return new Date(/[zZ]|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : iso + "Z").getTime();
-        };
-        const activeThreads = [
-          ...this.consultation.listThreads({ status: "open" }),
-          ...this.consultation.listThreads({ status: "resolving" }),
-          ...this.consultation
-            .listThreads({ status: "resolved" })
-            .filter((t) => {
-              if (!t.resolved_at) return true;
-              const resolvedAt = parseSqliteUtc(t.resolved_at);
-              return !isNaN(resolvedAt) && now - resolvedAt <= LAYER_0_RESOLVED_WINDOW_MS;
-            }),
-        ].filter((t) => t.initiator_id === agent.id);
+      if (activeThreadsByAgent) {
+        const agentThreads = activeThreadsByAgent.get(agent.id);
+        if (agentThreads) {
+          for (const thread of agentThreads) {
+            const threadFiles: string[] = JSON.parse(thread.target_files || "[]");
+            const threadDeps: string[] = JSON.parse(thread.depends_on_files || "[]");
 
-        for (const thread of activeThreads) {
-          const threadFiles: string[] = JSON.parse(thread.target_files || "[]");
-          const threadDeps: string[] = JSON.parse(thread.depends_on_files || "[]");
-
-          // 0a: My target_files ∩ their target_files → score 100
-          const fileOverlap = params.target_files.filter((f) => threadFiles.includes(f));
-          if (fileOverlap.length > 0) {
-            maxScore = Math.max(maxScore, 100);
-            reasons.push(`announced same file: ${fileOverlap.join(", ")} (thread ${thread.id.slice(0, 8)})`);
-          }
-
-          // 0b: My depends_on ∩ their target_files → score 80 (they modify what I depend on)
-          if (params.depends_on_files) {
-            const depOverlap = params.depends_on_files.filter((f) => threadFiles.includes(f));
-            if (depOverlap.length > 0) {
-              maxScore = Math.max(maxScore, 80);
-              reasons.push(`modifies my dependency: ${depOverlap.join(", ")} (thread ${thread.id.slice(0, 8)})`);
+            // 0a: My target_files ∩ their target_files → score 100
+            const fileOverlap = params.target_files.filter((f) => threadFiles.includes(f));
+            if (fileOverlap.length > 0) {
+              maxScore = Math.max(maxScore, 100);
+              reasons.push(`announced same file: ${fileOverlap.join(", ")} (thread ${thread.id.slice(0, 8)})`);
             }
-          }
 
-          // 0c: My target_files ∩ their depends_on → score 80 (I modify what they depend on)
-          const reverseDepOverlap = params.target_files.filter((f) => threadDeps.includes(f));
-          if (reverseDepOverlap.length > 0) {
-            maxScore = Math.max(maxScore, 80);
-            reasons.push(`they depend on my target: ${reverseDepOverlap.join(", ")} (thread ${thread.id.slice(0, 8)})`);
+            // 0b: My depends_on ∩ their target_files → score 80 (they modify what I depend on)
+            if (params.depends_on_files) {
+              const depOverlap = params.depends_on_files.filter((f) => threadFiles.includes(f));
+              if (depOverlap.length > 0) {
+                maxScore = Math.max(maxScore, 80);
+                reasons.push(`modifies my dependency: ${depOverlap.join(", ")} (thread ${thread.id.slice(0, 8)})`);
+              }
+            }
+
+            // 0c: My target_files ∩ their depends_on → score 80 (I modify what they depend on)
+            const reverseDepOverlap = params.target_files.filter((f) => threadDeps.includes(f));
+            if (reverseDepOverlap.length > 0) {
+              maxScore = Math.max(maxScore, 80);
+              reasons.push(`they depend on my target: ${reverseDepOverlap.join(", ")} (thread ${thread.id.slice(0, 8)})`);
+            }
           }
         }
       }
 
-      // Layer 1: Same file recently modified (score 100)
+      // Layer 1: Same file recently modified (score 100) — uses pre-built index.
       for (const targetFile of params.target_files) {
-        const conflict = this.fileTracker.checkFileConflict(
-          targetFile,
-          params.agent_id,
-          60
-        );
-        if (conflict.agents.includes(agent.id)) {
+        const agentsForFile = fileToAgents.get(targetFile);
+        if (agentsForFile && agentsForFile.has(agent.id)) {
           maxScore = Math.max(maxScore, 100);
           reasons.push(`same file: ${targetFile}`);
         }
@@ -111,12 +147,8 @@ export class ImpactScorer {
       // Layer 2: Depends-on file recently modified (score 80)
       if (params.depends_on_files) {
         for (const depFile of params.depends_on_files) {
-          const conflict = this.fileTracker.checkFileConflict(
-            depFile,
-            params.agent_id,
-            60
-          );
-          if (conflict.agents.includes(agent.id)) {
+          const agentsForFile = fileToAgents.get(depFile);
+          if (agentsForFile && agentsForFile.has(agent.id)) {
             maxScore = Math.max(maxScore, 80);
             reasons.push(`depends on: ${depFile}`);
           }
@@ -156,4 +188,14 @@ export class ImpactScorer {
       pass: scores.filter((s) => s.score < 30),
     };
   }
+}
+
+// Minimal structural type so the per-agent grouping doesn't depend on the
+// Thread interface exported from types.ts (avoids import churn for a purely
+// local helper).
+interface ThreadLike {
+  id: string;
+  initiator_id: string;
+  target_files: string | null;
+  depends_on_files: string | null;
 }

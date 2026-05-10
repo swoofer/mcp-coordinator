@@ -434,6 +434,14 @@ export class Consultation {
      * parsing the thread list themselves.
      */
     assigned_to_me?: string;
+    /**
+     * P2 perf: bound resolved-thread queries to a recency window. Without
+     * this, the impact scorer would scan all-time resolved threads on every
+     * announce_work call (O(historical-threads) per scoring pass). The window
+     * applies to resolved_at when status='resolved', otherwise to created_at,
+     * so the filter is meaningful for both states.
+     */
+    since_minutes?: number;
   }): Thread[] {
     // B2 fix: removed checkTimeouts() side-effect; sweeper handles it.
     const db = getDb();
@@ -458,6 +466,14 @@ export class Consultation {
     if (filters.assigned_to_me) {
       sql += " AND (assigned_to IS NULL OR assigned_to = ?)";
       params.push(filters.assigned_to_me);
+    }
+    if (typeof filters.since_minutes === "number") {
+      // For resolved threads, gate on resolved_at (the moment that matters
+      // for "recent enough to still influence scoring"). For open/resolving
+      // threads, gate on created_at since they have no resolved_at yet.
+      // COALESCE picks the right column per row.
+      sql += " AND COALESCE(resolved_at, created_at) > datetime('now', '-' || ? || ' minutes')";
+      params.push(filters.since_minutes);
     }
     sql += " ORDER BY created_at DESC";
     return db.prepare(sql).all(...params) as Thread[];

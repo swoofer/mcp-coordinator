@@ -9,6 +9,11 @@ import { runCommonAnnounceFlow } from "../../src/announce-workflow.js";
 let dataDir: string;
 let services: CoordinatorServices;
 
+// P3: SseEmitter now fans out via setImmediate so listeners don't block
+// emit() or each other. Tests that subscribe-then-emit-then-assert must
+// drain the queue before reading.
+const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
+
 beforeEach(() => {
   dataDir = mkdtempSync(join(tmpdir(), "s2-announce-"));
   services = createServices({ dataDir });
@@ -53,7 +58,7 @@ describe("S2 fix - runCommonAnnounceFlow extracts shared orchestration", () => {
     expect(result.respondents).toContain("a2");
   });
 
-  it("emits impact_scored SSE for every scored agent", () => {
+  it("emits impact_scored SSE for every scored agent", async () => {
     services.registry.register("a1", "Agent A", ["src/auth"]);
     services.registry.register("a2", "Agent B", ["src/auth"]);
     services.registry.register("a3", "Agent C", ["src/web"]);
@@ -67,6 +72,7 @@ describe("S2 fix - runCommonAnnounceFlow extracts shared orchestration", () => {
       agent_id: "a1", subject: "scored", target_modules: ["src/auth"], target_files: [],
     });
 
+    await flush();
     const impactEvents = events.filter((e) => e.type === "impact_scored");
     // a2 (gray_zone via module match) and a3 (pass, no overlap) both get scored events.
     expect(impactEvents.length).toBeGreaterThanOrEqual(2);
@@ -95,7 +101,7 @@ describe("S2 fix - runCommonAnnounceFlow extracts shared orchestration", () => {
     expect(result.planQuality.mode).toBeDefined();
   });
 
-  it("emits plan-quality downgrade event when plan is vague", () => {
+  it("emits plan-quality downgrade event when plan is vague", async () => {
     services.registry.register("a1", "Agent A", ["src/auth"]);
     const events: { type: string; payload: string }[] = [];
     services.sseEmitter.addListener((e) => events.push({ type: e.type, payload: e.payload }));
@@ -107,6 +113,7 @@ describe("S2 fix - runCommonAnnounceFlow extracts shared orchestration", () => {
       agent_id: "a1", subject: "vague", plan: "do thing", target_modules: ["src/auth"], target_files: [],
     });
 
+    await flush();
     const downgrade = events.find((e) => {
       if (e.type !== "impact_scored") return false;
       const parsed = JSON.parse(e.payload) as { category?: string };
