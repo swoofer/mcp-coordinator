@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "http";
 import type { CoordinatorServices } from "../server-setup.js";
 import type { Logger } from "../logger.js";
+import { createHash } from "crypto";
 import { getDb } from "../database.js";
 import { runCommonAnnounceFlow } from "../announce-workflow.js";
 import { canResetDb } from "../reset-guard.js";
@@ -30,7 +31,14 @@ export interface RestContext {
 export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx: RestContext): Promise<void> {
   const { services, httpLog, authEnabled, getRunConfig, setRunConfig } = ctx;
   const url = req.url || "";
-  const body = await parseBody(req);
+  let body: Record<string, unknown>;
+  try {
+    body = await parseBody(req);
+  } catch (err: unknown) {
+    const e = err as { statusCode?: number; message?: string };
+    json(res, { error: e.message || "Invalid request" }, e.statusCode || 400);
+    return;
+  }
   const agentId = (body as Record<string, unknown>).agent_id as string | undefined;
   // Dashboard/work-stealing polls these endpoints every few seconds — demote to debug
   // to keep the info log focused on coordination events (announce, claim, resolve, etc).
@@ -88,9 +96,10 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
     json(res, { ok: true });
 
   } else if (url === "/api/announce") {
-    const { agent_id, subject, plan, target_modules, target_files, depends_on_files, exports_affected, keep_open, assigned_to } = body as {
+    const { agent_id, subject, plan, target_modules, target_files, depends_on_files, exports_affected, keep_open, assigned_to, target_symbols } = body as {
       agent_id: string; subject: string; plan?: string; target_modules: string[]; target_files: string[];
       depends_on_files?: string[]; exports_affected?: string[]; keep_open?: boolean; assigned_to?: string | null;
+      target_symbols?: string[];
     };
 
     const thread = consultation.announceWork({ agent_id, subject, plan, target_modules, target_files, depends_on_files, exports_affected, keep_open, assigned_to });
@@ -101,6 +110,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
     // function used by the MCP announce_work tool path.
     const { updated, categorized, respondents, planQuality } = runCommonAnnounceFlow(services, thread.id, {
       agent_id, subject, plan, target_modules, target_files, depends_on_files, exports_affected, keep_open,
+      target_symbols,
     });
 
     // REST-specific thread_opened SSE shape (different field set than MCP — kept
@@ -394,6 +404,79 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
       const activity = activityTracker.getActivity(aid, { idleAfterMinutes: 5 });
       json(res, { registered: true, status: agent.status, activity: activity.activity_status });
     }
+
+  } else if (url === "/api/file-activity" && req.method === "POST") {
+    if (typeof body.session_id !== "string" || typeof body.agent_id !== "string"
+        || typeof body.tool_name !== "string" || typeof body.file_path !== "string") {
+      json(res, { error: "missing required fields" }, 400);
+      return;
+    }
+    if (body.agent_name !== undefined && typeof body.agent_name !== "string") {
+      json(res, { error: "agent_name must be string when present" }, 400);
+      return;
+    }
+    const MAX_CONTENT = 262144;
+    let symbols: string[] | null = null;
+    let contentHash: string | null = null;
+    if (typeof body.content === "string") {
+      if (body.content.length > MAX_CONTENT) {
+        json(res, { error: "content exceeds 256 KB" }, 400);
+        return;
+      }
+      contentHash = createHash("sha256").update(body.content).digest("hex");
+      symbols = ctx.services.treeSitter.extract(body.file_path, body.content, null);
+    }
+    ctx.services.fileTracker.log({
+      session_id: body.session_id,
+      agent_id: body.agent_id,
+      agent_name: body.agent_name,
+      tool_name: body.tool_name,
+      file_path: body.file_path,
+      content_hash: contentHash,
+      symbols_touched: symbols,
+    });
+    json(res, { ok: true });
+
+  } else if (url === "/api/working-files/start" && req.method === "POST") {
+    if (typeof body.agent_id !== "string" || typeof body.file_path !== "string") {
+      json(res, { error: "agent_id and file_path required" }, 400);
+      return;
+    }
+    const ttl = parseInt(process.env.COORDINATOR_WORKING_FILES_TTL_MIN || "30", 10);
+    services.workingFiles.start(body.agent_id as string, body.file_path as string, ttl);
+    json(res, { ok: true });
+
+  } else if (url === "/api/working-files/stop" && req.method === "POST") {
+    if (typeof body.agent_id !== "string" || typeof body.file_path !== "string") {
+      json(res, { error: "agent_id and file_path required" }, 400);
+      return;
+    }
+    services.workingFiles.stop(body.agent_id as string, body.file_path as string);
+    json(res, { ok: true });
+
+  } else if (url?.startsWith("/api/scoring-stats") && req.method === "GET") {
+    const u = new URL(url, "http://localhost");
+    const sinceParam = u.searchParams.get("since") || "24h";
+    const sinceMin = sinceParam.endsWith("h") ? parseInt(sinceParam) * 60
+                    : sinceParam.endsWith("d") ? parseInt(sinceParam) * 60 * 24
+                    : 60 * 24;
+    const db = getDb();
+    const layers = db.prepare(
+      `SELECT layer, COUNT(*) AS fire_count, AVG(score) AS avg_score
+       FROM layer_firings
+       WHERE fired_at > datetime('now', '-' || ? || ' minutes')
+       GROUP BY layer
+       ORDER BY fire_count DESC`
+    ).all(sinceMin) as Array<{ layer: string; fire_count: number; avg_score: number }>;
+    json(res, {
+      window: { since: sinceParam, now: new Date().toISOString() },
+      layers: layers.map(l => ({
+        layer: l.layer,
+        fire_count: l.fire_count,
+        avg_score: l.avg_score,
+        outcomes: { auto_resolved: 0, consensus: 0, timeout: 0, cancelled: 0 },
+      })),
+    });
 
   } else if (url === "/api/status") {
     const online = registry.listOnline();

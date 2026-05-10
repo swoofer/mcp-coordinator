@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.6.0] - 2026-05-10
+
+### Added
+- `WorkingFilesTracker` + REST endpoints `POST /api/working-files/{start|stop}` — tracks in-flight agent edits via PreToolUse/PostToolUse hooks
+- Tree-sitter symbol extraction on `POST /api/file-activity` (TypeScript, TSX, JavaScript, JSX, Python, Go, Rust, Java)
+- `file_activity.symbols_touched` and `file_activity.content_hash` columns
+- Layer 0.5 annotation: same file with disjoint symbols stays score 100 with enriched reason text
+- Layer 4 git co-change scoring (60 if ratio > 0.5, 40 if ratio > 0.2)
+- `GitCochangeBuilder` background task with shallow-clone detection, denylist (lockfiles, dist, snapshots), 5-min retry on timeout
+- `GET /api/scoring-stats?since=<dur>` endpoint + dashboard "Conflict signals" panel
+- `/readyz` extended with `tree_sitter` and `git_cochange` blocks (non-gating, optional)
+- `path-normalize.ts` symmetric utility for canonical path matching
+- `parseBody` 1 MB hard cap with 413 response (env: `COORDINATOR_MAX_BODY_BYTES`)
+- `PRAGMA user_version = 6` schema marker; downgrade refused at startup
+- 5 new Prometheus counters/gauges (`mcp_coordinator_working_files_active`, `mcp_coordinator_working_files_starts_total`, `mcp_coordinator_tree_sitter_parse_failures_total`, `mcp_coordinator_git_cochange_builds_total`, `mcp_coordinator_git_cochange_pairs_total`)
+- 8 new env vars and CLI flags (`COORDINATOR_REPO_ROOT`, `COORDINATOR_LAYER4_*`, `COORDINATOR_WORKING_FILES_*`)
+
+### Changed
+- `announce_work` MCP tool gains optional `target_symbols: string[]` parameter (max 200 entries, max 256 chars each); used by Layer 0.5
+- `POST /api/file-activity` gains optional `content` field (cap 256 KB) for server-side symbol extraction
+- Dockerfile runtime stage adds `git`; builder stage adds `python3 make g++` for tree-sitter native bindings
+- Tree-sitter declared as `optionalDependencies` — Layer 0.5 degrades gracefully when grammars unavailable
+
+### Migration
+- v0.4.x → v0.6.0: new tables (`working_files`, `git_cochange`, `git_cochange_meta`, `layer_firings`, `reasoner_cache`) and columns (`file_activity.symbols_touched`, `file_activity.content_hash`) auto-create on first boot via `IF NOT EXISTS` and try/catch `ALTER TABLE`. No data migration required.
+- Rollback to v0.4.x: NOT SUPPORTED. The v0.6 `user_version = 6` causes older binary to refuse start. Restore v0.4.x backup if downgrading.
+
+### Out of scope (deferred to v0.6.1)
+- LLM Reasoner for gray-zone arbitration (separate plan)
+
 ## [0.4.0](https://github.com/swoofer/mcp-coordinator/compare/v0.3.0...v0.4.0) (2026-05-10)
 
 

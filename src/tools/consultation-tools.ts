@@ -40,7 +40,9 @@ export function registerConsultationTools(
     exports_affected: z.array(z.string()).optional(),
     keep_open: z.boolean().optional().describe("Keep thread open even if no agents are concerned (for manual coordination like games or debates)"),
     assigned_to: z.string().optional().describe("Directed-dispatch: only this agent_id will be allowed to claim the thread. Use for lead→worker handoffs in maitre/chaine/relais presets. Implies keep_open=true."),
-  }, async ({ agent_id, subject, plan, target_modules, target_files, depends_on_files, exports_affected, keep_open, assigned_to }) => {
+    target_symbols: z.array(z.string().max(256)).max(200).optional()
+      .describe("Qualified symbol names you intend to touch (e.g. 'UserService.getById'). Used by Layer 0.5 to annotate same-file overlaps."),
+  }, async ({ agent_id, subject, plan, target_modules, target_files, depends_on_files, exports_affected, keep_open, assigned_to, target_symbols }) => {
     mcpLog.info({ tool: "announce_work", agent_id, subject, target_modules, target_files, assigned_to }, "Tool called");
 
     const conflicts = conflictDetector.detect({ agent_id, target_modules, target_files });
@@ -53,7 +55,7 @@ export function registerConsultationTools(
     }
 
     const { updated, categorized, respondents, planQuality } = runCommonAnnounceFlow(services, thread.id, {
-      agent_id, subject, plan, target_modules, target_files, depends_on_files, exports_affected, keep_open,
+      agent_id, subject, plan, target_modules, target_files, depends_on_files, exports_affected, keep_open, target_symbols,
     });
 
     sseEmitter.emit("thread_opened", {

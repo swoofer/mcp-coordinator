@@ -17,6 +17,8 @@ import { initAuth, authenticateRequest, createToken, refreshToken, revokeAgent, 
 import { canResetDb } from "./reset-guard.js";
 import { safeJoinUnderRoot } from "./path-guard.js";
 import { handleRest as handleRestExt, type RestContext } from "./http/handle-rest.js";
+import { handleLivez, handleReadyz, handleHealth } from "./http/handle-health.js";
+import { serveMetrics } from "./metrics.js";
 import { parseBody as parseBodyShared, json as jsonShared } from "./http/utils.js";
 import { assessPlanQuality } from "./plan-quality.js";
 import type { CoordinatorEvent } from "./types.js";
@@ -94,7 +96,14 @@ async function handleRest(req: IncomingMessage, res: ServerResponse): Promise<vo
 
 async function handleAuth(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const url = req.url || "";
-  const body = await parseBody(req);
+  let body: Record<string, unknown>;
+  try {
+    body = await parseBody(req);
+  } catch (err: unknown) {
+    const e = err as { statusCode?: number; message?: string };
+    json(res, { error: e.message || "Invalid request" }, e.statusCode || 400);
+    return;
+  }
 
   if (url === "/api/auth/register" && req.method === "POST") {
     const { agent_name, registration_secret } = body as { agent_name: string; registration_secret: string };
@@ -203,6 +212,8 @@ function handleSse(req: IncomingMessage, res: ServerResponse): void {
     Connection: "keep-alive",
     "Access-Control-Allow-Origin": "*",
   });
+  services.metrics.incSseClients();
+  services.metrics.recordHttpRequest("/api/events", 200);
 
   // Use Last-Event-ID for resumption, otherwise send last 50
   const lastEventId = parseInt(req.headers["last-event-id"] as string || "0", 10);
@@ -238,6 +249,7 @@ function handleSse(req: IncomingMessage, res: ServerResponse): void {
     // fires between close and unsubscribe can't write to a dead socket.
     clearInterval(heartbeat);
     unsubscribe();
+    services.metrics.decSseClients();
   });
 }
 
@@ -364,8 +376,18 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
           json(res, { error: "not found" }, 404);
         }
         return;
+      } else if (url === "/livez") {
+        handleLivez(req, res);
+        services.metrics.recordHttpRequest("/livez", 200);
+      } else if (url === "/readyz") {
+        handleReadyz(req, res, services);
+        services.metrics.recordHttpRequest("/readyz", res.statusCode || 0);
       } else if (url === "/health") {
-        json(res, { status: "ok", version: VERSION });
+        handleHealth(req, res);
+        services.metrics.recordHttpRequest("/health", 200);
+      } else if (url === "/metrics" && req.method === "GET") {
+        await serveMetrics(req, res, services, services.metrics);
+        services.metrics.recordHttpRequest("/metrics", 200);
       } else if (url === "/api/events" && req.method === "GET") {
         handleSse(req, res);
       } else if (url.startsWith("/api/auth/")) {
@@ -419,6 +441,7 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
           const authResult = await authenticateRequest(req);
           if (!authResult.ok) {
             authLog.warn({ reason: authResult.error, url, ip: req.socket.remoteAddress }, "Auth rejected");
+            services.metrics.recordAuthRejected();
             json(res, { error: authResult.error }, authResult.status);
             return;
           }
@@ -426,8 +449,10 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
 
         if (url.startsWith("/api/") && (req.method === "POST" || req.method === "GET")) {
           await handleRest(req, res);
+          services.metrics.recordHttpRequest((url.split("?")[0] || ""), res.statusCode || 0);
         } else {
           json(res, { error: "not found" }, 404);
+          services.metrics.recordHttpRequest((url.split("?")[0] || ""), 404);
         }
       }
     } catch (err) {
@@ -476,6 +501,10 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
   services.mqttBridge.onOffline((agentId) => {
     services.registry.setOffline(agentId);
     services.consultation.handleAgentDeparture(agentId);
+    // Clear in-flight working_files AFTER consultation cleanup so any future
+    // consultation logic that might inspect working_files state for this agent
+    // sees the pre-cleanup view.
+    services.workingFiles.clearForAgent(agentId);
     services.sseEmitter.emit("agent_offline", { agent_id: agentId });
   });
 
@@ -537,6 +566,11 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
       services.consultation.stopTimeoutSweeper();
     } catch (err) {
       log.warn({ err }, "Error stopping timeout sweeper");
+    }
+    try {
+      services.workingFiles.stopSweeper();
+    } catch (err) {
+      log.warn({ err }, "Error stopping working-files sweeper");
     }
     try {
       const { closeDb } = await import("./database.js");

@@ -61,6 +61,13 @@ export class Metrics {
   readonly threadsResolving: Gauge<string>;
   readonly mqttListenersActive: Gauge<string>;
   readonly sseClientsActive: Gauge<string>;
+  readonly workingFilesActive: Gauge<string>;
+  readonly gitCochangePairs: Gauge<string>;
+
+  // v0.6 counters
+  readonly workingFilesStarts: Counter<"result">;
+  readonly treeSitterParseFailures: Counter<string>;
+  readonly gitCochangeBuilds: Counter<"outcome">;
 
   constructor(opts: MetricsOptions = {}) {
     this.registry = new Registry();
@@ -129,6 +136,38 @@ export class Metrics {
     this.sseClientsActive = new Gauge({
       name: "mcp_coordinator_sse_clients_active",
       help: "Current number of connected SSE clients",
+      registers: [this.registry],
+    });
+
+    this.workingFilesActive = new Gauge({
+      name: "mcp_coordinator_working_files_active",
+      help: "Current working_files row count",
+      registers: [this.registry],
+    });
+
+    this.workingFilesStarts = new Counter({
+      name: "mcp_coordinator_working_files_starts_total",
+      help: "Total working_files start calls",
+      labelNames: ["result"] as const,
+      registers: [this.registry],
+    });
+
+    this.treeSitterParseFailures = new Counter({
+      name: "mcp_coordinator_tree_sitter_parse_failures_total",
+      help: "Tree-sitter parse failures",
+      registers: [this.registry],
+    });
+
+    this.gitCochangeBuilds = new Counter({
+      name: "mcp_coordinator_git_cochange_builds_total",
+      help: "git_cochange build attempts",
+      labelNames: ["outcome"] as const,
+      registers: [this.registry],
+    });
+
+    this.gitCochangePairs = new Gauge({
+      name: "mcp_coordinator_git_cochange_pairs_total",
+      help: "Current git_cochange row count",
       registers: [this.registry],
     });
   }

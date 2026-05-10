@@ -16,6 +16,10 @@ WORKDIR /build
 # Subsequent code edits won't bust npm install.
 COPY package.json package-lock.json ./
 
+# Install build tools for tree-sitter native bindings (node-gyp).
+# These are needed when prebuilt binaries are unavailable on Alpine/musl.
+RUN apk add --no-cache python3 make g++
+
 # `npm ci` is reproducible (uses the lockfile) and faster than `npm install`
 # in CI/Docker. We need devDependencies here for tsc, so no --omit=dev.
 RUN npm ci --no-audit --no-fund
@@ -43,7 +47,8 @@ FROM node:22-alpine AS runtime
 # it explicit so the probe still works if the base image is swapped.
 # tini gives us a real PID 1 so SIGTERM reaches Node and graceful shutdown
 # (see src/serve-http.ts handle.stop()) actually runs on `docker stop`.
-RUN apk add --no-cache wget tini
+# git is required for Layer 4 (git_cochange) which runs git log via child_process.
+RUN apk add --no-cache wget tini git
 
 # Non-root user — runs the coordinator with reduced blast radius. UID 1001
 # matches the convention used by GitHub Actions runners and most k8s

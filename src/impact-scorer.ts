@@ -1,6 +1,8 @@
 import type { AgentRegistry } from "./agent-registry.js";
 import type { FileTracker } from "./file-tracker.js";
 import type { Consultation } from "./consultation.js";
+import type { WorkingFilesTracker } from "./working-files-tracker.js";
+import { getDb } from "./database.js";
 
 export interface ImpactScore {
   agent_id: string;
@@ -22,6 +24,7 @@ interface AnnounceParams {
   target_files: string[];
   depends_on_files?: string[];
   exports_affected?: string[];
+  target_symbols?: string[];
 }
 
 // Layer 0 (announced-intent) recency window. Resolved threads older than this
@@ -38,7 +41,8 @@ export class ImpactScorer {
   constructor(
     private registry: AgentRegistry,
     private fileTracker: FileTracker,
-    private consultation?: Consultation
+    private consultation?: Consultation,
+    private workingFiles?: WorkingFilesTracker,
   ) {}
 
   score(params: AnnounceParams): ImpactScore[] {
@@ -69,6 +73,38 @@ export class ImpactScorer {
     const fileToAgents = filesToIndex.length > 0
       ? this.fileTracker.getFileToAgentsIndex(filesToIndex, params.agent_id, FILE_ACTIVITY_WINDOW_MINUTES)
       : new Map<string, Set<string>>();
+
+    const inFlightToAgents = this.workingFiles
+      ? this.workingFiles.getIndex(filesToIndex, params.agent_id)
+      : new Map<string, Set<string>>();
+
+    // Pre-load symbols_touched for the target_files × online_agents matrix once,
+    // keyed by (file_path, agent_id). Avoids N*M DB roundtrips inside the score loop.
+    let symbolsByFileAgent: Map<string, string[]> | null = null;
+    if (params.target_symbols && params.target_symbols.length > 0 && params.target_files.length > 0) {
+      const db = getDb();
+      const placeholders = params.target_files.map(() => "?").join(",");
+      const rows = db.prepare(
+        `SELECT agent_id, file_path, symbols_touched
+         FROM file_activity
+         WHERE file_path IN (${placeholders})
+           AND symbols_touched IS NOT NULL
+           AND id IN (
+             SELECT MAX(id) FROM file_activity
+             WHERE file_path IN (${placeholders})
+               AND symbols_touched IS NOT NULL
+             GROUP BY agent_id, file_path
+           )`
+      ).all(...params.target_files, ...params.target_files) as Array<{ agent_id: string; file_path: string; symbols_touched: string }>;
+
+      symbolsByFileAgent = new Map();
+      for (const r of rows) {
+        try {
+          const arr = JSON.parse(r.symbols_touched) as string[];
+          symbolsByFileAgent.set(`${r.file_path}|${r.agent_id}`, arr);
+        } catch { /* malformed JSON: ignore */ }
+      }
+    }
 
     // O2: bound the resolved-thread query to a recency window. Without this,
     // listThreads({status:'resolved'}) returns ALL historical resolved threads
@@ -135,12 +171,34 @@ export class ImpactScorer {
         }
       }
 
-      // Layer 1: Same file recently modified (score 100) — uses pre-built index.
+      // Layer 1: Same file recently modified (file_activity) OR currently in flight (working_files).
       for (const targetFile of params.target_files) {
-        const agentsForFile = fileToAgents.get(targetFile);
-        if (agentsForFile && agentsForFile.has(agent.id)) {
+        const recentAgents = fileToAgents.get(targetFile);
+        const inFlightAgents = inFlightToAgents.get(targetFile);
+        if (recentAgents && recentAgents.has(agent.id)) {
           maxScore = Math.max(maxScore, 100);
-          reasons.push(`same file: ${targetFile}`);
+          let annotated = false;
+          if (params.target_symbols && params.target_symbols.length > 0) {
+            const theirSymbols = symbolsByFileAgent?.get(`${targetFile}|${agent.id}`) || null;
+            if (theirSymbols && theirSymbols.length > 0) {
+              const mine = new Set(params.target_symbols);
+              const theirs = new Set(theirSymbols);
+              const overlap = [...mine].some(s => theirs.has(s));
+              if (!overlap) {
+                reasons.push(
+                  `same file: ${targetFile}; disjoint symbols: you=[${[...mine].join(",")}], them=[${[...theirs].join(",")}] — verify shared module state`
+                );
+                annotated = true;
+              }
+            }
+          }
+          if (!annotated) {
+            reasons.push(`same file (recent): ${targetFile}`);
+          }
+        }
+        if (inFlightAgents && inFlightAgents.has(agent.id)) {
+          maxScore = Math.max(maxScore, 100);
+          reasons.push(`same file (in flight): ${targetFile}`);
         }
       }
 
@@ -166,9 +224,35 @@ export class ImpactScorer {
         reasons.push(`module overlap: ${overlapping.join(", ")}`);
       }
 
-      // Layer 4 (future): Git co-change analysis
-      // Score 60 for >50% co-change ratio, 40 for >20%
-      // Requires git history analysis — not implemented in v3 prototype
+      // Layer 4: git co-change. For each target_file F, find rows in git_cochange where
+      // (LEAST(F,partner), GREATEST(F,partner)) match. If the OTHER agent recently
+      // touched the partner file, apply the co-change score.
+      const db = getDb();
+      for (const targetFile of params.target_files) {
+        const rows = db.prepare(
+          `SELECT file_a, file_b, count, total_commits FROM git_cochange
+           WHERE file_a = ? OR file_b = ?`
+        ).all(targetFile, targetFile) as Array<{ file_a: string; file_b: string; count: number; total_commits: number }>;
+        for (const r of rows) {
+          const partner = r.file_a === targetFile ? r.file_b : r.file_a;
+          const ratio = r.count / Math.max(r.total_commits, 1);
+          let layer4Score = 0;
+          if (ratio > 0.5) layer4Score = 60;
+          else if (ratio > 0.2) layer4Score = 40;
+          if (layer4Score === 0) continue;
+          // Did the OTHER agent touch the partner file recently?
+          const partnerActivity = db.prepare(
+            `SELECT 1 FROM file_activity
+             WHERE file_path = ? AND agent_id = ?
+               AND created_at > datetime('now', '-60 minutes')
+             LIMIT 1`
+          ).get(partner, agent.id);
+          if (partnerActivity) {
+            maxScore = Math.max(maxScore, layer4Score);
+            reasons.push(`co-change: ${targetFile} ↔ ${partner} (ratio ${ratio.toFixed(2)})`);
+          }
+        }
+      }
 
       return {
         agent_id: agent.id,
@@ -187,6 +271,17 @@ export class ImpactScorer {
       gray_zone: scores.filter((s) => s.score >= 30 && s.score < 90),
       pass: scores.filter((s) => s.score < 30),
     };
+  }
+
+  private getRecentSymbolsForFile(filePath: string, agentId: string): string[] | null {
+    const db = getDb();
+    const row = db.prepare(
+      `SELECT symbols_touched FROM file_activity
+       WHERE agent_id = ? AND file_path = ? AND symbols_touched IS NOT NULL
+       ORDER BY id DESC LIMIT 1`
+    ).get(agentId, filePath) as { symbols_touched: string | null } | undefined;
+    if (!row || !row.symbols_touched) return null;
+    try { return JSON.parse(row.symbols_touched) as string[]; } catch { return null; }
   }
 }
 

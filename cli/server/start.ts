@@ -9,7 +9,37 @@ export function createServerStartCommand(): Command {
     .option("--port <port>", "Server port")
     .option("--data-dir <path>", "Data directory")
     .option("--daemon", "Run as background daemon")
-    .action(async (opts: { port?: string; dataDir?: string; daemon?: boolean }) => {
+    .option("--repo-root <path>", "Project repo root (enables Layer 4 + FS fallback). Default env COORDINATOR_REPO_ROOT.")
+    .option("--max-body-bytes <bytes>", "Max HTTP request body in bytes. Default 1048576.")
+    .option("--working-files-ttl-min <minutes>", "TTL for working_files claims. Default 30.")
+    .option("--working-files-sweep-ms <ms>", "TTL sweeper tick interval. Default 60000.")
+    .option("--layer4-since-days <days>", "git log --since window. Default 7.")
+    .option("--layer4-max-commits <count>", "git log --max-count. Default 2000.")
+    .option("--layer4-refresh-ms <ms>", "Layer 4 successful-build refresh interval. Default 1800000.")
+    .option("--layer4-retry-ms <ms>", "Layer 4 retry interval on timeout. Default 300000.")
+    .action(async (opts: {
+      port?: string;
+      dataDir?: string;
+      daemon?: boolean;
+      repoRoot?: string;
+      maxBodyBytes?: string;
+      workingFilesTtlMin?: string;
+      workingFilesSweepMs?: string;
+      layer4SinceDays?: string;
+      layer4MaxCommits?: string;
+      layer4RefreshMs?: string;
+      layer4RetryMs?: string;
+    }) => {
+      // Wire CLI flags to env vars (CLI takes precedence; rest of codebase reads from env)
+      if (opts.repoRoot) process.env.COORDINATOR_REPO_ROOT = opts.repoRoot;
+      if (opts.maxBodyBytes) process.env.COORDINATOR_MAX_BODY_BYTES = opts.maxBodyBytes;
+      if (opts.workingFilesTtlMin) process.env.COORDINATOR_WORKING_FILES_TTL_MIN = opts.workingFilesTtlMin;
+      if (opts.workingFilesSweepMs) process.env.COORDINATOR_WORKING_FILES_SWEEP_INTERVAL_MS = opts.workingFilesSweepMs;
+      if (opts.layer4SinceDays) process.env.COORDINATOR_LAYER4_SINCE_DAYS = opts.layer4SinceDays;
+      if (opts.layer4MaxCommits) process.env.COORDINATOR_LAYER4_MAX_COMMITS = opts.layer4MaxCommits;
+      if (opts.layer4RefreshMs) process.env.COORDINATOR_LAYER4_REFRESH_INTERVAL_MS = opts.layer4RefreshMs;
+      if (opts.layer4RetryMs) process.env.COORDINATOR_LAYER4_RETRY_MS = opts.layer4RetryMs;
+
       const config = loadConfig();
       const port = parseInt(opts.port ?? process.env.PORT ?? String(config.server.port), 10);
       const dataDir = opts.dataDir ?? process.env.COORDINATOR_DATA_DIR ?? config.server.data_dir;
@@ -51,6 +81,14 @@ export function createServerStartCommand(): Command {
         fwd("COORDINATOR_ADMIN_SECRET", process.env.COORDINATOR_ADMIN_SECRET);
         fwd("COORDINATOR_MQTT_TCP_PORT", process.env.COORDINATOR_MQTT_TCP_PORT);
         fwd("COORDINATOR_MQTT_WS_PATH", process.env.COORDINATOR_MQTT_WS_PATH);
+        fwd("COORDINATOR_REPO_ROOT", process.env.COORDINATOR_REPO_ROOT);
+        fwd("COORDINATOR_MAX_BODY_BYTES", process.env.COORDINATOR_MAX_BODY_BYTES);
+        fwd("COORDINATOR_WORKING_FILES_TTL_MIN", process.env.COORDINATOR_WORKING_FILES_TTL_MIN);
+        fwd("COORDINATOR_WORKING_FILES_SWEEP_INTERVAL_MS", process.env.COORDINATOR_WORKING_FILES_SWEEP_INTERVAL_MS);
+        fwd("COORDINATOR_LAYER4_SINCE_DAYS", process.env.COORDINATOR_LAYER4_SINCE_DAYS);
+        fwd("COORDINATOR_LAYER4_MAX_COMMITS", process.env.COORDINATOR_LAYER4_MAX_COMMITS);
+        fwd("COORDINATOR_LAYER4_REFRESH_INTERVAL_MS", process.env.COORDINATOR_LAYER4_REFRESH_INTERVAL_MS);
+        fwd("COORDINATOR_LAYER4_RETRY_MS", process.env.COORDINATOR_LAYER4_RETRY_MS);
         const child = spawn(cmd, args, {
           detached: true,
           stdio: ["ignore", logFd, logFd],

@@ -6,11 +6,26 @@ import { timingSafeEqual } from "crypto";
  * parseBody, json, decodeJwtPayload, safeEqual.
  */
 
+const MAX_BODY_BYTES = parseInt(process.env.COORDINATOR_MAX_BODY_BYTES || "1048576", 10);
+
 export function parseBody(req: IncomingMessage): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
-    let body = "";
-    req.on("data", (chunk: Buffer) => (body += chunk.toString()));
+    let bytes = 0;
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk: Buffer) => {
+      bytes += chunk.length;
+      if (bytes > MAX_BODY_BYTES) {
+        const err: Error & { statusCode?: number } = new Error("Payload too large");
+        err.statusCode = 413;
+        // destroy() may not exist on every IncomingMessage-like input (test stub).
+        (req as unknown as { destroy?: (e?: Error) => void }).destroy?.(err);
+        reject(err);
+        return;
+      }
+      chunks.push(chunk);
+    });
     req.on("end", () => {
+      const body = Buffer.concat(chunks).toString("utf-8");
       try { resolve(body ? JSON.parse(body) : {}); }
       catch { reject(new Error("Invalid JSON")); }
     });

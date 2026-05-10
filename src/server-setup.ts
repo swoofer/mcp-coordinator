@@ -21,7 +21,10 @@ import { MqttBridge } from "./mqtt-bridge.js";
 import { assessPlanQuality } from "./plan-quality.js";
 import { AgentActivityTracker } from "./agent-activity.js";
 import { QuotaCache } from "./quota/quota-cache.js";
+import { WorkingFilesTracker } from "./working-files-tracker.js";
 import { Metrics } from "./metrics.js";
+import { TreeSitterExtractor } from "./tree-sitter-extractor.js";
+import { GitCochangeBuilder } from "./git-cochange-builder.js";
 import type { CoordinatorConfig, AgentContext } from "./types.js";
 import { createLogger, type Logger } from "./logger.js";
 import { getVersion } from "../cli/version.js";
@@ -36,12 +39,15 @@ export interface CoordinatorServices {
   depMap: DependencyMapper;
   fileTracker: FileTracker;
   impactScorer: ImpactScorer;
+  workingFiles: WorkingFilesTracker;
   introspection: IntrospectionManager;
   contextProvider: SummaryContextProvider;
   sseEmitter: SseEmitter;
   mqttBridge: MqttBridge;
   quotaCache: QuotaCache;
   metrics: Metrics;
+  treeSitter: TreeSitterExtractor;
+  gitCochange: GitCochangeBuilder | null;
 }
 
 /** Create shared services (once at startup). */
@@ -50,18 +56,38 @@ export function createServices(config: CoordinatorConfig): CoordinatorServices {
 
   const logger = createLogger();
 
+  const metrics = new Metrics();
+
   const registry = new AgentRegistry();
   const activityTracker = new AgentActivityTracker(registry);
   const consultation = new Consultation(logger.child({ component: "consultation" }));
   const depMap = new DependencyMapper();
   const fileTracker = new FileTracker();
-  const impactScorer = new ImpactScorer(registry, fileTracker, consultation);
+  const workingFiles = new WorkingFilesTracker(logger.child({ component: "working-files" }), metrics);
+  workingFiles.startSweeper(parseInt(process.env.COORDINATOR_WORKING_FILES_SWEEP_INTERVAL_MS || "60000", 10));
+  const impactScorer = new ImpactScorer(registry, fileTracker, consultation, workingFiles);
   const introspection = new IntrospectionManager();
   const conflictDetector = new ConflictDetector(consultation, depMap, fileTracker, logger.child({ component: "conflict" }));
   const contextProvider = new SummaryContextProvider(registry, consultation, fileTracker);
   const sseEmitter = new SseEmitter();
   const mqttBridge = new MqttBridge(logger.child({ component: "mqtt" }));
-  const metrics = new Metrics();
+
+  const treeSitter = new TreeSitterExtractor(metrics);
+  treeSitter.load().catch(() => { /* errors are logged inside; status() reflects state */ });
+
+  const repoRoot = process.env.COORDINATOR_REPO_ROOT;
+  const gitCochange = repoRoot
+    ? new GitCochangeBuilder({
+        repoRoot,
+        logger: logger.child({ component: "gitcc" }),
+        metrics,
+        sinceDays: parseInt(process.env.COORDINATOR_LAYER4_SINCE_DAYS || "7", 10),
+        maxCount: parseInt(process.env.COORDINATOR_LAYER4_MAX_COMMITS || "2000", 10),
+        refreshMs: parseInt(process.env.COORDINATOR_LAYER4_REFRESH_INTERVAL_MS || "1800000", 10),
+        retryMs: parseInt(process.env.COORDINATOR_LAYER4_RETRY_MS || "300000", 10),
+      })
+    : null;
+  gitCochange?.startScheduler();
 
   // Quota cache â€” macOS-only for now, Linux/Windows stubs return 503 via the
   // /api/quota handler so raids keep running without a quota guardrail there.
@@ -113,7 +139,7 @@ export function createServices(config: CoordinatorConfig): CoordinatorServices {
 
   return {
     logger, registry, activityTracker, consultation, conflictDetector,
-    depMap, fileTracker, impactScorer, introspection, contextProvider, sseEmitter, mqttBridge, quotaCache, metrics,
+    depMap, fileTracker, impactScorer, workingFiles, introspection, contextProvider, sseEmitter, mqttBridge, quotaCache, metrics, treeSitter, gitCochange,
   };
 }
 
