@@ -2,6 +2,7 @@
 import { z } from "zod";
 import { initDatabase, getDb } from "./database.js";
 import { runCommonAnnounceFlow } from "./announce-workflow.js";
+import { registerConsultationTools } from "./tools/consultation-tools.js";
 import { AgentRegistry } from "./agent-registry.js";
 import { Consultation } from "./consultation.js";
 import { ConflictDetector } from "./conflict-detector.js";
@@ -156,180 +157,14 @@ export function createMcpServer(services: CoordinatorServices): McpServer {
     return { content: [{ type: "text", text: JSON.stringify(activities) }] };
   });
 
-  // â”€â”€ CONSULTATION TOOLS â”€â”€
 
-  server.tool("announce_work", "Open a consultation thread before starting work", {
-    agent_id: z.string(),
-    subject: z.string(),
-    plan: z.string().optional(),
-    target_modules: z.array(z.string()),
-    target_files: z.array(z.string()),
-    depends_on_files: z.array(z.string()).optional(),
-    exports_affected: z.array(z.string()).optional(),
-    keep_open: z.boolean().optional().describe("Keep thread open even if no agents are concerned (for manual coordination like games or debates)"),
-    assigned_to: z.string().optional().describe("Directed-dispatch: only this agent_id will be allowed to claim the thread. Use for leadâ†’worker handoffs in maitre/chaine/relais presets. Implies keep_open=true."),
-  }, async ({ agent_id, subject, plan, target_modules, target_files, depends_on_files, exports_affected, keep_open, assigned_to }) => {
-    mcpLog.info({ tool: "announce_work", agent_id, subject, target_modules, target_files, assigned_to }, "Tool called");
+  // ── CONSULTATION TOOLS ──
+  // S1: 11 consultation tools extracted to src/tools/consultation-tools.ts
+  // (announce_work, post_to_thread, propose/approve/contest_resolution,
+  // close/cancel_thread, get_thread, get_thread_updates, list_threads,
+  // log_action_summary). See that file for behavior; nothing else changed.
+  registerConsultationTools(server, services, mcpLog);
 
-    // Pre-step: MCP transport detects file/dependency conflicts (REST does not).
-    const conflicts = conflictDetector.detect({ agent_id, target_modules, target_files });
-    const thread = consultation.announceWork({
-      agent_id, subject, plan, target_modules, target_files, depends_on_files, exports_affected, keep_open, assigned_to,
-    });
-    if (conflicts.length > 0) {
-      getDb().prepare("UPDATE threads SET conflicts = ? WHERE id = ?")
-        .run(JSON.stringify(conflicts), thread.id);
-    }
-
-    // S2 fix: shared workflow (impact scoring, override respondents, auto-resolve,
-    // impact_scored + introspection SSE, plan-quality downgrade event). Same
-    // function used by the REST /api/announce path.
-    const { updated, categorized, respondents, planQuality } = runCommonAnnounceFlow(services, thread.id, {
-      agent_id, subject, plan, target_modules, target_files, depends_on_files, exports_affected, keep_open,
-    });
-
-    // Post-step: MCP-specific thread_opened SSE shape (with conflicts inline)
-    // and MQTT publication. REST emits a different shape — kept divergent
-    // because consumers may depend on the exact field set.
-    sseEmitter.emit("thread_opened", {
-      thread_id: thread.id, initiator: agent_id, subject, target_modules, conflicts,
-      expected_respondents: respondents,
-      mode: planQuality.mode,
-      plan: plan || null,
-      plan_quality: planQuality,
-    });
-    mqttBridge.publishConsultation(thread.id, agent_id, subject, target_modules);
-
-    // Gather context from concerned agents for the initiator (MCP-only)
-    const contextForInitiator = respondents.map((rid: string) =>
-      contextProvider.getRelevantContext(rid, { thread_id: updated.id, subject, target_modules, target_files })
-    ).filter((ctx: AgentContext) => ctx.modules.length > 0);
-
-    return {
-      content: [{
-        type: "text",
-        text: JSON.stringify({ thread: updated, conflicts, context: contextForInitiator, impact: categorized }),
-      }],
-    };
-  });
-
-  server.tool("post_to_thread", "Post a message to a consultation thread", {
-    thread_id: z.string(),
-    agent_id: z.string(),
-    agent_name: z.string().optional(),
-    type: z.enum(["context", "suggestion", "warning"]),
-    content: z.string(),
-    context_snapshot: z.string().optional(),
-    in_reply_to: z.string().optional(),
-  }, async ({ thread_id, agent_id, agent_name, type, content, context_snapshot, in_reply_to }) => {
-    mcpLog.info({ tool: "post_to_thread", thread_id, agent_id, type }, "Tool called");
-    const msg = consultation.postToThread({
-      thread_id, agent_id, agent_name, type, content, context_snapshot, in_reply_to,
-    });
-    const thread = consultation.getThread(thread_id);
-    sseEmitter.emit("message_posted", {
-      thread_id, agent_id, agent_name: agent_name || agent_id,
-      type, content, round: thread?.round || 1,
-      token_estimate: msg.token_estimate || 0,
-    });
-    mqttBridge.publishMessage(thread_id, agent_id, type, content);
-    return { content: [{ type: "text", text: JSON.stringify(msg) }] };
-  });
-
-  server.tool("propose_resolution", "Propose a resolution for the consultation", {
-    thread_id: z.string(),
-    agent_id: z.string(),
-    summary: z.string(),
-    plan: z.string().optional(),
-  }, async ({ thread_id, agent_id, summary, plan }) => {
-    mcpLog.info({ tool: "propose_resolution", thread_id, agent_id }, "Tool called");
-    consultation.proposeResolution(thread_id, agent_id, summary);
-    sseEmitter.emit("resolution_proposed", { thread_id, agent_id, summary });
-    mqttBridge.publishResolution(thread_id, "resolving", summary);
-    const thread = consultation.getThread(thread_id);
-    return { content: [{ type: "text", text: JSON.stringify(thread) }] };
-  });
-
-  server.tool("approve_resolution", "Approve the proposed resolution", {
-    thread_id: z.string(),
-    agent_id: z.string(),
-  }, async ({ thread_id, agent_id }) => {
-    mcpLog.info({ tool: "approve_resolution", thread_id, agent_id }, "Tool called");
-    const agentInfo = registry.get(agent_id);
-    consultation.approveResolution(thread_id, agent_id, agentInfo?.name);
-    const thread = consultation.getThread(thread_id)!;
-    return { content: [{ type: "text", text: JSON.stringify(thread) }] };
-  });
-
-  server.tool("contest_resolution", "Contest the proposed resolution", {
-    thread_id: z.string(),
-    agent_id: z.string(),
-    reason: z.string(),
-  }, async ({ thread_id, agent_id, reason }) => {
-    mcpLog.info({ tool: "contest_resolution", thread_id, agent_id }, "Tool called");
-    consultation.contestResolution(thread_id, agent_id, reason);
-    const thread = consultation.getThread(thread_id);
-    return { content: [{ type: "text", text: JSON.stringify(thread) }] };
-  });
-
-  server.tool("close_thread", "Close a consultation thread", {
-    thread_id: z.string(),
-    agent_id: z.string(),
-    summary: z.string(),
-  }, async ({ thread_id, agent_id, summary }) => {
-    mcpLog.info({ tool: "close_thread", thread_id, agent_id }, "Tool called");
-    consultation.closeThread(thread_id, agent_id, summary);
-    return { content: [{ type: "text", text: "closed" }] };
-  });
-
-  server.tool("cancel_thread", "Cancel a consultation thread", {
-    thread_id: z.string(),
-    agent_id: z.string(),
-    reason: z.string().optional(),
-  }, async ({ thread_id, agent_id, reason }) => {
-    mcpLog.info({ tool: "cancel_thread", thread_id, agent_id }, "Tool called");
-    consultation.cancelThread(thread_id, agent_id, reason);
-    sseEmitter.emit("thread_cancelled", { thread_id, reason });
-    return { content: [{ type: "text", text: "cancelled" }] };
-  });
-
-  server.tool("get_thread", "Get a thread with all messages", {
-    thread_id: z.string(),
-  }, async ({ thread_id }) => {
-    const result = consultation.getThreadWithMessages(thread_id);
-    mcpLog.debug({ tool: "get_thread", thread_id, message_count: result?.messages.length }, "Tool called");
-    return { content: [{ type: "text", text: JSON.stringify(result) }] };
-  });
-
-  server.tool("get_thread_updates", "Get new messages since timestamp", {
-    agent_id: z.string(),
-    since: z.string().optional(),
-  }, async ({ agent_id, since }) => {
-    const updates = consultation.getThreadUpdates(agent_id, since);
-    return { content: [{ type: "text", text: JSON.stringify(updates) }] };
-  });
-
-  server.tool("list_threads", "List consultation threads", {
-    status: z.string().optional(),
-    agent_id: z.string().optional(),
-    module: z.string().optional(),
-    assigned_to_me: z.string().optional().describe("Filter to threads claimable by this agent_id: open pool (assigned_to NULL) OR directed to me. Use for worker agents receiving directed dispatches."),
-  }, async ({ status, agent_id, module, assigned_to_me }) => {
-    const threads = consultation.listThreads({ status, agent_id, module, assigned_to_me });
-    mcpLog.debug({ tool: "list_threads", status, agent_id, module, assigned_to_me, result_count: threads.length }, "Tool called");
-    return { content: [{ type: "text", text: JSON.stringify(threads) }] };
-  });
-
-  server.tool("log_action_summary", "Log a one-liner summary of an action", {
-    session_id: z.string(),
-    agent_id: z.string(),
-    file_path: z.string().optional(),
-    summary: z.string(),
-  }, async ({ session_id, agent_id, file_path, summary }) => {
-    const result = consultation.logActionSummary({ session_id, agent_id, file_path, summary });
-    sseEmitter.emit("action_summary", { agent_id, file_path, summary });
-    return { content: [{ type: "text", text: JSON.stringify(result) }] };
-  });
 
   // â”€â”€ FILE TRACKING TOOLS â”€â”€
 
