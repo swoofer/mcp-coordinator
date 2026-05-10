@@ -1,4 +1,5 @@
 import { getDb } from "./database.js";
+import { withTransaction } from "./db-adapter.js";
 import type { ModuleInfo, DependencyMap, BlastRadius, Thread } from "./types.js";
 
 export class DependencyMapper {
@@ -27,12 +28,11 @@ export class DependencyMapper {
        ON CONFLICT(module_id) DO UPDATE SET
          depends_on = excluded.depends_on, exports = excluded.exports, owners = excluded.owners`
     );
-    const tx = db.transaction(() => {
+    withTransaction(db, () => {
       for (const [id, info] of Object.entries(map)) {
         stmt.run(id, JSON.stringify(info.depends_on), JSON.stringify(info.exports), JSON.stringify(info.owners));
       }
     });
-    tx();
   }
 
   getModuleInfo(moduleId: string): ModuleInfo | null {
