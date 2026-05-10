@@ -84,6 +84,30 @@ export class GitCochangeBuilder {
 
     const { pairs, totalCommits } = this.parseLog(stdout);
 
+    // Dynamic predictor cap: any file appearing in > 40% of effective commits is
+    // excluded as a *predictor* (still allowed as a *target*). Prevents hotspot files
+    // like config or barrel index from saturating co-change with every other file.
+    const PREDICTOR_CAP_RATIO = 0.4;
+    const fileCommitCount = new Map<string, number>();
+    for (const key of pairs.keys()) {
+      const [a, b] = key.split("|");
+      fileCommitCount.set(a, (fileCommitCount.get(a) ?? 0) + (pairs.get(key) ?? 0));
+      fileCommitCount.set(b, (fileCommitCount.get(b) ?? 0) + (pairs.get(key) ?? 0));
+    }
+    const promiscuous = new Set<string>();
+    for (const [file, count] of fileCommitCount) {
+      // count is total times the file appeared in any pair; max possible is roughly
+      // (totalCommits) per file. Use raw count / totalCommits as an approximation
+      // of the file's commit frequency.
+      if (totalCommits > 0 && count / totalCommits > PREDICTOR_CAP_RATIO) {
+        promiscuous.add(file);
+      }
+    }
+
+    if (promiscuous.size > 0) {
+      this.log.info({ count: promiscuous.size, files: Array.from(promiscuous) }, "Layer 4 dynamic predictor cap excluded files");
+    }
+
     db.exec("DELETE FROM git_cochange");
     const stmt = db.prepare(
       "INSERT INTO git_cochange (file_a, file_b, count, total_commits, computed_at) VALUES (?, ?, ?, ?, datetime('now'))"
@@ -91,6 +115,10 @@ export class GitCochangeBuilder {
     const insertMany = db.transaction(() => {
       for (const [key, count] of pairs.entries()) {
         const [a, b] = key.split("|");
+        // Skip pairs where EITHER file is a promiscuous predictor (file is allowed
+        // as target only, but a pair where it's a predictor is dropped). For the
+        // index entry to be useful, both files must be non-promiscuous predictors.
+        if (promiscuous.has(a) || promiscuous.has(b)) continue;
         if (a < b) stmt.run(a, b, count, totalCommits);
       }
     });

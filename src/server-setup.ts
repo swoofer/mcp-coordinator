@@ -77,7 +77,15 @@ export function createServices(config: CoordinatorConfig): CoordinatorServices {
 
   const repoRoot = process.env.COORDINATOR_REPO_ROOT;
   const gitCochange = repoRoot
-    ? new GitCochangeBuilder({ repoRoot, logger: logger.child({ component: "gitcc" }), metrics })
+    ? new GitCochangeBuilder({
+        repoRoot,
+        logger: logger.child({ component: "gitcc" }),
+        metrics,
+        sinceDays: parseInt(process.env.COORDINATOR_LAYER4_SINCE_DAYS || "7", 10),
+        maxCount: parseInt(process.env.COORDINATOR_LAYER4_MAX_COMMITS || "2000", 10),
+        refreshMs: parseInt(process.env.COORDINATOR_LAYER4_REFRESH_INTERVAL_MS || "1800000", 10),
+        retryMs: parseInt(process.env.COORDINATOR_LAYER4_RETRY_MS || "300000", 10),
+      })
     : null;
   gitCochange?.startScheduler();
 

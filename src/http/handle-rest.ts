@@ -471,8 +471,9 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
     json(res, {
       window: { since: sinceParam, now: new Date().toISOString() },
       layers: layers.map(l => ({
-        ...l,
-        p50_score: l.avg_score,
+        layer: l.layer,
+        fire_count: l.fire_count,
+        avg_score: l.avg_score,
         outcomes: { auto_resolved: 0, consensus: 0, timeout: 0, cancelled: 0 },
       })),
     });

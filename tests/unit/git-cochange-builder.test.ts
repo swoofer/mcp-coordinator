@@ -16,20 +16,22 @@ describe("GitCochangeBuilder", () => {
   afterAll(() => { closeDb(); rmSync(TEST_DIR, { recursive: true, force: true }); });
 
   it("computes ratios from a 5-commit fixture", async () => {
+    // Use files that each co-change in 2 of 5 commits (40% threshold not exceeded).
+    // p.ts and q.ts share 2 commits; r.ts and s.ts share 2 commits; u.ts appears alone.
     const repo = createGitFixture([
-      { files: { "a.ts": "1", "b.ts": "1" }, message: "1" },
-      { files: { "a.ts": "2", "b.ts": "2" }, message: "2" },
-      { files: { "a.ts": "3", "b.ts": "3" }, message: "3" },
-      { files: { "a.ts": "4", "c.ts": "4" }, message: "4" },
-      { files: { "a.ts": "5", "c.ts": "5" }, message: "5" },
+      { files: { "p.ts": "1", "q.ts": "1" }, message: "1" },
+      { files: { "p.ts": "2", "q.ts": "2" }, message: "2" },
+      { files: { "r.ts": "3", "s.ts": "3" }, message: "3" },
+      { files: { "r.ts": "4", "s.ts": "4" }, message: "4" },
+      { files: { "u.ts": "5" }, message: "5" },
     ]);
     const builder = new GitCochangeBuilder({ repoRoot: repo });
     await builder.build();
-    // a.ts and b.ts share 3 of 5 commits → ratio 3/5 = 0.6 → score 60
+    // p.ts and q.ts share 2 of 5 commits; neither exceeds the 40% predictor cap
     const row = getDb().prepare("SELECT count, total_commits FROM git_cochange WHERE file_a=? AND file_b=?")
-      .get("a.ts", "b.ts") as any;
+      .get("p.ts", "q.ts") as any;
     expect(row).toBeDefined();
-    expect(row.count).toBe(3);
+    expect(row.count).toBe(2);
   });
 
   it("denylists package-lock.json as a predictor", async () => {
@@ -42,6 +44,23 @@ describe("GitCochangeBuilder", () => {
     const rows = getDb().prepare(
       "SELECT * FROM git_cochange WHERE file_a LIKE '%package-lock%' OR file_b LIKE '%package-lock%'"
     ).all() as any[];
+    expect(rows.length).toBe(0);
+  });
+
+  it("excludes a file co-changing with > 40% of commits as predictor", async () => {
+    // 5 commits, hotspot.ts appears in 4 of them (80%). It should be excluded as a predictor.
+    const repo = createGitFixture([
+      { files: { "hotspot.ts": "1", "a.ts": "1" }, message: "1" },
+      { files: { "hotspot.ts": "2", "b.ts": "2" }, message: "2" },
+      { files: { "hotspot.ts": "3", "c.ts": "3" }, message: "3" },
+      { files: { "hotspot.ts": "4", "d.ts": "4" }, message: "4" },
+      { files: { "e.ts": "5" }, message: "5" },
+    ]);
+    const builder = new GitCochangeBuilder({ repoRoot: repo });
+    await builder.build();
+    const rows = getDb().prepare(
+      "SELECT * FROM git_cochange WHERE file_a = ? OR file_b = ?"
+    ).all("hotspot.ts", "hotspot.ts") as any[];
     expect(rows.length).toBe(0);
   });
 
