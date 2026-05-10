@@ -224,9 +224,35 @@ export class ImpactScorer {
         reasons.push(`module overlap: ${overlapping.join(", ")}`);
       }
 
-      // Layer 4 (future): Git co-change analysis
-      // Score 60 for >50% co-change ratio, 40 for >20%
-      // Requires git history analysis — not implemented in v3 prototype
+      // Layer 4: git co-change. For each target_file F, find rows in git_cochange where
+      // (LEAST(F,partner), GREATEST(F,partner)) match. If the OTHER agent recently
+      // touched the partner file, apply the co-change score.
+      const db = getDb();
+      for (const targetFile of params.target_files) {
+        const rows = db.prepare(
+          `SELECT file_a, file_b, count, total_commits FROM git_cochange
+           WHERE file_a = ? OR file_b = ?`
+        ).all(targetFile, targetFile) as Array<{ file_a: string; file_b: string; count: number; total_commits: number }>;
+        for (const r of rows) {
+          const partner = r.file_a === targetFile ? r.file_b : r.file_a;
+          const ratio = r.count / Math.max(r.total_commits, 1);
+          let layer4Score = 0;
+          if (ratio > 0.5) layer4Score = 60;
+          else if (ratio > 0.2) layer4Score = 40;
+          if (layer4Score === 0) continue;
+          // Did the OTHER agent touch the partner file recently?
+          const partnerActivity = db.prepare(
+            `SELECT 1 FROM file_activity
+             WHERE file_path = ? AND agent_id = ?
+               AND created_at > datetime('now', '-60 minutes')
+             LIMIT 1`
+          ).get(partner, agent.id);
+          if (partnerActivity) {
+            maxScore = Math.max(maxScore, layer4Score);
+            reasons.push(`co-change: ${targetFile} ↔ ${partner} (ratio ${ratio.toFixed(2)})`);
+          }
+        }
+      }
 
       return {
         agent_id: agent.id,

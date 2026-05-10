@@ -24,6 +24,7 @@ import { QuotaCache } from "./quota/quota-cache.js";
 import { WorkingFilesTracker } from "./working-files-tracker.js";
 import { Metrics } from "./metrics.js";
 import { TreeSitterExtractor } from "./tree-sitter-extractor.js";
+import { GitCochangeBuilder } from "./git-cochange-builder.js";
 import type { CoordinatorConfig, AgentContext } from "./types.js";
 import { createLogger, type Logger } from "./logger.js";
 import { getVersion } from "../cli/version.js";
@@ -46,6 +47,7 @@ export interface CoordinatorServices {
   quotaCache: QuotaCache;
   metrics: Metrics;
   treeSitter: TreeSitterExtractor;
+  gitCochange: GitCochangeBuilder | null;
 }
 
 /** Create shared services (once at startup). */
@@ -71,6 +73,12 @@ export function createServices(config: CoordinatorConfig): CoordinatorServices {
 
   const treeSitter = new TreeSitterExtractor();
   treeSitter.load().catch(() => { /* errors are logged inside; status() reflects state */ });
+
+  const repoRoot = process.env.COORDINATOR_REPO_ROOT;
+  const gitCochange = repoRoot
+    ? new GitCochangeBuilder({ repoRoot, logger: logger.child({ component: "gitcc" }) })
+    : null;
+  gitCochange?.startScheduler();
 
   // Quota cache â€” macOS-only for now, Linux/Windows stubs return 503 via the
   // /api/quota handler so raids keep running without a quota guardrail there.
@@ -122,7 +130,7 @@ export function createServices(config: CoordinatorConfig): CoordinatorServices {
 
   return {
     logger, registry, activityTracker, consultation, conflictDetector,
-    depMap, fileTracker, impactScorer, workingFiles, introspection, contextProvider, sseEmitter, mqttBridge, quotaCache, metrics, treeSitter,
+    depMap, fileTracker, impactScorer, workingFiles, introspection, contextProvider, sseEmitter, mqttBridge, quotaCache, metrics, treeSitter, gitCochange,
   };
 }
 
