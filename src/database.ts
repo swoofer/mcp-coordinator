@@ -133,6 +133,45 @@ const SCHEMA = `
       revoked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       revoked_by TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS working_files (
+      agent_id          TEXT NOT NULL,
+      file_path         TEXT NOT NULL,
+      started_at        TEXT NOT NULL,
+      last_activity_at  TEXT NOT NULL,
+      claim_until       TEXT NOT NULL,
+      PRIMARY KEY (agent_id, file_path)
+    );
+    CREATE INDEX IF NOT EXISTS idx_working_files_path  ON working_files(file_path);
+    CREATE INDEX IF NOT EXISTS idx_working_files_until ON working_files(claim_until);
+
+    CREATE TABLE IF NOT EXISTS git_cochange (
+      file_a        TEXT NOT NULL,
+      file_b        TEXT NOT NULL,
+      count         INTEGER NOT NULL,
+      total_commits INTEGER NOT NULL,
+      computed_at   TEXT NOT NULL,
+      PRIMARY KEY (file_a, file_b),
+      CHECK (file_a < file_b)
+    );
+    CREATE INDEX IF NOT EXISTS idx_cochange_a ON git_cochange(file_a);
+    CREATE INDEX IF NOT EXISTS idx_cochange_b ON git_cochange(file_b);
+
+    CREATE TABLE IF NOT EXISTS git_cochange_meta (
+      k TEXT PRIMARY KEY,
+      v TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS layer_firings (
+      id        INTEGER PRIMARY KEY AUTOINCREMENT,
+      thread_id TEXT,
+      layer     TEXT NOT NULL,
+      score     INTEGER NOT NULL,
+      agent_id  TEXT,
+      fired_at  TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_firings_layer  ON layer_firings(layer, fired_at);
+    CREATE INDEX IF NOT EXISTS idx_firings_thread ON layer_firings(thread_id);
 `;
 
 function createBetterSqlite3(dataDir: string): DatabaseAdapter {
@@ -177,6 +216,13 @@ export function initDatabase(dataDir: string): void {
   // existing work-stealing). Used by lead/worker presets and sequential
   // pipelines that need explicit hand-offs instead of first-come claims.
   try { db.exec("ALTER TABLE threads ADD COLUMN assigned_to TEXT"); } catch { /* already exists */ }
+
+  // v0.6: per-edit symbol metadata on file_activity
+  try { db.exec("ALTER TABLE file_activity ADD COLUMN symbols_touched TEXT"); } catch { /* already exists */ }
+  try { db.exec("ALTER TABLE file_activity ADD COLUMN content_hash TEXT"); } catch { /* already exists */ }
+
+  // v0.6: schema version marker. Used by cli/server/restore.ts to refuse downgrades.
+  db.exec("PRAGMA user_version = 6");
 }
 
 export function getDb(): DatabaseAdapter {
