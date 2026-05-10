@@ -3,13 +3,10 @@ name: Release
 on:
   push:
     branches: [main]
-  # Manual trigger for re-publishing an existing tag (e.g., after fixing
-  # a bad publish). Set publish_only=true to skip release-please and go
-  # straight to npm publish from main HEAD.
   workflow_dispatch:
     inputs:
       publish_only:
-        description: "Skip release-please and just npm publish from main HEAD (use to recover from a failed publish on an existing tag)"
+        description: "Skip release-please and just npm publish from main HEAD"
         required: false
         default: "false"
         type: choice
@@ -20,14 +17,12 @@ on:
 permissions:
   contents: write
   pull-requests: write
-  id-token: write    # OIDC token for npm trusted publisher
+  id-token: write
 
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      # release-please runs on push and on workflow_dispatch (without publish_only).
-      # When publish_only=true, we skip it entirely and jump to publish.
       - uses: googleapis/release-please-action@v4
         id: release
         if: ${{ github.event_name == 'push' || inputs.publish_only != 'true' }}
@@ -35,16 +30,9 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-      # Subsequent steps run when EITHER:
-      #  - release-please created a new release (auto path), OR
-      #  - workflow was dispatched with publish_only=true (recovery path)
       - uses: actions/checkout@v4
         if: ${{ steps.release.outputs.release_created || inputs.publish_only == 'true' }}
 
-      # setup-node v4 + registry-url enables npm OIDC trusted-publisher auth.
-      # No NPM_TOKEN needed: npm CLI detects GitHub Actions OIDC env vars and
-      # exchanges them for a short-lived publish token via the trusted
-      # publisher configured on the package on npmjs.com.
       - uses: actions/setup-node@v4
         if: ${{ steps.release.outputs.release_created || inputs.publish_only == 'true' }}
         with:
@@ -57,8 +45,7 @@ jobs:
       - run: npm run build
         if: ${{ steps.release.outputs.release_created || inputs.publish_only == 'true' }}
 
-      # --provenance: signs the publish with GitHub OIDC attestation, viewable
-      # on the npm package page. Requires the trusted publisher to be
-      # configured on the package at https://www.npmjs.com/package/mcp-coordinator/access
-      - run: npm publish --provenance
+      - run: npm publish
         if: ${{ steps.release.outputs.release_created || inputs.publish_only == 'true' }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
