@@ -3,6 +3,19 @@ name: Release
 on:
   push:
     branches: [main]
+  # Manual trigger for re-publishing an existing tag (e.g., after fixing
+  # a bad NPM_TOKEN). Set publish_only=true to skip release-please and go
+  # straight to npm publish from main HEAD.
+  workflow_dispatch:
+    inputs:
+      publish_only:
+        description: "Skip release-please and just npm publish from main HEAD (use after fixing NPM_TOKEN to recover from a failed publish on an existing tag)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
 
 permissions:
   contents: write
@@ -13,28 +26,34 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
+      # release-please runs on push and on workflow_dispatch (without publish_only).
+      # When publish_only=true, we skip it entirely and jump to publish.
       - uses: googleapis/release-please-action@v4
         id: release
+        if: ${{ github.event_name == 'push' || inputs.publish_only != 'true' }}
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
+      # Subsequent steps run when EITHER:
+      #  - release-please created a new release (auto path), OR
+      #  - workflow was dispatched with publish_only=true (recovery path)
       - uses: actions/checkout@v4
-        if: ${{ steps.release.outputs.release_created }}
+        if: ${{ steps.release.outputs.release_created || inputs.publish_only == 'true' }}
 
       - uses: actions/setup-node@v4
-        if: ${{ steps.release.outputs.release_created }}
+        if: ${{ steps.release.outputs.release_created || inputs.publish_only == 'true' }}
         with:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
 
       - run: npm install
-        if: ${{ steps.release.outputs.release_created }}
+        if: ${{ steps.release.outputs.release_created || inputs.publish_only == 'true' }}
 
       - run: npm run build
-        if: ${{ steps.release.outputs.release_created }}
+        if: ${{ steps.release.outputs.release_created || inputs.publish_only == 'true' }}
 
       - run: npm publish
-        if: ${{ steps.release.outputs.release_created }}
+        if: ${{ steps.release.outputs.release_created || inputs.publish_only == 'true' }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
