@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.6.0](https://github.com/swoofer/mcp-coordinator/compare/v0.5.0...v0.6.0) (2026-05-10)
+
+
+### Features
+
+* **dashboard:** aggregate real outcomes in /api/scoring-stats ([eeb6f10](https://github.com/swoofer/mcp-coordinator/commit/eeb6f1008423b9bf79da8580ad5d73a3b5fc2803))
+
+
+### Documentation
+
+* **changelog:** remove orphan v0.6.0 entry pre-dating release-please ([4da39af](https://github.com/swoofer/mcp-coordinator/commit/4da39afe6652cca9a4e615dd2aadf6c78bae08ec))
+* **i18n:** add fr/es/de/ja/zh translations for v0.5.0 landing additions ([858cf63](https://github.com/swoofer/mcp-coordinator/commit/858cf63e0c618dba89c8fbd978512637dd9848d2))
+* **landing:** update for v0.5.0 — 15 languages, 6 scoring layers, dashboard signals ([4d122a8](https://github.com/swoofer/mcp-coordinator/commit/4d122a869849f47a80bd5137cdb008335281ccf9))
+* **readme:** update for v0.5.0 — features shipped + LLM Reasoner roadmap ([5635497](https://github.com/swoofer/mcp-coordinator/commit/56354976f7a5a355d4857ef4545319e6d3a5a0cf))
+* **v0.5.0:** follow-up polish — CHANGELOG, dashboard outcomes, i18n ([450ed07](https://github.com/swoofer/mcp-coordinator/commit/450ed0740e524b5c31ae5f94dfc82cbdcf24aa31))
+
 ## [0.5.0](https://github.com/swoofer/mcp-coordinator/compare/v0.4.0...v0.5.0) (2026-05-10)
 
 
