@@ -96,9 +96,10 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
     json(res, { ok: true });
 
   } else if (url === "/api/announce") {
-    const { agent_id, subject, plan, target_modules, target_files, depends_on_files, exports_affected, keep_open, assigned_to } = body as {
+    const { agent_id, subject, plan, target_modules, target_files, depends_on_files, exports_affected, keep_open, assigned_to, target_symbols } = body as {
       agent_id: string; subject: string; plan?: string; target_modules: string[]; target_files: string[];
       depends_on_files?: string[]; exports_affected?: string[]; keep_open?: boolean; assigned_to?: string | null;
+      target_symbols?: string[];
     };
 
     const thread = consultation.announceWork({ agent_id, subject, plan, target_modules, target_files, depends_on_files, exports_affected, keep_open, assigned_to });
@@ -109,6 +110,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
     // function used by the MCP announce_work tool path.
     const { updated, categorized, respondents, planQuality } = runCommonAnnounceFlow(services, thread.id, {
       agent_id, subject, plan, target_modules, target_files, depends_on_files, exports_affected, keep_open,
+      target_symbols,
     });
 
     // REST-specific thread_opened SSE shape (different field set than MCP — kept

@@ -46,6 +46,7 @@ export interface CommonFlowParams {
   depends_on_files?: string[];
   exports_affected?: string[];
   keep_open?: boolean;
+  target_symbols?: string[];
 }
 
 /**
@@ -68,6 +69,7 @@ export function runCommonAnnounceFlow(
     target_files: params.target_files,
     depends_on_files: params.depends_on_files,
     exports_affected: params.exports_affected,
+    target_symbols: params.target_symbols,
   });
 
   // 2. Override expected_respondents on the thread with the scored set.
