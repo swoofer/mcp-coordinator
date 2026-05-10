@@ -166,6 +166,79 @@ Scores are categorized into three outcomes:
 
 ---
 
+## What's New in v0.5.0
+
+Released 2026-05-10.
+
+### A. In-flight tracking (server-anchored)
+
+- `WorkingFilesTracker` ([`src/working-files-tracker.ts`](src/working-files-tracker.ts)) with TTL sweeper (default 30 min claim, 60 s sweep tick).
+- `POST /api/working-files/start` and `POST /api/working-files/stop` REST endpoints.
+- essaim hooks: `scripts/pre_track_activity.sh` + extended `track_activity.sh` via PreToolUse / PostToolUse pipeline.
+
+### B. Symbol-aware annotations (tree-sitter)
+
+- 15 languages via `optionalDependencies`: TypeScript, TSX, JavaScript, JSX, Python, Go, Rust, Java, C#, C, C++, Ruby, PHP, Kotlin, Swift, Bash.
+- Strategy registry in [`src/tree-sitter-extractor.ts`](src/tree-sitter-extractor.ts) — adding a 16th language is ~5 LOC.
+- `POST /api/file-activity` now accepts an optional `content` field (capped 256 KB) for server-side symbol extraction.
+- New DB columns: `file_activity.symbols_touched` (JSON) + `content_hash`.
+
+### C. Layer 0.5 annotation — disjoint-symbol enrichment
+
+- Same file with disjoint symbols: score stays 100, reason text enriched with `disjoint symbols: you=[X], them=[Y] — verify shared module state`.
+- New optional `target_symbols?: string[]` on `announce_work` (cap 200 elements, max 256 chars each).
+
+### D. Layer 4 — git co-change scoring
+
+- [`src/git-cochange-builder.ts`](src/git-cochange-builder.ts): bounded `git log` (max 2000 commits, `--since=7d` default), 5 s timeout, denylist (lockfiles, dist, snapshots), dynamic 40% predictor cap.
+- Score 60 if co-change ratio > 0.5, score 40 if > 0.2; canonical-pair lookup.
+- Background scheduler with 5-min retry on timeout, 30-min refresh on success.
+- Requires `COORDINATOR_REPO_ROOT` to enable + `git` on PATH.
+
+### E. Dashboard "Conflict signals" panel
+
+- New panel in `dashboard/public/index.html` backed by `GET /api/scoring-stats?since=<dur>`.
+- Populated by `runCommonAnnounceFlow` writing per-firing rows to `layer_firings` table.
+
+### Hardening & observability
+
+- `parseBody` 1 MB cap (HTTP 413; env: `COORDINATOR_MAX_BODY_BYTES`).
+- `PRAGMA user_version = 6` schema marker; daemon refuses to start on a newer DB (downgrade guard).
+- [`src/path-normalize.ts`](src/path-normalize.ts) — symmetric Windows/POSIX path canonicalization.
+- 5 new Prometheus metrics: `mcp_coordinator_working_files_active` (gauge), `mcp_coordinator_working_files_starts_total{result}`, `mcp_coordinator_tree_sitter_parse_failures_total`, `mcp_coordinator_git_cochange_builds_total{outcome}`, `mcp_coordinator_git_cochange_pairs_total`.
+- `/readyz` extended with `tree_sitter` and `git_cochange` blocks (both `optional: true`, non-gating).
+
+### Bundled v0.4.1 hotfix
+
+`/livez`, `/readyz`, and `/metrics` were wired in v0.4.0 but not routed — fixed.
+
+---
+
+## Roadmap
+
+### v0.5.0 (shipped 2026-05-10)
+
+Working-files in-flight tracking, tree-sitter symbol annotations across 15 languages, git co-change Layer 4 scoring, dashboard Conflict signals panel, schema downgrade guard, 5 new Prometheus metrics. 392 tests across 35+ files.
+
+See [CHANGELOG.md](./CHANGELOG.md) for the full list.
+
+### Next: LLM Reasoner (v0.6 — opt-in, gated)
+
+Design lives in `docs/superpowers/specs/2026-05-10-v0.6-semantic-conflict-design.md` section "v0.6.1 — LLM Reasoner OPT-IN, gray-zone".
+
+- Default OFF — zero impact on users without an Anthropic API key.
+- Activates only on gray-zone scores [30, 89] (~5–10% of announces in current telemetry).
+- `COORDINATOR_REASONER=claude` env gate; `reasoner_cache` table + singleflight dedup.
+- Kill criterion: verdict change < 25% / p50 latency > 100 ms / cost > $10/dev/month.
+- **Implementation plan will be drafted once v0.5.0 has 1 month of gray-zone telemetry to validate ROI.**
+
+### Open items / known issues
+
+- v0.5.0 dashboard Conflict signals widget shows aggregated counts only; per-layer outcome breakdown (`auto_resolved`, `consensus`, `timeout`, `cancelled`) currently returns zeros — the `layer_firings` table is not yet joined against the `events` table (decorative, not blocking).
+- CHANGELOG has both an auto-generated `## [0.5.0]` block (from release-please) and a stale manual `## [0.6.0]` heading from the original plan — cosmetic, will be reconciled in a doc-only commit.
+
+---
+
 ## MCP Tools
 
 26 tools organized by function. All registered under one HTTP/SSE transport at `/mcp` (and stdio for stdio-mode clients).
@@ -666,7 +739,7 @@ Resolution priority (highest to lowest): CLI flag → env var → config.json �
 | `COORDINATOR_ADMIN_SECRET` | — | Separate secret for admin token creation |
 | `MAX_QUOTA_PCT` | `95` | Pre-flight abort threshold for Anthropic quota |
 
-### Environment variables (v0.6)
+### Environment variables (v0.5+)
 
 | Variable | Default | Effect |
 |---|---|---|
@@ -787,7 +860,7 @@ The behaviors that make agents announce-before-write, resolve conflicts, and par
 ## Development
 
 ```bash
-# Tests (216 passing across 18 files)
+# Tests (392 passing across 35+ files)
 npm test
 npm run test:watch
 
@@ -822,6 +895,11 @@ src/                # Coordinator (npm package surface)
   mqtt-bridge.ts    # Coordinator → broker fanout
   quota/            # Anthropic quota pre-flight + refresh
   auth.ts           # Optional JWT
+  path-normalize.ts         # Symmetric Windows/POSIX path canonicalization
+  working-files-tracker.ts  # In-flight claim tracking + TTL sweeper
+  git-cochange-builder.ts   # Layer 4 co-change scorer (bounded git log)
+  tree-sitter-extractor.ts  # Symbol-aware annotations (15 languages)
+  http/handle-health.ts     # /livez, /readyz, /metrics routing
   index.ts          # Stdio entry + programmatic re-exports
 
 cli/                # CLI binary (mcp-coordinator)
@@ -831,7 +909,7 @@ cli/                # CLI binary (mcp-coordinator)
   config.ts         # Config loader
   version.ts        # package.json version helper
 
-tests/unit/         # Vitest — 216 tests, 18 files
+tests/unit/         # Vitest — 392 tests, 35+ files
 dashboard/public/   # Single-file web dashboard
 ```
 
