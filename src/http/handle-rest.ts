@@ -454,6 +454,29 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
     services.workingFiles.stop(body.agent_id as string, body.file_path as string);
     json(res, { ok: true });
 
+  } else if (url?.startsWith("/api/scoring-stats") && req.method === "GET") {
+    const u = new URL(url, "http://localhost");
+    const sinceParam = u.searchParams.get("since") || "24h";
+    const sinceMin = sinceParam.endsWith("h") ? parseInt(sinceParam) * 60
+                    : sinceParam.endsWith("d") ? parseInt(sinceParam) * 60 * 24
+                    : 60 * 24;
+    const db = getDb();
+    const layers = db.prepare(
+      `SELECT layer, COUNT(*) AS fire_count, AVG(score) AS avg_score
+       FROM layer_firings
+       WHERE fired_at > datetime('now', '-' || ? || ' minutes')
+       GROUP BY layer
+       ORDER BY fire_count DESC`
+    ).all(sinceMin) as Array<{ layer: string; fire_count: number; avg_score: number }>;
+    json(res, {
+      window: { since: sinceParam, now: new Date().toISOString() },
+      layers: layers.map(l => ({
+        ...l,
+        p50_score: l.avg_score,
+        outcomes: { auto_resolved: 0, consensus: 0, timeout: 0, cancelled: 0 },
+      })),
+    });
+
   } else if (url === "/api/status") {
     const online = registry.listOnline();
     const openThreads = consultation.listThreads({ status: "open" });

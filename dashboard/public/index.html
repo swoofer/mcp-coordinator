@@ -217,6 +217,16 @@
       <div id="token-total"></div>
       <div id="token-agents"></div>
 
+      <div class="panel-title" style="margin-top:16px;">Conflict signals (24h)</div>
+      <div id="conflict-signals">
+        <div class="metric"><span class="metric-label">L0 announced</span><span class="metric-value" data-layer="L0">—</span></div>
+        <div class="metric"><span class="metric-label">L1 same file</span><span class="metric-value" data-layer="L1">—</span></div>
+        <div class="metric"><span class="metric-label">L0.5 disjoint</span><span class="metric-value" data-layer="L0.5">—</span></div>
+        <div class="metric"><span class="metric-label">L2 depends_on</span><span class="metric-value" data-layer="L2">—</span></div>
+        <div class="metric"><span class="metric-label">L3 module</span><span class="metric-value" data-layer="L3">—</span></div>
+        <div class="metric"><span class="metric-label">L4 co-change</span><span class="metric-value" data-layer="L4">—</span></div>
+      </div>
+
       <div class="panel-title" style="margin-top:16px;">Configuration</div>
       <div id="run-config">
         <div style="color:#64748b;font-size:12px;">Aucun run actif</div>
@@ -1170,6 +1180,19 @@
 
     // Fetch config on load
     fetch(`${COORDINATOR_URL}/api/run-config`).then(r => r.json()).then(renderRunConfig).catch(() => {});
+
+    async function refreshConflictSignals() {
+      try {
+        const r = await fetch(`${COORDINATOR_URL}/api/scoring-stats?since=24h`);
+        const j = await r.json();
+        for (const layer of j.layers) {
+          const el = document.querySelector(`[data-layer="${layer.layer}"]`);
+          if (el) el.textContent = layer.fire_count;
+        }
+      } catch {}
+    }
+    refreshConflictSignals();
+    setInterval(refreshConflictSignals, 30000);
 
     connectSSE();
     updateAgents();

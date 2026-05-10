@@ -72,6 +72,17 @@ export function runCommonAnnounceFlow(
     target_symbols: params.target_symbols,
   });
 
+  // Layer firing log: one row per concerned/gray-zone scored agent.
+  // Used by /api/scoring-stats and the dashboard "Conflict signals" panel.
+  const dbForFirings = getDb();
+  const insertFiring = dbForFirings.prepare(
+    "INSERT INTO layer_firings (thread_id, layer, score, agent_id) VALUES (?, ?, ?, ?)"
+  );
+  for (const s of [...categorized.concerned, ...categorized.gray_zone]) {
+    const layer = inferLayerFromReasons(s.reasons);
+    insertFiring.run(threadId, layer, s.score, s.agent_id);
+  }
+
   // 2. Override expected_respondents on the thread with the scored set.
   // Auto-resolve only when truly alone — if peers are online but not concerned
   // (e.g., they haven't announced yet), keep the thread open so a subsequent
@@ -133,6 +144,19 @@ export function runCommonAnnounceFlow(
   const respondents: string[] = JSON.parse(updated.expected_respondents || "[]");
 
   return { updated, categorized, respondents, planQuality };
+}
+
+function inferLayerFromReasons(reasons: string[]): string {
+  for (const r of reasons) {
+    if (r.includes("disjoint symbols")) return "L0.5";
+    if (r.includes("announced same file") || r.includes("modifies my dependency") || r.includes("they depend on my target")) return "L0";
+    if (r.includes("same file (in flight)")) return "L1";
+    if (r.includes("same file")) return "L1";
+    if (r.includes("co-change")) return "L4";
+    if (r.includes("depends on")) return "L2";
+    if (r.includes("module overlap")) return "L3";
+  }
+  return "L1";
 }
 
 function scoredCategory(s: ImpactScore): "concerned" | "gray_zone" | "pass" {
