@@ -869,6 +869,10 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
     });
   });
 
+  // B2 fix: start the consultation timeout sweeper.
+  // Reads no longer mutate state — this background tick handles timeouts.
+  services.consultation.startTimeoutSweeper();
+
   // B6 fix: graceful shutdown.
   // Cleanup sequence: stop accepting new HTTP connections → end MQTT bridge →
   // close MQTT broker → stop quota background timer → close DB.
@@ -898,6 +902,11 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
       services.quotaCache.stopBackgroundTick();
     } catch (err) {
       log.warn({ err }, "Error stopping quota timer");
+    }
+    try {
+      services.consultation.stopTimeoutSweeper();
+    } catch (err) {
+      log.warn({ err }, "Error stopping timeout sweeper");
     }
     try {
       const { closeDb } = await import("./database.js");

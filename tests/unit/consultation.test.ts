@@ -279,7 +279,8 @@ describe("Consultation", () => {
     db.prepare("UPDATE threads SET created_at = datetime('now', '-5 minutes'), timeout_seconds = 1 WHERE id = ?")
       .run(thread.id);
 
-    // Next getThread should trigger timeout check
+    // B2: timeout check no longer a getThread side-effect; call sweeper directly.
+    consultation.checkTimeouts();
     const updated = consultation.getThread(thread.id);
     expect(updated!.status).toBe("resolved");
     expect(updated!.resolution_summary).toContain("timeout");
@@ -335,7 +336,7 @@ describe("Consultation", () => {
     db.prepare("UPDATE threads SET created_at = datetime('now', '-5 minutes'), timeout_seconds = 1 WHERE id = ?")
       .run(thread.id);
 
-    consultation.getThread(thread.id); // triggers checkTimeouts
+    consultation.checkTimeouts(); // B2: explicit call (no longer a getThread side-effect)
 
     expect(events).toHaveLength(1);
     expect(events[0].resolution_type).toBe("timeout");

@@ -23,6 +23,7 @@ export interface ResolutionEvent {
 export class Consultation {
   private onResolveCallback: ((event: ResolutionEvent) => void) | null = null;
   private log: Logger;
+  private timeoutSweeperHandle: ReturnType<typeof setInterval> | null = null;
 
   constructor(logger?: Logger) {
     this.log = logger || silentLogger;
@@ -30,6 +31,35 @@ export class Consultation {
 
   onResolve(callback: (event: ResolutionEvent) => void): void {
     this.onResolveCallback = callback;
+  }
+
+  /**
+   * B2 fix: replace the side-effect-on-read timeout check with an explicit
+   * background sweeper. Each tick atomically claims and resolves any thread
+   * past its deadline, then emits resolution events outside the transaction.
+   *
+   * Default tick interval: 30 seconds. Tests can pass a shorter interval to
+   * exercise the sweeper, or call checkTimeouts() explicitly.
+   *
+   * Safe to call multiple times — second call is a no-op until the previous
+   * sweeper is stopped.
+   */
+  startTimeoutSweeper(intervalMs = 30000): void {
+    if (this.timeoutSweeperHandle) return;
+    this.timeoutSweeperHandle = setInterval(() => {
+      try { this.checkTimeouts(); } catch (err) {
+        this.log.warn({ err }, "Timeout sweeper iteration failed");
+      }
+    }, intervalMs);
+    // Don't keep the event loop alive just for the sweeper.
+    if (typeof this.timeoutSweeperHandle.unref === "function") this.timeoutSweeperHandle.unref();
+  }
+
+  stopTimeoutSweeper(): void {
+    if (this.timeoutSweeperHandle) {
+      clearInterval(this.timeoutSweeperHandle);
+      this.timeoutSweeperHandle = null;
+    }
   }
 
   emitResolution(threadId: string, type: ResolutionType, approvedBy?: string, approvedByName?: string): void {
@@ -334,34 +364,48 @@ export class Consultation {
 
   checkTimeouts(): void {
     const db = getDb();
-    // Get threads that will be timed out (before updating them)
-    const timedOut = db.prepare(`
-      SELECT id FROM threads
-      WHERE status IN ('open', 'resolving')
-      AND timeout_seconds > 0
-      AND datetime(created_at, '+' || (timeout_seconds * round) || ' seconds') < CURRENT_TIMESTAMP
-    `).all() as { id: string }[];
+    // B2 fix: SELECT-then-UPDATE wrapped in a transaction so two concurrent
+    // sweepers can't both claim the same thread. The UPDATE returns
+    // db.changes (rows affected) — we use the SELECT only to know which
+    // thread IDs to emit for. The transaction makes both observe the same
+    // snapshot.
+    const tx = db.transaction(() => {
+      const timedOut = db.prepare(`
+        SELECT id FROM threads
+        WHERE status IN ('open', 'resolving')
+        AND timeout_seconds > 0
+        AND datetime(created_at, '+' || (timeout_seconds * round) || ' seconds') < CURRENT_TIMESTAMP
+      `).all() as { id: string }[];
 
+      if (timedOut.length === 0) return [];
+
+      db.prepare(`
+        UPDATE threads SET status = 'resolved',
+          resolution_summary = 'Résolu par timeout — pas de réponse dans le délai',
+          resolved_at = CURRENT_TIMESTAMP
+        WHERE status IN ('open', 'resolving')
+        AND timeout_seconds > 0
+        AND datetime(created_at, '+' || (timeout_seconds * round) || ' seconds') < CURRENT_TIMESTAMP
+      `).run();
+
+      return timedOut;
+    });
+
+    const timedOut = tx();
     if (timedOut.length === 0) return;
-
-    db.prepare(`
-      UPDATE threads SET status = 'resolved',
-        resolution_summary = 'Résolu par timeout — pas de réponse dans le délai',
-        resolved_at = CURRENT_TIMESTAMP
-      WHERE status IN ('open', 'resolving')
-      AND timeout_seconds > 0
-      AND datetime(created_at, '+' || (timeout_seconds * round) || ' seconds') < CURRENT_TIMESTAMP
-    `).run();
 
     this.log.info({ count: timedOut.length, thread_ids: timedOut.map(t => t.id) }, "Threads timed out");
 
+    // Emit OUTSIDE the transaction so listeners can re-enter the DB safely.
     for (const t of timedOut) {
       this.emitResolution(t.id, "timeout");
     }
   }
 
   getThread(threadId: string): Thread | null {
-    this.checkTimeouts();
+    // B2 fix: timeout sweeping moved to startTimeoutSweeper() background timer.
+    // Reads no longer mutate state. Tests that need synchronous timeout
+    // resolution should call checkTimeouts() explicitly.
     const db = getDb();
     return (
       (db.prepare("SELECT * FROM threads WHERE id = ?").get(threadId) as Thread) || null
@@ -391,7 +435,7 @@ export class Consultation {
      */
     assigned_to_me?: string;
   }): Thread[] {
-    this.checkTimeouts();
+    // B2 fix: removed checkTimeouts() side-effect; sweeper handles it.
     const db = getDb();
     let sql = "SELECT * FROM threads WHERE 1=1";
     const params: unknown[] = [];
