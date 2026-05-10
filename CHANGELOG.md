@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.5.0](https://github.com/swoofer/mcp-coordinator/compare/v0.4.0...v0.5.0) (2026-05-10)
+
+
+### Features
+
+* v0.6.0 Semantic Conflict Detection (server-anchored) ([aaf47fc](https://github.com/swoofer/mcp-coordinator/commit/aaf47fc8ec6f5a271c2d60331e2dd2e6e9e4b302))
+* **v0.6:** /api/file-activity accepts content; parses symbols_touched via tree-sitter ([b6794f9](https://github.com/swoofer/mcp-coordinator/commit/b6794f95e6fbd04575d24abe49b4851028322d2d))
+* **v0.6:** /api/scoring-stats + dashboard 'Conflict signals' panel ([defd5e0](https://github.com/swoofer/mcp-coordinator/commit/defd5e011b419ab5d265a6c0dac3f63736eb83d2))
+* **v0.6:** /api/working-files/{start,stop} endpoints ([cbf8f93](https://github.com/swoofer/mcp-coordinator/commit/cbf8f9365f761a73a80b0c5f2221288504ed7329))
+* **v0.6:** /readyz reports tree_sitter + git_cochange (optional, non-gating) ([6896635](https://github.com/swoofer/mcp-coordinator/commit/68966356a6e97df686ffa562a933e51d659e7786))
+* **v0.6:** add normalizePath utility for symmetric path matching ([b6bfa6f](https://github.com/swoofer/mcp-coordinator/commit/b6bfa6f27bc328ec90e65e9c8ea55623ae90c013))
+* **v0.6:** add working_files, git_cochange, layer_firings tables + user_version=6 ([4450458](https://github.com/swoofer/mcp-coordinator/commit/4450458293f07e60e0043c05dfd9271565ac450d))
+* **v0.6:** env-var CLI flags, README docs, Prometheus counters ([0c932bb](https://github.com/swoofer/mcp-coordinator/commit/0c932bbbe778b9afc11441721611cca01ffd7c4f))
+* **v0.6:** GitCochangeBuilder — bounded git log, denylist, retry-on-timeout ([8eadb1d](https://github.com/swoofer/mcp-coordinator/commit/8eadb1d151b8c6fd354acfd6ef5969b20e1e4e62))
+* **v0.6:** Layer 0.5 annotation — same file, disjoint symbols flagged in reason ([ef64a50](https://github.com/swoofer/mcp-coordinator/commit/ef64a50f33ee38ab4733b7362c4caf9ea12a8dff))
+* **v0.6:** Layer 4 git co-change scoring with canonical pair lookup ([994c9c8](https://github.com/swoofer/mcp-coordinator/commit/994c9c87410b7f3ed8d6f68efdaeeaafbb583c8a))
+* **v0.6:** refactor TreeSitterExtractor to language-handler registry; add C#/C/C++/Ruby/PHP/Kotlin/Swift/Bash ([e1b9874](https://github.com/swoofer/mcp-coordinator/commit/e1b987474f3b38a7b3763389225e8ea28c044052))
+* **v0.6:** refuse downgrade — PRAGMA user_version guard ([fe9893c](https://github.com/swoofer/mcp-coordinator/commit/fe9893cb1ff7457ebb1e9640ba398358d239cd77))
+* **v0.6:** scorer Layer 1 unions working_files; offline hook clears working_files ([c736812](https://github.com/swoofer/mcp-coordinator/commit/c7368122f0a514ff42e408d22171bed0a638972e))
+* **v0.6:** TreeSitterExtractor with per-language symbol qualification ([e54e5df](https://github.com/swoofer/mcp-coordinator/commit/e54e5dfc1dfe949c64a830149a8e7a3f9cb02ee6))
+* **v0.6:** WorkingFilesTracker — UPSERT/DELETE/sweeper/index ([41d00ba](https://github.com/swoofer/mcp-coordinator/commit/41d00ba6f610a38a2a6ce81c7bba253225be7c5a))
+
+
+### Bug Fixes
+
+* **http:** cap parseBody at 1 MB with 413 response ([c820115](https://github.com/swoofer/mcp-coordinator/commit/c820115157eec6468d43be0817745191f88d689c))
+* **http:** wire /livez /readyz /metrics + recordHttpRequest counters ([55f5ff4](https://github.com/swoofer/mcp-coordinator/commit/55f5ff45be770d5d0ab31c4b199ea78a9dd3d594))
+* **path-normalize:** detect Windows-style paths from input shape, not process.platform ([f4cf7f0](https://github.com/swoofer/mcp-coordinator/commit/f4cf7f0c396f36ae779ec73b89e793a51c535b48))
+
+
+### Documentation
+
+* **v0.6:** add design spec + implementation plan + handoff ([ec35949](https://github.com/swoofer/mcp-coordinator/commit/ec359495b8edb4b10344f1bc7e34a4a158f10c3f))
+* **v0.6:** add tree-sitter handler registry refactor plan ([4e3bba6](https://github.com/swoofer/mcp-coordinator/commit/4e3bba64ef7d0b7697085e1d7331459d6b92a556))
+
 ## [0.6.0] - 2026-05-10
 
 ### Added
