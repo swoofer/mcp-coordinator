@@ -1,6 +1,7 @@
 ﻿import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { initDatabase } from "./database.js";
+import { initDatabase, getDb } from "./database.js";
+import { runCommonAnnounceFlow } from "./announce-workflow.js";
 import { AgentRegistry } from "./agent-registry.js";
 import { Consultation } from "./consultation.js";
 import { ConflictDetector } from "./conflict-detector.js";
@@ -169,87 +170,37 @@ export function createMcpServer(services: CoordinatorServices): McpServer {
     assigned_to: z.string().optional().describe("Directed-dispatch: only this agent_id will be allowed to claim the thread. Use for leadâ†’worker handoffs in maitre/chaine/relais presets. Implies keep_open=true."),
   }, async ({ agent_id, subject, plan, target_modules, target_files, depends_on_files, exports_affected, keep_open, assigned_to }) => {
     mcpLog.info({ tool: "announce_work", agent_id, subject, target_modules, target_files, assigned_to }, "Tool called");
-    // Quality gate on plan
-    const planQuality = assessPlanQuality(plan);
-    const effectiveMode = planQuality.mode;
 
+    // Pre-step: MCP transport detects file/dependency conflicts (REST does not).
     const conflicts = conflictDetector.detect({ agent_id, target_modules, target_files });
     const thread = consultation.announceWork({
       agent_id, subject, plan, target_modules, target_files, depends_on_files, exports_affected, keep_open, assigned_to,
     });
-
-    // Store conflicts on thread
     if (conflicts.length > 0) {
-      const db = (await import("./database.js")).getDb();
-      db.prepare("UPDATE threads SET conflicts = ? WHERE id = ?")
+      getDb().prepare("UPDATE threads SET conflicts = ? WHERE id = ?")
         .run(JSON.stringify(conflicts), thread.id);
     }
 
-    // Impact scoring: categorize all online agents
-    const categorized = impactScorer.categorize({
-      agent_id, target_modules, target_files, depends_on_files, exports_affected,
+    // S2 fix: shared workflow (impact scoring, override respondents, auto-resolve,
+    // impact_scored + introspection SSE, plan-quality downgrade event). Same
+    // function used by the REST /api/announce path.
+    const { updated, categorized, respondents, planQuality } = runCommonAnnounceFlow(services, thread.id, {
+      agent_id, subject, plan, target_modules, target_files, depends_on_files, exports_affected, keep_open,
     });
 
-    // Override expected_respondents with concerned agents from scorer
-    {
-      const db = (await import("./database.js")).getDb();
-      const concernedIds = categorized.concerned.map(s => s.agent_id);
-      db.prepare("UPDATE threads SET expected_respondents = ? WHERE id = ?")
-        .run(JSON.stringify(concernedIds), thread.id);
-      // Only auto-resolve when truly alone â€” no other online agents.
-      // If peers are online but not yet concerned, keep the thread open so
-      // a subsequent announce can still match via Layer 0. Thread timeouts
-      // naturally if no one joins.
-      const otherOnlineCount = registry.listOnline().filter((a) => a.id !== agent_id).length;
-      const shouldAutoResolve = concernedIds.length === 0 && otherOnlineCount === 0;
-      if (shouldAutoResolve && thread.status === "open" && !keep_open) {
-        db.prepare("UPDATE threads SET status = 'resolved', resolved_at = ? WHERE id = ?")
-          .run(new Date().toISOString(), thread.id);
-        consultation.emitResolution(thread.id, "auto_resolved");
-      }
-    }
-
-    // Emit impact_scored SSE events for all agents
-    for (const s of [...categorized.concerned, ...categorized.gray_zone, ...categorized.pass]) {
-      sseEmitter.emit("impact_scored", {
-        thread_id: thread.id, agent_id: s.agent_id, agent_name: s.agent_name,
-        score: s.score, reasons: s.reasons, category: s.score >= 90 ? "concerned" : s.score >= 30 ? "gray_zone" : "pass",
-      });
-    }
-
-    // Create introspection records and emit introspection_requested for gray_zone agents
-    for (const s of categorized.gray_zone) {
-      introspection.create({ thread_id: thread.id, agent_id: s.agent_id, score: s.score, reasons: s.reasons });
-      sseEmitter.emit("introspection_requested", {
-        thread_id: thread.id, agent_id: s.agent_id, agent_name: s.agent_name, score: s.score, reasons: s.reasons,
-      });
-    }
-
-    // Emit downgrade event when plan is provided but quality is insufficient
-    if (plan && effectiveMode === "discovery") {
-      sseEmitter.emit("impact_scored" as any, {
-        thread_id: thread.id,
-        agent_id: agent_id,
-        agent_name: registry.get(agent_id)?.name || agent_id,
-        score: planQuality.score,
-        reasons: [`plan downgraded: score ${planQuality.score}/3 â€” ${!planQuality.checks.mentions_files ? 'no files' : ''} ${!planQuality.checks.concrete_approach ? 'vague approach' : ''} ${!planQuality.checks.sufficient_detail ? 'too short' : ''}`.trim()],
-        category: "plan_quality",
-      });
-    }
-
-    const updated = consultation.getThread(thread.id)!;
-    const respondents = JSON.parse(updated.expected_respondents || "[]");
-
+    // Post-step: MCP-specific thread_opened SSE shape (with conflicts inline)
+    // and MQTT publication. REST emits a different shape — kept divergent
+    // because consumers may depend on the exact field set.
     sseEmitter.emit("thread_opened", {
       thread_id: thread.id, initiator: agent_id, subject, target_modules, conflicts,
       expected_respondents: respondents,
-      mode: effectiveMode,
+      mode: planQuality.mode,
       plan: plan || null,
       plan_quality: planQuality,
     });
     mqttBridge.publishConsultation(thread.id, agent_id, subject, target_modules);
 
-    // Gather context from concerned agents for the initiator
+    // Gather context from concerned agents for the initiator (MCP-only)
     const contextForInitiator = respondents.map((rid: string) =>
       contextProvider.getRelevantContext(rid, { thread_id: updated.id, subject, target_modules, target_files })
     ).filter((ctx: AgentContext) => ctx.modules.length > 0);

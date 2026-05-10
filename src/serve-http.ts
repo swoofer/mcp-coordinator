@@ -16,6 +16,7 @@ import { createLogger, type Logger } from "./logger.js";
 import { initAuth, authenticateRequest, createToken, refreshToken, revokeAgent, setAuthLogger, verifyToken, type AuthResult } from "./auth.js";
 import { canResetDb } from "./reset-guard.js";
 import { safeJoinUnderRoot } from "./path-guard.js";
+import { runCommonAnnounceFlow } from "./announce-workflow.js";
 import { assessPlanQuality } from "./plan-quality.js";
 import type { CoordinatorEvent } from "./types.js";
 import { getVersion } from "../cli/version.js";
@@ -150,73 +151,24 @@ async function handleRest(req: IncomingMessage, res: ServerResponse): Promise<vo
       depends_on_files?: string[]; exports_affected?: string[]; keep_open?: boolean; assigned_to?: string | null;
     };
 
-    // Quality gate on plan
-    const planQuality = assessPlanQuality(plan);
-    const effectiveMode = planQuality.mode;
-
     const thread = consultation.announceWork({ agent_id, subject, plan, target_modules, target_files, depends_on_files, exports_affected, keep_open, assigned_to });
     const agentInfo = registry.get(agent_id);
 
-    // Impact scoring: categorize all online agents
-    const categorized = impactScorer.categorize({
-      agent_id, target_modules, target_files, depends_on_files, exports_affected,
+    // S2 fix: shared workflow (impact scoring, override respondents, auto-resolve,
+    // impact_scored + introspection SSE, plan-quality downgrade event). Same
+    // function used by the MCP announce_work tool path.
+    const { updated, categorized, respondents, planQuality } = runCommonAnnounceFlow(services, thread.id, {
+      agent_id, subject, plan, target_modules, target_files, depends_on_files, exports_affected, keep_open,
     });
 
-    // Override expected_respondents with concerned agents from scorer
-    {
-      const db = (await import("./database.js")).getDb();
-      const concernedIds = categorized.concerned.map(s => s.agent_id);
-      db.prepare("UPDATE threads SET expected_respondents = ? WHERE id = ?")
-        .run(JSON.stringify(concernedIds), thread.id);
-      // Only auto-resolve when truly alone â€” no other online agents.
-      // If peers are online but not yet concerned (e.g. they haven't announced
-      // yet), keep the thread open so a subsequent announce can still match
-      // this work via Layer 0. Thread will timeout naturally if no one joins.
-      const otherOnlineCount = registry.listOnline().filter((a) => a.id !== agent_id).length;
-      const shouldAutoResolve = concernedIds.length === 0 && otherOnlineCount === 0;
-      if (shouldAutoResolve && thread.status === "open" && !keep_open) {
-        db.prepare("UPDATE threads SET status = 'resolved', resolved_at = ? WHERE id = ?")
-          .run(new Date().toISOString(), thread.id);
-        consultation.emitResolution(thread.id, "auto_resolved");
-      }
-    }
-
-    // Emit impact_scored SSE events for all agents
-    for (const s of [...categorized.concerned, ...categorized.gray_zone, ...categorized.pass]) {
-      sseEmitter.emit("impact_scored", {
-        thread_id: thread.id, agent_id: s.agent_id, agent_name: s.agent_name,
-        score: s.score, reasons: s.reasons, category: s.score >= 90 ? "concerned" : s.score >= 30 ? "gray_zone" : "pass",
-      });
-    }
-
-    // Create introspection records and emit introspection_requested for gray_zone agents
-    for (const s of categorized.gray_zone) {
-      introspection.create({ thread_id: thread.id, agent_id: s.agent_id, score: s.score, reasons: s.reasons });
-      sseEmitter.emit("introspection_requested", {
-        thread_id: thread.id, agent_id: s.agent_id, agent_name: s.agent_name, score: s.score, reasons: s.reasons,
-      });
-    }
-
-    const updated = consultation.getThread(thread.id)!;
-    const respondents = JSON.parse(updated.expected_respondents || "[]");
-    // Emit downgrade event when plan is provided but quality is insufficient
-    if (plan && effectiveMode === "discovery") {
-      sseEmitter.emit("impact_scored" as any, {
-        thread_id: thread.id,
-        agent_id: agent_id,
-        agent_name: agentInfo?.name || agent_id,
-        score: planQuality.score,
-        reasons: [`plan downgraded: score ${planQuality.score}/3 â€” ${!planQuality.checks.mentions_files ? 'no files' : ''} ${!planQuality.checks.concrete_approach ? 'vague approach' : ''} ${!planQuality.checks.sufficient_detail ? 'too short' : ''}`.trim()],
-        category: "plan_quality",
-      });
-    }
-
+    // REST-specific thread_opened SSE shape (different field set than MCP — kept
+    // divergent because consumers may depend on this exact contract).
     sseEmitter.emit("thread_opened", {
       thread_id: thread.id, subject, agent_id, agent_name: agentInfo?.name || agent_id,
       target_modules, target_files, expected_respondents: respondents,
       conflicts: updated.conflicts ? JSON.parse(updated.conflicts) : [],
       created_at: updated.created_at,
-      mode: effectiveMode,
+      mode: planQuality.mode,
       plan: plan || null,
       plan_quality: planQuality,
     });
