@@ -638,11 +638,45 @@ function handleSse(req: IncomingMessage, res: ServerResponse): void {
 export interface ServerOptions {
   port?: number;
   dataDir?: string;
+  /**
+   * MQTT TCP listener port. Defaults to COORDINATOR_MQTT_TCP_PORT env or 1883.
+   * Pass an OS-ephemeral free port (see net.createServer().listen(0)) to run
+   * multiple coordinators in the same process without collision.
+   */
+  mqttTcpPort?: number;
+  /**
+   * MQTT WebSocket path on the HTTP server. Defaults to COORDINATOR_MQTT_WS_PATH or "/mqtt".
+   */
+  mqttWsPath?: string;
+  /**
+   * If false, do NOT register process-level SIGTERM/SIGINT handlers. Default
+   * true. Embedders that manage their own signals (essaim's orchestrator runs
+   * many in-process coordinators per session) should pass false and call
+   * `handle.stop()` from their own teardown.
+   */
+  registerSignalHandlers?: boolean;
 }
 
-export async function startServer(opts?: ServerOptions): Promise<void> {
+/**
+ * Returned by startServer(). Lets callers shut down all owned resources
+ * (HTTP server, MQTT broker + bridge, SSE listeners, DB, quota timer) without
+ * waiting for process exit. Safe to call multiple times.
+ *
+ * Backward-compatible: previous callers used `await startServer({...})` and
+ * ignored the resolved value. They continue to work; the new return value is
+ * additive.
+ */
+export interface ServerHandle {
+  port: number;
+  stop: () => Promise<void>;
+}
+
+export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
   const port = opts?.port ?? PORT;
   const dataDir = opts?.dataDir ?? DATA_DIR;
+  // Resolve MQTT ports per-call so tests/embedders can override module-load env values.
+  const mqttTcpPort = opts?.mqttTcpPort ?? MQTT_TCP_PORT;
+  const mqttWsPath = opts?.mqttWsPath ?? MQTT_WS_PATH;
 
   services = createServices({ dataDir });
   const log = services.logger;
@@ -799,32 +833,96 @@ export async function startServer(opts?: ServerOptions): Promise<void> {
   // Start the embedded MQTT broker (TCP + WebSocket on HTTP upgrade).
   // Awaiting ensures the TCP listener is fully bound before we connect our
   // own client or tell users the coordinator is ready.
-  await startEmbeddedMqttBroker({
-    tcpPort: MQTT_TCP_PORT,
+  const broker = await startEmbeddedMqttBroker({
+    tcpPort: mqttTcpPort,
     httpServer,
-    wsPath: MQTT_WS_PATH,
+    wsPath: mqttWsPath,
     logger: log.child({ component: "mqtt-broker" }),
   });
 
   // Connect the coordinator's own MQTT client to the embedded broker BEFORE
   // the HTTP server accepts requests â€” agents shouldn't see a half-ready coordinator.
-  await services.mqttBridge.connect({ url: `mqtt://127.0.0.1:${MQTT_TCP_PORT}` });
+  await services.mqttBridge.connect({ url: `mqtt://127.0.0.1:${mqttTcpPort}` });
   services.mqttBridge.onOffline((agentId) => {
     services.registry.setOffline(agentId);
     services.consultation.handleAgentDeparture(agentId);
     services.sseEmitter.emit("agent_offline", { agent_id: agentId });
   });
 
-  httpServer.listen(port, () => {
-    log.info({
-      port,
-      mcp: `POST http://localhost:${port}/mcp`,
-      rest: `POST http://localhost:${port}/api/*`,
-      sse: `GET http://localhost:${port}/api/events`,
-      mqtt_tcp: `mqtt://127.0.0.1:${MQTT_TCP_PORT}`,
-      mqtt_ws: `ws://localhost:${port}${MQTT_WS_PATH}`,
-    }, "Coordinator v3 started");
+  // Wait for the HTTP server to be actually listening before resolving the
+  // returned handle. Otherwise callers (tests, essaim) may try to connect
+  // before the port is bound.
+  await new Promise<void>((resolve, reject) => {
+    const onError = (err: Error) => reject(err);
+    httpServer.once("error", onError);
+    httpServer.listen(port, () => {
+      httpServer.off("error", onError);
+      log.info({
+        port,
+        mcp: `POST http://localhost:${port}/mcp`,
+        rest: `POST http://localhost:${port}/api/*`,
+        sse: `GET http://localhost:${port}/api/events`,
+        mqtt_tcp: `mqtt://127.0.0.1:${mqttTcpPort}`,
+        mqtt_ws: `ws://localhost:${port}${mqttWsPath}`,
+      }, "Coordinator v3 started");
+      resolve();
+    });
   });
+
+  // B6 fix: graceful shutdown.
+  // Cleanup sequence: stop accepting new HTTP connections → end MQTT bridge →
+  // close MQTT broker → stop quota background timer → close DB.
+  // Idempotent: stopped flag prevents double-cleanup if SIGTERM races with
+  // an explicit handle.stop() call.
+  let stopped = false;
+  const stop = async (): Promise<void> => {
+    if (stopped) return;
+    stopped = true;
+    log.info("Coordinator shutting down...");
+    try {
+      await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    } catch (err) {
+      log.warn({ err }, "Error closing HTTP server");
+    }
+    try {
+      await services.mqttBridge.disconnect();
+    } catch (err) {
+      log.warn({ err }, "Error disconnecting MQTT bridge");
+    }
+    try {
+      await broker.close();
+    } catch (err) {
+      log.warn({ err }, "Error closing MQTT broker");
+    }
+    try {
+      services.quotaCache.stopBackgroundTick();
+    } catch (err) {
+      log.warn({ err }, "Error stopping quota timer");
+    }
+    try {
+      const { closeDb } = await import("./database.js");
+      closeDb?.();
+    } catch (err) {
+      log.warn({ err }, "Error closing database");
+    }
+    log.info("Coordinator shutdown complete");
+  };
+
+  // Register signal handlers (default true). Embedders can opt out via
+  // registerSignalHandlers: false to manage their own teardown.
+  if (opts?.registerSignalHandlers !== false) {
+    const onSignal = (signal: NodeJS.Signals) => {
+      log.info({ signal }, "Received shutdown signal");
+      stop().then(() => process.exit(0)).catch((err) => {
+        log.error({ err }, "Shutdown error, forcing exit");
+        process.exit(1);
+      });
+    };
+    process.once("SIGTERM", () => onSignal("SIGTERM"));
+    process.once("SIGINT", () => onSignal("SIGINT"));
+  }
+
+  return { port, stop };
 }
 
 // Auto-start when run directly (not imported)
