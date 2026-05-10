@@ -1,6 +1,198 @@
 import path from "path";
 import type { Metrics } from "./metrics.js";
 
+// ---------------------------------------------------------------------------
+// Language handler registry
+// ---------------------------------------------------------------------------
+
+/** Passed through walk() calls — mutable accumulator + read-only context. */
+interface WalkCtx {
+  out: string[];
+  lang: string;
+  basename: string;
+}
+
+interface LanguageHandler {
+  /** Node types that introduce a class scope; descend children with classCtx = name field text. */
+  classNodeTypes: Set<string>;
+  /** Field name for the class identifier. Defaults to "name". */
+  classNameField?: string;
+  /** Node types that emit a symbol (qualified when inside a class scope). */
+  fnNodeTypes: Set<string>;
+  /**
+   * Override symbol name extraction for function nodes.
+   * Return null to suppress emission; return a string to emit it.
+   */
+  extractFnName?: (node: any, rawName: string | null, classCtx: string | null, ctx: WalkCtx) => string | null;
+  /**
+   * Node types that act as non-class containers (e.g. Rust impl, Ruby module).
+   * Descend children with classCtx = extractContainerName(node).
+   */
+  containerNodeTypes?: Set<string>;
+  extractContainerName?: (node: any) => string | null;
+  /** Node types for `const X = () => …` style declarations. */
+  varDeclTypes?: Set<string>;
+  /** Node types for anonymous default exports (`export default () => …`). */
+  exportStmtTypes?: Set<string>;
+}
+
+// ---------------------------------------------------------------------------
+// Go receiver helpers (module-level so HANDLERS closure can reference them)
+// ---------------------------------------------------------------------------
+
+function goReceiverType(recv: any): string | null {
+  if (!recv) return null;
+  for (let i = 0; i < recv.namedChildCount; i++) {
+    const found = findGoTypeIdent(recv.namedChild(i));
+    if (found) return found;
+  }
+  return null;
+}
+
+function findGoTypeIdent(node: any): string | null {
+  if (!node) return null;
+  if (node.type === "type_identifier") return node.text;
+  if (node.type === "pointer_type") {
+    for (let i = 0; i < node.namedChildCount; i++) {
+      const found = findGoTypeIdent(node.namedChild(i));
+      if (found) return found;
+    }
+  }
+  if (node.type === "parameter_declaration") {
+    for (let i = 0; i < node.namedChildCount; i++) {
+      const child = node.namedChild(i);
+      if (child.type !== "identifier") {
+        const found = findGoTypeIdent(child);
+        if (found) return found;
+      }
+    }
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// HANDLERS registry — one entry per language key
+// ---------------------------------------------------------------------------
+
+const HANDLERS: Record<string, LanguageHandler> = {
+  ts: {
+    classNodeTypes: new Set(["class_declaration"]),
+    fnNodeTypes: new Set(["function_declaration", "method_definition"]),
+    varDeclTypes: new Set(["variable_declarator"]),
+    exportStmtTypes: new Set(["export_statement"]),
+  },
+  tsx: {
+    classNodeTypes: new Set(["class_declaration"]),
+    fnNodeTypes: new Set(["function_declaration", "method_definition"]),
+    varDeclTypes: new Set(["variable_declarator"]),
+    exportStmtTypes: new Set(["export_statement"]),
+  },
+  js: {
+    classNodeTypes: new Set(["class_declaration"]),
+    fnNodeTypes: new Set(["function_declaration", "method_definition"]),
+    varDeclTypes: new Set(["variable_declarator"]),
+    exportStmtTypes: new Set(["export_statement"]),
+  },
+  py: {
+    classNodeTypes: new Set(["class_definition"]),
+    fnNodeTypes: new Set(["function_definition"]),
+  },
+  go: {
+    classNodeTypes: new Set(),
+    fnNodeTypes: new Set(["function_declaration", "method_declaration"]),
+    extractFnName: (node, rawName, classCtx, _ctx) => {
+      if (node.type === "method_declaration") {
+        const recv = node.childForFieldName?.("receiver");
+        const recvType = goReceiverType(recv);
+        if (recvType && rawName) return `${recvType}.${rawName}`;
+        return rawName;
+      }
+      if (classCtx && rawName) return `${classCtx}.${rawName}`;
+      return rawName;
+    },
+  },
+  rust: {
+    classNodeTypes: new Set(),
+    fnNodeTypes: new Set(["function_item"]),
+    containerNodeTypes: new Set(["impl_item"]),
+    extractContainerName: (node) => node.childForFieldName?.("type")?.text ?? null,
+  },
+  java: {
+    classNodeTypes: new Set(["class_declaration"]),
+    fnNodeTypes: new Set(["method_declaration"]),
+  },
+  cs: {
+    classNodeTypes: new Set(["class_declaration", "interface_declaration", "struct_declaration", "record_declaration"]),
+    fnNodeTypes: new Set(["method_declaration", "constructor_declaration", "property_declaration"]),
+    containerNodeTypes: new Set(["namespace_declaration"]),
+    extractContainerName: (_node) => null,
+  },
+  c: {
+    // C: function name lives in declarator field, not "name" field
+    classNodeTypes: new Set(),
+    fnNodeTypes: new Set(["function_definition"]),
+    extractFnName: (node, _rawName, classCtx, _ctx) => {
+      // function_definition -> declarator (function_declarator) -> declarator (identifier)
+      const decl = node.childForFieldName?.("declarator");
+      const name = decl?.childForFieldName?.("declarator")?.text ?? decl?.namedChild?.(0)?.text ?? null;
+      if (name && classCtx) return `${classCtx}.${name}`;
+      return name;
+    },
+  },
+  cpp: {
+    // C++: class_specifier has "name" field; function name via declarator chain
+    classNodeTypes: new Set(["class_specifier", "struct_specifier"]),
+    fnNodeTypes: new Set(["function_definition"]),
+    extractFnName: (node, _rawName, classCtx, _ctx) => {
+      const decl = node.childForFieldName?.("declarator");
+      const name = decl?.childForFieldName?.("declarator")?.text ?? decl?.namedChild?.(0)?.text ?? null;
+      if (name && classCtx) return `${classCtx}.${name}`;
+      return name;
+    },
+  },
+  ruby: {
+    classNodeTypes: new Set(["class"]),
+    fnNodeTypes: new Set(["method", "singleton_method"]),
+    containerNodeTypes: new Set(["module"]),
+    extractContainerName: (node) => node.childForFieldName?.("name")?.text ?? null,
+  },
+  php: {
+    classNodeTypes: new Set(["class_declaration", "interface_declaration", "trait_declaration"]),
+    fnNodeTypes: new Set(["method_declaration", "function_definition"]),
+    containerNodeTypes: new Set(["namespace_definition"]),
+    extractContainerName: (_node) => null,
+  },
+  kotlin: {
+    // Kotlin: class/object have no "name" field — use namedChild(0) (type_identifier)
+    // function_declaration has no "name" field — use namedChild(0) (simple_identifier)
+    classNodeTypes: new Set(),
+    fnNodeTypes: new Set(["function_declaration"]),
+    containerNodeTypes: new Set(["class_declaration", "object_declaration"]),
+    extractContainerName: (node) => node.namedChild(0)?.text ?? null,
+    extractFnName: (node, _rawName, classCtx, _ctx) => {
+      const name = node.namedChild(0)?.text ?? null;
+      if (name && classCtx) return `${classCtx}.${name}`;
+      return name;
+    },
+  },
+  swift: {
+    classNodeTypes: new Set(["class_declaration", "struct_declaration", "protocol_declaration"]),
+    fnNodeTypes: new Set(["function_declaration"]),
+    containerNodeTypes: new Set(["extension_declaration"]),
+    extractContainerName: (node) => node.childForFieldName?.("type")?.text
+      ?? node.namedChild(0)?.text
+      ?? null,
+  },
+  bash: {
+    classNodeTypes: new Set(),
+    fnNodeTypes: new Set(["function_definition"]),
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Internal types
+// ---------------------------------------------------------------------------
+
 interface Grammar {
   parser: any;
   language: any;
@@ -22,7 +214,7 @@ export class TreeSitterExtractor {
   private grammars = new Map<string, Grammar>();
   private ready = false;
   private grammarsLoaded = 0;
-  private totalGrammars = 7;
+  private totalGrammars = 15;
   private metrics?: Metrics;
 
   constructor(metrics?: Metrics) {
@@ -54,6 +246,14 @@ export class TreeSitterExtractor {
     await tryLoad("go", "tree-sitter-go");
     await tryLoad("rust", "tree-sitter-rust");
     await tryLoad("java", "tree-sitter-java");
+    await tryLoad("cs", "tree-sitter-c-sharp");
+    await tryLoad("c", "tree-sitter-c");
+    await tryLoad("cpp", "tree-sitter-cpp");
+    await tryLoad("ruby", "tree-sitter-ruby");
+    await tryLoad("php", "tree-sitter-php", "php");
+    await tryLoad("kotlin", "tree-sitter-kotlin");
+    await tryLoad("swift", "tree-sitter-swift");
+    await tryLoad("bash", "tree-sitter-bash");
     this.ready = true;
   }
 
@@ -101,120 +301,86 @@ export class TreeSitterExtractor {
       case ".go": return "go";
       case ".rs": return "rust";
       case ".java": return "java";
+      case ".cs": return "cs";
+      case ".c": case ".h": return "c";
+      case ".cpp": case ".cc": case ".cxx": case ".hpp": case ".hh": return "cpp";
+      case ".rb": return "ruby";
+      case ".php": return "php";
+      case ".kt": case ".kts": return "kotlin";
+      case ".swift": return "swift";
+      case ".sh": case ".bash": return "bash";
       default: return null;
     }
   }
 
-  /**
-   * Extract the type identifier from a Go receiver parameter_list node.
-   * e.g. "(r *T)" → "T", "(t T)" → "T"
-   */
-  private goReceiverType(recv: any): string | null {
-    if (!recv) return null;
-    // Walk named children recursively to find type_identifier or pointer_type
-    for (let i = 0; i < recv.namedChildCount; i++) {
-      const child = recv.namedChild(i);
-      const found = this.findGoTypeIdent(child);
-      if (found) return found;
-    }
-    return null;
-  }
-
-  private findGoTypeIdent(node: any): string | null {
-    if (!node) return null;
-    if (node.type === "type_identifier") return node.text;
-    if (node.type === "pointer_type") {
-      // recurse into pointer_type children to find type_identifier
-      for (let i = 0; i < node.namedChildCount; i++) {
-        const found = this.findGoTypeIdent(node.namedChild(i));
-        if (found) return found;
-      }
-    }
-    // For parameter_declaration, skip the identifier (var name), look at remaining
-    if (node.type === "parameter_declaration") {
-      for (let i = 0; i < node.namedChildCount; i++) {
-        const child = node.namedChild(i);
-        if (child.type !== "identifier") {
-          const found = this.findGoTypeIdent(child);
-          if (found) return found;
-        }
-      }
-    }
-    return null;
-  }
-
   private walk(node: any, out: string[], lang: string, basename: string, classCtx: string | null = null): void {
-    if (out.length >= 200) return;  // cap enforced; further work would be discarded by slice anyway
+    if (out.length >= 200) return;
+    const handler = HANDLERS[lang];
+    if (!handler) return;
+
     const type = node.type;
-    const nameNode = node.childForFieldName?.("name");
+    const nameField = handler.classNameField ?? "name";
+    const nameNode = node.childForFieldName?.(nameField);
+    const ctx: WalkCtx = { out, lang, basename };
 
-    // Class-like containers — descend with classCtx
-    if (
-      ((lang === "ts" || lang === "tsx" || lang === "js") && type === "class_declaration") ||
-      (lang === "py" && type === "class_definition") ||
-      (lang === "java" && type === "class_declaration")
-    ) {
-      const className = nameNode?.text || null;
+    // 1. Class-like containers
+    if (handler.classNodeTypes.has(type)) {
+      const className = nameNode?.text ?? null;
       for (let i = 0; i < node.namedChildCount; i++) {
-        this.walk(node.namedChild(i)!, out, lang, basename, className);
+        this.walk(node.namedChild(i), out, lang, basename, className);
       }
       return;
     }
 
-    // Rust impl block: child "type" field gives the impl target
-    if (lang === "rust" && type === "impl_item") {
-      const targetNode = node.childForFieldName?.("type");
-      const targetName = targetNode?.text || null;
+    // 2. Non-class containers (Rust impl, Ruby module, C# namespace, etc.)
+    if (handler.containerNodeTypes?.has(type)) {
+      const containerName = handler.extractContainerName?.(node) ?? null;
       for (let i = 0; i < node.namedChildCount; i++) {
-        this.walk(node.namedChild(i)!, out, lang, basename, targetName);
+        this.walk(node.namedChild(i), out, lang, basename, containerName);
       }
       return;
     }
 
-    // Function-like leaves
-    const isFn =
-      ((lang === "ts" || lang === "tsx" || lang === "js") && (type === "function_declaration" || type === "method_definition")) ||
-      (lang === "py" && type === "function_definition") ||
-      (lang === "go" && (type === "function_declaration" || type === "method_declaration")) ||
-      (lang === "rust" && type === "function_item") ||
-      (lang === "java" && type === "method_declaration");
-
-    if (isFn) {
-      let name = nameNode?.text || null;
-      // Go method receiver: method_declaration has receiver field
-      if (lang === "go" && type === "method_declaration") {
-        const recv = node.childForFieldName?.("receiver");
-        // receiver is parameter_list like "(r *T)" — find the type node within
-        const recvType = this.goReceiverType(recv);
-        if (recvType && name) name = `${recvType}.${name}`;
+    // 3. Function-like leaves
+    if (handler.fnNodeTypes.has(type)) {
+      const rawName = node.childForFieldName?.("name")?.text ?? null;
+      let emitted: string | null;
+      if (handler.extractFnName) {
+        emitted = handler.extractFnName(node, rawName, classCtx, ctx);
+      } else {
+        emitted = rawName;
+        if (emitted && classCtx) emitted = `${classCtx}.${emitted}`;
       }
-      if (name && classCtx) name = `${classCtx}.${name}`;
-      if (name) out.push(name);
+      if (emitted) out.push(emitted);
       return;
     }
 
-    // const X = () => / const X = function
-    if ((lang === "ts" || lang === "tsx" || lang === "js") && type === "variable_declarator") {
+    // 4. Variable declarators (const X = () => …)
+    if (handler.varDeclTypes?.has(type)) {
       const valNode = node.childForFieldName?.("value");
       if (valNode && (valNode.type === "arrow_function" || valNode.type === "function_expression")) {
-        const name = nameNode?.text;
+        const name = node.childForFieldName?.("name")?.text;
         if (name) out.push(name);
-        return;
       }
+      return;
     }
 
-    // Default exports: export default () => ... / export default function () { ... }
-    if ((lang === "ts" || lang === "tsx" || lang === "js") && type === "export_statement") {
+    // 5. Anonymous default exports
+    if (handler.exportStmtTypes?.has(type)) {
       const decl = node.namedChild(0);
-      if (decl && (decl.type === "arrow_function" || (decl.type === "function_declaration" && !decl.childForFieldName?.("name")))) {
+      if (decl && (
+        decl.type === "arrow_function" ||
+        (decl.type === "function_declaration" && !decl.childForFieldName?.("name"))
+      )) {
         out.push(`${basename}:default`);
         return;
       }
+      // Named export — fall through to recurse so class/fn inside are captured
     }
 
     // Recurse
     for (let i = 0; i < node.namedChildCount; i++) {
-      this.walk(node.namedChild(i)!, out, lang, basename, classCtx);
+      this.walk(node.namedChild(i), out, lang, basename, classCtx);
     }
   }
 }

@@ -56,4 +56,52 @@ describe("TreeSitterExtractor", () => {
     const symbols = extractor.extract("foo.ts", code, null);
     expect(symbols).toBe(null);
   });
+
+  it("C# class method", () => {
+    const code = "class C { void Method() {} }";
+    const symbols = extractor.extract("foo.cs", code, null);
+    if (symbols !== null) expect(symbols).toContain("C.Method");
+  });
+
+  it("C top-level function", () => {
+    const code = "int main(int argc, char** argv) { return 0; }";
+    const symbols = extractor.extract("foo.c", code, null);
+    if (symbols !== null) expect(symbols).toContain("main");
+  });
+
+  it("C++ class method", () => {
+    const code = "class C { public: void method() {} };";
+    const symbols = extractor.extract("foo.cpp", code, null);
+    if (symbols !== null) expect(symbols).toContain("C.method");
+  });
+
+  it("Ruby class method", () => {
+    const code = "class C\n  def method\n    1\n  end\nend\n";
+    const symbols = extractor.extract("foo.rb", code, null);
+    if (symbols !== null) expect(symbols).toContain("C.method");
+  });
+
+  it("PHP class method", () => {
+    const code = "<?php\nclass C {\n  function method() {}\n}\n";
+    const symbols = extractor.extract("foo.php", code, null);
+    if (symbols !== null) expect(symbols).toContain("C.method");
+  });
+
+  it("Kotlin class method", () => {
+    const code = "class C {\n  fun method(): Int = 1\n}\n";
+    const symbols = extractor.extract("foo.kt", code, null);
+    if (symbols !== null) expect(symbols).toContain("C.method");
+  });
+
+  it("Swift class method", () => {
+    const code = "class C {\n  func method() -> Int { return 1 }\n}\n";
+    const symbols = extractor.extract("foo.swift", code, null);
+    if (symbols !== null) expect(symbols).toContain("C.method");
+  });
+
+  it("Bash function", () => {
+    const code = "fooBar() {\n  echo hello\n}\n";
+    const symbols = extractor.extract("foo.sh", code, null);
+    if (symbols !== null) expect(symbols).toContain("fooBar");
+  });
 });
