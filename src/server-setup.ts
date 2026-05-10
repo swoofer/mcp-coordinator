@@ -3,6 +3,11 @@ import { z } from "zod";
 import { initDatabase, getDb } from "./database.js";
 import { runCommonAnnounceFlow } from "./announce-workflow.js";
 import { registerConsultationTools } from "./tools/consultation-tools.js";
+import { registerAgentTools } from "./tools/agents-tools.js";
+import { registerFilesTools } from "./tools/files-tools.js";
+import { registerDependenciesTools } from "./tools/dependencies-tools.js";
+import { registerStatusTools } from "./tools/status-tools.js";
+import { registerMqttTools } from "./tools/mqtt-tools.js";
 import { AgentRegistry } from "./agent-registry.js";
 import { Consultation } from "./consultation.js";
 import { ConflictDetector } from "./conflict-detector.js";
@@ -113,199 +118,15 @@ export function createMcpServer(services: CoordinatorServices): McpServer {
     version: VERSION,
   });
 
-  // â”€â”€ AGENT REGISTRY TOOLS â”€â”€
-
-  server.tool("register_agent", "Register agent as online with module list", {
-    agent_id: z.string(),
-    name: z.string(),
-    modules: z.array(z.string()),
-  }, async ({ agent_id, name, modules }) => {
-    mcpLog.info({ tool: "register_agent", agent_id, name, module_count: modules.length }, "Tool called");
-    const agent = registry.register(agent_id, name, modules);
-    sseEmitter.emit("agent_online", { agent_id, name, modules });
-    mqttBridge.registerAgent(agent_id, name);
-    return { content: [{ type: "text", text: JSON.stringify(agent) }] };
-  });
-
-  server.tool("list_agents", "List registered agents", {
-    online_only: z.boolean().optional(),
-  }, async ({ online_only }) => {
-    const agents = online_only ? registry.listOnline() : registry.listAll();
-    return { content: [{ type: "text", text: JSON.stringify(agents) }] };
-  });
-
-  server.tool("heartbeat", "Update agent activity status and last seen timestamp", {
-    agent_id: z.string(),
-    current_file: z.string().optional(),
-    current_thread: z.string().optional(),
-  }, async ({ agent_id, current_file, current_thread }) => {
-    registry.heartbeat(agent_id);
-    activityTracker.heartbeat(agent_id, {
-      currentFile: current_file || null,
-      currentThread: current_thread || null,
-    });
-    const activity = activityTracker.getActivity(agent_id);
-    sseEmitter.emit("agent_activity", {
-      agent_id, activity_status: activity.activity_status,
-      current_file: activity.current_file, current_thread: activity.current_thread,
-    });
-    return { content: [{ type: "text", text: JSON.stringify(activity) }] };
-  });
-
-  server.tool("agent_activity", "Get activity status for all online agents", {}, async () => {
-    const activities = activityTracker.listAll({ idleAfterMinutes: 5 });
-    return { content: [{ type: "text", text: JSON.stringify(activities) }] };
-  });
-
-
-  // ── CONSULTATION TOOLS ──
-  // S1: 11 consultation tools extracted to src/tools/consultation-tools.ts
-  // (announce_work, post_to_thread, propose/approve/contest_resolution,
-  // close/cancel_thread, get_thread, get_thread_updates, list_threads,
-  // log_action_summary). See that file for behavior; nothing else changed.
+  // S1: all 23 MCP tools registered via per-domain modules under src/tools/.
+  // Each register*Tools function takes (server, services, mcpLog) and wires
+  // its tool group; nothing else lives here. See src/tools/*.ts for behavior.
+  registerAgentTools(server, services, mcpLog);
   registerConsultationTools(server, services, mcpLog);
-
-
-  // â”€â”€ FILE TRACKING TOOLS â”€â”€
-
-  server.tool("hot_files", "List files modified by multiple agents", {
-    since_minutes: z.number().optional(),
-  }, async ({ since_minutes }) => {
-    const files = fileTracker.getHotFiles(since_minutes || 30);
-    return { content: [{ type: "text", text: JSON.stringify(files) }] };
-  });
-
-  server.tool("get_session_files", "Get files modified in a session", {
-    session_id: z.string(),
-  }, async ({ session_id }) => {
-    const files = fileTracker.getBySession(session_id);
-    return { content: [{ type: "text", text: JSON.stringify(files) }] };
-  });
-
-  server.tool("check_file_conflict", "Check if another agent is editing a file", {
-    file_path: z.string(),
-    agent_id: z.string(),
-    within_minutes: z.number().optional(),
-  }, async ({ file_path, agent_id, within_minutes }) => {
-    const result = fileTracker.checkFileConflict(file_path, agent_id, within_minutes || 30);
-    return { content: [{ type: "text", text: JSON.stringify(result) }] };
-  });
-
-  // â”€â”€ DEPENDENCY MAP TOOLS â”€â”€
-
-  server.tool("set_dependency_map", "Load module dependency graph", {
-    modules: z.string(), // JSON DependencyMap
-  }, async ({ modules }) => {
-    const map = JSON.parse(modules);
-    depMap.setMap(map);
-    return { content: [{ type: "text", text: "ok" }] };
-  });
-
-  server.tool("get_blast_radius", "Calculate impact of changes to a module", {
-    module_id: z.string(),
-  }, async ({ module_id }) => {
-    const radius = depMap.getBlastRadius(module_id);
-    return { content: [{ type: "text", text: JSON.stringify(radius) }] };
-  });
-
-  server.tool("get_module_info", "Get module dependency info", {
-    module_id: z.string(),
-  }, async ({ module_id }) => {
-    const info = depMap.getModuleInfo(module_id);
-    return { content: [{ type: "text", text: JSON.stringify(info) }] };
-  });
-
-  // â”€â”€ STATUS TOOL â”€â”€
-
-  server.tool("coordinator_status", "Full system status", {}, async () => {
-    const online = registry.listOnline();
-    const openThreads = consultation.listThreads({ status: "open" });
-    const resolvingThreads = consultation.listThreads({ status: "resolving" });
-    const hotFiles = fileTracker.getHotFiles(30);
-    const status = {
-      agents_online: online.length,
-      agents: online.map((a) => ({ id: a.id, name: a.name, modules: JSON.parse(a.modules) })),
-      open_threads: openThreads.length,
-      resolving_threads: resolvingThreads.length,
-      hot_files: hotFiles.length,
-      mqtt_connected: mqttBridge.isConnected(),
-    };
-    mcpLog.debug({ tool: "coordinator_status", agents_online: online.length, open_threads: openThreads.length }, "Tool called");
-    return { content: [{ type: "text", text: JSON.stringify(status) }] };
-  });
-
-  // â”€â”€ COORDINATION HELPERS â”€â”€
-
-  server.tool("wait_for_peers", "Block until at least N other online agents are registered, or timeout. Use before the first announce_work to avoid the race where one agent announces before peers have booted.", {
-    agent_id: z.string(),
-    min_peers: z.number().optional(),
-    timeout_seconds: z.number().optional(),
-  }, async ({ agent_id, min_peers, timeout_seconds }) => {
-    const targetPeers = min_peers ?? 1;
-    const timeoutMs = (timeout_seconds ?? 30) * 1000;
-    const pollIntervalMs = 1000;
-    const startedAt = Date.now();
-    mcpLog.info({ tool: "wait_for_peers", agent_id, min_peers: targetPeers, timeout_seconds: timeoutMs / 1000 }, "Tool called");
-
-    while (Date.now() - startedAt < timeoutMs) {
-      const peers = registry.listOnline().filter((a) => a.id !== agent_id);
-      if (peers.length >= targetPeers) {
-        return {
-          content: [{
-            type: "text",
-            text: JSON.stringify({
-              ready: true,
-              online_peers: peers.map((p) => ({ id: p.id, name: p.name })),
-              waited_ms: Date.now() - startedAt,
-            }),
-          }],
-        };
-      }
-      await new Promise((r) => setTimeout(r, pollIntervalMs));
-    }
-
-    const finalPeers = registry.listOnline().filter((a) => a.id !== agent_id);
-    return {
-      content: [{
-        type: "text",
-        text: JSON.stringify({
-          ready: false,
-          timeout: true,
-          online_peers: finalPeers.map((p) => ({ id: p.id, name: p.name })),
-          waited_ms: Date.now() - startedAt,
-        }),
-      }],
-    };
-  });
-
-  // â”€â”€ MQTT LISTENER TOOLS (replaces standalone mqtt-mcp-bridge) â”€â”€
-
-  server.tool("wait_for_message", "Block until an MQTT consultation message arrives or timeout", {
-    agent_id: z.string(),
-    timeout_seconds: z.number().optional(),
-  }, async ({ agent_id, timeout_seconds }) => {
-    const timeoutMs = (timeout_seconds || 15) * 1000;
-    const msg = await mqttBridge.waitForMessage(agent_id, timeoutMs);
-    if (msg) {
-      return { content: [{ type: "text", text: JSON.stringify(msg) }] };
-    }
-    return { content: [{ type: "text", text: JSON.stringify({ timeout: true }) }] };
-  });
-
-  server.tool("get_queued_messages", "Get all queued MQTT messages without blocking", {
-    agent_id: z.string(),
-  }, async ({ agent_id }) => {
-    const messages = mqttBridge.getQueuedMessages(agent_id);
-    return { content: [{ type: "text", text: JSON.stringify(messages) }] };
-  });
-
-  server.tool("mqtt_publish", "Publish a message to an MQTT topic", {
-    topic: z.string(),
-    payload: z.string(),
-  }, async ({ topic, payload }) => {
-    mqttBridge.mqttPublish(topic, payload);
-    return { content: [{ type: "text", text: "published" }] };
-  });
+  registerFilesTools(server, services, mcpLog);
+  registerDependenciesTools(server, services, mcpLog);
+  registerStatusTools(server, services, mcpLog);
+  registerMqttTools(server, services, mcpLog);
 
   return server;
 }
