@@ -7,6 +7,8 @@ const require = createRequire(import.meta.url);
 
 let db: DatabaseAdapter;
 
+const CURRENT_USER_VERSION = 6;
+
 const SCHEMA = `
     CREATE TABLE IF NOT EXISTS agents (
       id TEXT PRIMARY KEY,
@@ -202,6 +204,21 @@ export function initDatabase(dataDir: string): void {
   } else {
     db = createBetterSqlite3(dataDir);
   }
+
+  // Check for downgrade: refuse if DB was written by a newer binary
+  let foundVersion = 0;
+  try {
+    const v = (db as unknown as { prepare: (sql: string) => { get: () => unknown } })
+      .prepare("PRAGMA user_version")
+      .get() as { user_version: number } | undefined;
+    foundVersion = v?.user_version ?? 0;
+  } catch { foundVersion = 0; }
+  if (foundVersion > CURRENT_USER_VERSION) {
+    throw new Error(
+      `Database schema is from a newer version (${foundVersion}) than this binary supports (${CURRENT_USER_VERSION}). Downgrade not supported.`
+    );
+  }
+
   db.exec(SCHEMA);
 
   // Migrations for existing databases — columns may already exist
