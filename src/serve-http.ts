@@ -13,7 +13,7 @@ const __dirname = path.dirname(__filename);
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createServices, createMcpServer, CoordinatorServices } from "./server-setup.js";
 import { createLogger, type Logger } from "./logger.js";
-import { initAuth, authenticateRequest, createToken, refreshToken, revokeAgent, setAuthLogger, type AuthResult } from "./auth.js";
+import { initAuth, authenticateRequest, createToken, refreshToken, revokeAgent, setAuthLogger, verifyToken, type AuthResult } from "./auth.js";
 import { canResetDb } from "./reset-guard.js";
 import { safeJoinUnderRoot } from "./path-guard.js";
 import { assessPlanQuality } from "./plan-quality.js";
@@ -833,16 +833,37 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
   // Start the embedded MQTT broker (TCP + WebSocket on HTTP upgrade).
   // Awaiting ensures the TCP listener is fully bound before we connect our
   // own client or tell users the coordinator is ready.
+  // B3 fix: when AUTH_ENABLED, gate every MQTT CONNECT by JWT in the password
+  // field. Anonymous connections are rejected. Default off (essaim and any
+  // client without auth keep working unchanged).
+  const mqttAuth = AUTH_ENABLED
+    ? async (_username: string | undefined, password: Buffer | undefined): Promise<boolean> => {
+        if (!password) return false;
+        try {
+          await verifyToken(password.toString("utf-8"));
+          return true;
+        } catch {
+          return false;
+        }
+      }
+    : undefined;
+
   const broker = await startEmbeddedMqttBroker({
     tcpPort: mqttTcpPort,
     httpServer,
     wsPath: mqttWsPath,
     logger: log.child({ component: "mqtt-broker" }),
+    authenticate: mqttAuth,
   });
 
-  // Connect the coordinator's own MQTT client to the embedded broker BEFORE
-  // the HTTP server accepts requests â€” agents shouldn't see a half-ready coordinator.
-  await services.mqttBridge.connect({ url: `mqtt://127.0.0.1:${mqttTcpPort}` });
+  // B3: when AUTH_ENABLED, the internal coordinator client must authenticate
+  // too. Mint a short-lived admin token for the bridge.
+  const internalToken = AUTH_ENABLED ? await createToken("coordinator-internal", "admin", "1h") : undefined;
+  await services.mqttBridge.connect({
+    url: `mqtt://127.0.0.1:${mqttTcpPort}`,
+    username: AUTH_ENABLED ? "coordinator-internal" : undefined,
+    password: internalToken,
+  });
   services.mqttBridge.onOffline((agentId) => {
     services.registry.setOffline(agentId);
     services.consultation.handleAgentDeparture(agentId);

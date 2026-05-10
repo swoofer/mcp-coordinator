@@ -96,18 +96,13 @@ describe("Graceful shutdown (B6 fix)", () => {
   it("registerSignalHandlers: false does not register process listeners", async () => {
     dataDir = mkdtempSync(path.join(tmpdir(), "mcp-coord-shutdown-"));
     const port = getRandomPort();
-    const prevMqttPort = process.env.COORDINATOR_MQTT_TCP_PORT;
-    process.env.COORDINATOR_MQTT_TCP_PORT = String(await getFreePort());
-    try {
-      const beforeSigterm = process.listenerCount("SIGTERM");
-      const beforeSigint = process.listenerCount("SIGINT");
-      handle = await startServer({ port, dataDir, registerSignalHandlers: false });
-      const afterSigterm = process.listenerCount("SIGTERM");
-      const afterSigint = process.listenerCount("SIGINT");
-      expect(afterSigterm).toBe(beforeSigterm);
-      expect(afterSigint).toBe(beforeSigint);
-    } finally {
-      // mqttTcpPort scoped to test, no env restore needed
-    }
+    const mqttTcpPort = await getFreePort();
+    const beforeSigterm = process.listenerCount("SIGTERM");
+    const beforeSigint = process.listenerCount("SIGINT");
+    handle = await startServer({ port, dataDir, mqttTcpPort, registerSignalHandlers: false });
+    const afterSigterm = process.listenerCount("SIGTERM");
+    const afterSigint = process.listenerCount("SIGINT");
+    expect(afterSigterm).toBe(beforeSigterm);
+    expect(afterSigint).toBe(beforeSigint);
   });
 });

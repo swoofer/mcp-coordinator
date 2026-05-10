@@ -23,7 +23,7 @@ export class MqttBridge {
     this.log = logger || silentLogger;
   }
 
-  async connect(config: { url: string }): Promise<void> {
+  async connect(config: { url: string; username?: string; password?: string }): Promise<void> {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error("MQTT connection timeout"));
@@ -32,6 +32,8 @@ export class MqttBridge {
       this.client = mqtt.connect(config.url, {
         clientId: `coordinator-${Date.now()}`,
         clean: true,
+        username: config.username,
+        password: config.password,
       });
 
       this.client.on("connect", () => {

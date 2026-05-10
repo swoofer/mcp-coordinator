@@ -38,11 +38,28 @@ export interface EmbeddedMqttBroker {
   close: () => Promise<void>;
 }
 
+/**
+ * B3 fix: opt-in MQTT authentication. When provided, every CONNECT packet's
+ * password field is passed to authenticate(). Returning false rejects the
+ * client. When omitted (default), the broker accepts anonymous connections —
+ * preserving the existing behavior so essaim and other clients without auth
+ * keep working unchanged.
+ *
+ * The internal coordinator client (MqttBridge) bypasses this by passing an
+ * internal admin token when AUTH_ENABLED is true.
+ */
+export type MqttAuthVerifier = (username: string | undefined, password: Buffer | undefined) => Promise<boolean>;
+
 export interface EmbeddedMqttOptions {
   tcpPort?: number; // 0 or undefined → skip TCP
   httpServer?: HttpServer; // undefined → skip WS
   wsPath?: string; // default "/mqtt"
   logger: Logger;
+  /**
+   * Per-CONNECT auth verifier. Omit to allow anonymous (default — backwards
+   * compatible with essaim and any client not using auth).
+   */
+  authenticate?: MqttAuthVerifier;
 }
 
 /**
@@ -55,8 +72,26 @@ export interface EmbeddedMqttOptions {
  * fully ready, which causes client connect timeouts in compiled binaries.
  */
 export async function startEmbeddedMqttBroker(opts: EmbeddedMqttOptions): Promise<EmbeddedMqttBroker> {
-  const { tcpPort, httpServer, wsPath = "/mqtt", logger } = opts;
+  const { tcpPort, httpServer, wsPath = "/mqtt", logger, authenticate } = opts;
   const broker = await Aedes.createBroker();
+
+  if (authenticate) {
+    // B3 fix: when AUTH_ENABLED, every CONNECT must present a valid token.
+    (broker as unknown as { authenticate: (client: Client, username: string | undefined, password: Buffer | undefined, cb: (err: Error | null, success: boolean) => void) => void }).authenticate =
+      (client, username, password, cb) => {
+        Promise.resolve(authenticate(username, password)).then(
+          (ok) => {
+            if (!ok) logger.warn({ client_id: client?.id, username }, "MQTT auth rejected");
+            cb(null, ok);
+          },
+          (err) => {
+            logger.warn({ client_id: client?.id, err: err.message }, "MQTT auth error");
+            cb(null, false);
+          }
+        );
+      };
+    logger.info("MQTT auth enabled (token in CONNECT password)");
+  }
 
   broker.on("client", (client: Client) => {
     logger.debug({ client_id: client?.id }, "MQTT client connected");
