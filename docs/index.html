@@ -1764,6 +1764,22 @@
     </div>
     <p class="text-center scoring-footnote" data-i18n="mechanism.scoring.footnote">Six layers, most severe wins. <a href="https://github.com/swoofer/mcp-coordinator#impact-scoring" rel="noopener noreferrer">Full details on GitHub →</a></p>
 
+    <!-- v0.5 capabilities highlight -->
+    <div class="cards fade-in" style="margin-top: 2.5rem;">
+      <div class="card">
+        <h3>In-flight awareness <span style="font-size:0.75rem; font-weight:400; color:var(--accent); margin-left:0.4rem;">v0.5</span></h3>
+        <p>Hook-based PreToolUse + PostToolUse hooks let the coordinator see agents <strong>start</strong> editing files — not just when they finish. Conflicts surface before bytes are written, not after.</p>
+      </div>
+      <div class="card">
+        <h3>Symbol-aware scoring <span style="font-size:0.75rem; font-weight:400; color:var(--accent); margin-left:0.4rem;">v0.3+</span></h3>
+        <p>tree-sitter parses 15 languages (TS/TSX/JS/JSX/Python/Go/Rust/Java/C#/C/C++/Ruby/PHP/Kotlin/Swift/Bash). Two agents editing the same file but different functions get an annotated reason — not a silent block.</p>
+      </div>
+      <div class="card">
+        <h3>Git co-change scoring <span style="font-size:0.75rem; font-weight:400; color:var(--accent); margin-left:0.4rem;">v0.5</span></h3>
+        <p>Files that move together in git history (config + consumer, fixture + test) are scored as related: impact 60 if &gt;50% co-change, 40 if &gt;20%. Catches regressions invisible to filename matching.</p>
+      </div>
+    </div>
+
     <!-- Sub-block 3: real-time push (collapsible, advanced) -->
     <details class="mechanism-advanced">
       <summary data-i18n="mechanism.advanced.summary">Real-time push: MQTT topics and delivery flow</summary>
@@ -2088,7 +2104,7 @@
       </div>
       <div class="card">
         <h3 data-i18n="tech.arch.card3.title">Dashboard</h3>
-        <p data-i18n="tech.arch.card3.desc">A live SSE stream at <code>localhost:3100/dashboard</code>. Per-agent activity, scoring breakdown, quota widget, decision timeline. No auth in local mode; JWT-gated for cloud.</p>
+        <p data-i18n="tech.arch.card3.desc">A live SSE stream at <code>localhost:3100/dashboard</code>. Per-agent activity, scoring breakdown, quota widget, decision timeline, and the v0.5 "Conflict signals" panel showing per-layer firing counts over the last 24 h. No auth in local mode; JWT-gated for cloud.</p>
       </div>
     </div>
 
@@ -2288,7 +2304,7 @@
         <span class="perf-sep">&middot;</span>
         <span class="perf-item"><strong data-i18n="results.perf.label.consensus">Full consensus</strong> <span data-i18n="results.perf.value.consensus">30-45s</span></span>
         <span class="perf-sep">&middot;</span>
-        <span class="perf-item"><strong data-i18n="results.perf.label.tests">Test suite</strong> <span data-i18n="results.perf.value.tests">216 unit tests across 18 files</span></span>
+        <span class="perf-item"><strong data-i18n="results.perf.label.tests">Test suite</strong> <span data-i18n="results.perf.value.tests">392 unit tests across 46 files</span></span>
       </div>
       <p class="perf-metrics-link">
         <a href="https://github.com/swoofer/mcp-coordinator/tree/main/tests" rel="noopener noreferrer" data-i18n="results.perf.link">Browse the test suite on GitHub →</a>
@@ -2313,7 +2329,7 @@
 
       <details class="faq-item">
         <summary class="faq-q" data-i18n="faq.q2">Is it production-ready?</summary>
-        <div class="faq-a" data-i18n="faq.a2">Stable for solo and team use; v1.0 freezes the public API. 216 unit tests across 4 conflict scenarios, MIT-licensed, <code>doctor</code> command, structured Pino logs.</div>
+        <div class="faq-a" data-i18n="faq.a2">Stable for solo and team use; v1.0 freezes the public API. 392 unit tests across 6 scoring layers and 4 conflict scenarios, MIT-licensed, <code>doctor</code> command, structured Pino logs.</div>
       </details>
 
       <details class="faq-item">
@@ -2356,6 +2372,16 @@
         <div class="faq-a" data-i18n="faq.a10">No. mcp-coordinator events arrive between turns via MQTT push or polling. Your agent reads them and re-enters its turn loop with new context appended.</div>
       </details>
 
+      <details class="faq-item">
+        <summary class="faq-q">Which programming languages does conflict detection support?</summary>
+        <div class="faq-a">v0.5.0 ships with 15 languages via tree-sitter: TypeScript, TSX, JavaScript, JSX, Python, Go, Rust, Java, C#, C, C++, Ruby, PHP, Kotlin, and Swift. A strategy-registry pattern makes adding more languages a one-file contribution. Bash is supported for script-level awareness.</div>
+      </details>
+
+      <details class="faq-item">
+        <summary class="faq-q">How does conflict detection work under the hood?</summary>
+        <div class="faq-a">Six scoring layers are evaluated in order; the most severe wins. Layer 0: exact file match (100). Layer 0.5: symbol-aware AST overlap — same file, different functions yields a score with an annotated reason rather than a silent block. Layer 1: dependency graph overlap (80). Layer 2: module boundary overlap (30). Layer 3: recent-edits heuristic. Layer 4 (v0.5): git co-change — files that have moved together in commit history score 60 (&gt;50% co-change) or 40 (&gt;20% co-change).</div>
+      </details>
+
     </div>
   </div>
 
@@ -2377,7 +2403,7 @@
         "name": "Is it production-ready?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Stable for solo and team use; v1.0 freezes the public API. 216 unit tests across 4 conflict scenarios, MIT-licensed, doctor command, structured Pino logs."
+          "text": "Stable for solo and team use; v1.0 freezes the public API. 392 unit tests across 6 scoring layers and 4 conflict scenarios, MIT-licensed, doctor command, structured Pino logs."
         }
       },
       {
@@ -2482,14 +2508,50 @@
       </div>
 
       <div class="timeline-item">
+        <div class="timeline-dot dot-done" aria-hidden="true"></div>
+        <div class="timeline-badge badge-done" data-i18n="roadmap.badge.done">Shipped</div>
+        <h4>v0.3 — Semantic conflict detection</h4>
+        <p>AST-level analysis on top of filename scoring via tree-sitter. Detects API contract changes and interface incompatibilities before a thread opens. Symbol-aware scoring: same file, different functions = annotated reason, not a silent block. 15 languages supported (TS/TSX/JS/JSX/Python/Go/Rust/Java/C#/C/C++/Ruby/PHP/Kotlin/Swift).</p>
+        <p class="timeline-meta">
+          <span>Shipped May 2026</span>
+          <span aria-hidden="true">·</span>
+          <a href="https://github.com/swoofer/mcp-coordinator/releases" target="_blank" rel="noopener noreferrer" aria-label="v0.3 release on GitHub">v0.3.0 release</a>
+        </p>
+      </div>
+
+      <div class="timeline-item">
+        <div class="timeline-dot dot-done" aria-hidden="true"></div>
+        <div class="timeline-badge badge-done" data-i18n="roadmap.badge.done">Shipped</div>
+        <h4>v0.4 — Dashboard redesign &amp; operability</h4>
+        <p>Full landing page and dashboard redesign. New "Conflict signals" panel with per-layer firing counts over the last 24 h. Extended <code>/readyz</code> with <code>tree_sitter</code> and <code>git_cochange</code> health blocks. 5 new Prometheus metrics, 8 new env vars / CLI flags, PRAGMA user_version downgrade guard, and 413 body-size cap.</p>
+        <p class="timeline-meta">
+          <span>Shipped May 2026</span>
+          <span aria-hidden="true">·</span>
+          <a href="https://github.com/swoofer/mcp-coordinator/releases" target="_blank" rel="noopener noreferrer" aria-label="v0.4 release on GitHub">v0.4.0 release</a>
+        </p>
+      </div>
+
+      <div class="timeline-item">
+        <div class="timeline-dot dot-done" aria-hidden="true"></div>
+        <div class="timeline-badge badge-done" data-i18n="roadmap.badge.done">Shipped</div>
+        <h4>v0.5 — In-flight awareness &amp; git co-change</h4>
+        <p>Hook-based PreToolUse + PostToolUse: the coordinator sees agents <em>start</em> editing, not just finish. Git co-change scoring: files that share commit history (config + consumer, fixture + test) get impact score 60 if &gt;50% co-change, 40 if &gt;20%. 392-test suite across 46 files.</p>
+        <p class="timeline-meta">
+          <span>Shipped May 2026</span>
+          <span aria-hidden="true">·</span>
+          <a href="https://github.com/swoofer/mcp-coordinator/releases/tag/v0.5.0" target="_blank" rel="noopener noreferrer" aria-label="v0.5.0 release on GitHub">v0.5.0 release</a>
+        </p>
+      </div>
+
+      <div class="timeline-item">
         <div class="timeline-dot dot-planned" aria-hidden="true"></div>
         <div class="timeline-badge badge-planned" data-i18n="roadmap.badge.planned">Planned</div>
-        <h4 data-i18n="roadmap.v03.title">v0.3 — Semantic conflict detection</h4>
-        <p data-i18n="roadmap.v03.desc">AST-level analysis on top of filename scoring. Detect API contract changes, interface incompatibilities, and breaking changes before a thread even opens.</p>
+        <h4>LLM Reasoner — gray-zone arbitration (opt-in)</h4>
+        <p>A gated, opt-in layer that sends ambiguous gray-zone conflicts to a small LLM for structured arbitration. Design phase — will ship after one month of v0.5.0 telemetry confirms the ROI justifies the latency trade-off.</p>
         <p class="timeline-meta">
-          <span data-i18n="roadmap.v03.date">Target Q3 2026</span>
+          <span>In design · gated on v0.5.0 telemetry</span>
           <span aria-hidden="true">·</span>
-          <a href="https://github.com/swoofer/mcp-coordinator/issues?q=is%3Aissue+label%3Av0.3" target="_blank" rel="noopener noreferrer" data-i18n="roadmap.v03.link" aria-label="v0.3 issues on GitHub">Follow on GitHub</a>
+          <a href="https://github.com/swoofer/mcp-coordinator/issues?q=is%3Aissue+label%3Av1.0" target="_blank" rel="noopener noreferrer" aria-label="v1.0 issues on GitHub">Follow on GitHub</a>
         </p>
       </div>
 
@@ -2530,7 +2592,7 @@
     <a href="https://github.com/sponsors/swoofer" target="_blank" rel="noopener noreferrer">Sponsor</a>
     <a href="https://buymeacoffee.com/swoofer" target="_blank" rel="noopener noreferrer">Buy Me A Coffee</a>
   </div>
-  <p data-i18n="footer.text">MIT License &nbsp;·&nbsp; Built with <a href="https://claude.ai/code" target="_blank" rel="noopener noreferrer">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v0.2.x</p>
+  <p data-i18n="footer.text">MIT License &nbsp;·&nbsp; Built with <a href="https://claude.ai/code" target="_blank" rel="noopener noreferrer">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v0.5.0</p>
 </footer>
 
 <script>
@@ -2631,7 +2693,7 @@
       "nav.install": "Install",
       "nav.roadmap": "Roadmap",
       "nav.getstarted": "Get Started",
-      "hero.eyebrow": "Open Source &middot; MIT &middot; v0.2.x",
+      "hero.eyebrow": "Open Source &middot; MIT &middot; v0.5.0",
       "hero.h1": "Zero conflicts. Every agent aligned.",
       "hero.subtitle": "5 agents, 1 codebase, 0 merge conflicts. The MCP server that keeps parallel Claude Code, Cursor, and Cline agents aligned.",
       "hero.stat.latency": "&lt;50ms push latency",
@@ -2769,7 +2831,7 @@
       "tech.arch.card2.title": "mcp-coordinator server",
       "tech.arch.card2.desc": "A Node.js process exposing 26 MCP tools over HTTP/SSE, with the embedded Aedes MQTT broker. SQLite stores threads, agents, and the dependency map. Anthropic quota is pre-flighted before multi-agent runs.",
       "tech.arch.card3.title": "Dashboard",
-      "tech.arch.card3.desc": "A live SSE stream at <code>localhost:3100/dashboard</code>. Per-agent activity, scoring breakdown, quota widget, decision timeline. No auth in local mode; JWT-gated for cloud.",
+      "tech.arch.card3.desc": "A live SSE stream at <code>localhost:3100/dashboard</code>. Per-agent activity, scoring breakdown, quota widget, decision timeline, and the v0.5 Conflict signals panel with per-layer firing counts over the last 24 h. No auth in local mode; JWT-gated for cloud.",
       "tech.deploy.title": "Three modes, one experience",
       "tech.deploy.local.title": "Local mode",
       "tech.deploy.local.desc": "The coordinator, broker, and dashboard run on your machine. Best for solo work or trying mcp-coordinator before bringing teammates in.",
@@ -2793,7 +2855,7 @@
       "start.step4.desc": "The <code class=\"ic\">doctor</code> command checks config, server, MCP responses, and MQTT connections, then opens the dashboard at <code class=\"ic\">localhost:3100/dashboard</code>.",
       "start.note": "<code class=\"ic\">git worktree add ../feature-x main</code> and run each agent in its own worktree &mdash; mcp-coordinator handles \"who's editing types.ts\"; worktrees handle \"no two agents fighting the same inode.\"",
       "start.dash.title": "What you'll see in 60 seconds",
-      "start.dash.meta": "mcp-coordinator v0.2.1 &middot; quota 62%",
+      "start.dash.meta": "mcp-coordinator v0.5.0 &middot; quota 62%",
       "start.dash.aria": "Sample dashboard view: four agents tracked live, with a conflict resolved in 38 seconds",
       "start.cta.star": "Star on GitHub",
       "start.cta.issue": "Open an issue",
@@ -2819,7 +2881,7 @@
       "results.perf.label.consensus": "Full consensus",
       "results.perf.value.consensus": "30-45s",
       "results.perf.label.tests": "Test suite",
-      "results.perf.value.tests": "216 unit tests across 18 files",
+      "results.perf.value.tests": "392 unit tests across 46 files",
       "results.perf.link": "Browse the test suite on GitHub →",
       "results.subtitle.link": "See tests/ on GitHub →",
       "faq.title": "FAQ",
@@ -2827,7 +2889,7 @@
       "faq.q1": "Does this replace git worktrees?",
       "faq.a1": "No. Worktrees solve filesystem isolation; mcp-coordinator solves intent coordination. Use both.",
       "faq.q2": "Is it production-ready?",
-      "faq.a2": "Stable for solo and team use; v1.0 freezes the public API. 216 unit tests across 4 conflict scenarios, MIT-licensed, <code>doctor</code> command, structured Pino logs.",
+      "faq.a2": "Stable for solo and team use; v1.0 freezes the public API. 392 unit tests across 6 scoring layers and 4 conflict scenarios, MIT-licensed, <code>doctor</code> command, structured Pino logs.",
       "faq.q3": "What does it cost?",
       "faq.a3": "MIT-licensed and free. Self-hosted on your machine, your LAN, or your cloud.",
       "faq.q4": "Which MCP clients work?",
@@ -2844,6 +2906,10 @@
       "faq.a9": "Agents fail open and keep working as if uninstalled. Local SQLite resumes on restart.",
       "faq.q10": "Will my agent lose context between turns?",
       "faq.a10": "No. mcp-coordinator events arrive between turns via MQTT push or polling. Your agent reads them and re-enters its turn loop with new context appended.",
+      "faq.q11": "Which programming languages does conflict detection support?",
+      "faq.a11": "v0.5.0 ships with 15 languages via tree-sitter: TypeScript, TSX, JavaScript, JSX, Python, Go, Rust, Java, C#, C, C++, Ruby, PHP, Kotlin, and Swift. A strategy-registry pattern makes adding more languages a one-file contribution.",
+      "faq.q12": "How does conflict detection work under the hood?",
+      "faq.a12": "Six scoring layers, most severe wins: exact file match (100), symbol-aware AST overlap (annotated reason, not silent block), dependency graph (80), module boundary (30), recent-edits heuristic, and git co-change — files with shared commit history score 60 or 40 depending on co-change ratio.",
       "roadmap.title": "Roadmap",
       "roadmap.subtitle": "Shipped, in flight, and what comes after.",
       "roadmap.badge.done": "Shipped",
@@ -2859,9 +2925,17 @@
       "roadmap.v02.date": "Shipped May 2026",
       "roadmap.v02.link": "v0.2.0 release",
       "roadmap.v03.title": "v0.3 — Semantic conflict detection",
-      "roadmap.v03.desc": "AST-level analysis on top of filename scoring. Detect API contract changes, interface incompatibilities, and breaking changes before a thread even opens.",
-      "roadmap.v03.date": "Target Q3 2026",
-      "roadmap.v03.link": "Follow on GitHub",
+      "roadmap.v03.desc": "AST-level analysis via tree-sitter across 15 languages. Symbol-aware scoring: same file, different functions = annotated reason, not a silent block.",
+      "roadmap.v03.date": "Shipped May 2026",
+      "roadmap.v03.link": "v0.3.0 release",
+      "roadmap.v05.title": "v0.5 — In-flight awareness &amp; git co-change",
+      "roadmap.v05.desc": "Hook-based PreToolUse/PostToolUse for real-time edit awareness. Git co-change scoring for historically coupled files. 392 tests across 46 files.",
+      "roadmap.v05.date": "Shipped May 2026",
+      "roadmap.v05.link": "v0.5.0 release",
+      "roadmap.llm.title": "LLM Reasoner — gray-zone arbitration (opt-in)",
+      "roadmap.llm.desc": "Gated opt-in layer for ambiguous conflicts. Ships after 1 month of v0.5.0 telemetry validates ROI.",
+      "roadmap.llm.date": "In design · gated on v0.5.0 telemetry",
+      "roadmap.llm.link": "Follow on GitHub",
       "roadmap.v10.title": "v1.0 — Stable API + cross-repo coordination",
       "roadmap.v10.desc": "Frozen public API, versioned REST endpoints, migration guides. Coordination across multiple repositories from a single MQTT broker.",
       "roadmap.v10.date": "Date TBD",
@@ -2870,7 +2944,7 @@
       "roadmap.harbor.desc": "Native integration with Anthropic's forthcoming server-side push channel (internally tracked as <code>tengu_harbor</code>). Listener code already lives alongside the MQTT bridge. The moment it ships, mcp-coordinator plugs in.",
       "roadmap.harbor.date": "Date TBD · upstream-gated",
       "roadmap.harbor.link": "Follow on GitHub",
-      "footer.text": "MIT License &nbsp;·&nbsp; Built with <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v0.2.x",
+      "footer.text": "MIT License &nbsp;·&nbsp; Built with <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v0.5.0",
       // === Deprecated keys preserved for backwards-compat (old taxonomy) ===
       "why.title": "Why MCP Coordinator?",
       "why.subtitle": "Run five agents on the same repo without merge conflicts, duplicated work, or silent regressions.",
@@ -2963,7 +3037,7 @@
       "arch.card2.title": "Coordinator server",
       "arch.card2.desc": "Node.js process exposing 26 MCP tools over HTTP/SSE, plus the embedded Aedes MQTT broker.",
       "arch.card3.title": "Dashboard",
-      "arch.card3.desc": "A live SSE stream at <code class=\"ic\">localhost:3100/dashboard</code>.",
+      "arch.card3.desc": "A live SSE stream at <code class=\"ic\">localhost:3100/dashboard</code>. Includes the v0.5 Conflict signals panel with per-layer firing counts over the last 24 h.",
       "deploy.title": "Deploy anywhere",
       "deploy.subtitle": "From your laptop to your team's infrastructure.",
       "deploy.local.title": "Local mode",
@@ -3162,7 +3236,7 @@
       "start.step4.desc": "La commande <code class=\"ic\">doctor</code> vérifie la config, le serveur, les réponses MCP et les connexions MQTT, puis ouvre le dashboard sur <code class=\"ic\">localhost:3100/dashboard</code>.",
       "start.note": "<code class=\"ic\">git worktree add ../feature-x main</code> et lancez chaque agent dans son propre worktree &mdash; mcp-coordinator gère \"qui édite types.ts\" ; les worktrees gèrent \"deux agents qui ne se battent pas sur la même inode.\"",
       "start.dash.title": "Ce que vous verrez en 60 secondes",
-      "start.dash.meta": "mcp-coordinator v0.2.1 &middot; quota 62%",
+      "start.dash.meta": "mcp-coordinator v0.5.0 &middot; quota 62%",
       "start.dash.aria": "Vue exemple du dashboard : quatre agents suivis en direct, avec un conflit résolu en 38 secondes",
       "start.cta.star": "Mettre une étoile sur GitHub",
       "start.cta.issue": "Ouvrir une issue",
