@@ -15,6 +15,7 @@ import { createServices, createMcpServer, CoordinatorServices } from "./server-s
 import { createLogger, type Logger } from "./logger.js";
 import { initAuth, authenticateRequest, createToken, refreshToken, revokeAgent, setAuthLogger, type AuthResult } from "./auth.js";
 import { canResetDb } from "./reset-guard.js";
+import { safeJoinUnderRoot } from "./path-guard.js";
 import { assessPlanQuality } from "./plan-quality.js";
 import type { CoordinatorEvent } from "./types.js";
 import { getVersion } from "../cli/version.js";
@@ -694,10 +695,18 @@ export async function startServer(opts?: ServerOptions): Promise<void> {
           json(res, { error: "dashboard not available" }, 404);
           return;
         }
-        const filePath = url === "/dashboard" || url === "/dashboard/"
-          ? path.join(dashboardDir, "index.html")
-          : path.join(dashboardDir, url.replace("/dashboard/", ""));
-        if (existsSync(filePath)) {
+        // B5 fix: defend against path traversal. safeJoinUnderRoot decodes the
+        // URL, strips leading slashes, resolves the path, and verifies the
+        // result stays under dashboardDir. Returns null on traversal attempts.
+        let filePath: string | null;
+        if (url === "/dashboard" || url === "/dashboard/") {
+          filePath = path.join(dashboardDir, "index.html");
+        } else {
+          // Strip query string before joining (browsers append ?v=...)
+          const urlPath = (url.split("?")[0] || "").replace("/dashboard/", "");
+          filePath = safeJoinUnderRoot(dashboardDir, urlPath);
+        }
+        if (filePath && existsSync(filePath)) {
           const ext = path.extname(filePath);
           const contentTypes: Record<string, string> = {
             ".html": "text/html",
