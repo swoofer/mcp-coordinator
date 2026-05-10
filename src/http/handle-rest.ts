@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "http";
 import type { CoordinatorServices } from "../server-setup.js";
 import type { Logger } from "../logger.js";
+import { createHash } from "crypto";
 import { getDb } from "../database.js";
 import { runCommonAnnounceFlow } from "../announce-workflow.js";
 import { canResetDb } from "../reset-guard.js";
@@ -401,6 +402,38 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
       const activity = activityTracker.getActivity(aid, { idleAfterMinutes: 5 });
       json(res, { registered: true, status: agent.status, activity: activity.activity_status });
     }
+
+  } else if (url === "/api/file-activity" && req.method === "POST") {
+    if (typeof body.session_id !== "string" || typeof body.agent_id !== "string"
+        || typeof body.tool_name !== "string" || typeof body.file_path !== "string") {
+      json(res, { error: "missing required fields" }, 400);
+      return;
+    }
+    if (body.agent_name !== undefined && typeof body.agent_name !== "string") {
+      json(res, { error: "agent_name must be string when present" }, 400);
+      return;
+    }
+    const MAX_CONTENT = 262144;
+    let symbols: string[] | null = null;
+    let contentHash: string | null = null;
+    if (typeof body.content === "string") {
+      if (body.content.length > MAX_CONTENT) {
+        json(res, { error: "content exceeds 256 KB" }, 400);
+        return;
+      }
+      contentHash = createHash("sha256").update(body.content).digest("hex");
+      symbols = ctx.services.treeSitter.extract(body.file_path, body.content, null);
+    }
+    ctx.services.fileTracker.log({
+      session_id: body.session_id,
+      agent_id: body.agent_id,
+      agent_name: body.agent_name,
+      tool_name: body.tool_name,
+      file_path: body.file_path,
+      content_hash: contentHash,
+      symbols_touched: symbols,
+    });
+    json(res, { ok: true });
 
   } else if (url === "/api/working-files/start" && req.method === "POST") {
     if (typeof body.agent_id !== "string" || typeof body.file_path !== "string") {

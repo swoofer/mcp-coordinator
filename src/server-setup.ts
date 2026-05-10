@@ -23,6 +23,7 @@ import { AgentActivityTracker } from "./agent-activity.js";
 import { QuotaCache } from "./quota/quota-cache.js";
 import { WorkingFilesTracker } from "./working-files-tracker.js";
 import { Metrics } from "./metrics.js";
+import { TreeSitterExtractor } from "./tree-sitter-extractor.js";
 import type { CoordinatorConfig, AgentContext } from "./types.js";
 import { createLogger, type Logger } from "./logger.js";
 import { getVersion } from "../cli/version.js";
@@ -44,6 +45,7 @@ export interface CoordinatorServices {
   mqttBridge: MqttBridge;
   quotaCache: QuotaCache;
   metrics: Metrics;
+  treeSitter: TreeSitterExtractor;
 }
 
 /** Create shared services (once at startup). */
@@ -66,6 +68,9 @@ export function createServices(config: CoordinatorConfig): CoordinatorServices {
   const sseEmitter = new SseEmitter();
   const mqttBridge = new MqttBridge(logger.child({ component: "mqtt" }));
   const metrics = new Metrics();
+
+  const treeSitter = new TreeSitterExtractor();
+  treeSitter.load().catch(() => { /* errors are logged inside; status() reflects state */ });
 
   // Quota cache â€” macOS-only for now, Linux/Windows stubs return 503 via the
   // /api/quota handler so raids keep running without a quota guardrail there.
@@ -117,7 +122,7 @@ export function createServices(config: CoordinatorConfig): CoordinatorServices {
 
   return {
     logger, registry, activityTracker, consultation, conflictDetector,
-    depMap, fileTracker, impactScorer, workingFiles, introspection, contextProvider, sseEmitter, mqttBridge, quotaCache, metrics,
+    depMap, fileTracker, impactScorer, workingFiles, introspection, contextProvider, sseEmitter, mqttBridge, quotaCache, metrics, treeSitter,
   };
 }
 

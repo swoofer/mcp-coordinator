@@ -8,13 +8,25 @@ export class FileTracker {
     agent_name?: string;
     tool_name: string;
     file_path: string;
+    content_hash?: string | null;
+    symbols_touched?: string[] | null;
   }): void {
     const db = getDb();
     const module = this.fileToModule(params.file_path);
     db.prepare(
-      `INSERT INTO file_activity (session_id, agent_id, agent_name, tool_name, file_path, module)
-       VALUES (?, ?, ?, ?, ?, ?)`
-    ).run(params.session_id, params.agent_id, params.agent_name || null, params.tool_name, params.file_path, module);
+      `INSERT INTO file_activity
+       (session_id, agent_id, agent_name, tool_name, file_path, module, content_hash, symbols_touched)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      params.session_id,
+      params.agent_id,
+      params.agent_name || null,
+      params.tool_name,
+      params.file_path,
+      module,
+      params.content_hash || null,
+      params.symbols_touched ? JSON.stringify(params.symbols_touched) : null,
+    );
   }
 
   getBySession(sessionId: string): FileActivity[] {
