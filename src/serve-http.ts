@@ -96,7 +96,14 @@ async function handleRest(req: IncomingMessage, res: ServerResponse): Promise<vo
 
 async function handleAuth(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const url = req.url || "";
-  const body = await parseBody(req);
+  let body: Record<string, unknown>;
+  try {
+    body = await parseBody(req);
+  } catch (err: unknown) {
+    const e = err as { statusCode?: number; message?: string };
+    json(res, { error: e.message || "Invalid request" }, e.statusCode || 400);
+    return;
+  }
 
   if (url === "/api/auth/register" && req.method === "POST") {
     const { agent_name, registration_secret } = body as { agent_name: string; registration_secret: string };

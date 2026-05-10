@@ -30,7 +30,14 @@ export interface RestContext {
 export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx: RestContext): Promise<void> {
   const { services, httpLog, authEnabled, getRunConfig, setRunConfig } = ctx;
   const url = req.url || "";
-  const body = await parseBody(req);
+  let body: Record<string, unknown>;
+  try {
+    body = await parseBody(req);
+  } catch (err: unknown) {
+    const e = err as { statusCode?: number; message?: string };
+    json(res, { error: e.message || "Invalid request" }, e.statusCode || 400);
+    return;
+  }
   const agentId = (body as Record<string, unknown>).agent_id as string | undefined;
   // Dashboard/work-stealing polls these endpoints every few seconds — demote to debug
   // to keep the info log focused on coordination events (announce, claim, resolve, etc).
