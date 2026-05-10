@@ -1,0 +1,38 @@
+# Build artifacts — Dockerfile recompiles inside the builder stage.
+dist/
+node_modules/
+*.tsbuildinfo
+
+# VCS / CI / editor noise.
+.git/
+.github/
+.gitignore
+.gitattributes
+.idea/
+.vscode/
+.editorconfig
+
+# Tests and dev-only fixtures (we don't run vitest in the runtime image).
+tests/
+**/*.test.ts
+**/*.spec.ts
+vitest.config.ts
+coverage/
+
+# Docs and superpowers working directory (large, not runtime).
+docs/superpowers/
+*.md
+!LICENSE
+
+# Local data, scratch files, secrets.
+data/
+.env
+.env.*
+*.log
+scan.pdf
+
+# Don't recurse into the Docker artifacts themselves.
+Dockerfile
+.dockerignore
+docker-compose.yml
+docker-compose.*.yml
