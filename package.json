@@ -94,6 +94,9 @@
     "tree-sitter-swift": "^0.6.0",
     "tree-sitter-bash": "^0.21.0"
   },
+  "overrides": {
+    "ip-address": "^10.2.0"
+  },
   "engines": {
     "node": ">=20"
   }
