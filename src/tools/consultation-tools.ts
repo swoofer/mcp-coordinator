@@ -35,9 +35,9 @@ export function registerConsultationTools(
     subject: z.string(),
     plan: z.string().optional(),
     target_modules: z.array(z.string()),
-    target_files: z.array(z.string()),
-    depends_on_files: z.array(z.string()).optional(),
-    exports_affected: z.array(z.string()).optional(),
+    target_files: z.array(z.string()).describe("Repo-relative file paths (forward-slash, e.g. 'src/foo.ts'). Absolute paths are not accepted in team-mode."),
+    depends_on_files: z.array(z.string()).optional().describe("Repo-relative file paths your work depends on."),
+    exports_affected: z.array(z.string()).optional().describe("Repo-relative file paths whose exports your work modifies."),
     keep_open: z.boolean().optional().describe("Keep thread open even if no agents are concerned (for manual coordination like games or debates)"),
     assigned_to: z.string().optional().describe("Directed-dispatch: only this agent_id will be allowed to claim the thread. Use for lead→worker handoffs in maitre/chaine/relais presets. Implies keep_open=true."),
     target_symbols: z.array(z.string().max(256)).max(200).optional()
@@ -189,7 +189,7 @@ export function registerConsultationTools(
   server.tool("log_action_summary", "Log a one-liner summary of an action", {
     session_id: z.string(),
     agent_id: z.string(),
-    file_path: z.string().optional(),
+    file_path: z.string().optional().describe("Repo-relative file path."),
     summary: z.string(),
   }, async ({ session_id, agent_id, file_path, summary }) => {
     const result = consultation.logActionSummary({ session_id, agent_id, file_path, summary });

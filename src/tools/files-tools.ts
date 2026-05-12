@@ -29,7 +29,7 @@ export function registerFilesTools(
   });
 
   server.tool("check_file_conflict", "Check if another agent is editing a file", {
-    file_path: z.string(),
+    file_path: z.string().describe("Repo-relative file path."),
     agent_id: z.string(),
     within_minutes: z.number().optional(),
   }, async ({ file_path, agent_id, within_minutes }) => {
