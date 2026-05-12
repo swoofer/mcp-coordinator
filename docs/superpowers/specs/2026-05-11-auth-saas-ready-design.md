@@ -34,6 +34,8 @@ Phase 5 (full SaaS — signup, billing, per-org admin UI) is **out of scope**; t
 - **MFA enforcement at coordinator level** — IdPs handle this.
 - **Audit log surface UI** — log lines and Prometheus metrics are enough for v0.7.
 - **Role-based fine-grained permissions** — only `admin` and `member` (and `agent` for machine-to-machine).
+- **Encryption at rest** — deferred to **v0.7.5** (separate spec `2026-05-11-encryption-at-rest-design.md`). v0.7 bakes the structural hooks (audit_log table, EncryptionProvider interface, file mode 0600) but does not implement encryption yet.
+- **Column-level encryption / GDPR endpoints / BYOK** — deferred to **v0.8** (compliance-enterprise tier, separate spec to be written when a first enterprise client demands it).
 
 ## Background
 
@@ -154,6 +156,22 @@ CREATE TABLE IF NOT EXISTS device_auth_requests (
 );
 CREATE INDEX IF NOT EXISTS idx_device_user_code ON device_auth_requests(user_code);
 
+-- Audit log (structural hook for SOC 2 / GDPR baseline; populated from Phase 2)
+CREATE TABLE IF NOT EXISTS audit_log (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id         TEXT,                 -- may be NULL for unauthenticated actions
+  org_id          TEXT NOT NULL DEFAULT 'default',
+  action          TEXT NOT NULL,        -- 'auth.login.success', 'auth.refresh', 'auth.token_revoke', ...
+  target          TEXT,                 -- entity acted on (thread_id, agent_id, user_id...)
+  ip              TEXT,
+  user_agent      TEXT,
+  metadata        TEXT,                 -- JSON, freeform per-action context
+  created_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_audit_org_time ON audit_log(org_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action, created_at);
+
 -- Seed default org for migration from v0.6.x:
 INSERT OR IGNORE INTO orgs (id, name) VALUES ('default', 'Default Organization');
 ```
@@ -201,6 +219,65 @@ export function getProvider(name: string): IdPProvider | null {
 ```
 
 Phase 1 ships the interface + an empty registry. Phase 2 adds `GitHubProvider`. Phase 4 adds `GoogleProvider` + `OIDCProvider`.
+
+### B.5. EncryptionProvider interface + audit log helper (Phase 1, structural hooks)
+
+These interfaces ship in Phase 1 with NO implementations — they pave the way for v0.7.5 (encryption at rest) and v0.8 (column-level + compliance). Adding them now means later phases don't need to thread a new abstraction through 50 call sites.
+
+```typescript
+// src/security/encryption.ts (Phase 1: interface only; impls in v0.7.5+)
+export interface EncryptionProvider {
+  /** Encrypt a value for storage. Returns base64 ciphertext. */
+  encrypt(plaintext: string, context: { org_id: string; column: string }): string;
+  /** Decrypt a base64 ciphertext. Throws on wrong key / corruption. */
+  decrypt(ciphertext: string, context: { org_id: string; column: string }): string;
+  /** Stable HMAC for indexing on encrypted columns without leaking plaintext. */
+  hmac(value: string, context: { org_id: string; column: string }): string;
+}
+
+/** v0.7 default: pass-through (no encryption). v0.7.5 replaces with SQLCipher-backed. */
+export class PassthroughEncryption implements EncryptionProvider {
+  encrypt(p: string) { return p; }
+  decrypt(c: string) { return c; }
+  hmac(v: string) { return v; }
+}
+```
+
+```typescript
+// src/security/audit.ts
+export interface AuditEvent {
+  user_id?: string | null;
+  org_id: string;
+  action: string;       // dotted namespace: 'auth.login.success', 'thread.create', ...
+  target?: string;
+  ip?: string;
+  user_agent?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export function auditLog(ev: AuditEvent): void {
+  getDb().prepare(`INSERT INTO audit_log (user_id, org_id, action, target, ip, user_agent, metadata)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)`)
+    .run(ev.user_id ?? null, ev.org_id, ev.action, ev.target ?? null,
+         ev.ip ?? null, ev.user_agent ?? null,
+         ev.metadata ? JSON.stringify(ev.metadata) : null);
+}
+```
+
+**Where to call `auditLog`** in Phase 2+:
+
+| Endpoint / event | action string |
+|---|---|
+| Successful OAuth callback | `auth.login.success` |
+| Failed login (CSRF / invalid state) | `auth.login.failure` |
+| `/api/auth/device` initiated | `auth.device.initiated` |
+| `/api/auth/device/token` approved | `auth.device.approved` |
+| `/api/auth/agent-token` issued | `auth.agent_token.issued` |
+| `/api/auth/refresh` rotated | `auth.refresh.rotated` |
+| `/api/auth/revoke` | `auth.token.revoked` |
+| `/api/reset` (admin destructive op) | `admin.reset` |
+
+Phase 5 (v0.8) extends with `data.read.*`, `data.export.*`, `data.delete.*` actions for GDPR right-to-access/forgotten endpoints.
 
 ### C. JWT shape (Phase 1)
 
@@ -515,6 +592,10 @@ agent          coordinator
 | `COORDINATOR_DEVICE_FLOW_TTL_SECONDS` | `600` (10 min) | Lifetime of device codes. | 2 |
 | `COORDINATOR_REGISTRATION_SECRET` | (unset) | **Deprecated.** Still accepted in `AUTH_ENABLED=false` mode for backward compat. Removed in v0.8. | (existing) |
 | `COORDINATOR_ADMIN_SECRET` | (unset) | **Deprecated.** Same as above. | (existing) |
+
+### DB file permissions
+
+Phase 1 adds: on first DB creation in `initDatabase()`, set `coordinator.db` to mode 0600 (owner read/write only). Existing v0.6.x DBs are also re-chmod'd to 0600 on every boot (idempotent). Defense baseline against an unprivileged co-user reading the DB file directly.
 
 ### TLS
 
