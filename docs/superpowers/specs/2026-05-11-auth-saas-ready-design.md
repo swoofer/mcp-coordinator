@@ -137,6 +137,7 @@ CREATE INDEX IF NOT EXISTS idx_users_org ON users(org_id);
 
 CREATE TABLE IF NOT EXISTS refresh_tokens (
   id              TEXT PRIMARY KEY,
+  org_id          TEXT NOT NULL REFERENCES orgs(id),
   user_id         TEXT NOT NULL REFERENCES users(id),
   jti             TEXT NOT NULL UNIQUE,
   device_label    TEXT,              -- 'maxime-laptop', 'ci-runner-3', set by client
@@ -146,21 +147,25 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
   created_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_refresh_user ON refresh_tokens(user_id, revoked_at);
+CREATE INDEX IF NOT EXISTS idx_refresh_org_user ON refresh_tokens(org_id, user_id, revoked_at);
 
 CREATE TABLE IF NOT EXISTS device_auth_requests (
-  device_code     TEXT PRIMARY KEY,
-  user_code       TEXT NOT NULL UNIQUE,
+  device_code      TEXT PRIMARY KEY,
+  user_code        TEXT NOT NULL UNIQUE,
+  nonce            TEXT NOT NULL UNIQUE,  -- single-use, tracked for replay prevention
   approved_user_id TEXT REFERENCES users(id),
-  expires_at      TEXT NOT NULL,
-  created_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  org_id           TEXT,                  -- populated on approval; defense against cross-org token reuse
+  expires_at       TEXT NOT NULL,
+  created_at       TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_device_user_code ON device_auth_requests(user_code);
+CREATE INDEX IF NOT EXISTS idx_device_nonce ON device_auth_requests(nonce);
 
 -- Audit log (structural hook for SOC 2 / GDPR baseline; populated from Phase 2)
 CREATE TABLE IF NOT EXISTS audit_log (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id         TEXT,                 -- may be NULL for unauthenticated actions
-  org_id          TEXT NOT NULL DEFAULT 'default',
+  org_id          TEXT,                 -- NULL for unauthenticated actions (e.g., failed login before identity established)
   action          TEXT NOT NULL,        -- 'auth.login.success', 'auth.refresh', 'auth.token_revoke', ...
   target          TEXT,                 -- entity acted on (thread_id, agent_id, user_id...)
   ip              TEXT,
@@ -206,8 +211,8 @@ export interface IdpUserInfo {
 
 export interface IdPProvider {
   name: string;                                              // 'github' | 'google' | 'oidc'
-  buildAuthUrl(state: string, redirectUri: string): string;
-  exchangeCode(code: string, redirectUri: string): Promise<IdpUserInfo>;
+  buildAuthUrl(state: string, redirectUri: string, codeChallenge?: string): string;
+  exchangeCode(code: string, redirectUri: string, codeVerifier?: string): Promise<IdpUserInfo>;
 }
 
 // src/auth/providers/registry.ts
@@ -276,8 +281,20 @@ export function auditLog(ev: AuditEvent): void {
 | `/api/auth/refresh` rotated | `auth.refresh.rotated` |
 | `/api/auth/revoke` | `auth.token.revoked` |
 | `/api/reset` (admin destructive op) | `admin.reset` |
+| Sensitive column/table accessed | `data.read.<table>` |
+| Role granted to user | `role.grant` |
+| Role revoked from user | `role.revoke` |
+| IdP config created/updated | `idp.config.update` |
+| JWT secret rotated | `auth.jwt_secret.rotated` |
+| User added to org | `org.user.added` |
+| User removed from org | `org.user.removed` |
+| Admin deletes a user | `admin.user_delete` |
+| Audit log exported | `admin.audit_log_export` |
+| Refresh token reuse detected (both revoked) | `auth.refresh.reuse_detected` |
+| Device code expired before approval | `auth.device.expired` |
+| Device code brute-force limit hit | `auth.device.rate_limit` |
 
-Phase 5 (v0.8) extends with `data.read.*`, `data.export.*`, `data.delete.*` actions for GDPR right-to-access/forgotten endpoints.
+Total ~20 events defined. Phase 5 (v0.8) extends with `data.export.*`, `data.delete.*` for GDPR right-to-access/forgotten endpoints.
 
 ### C. JWT shape (Phase 1)
 
@@ -293,7 +310,7 @@ interface AuthClaims {
 }
 ```
 
-Backward compat: existing v0.6.x JWTs without `user_id` / `org` are treated as `user_id='legacy', org='default', role='agent'` and accepted only when `AUTH_ENABLED=false` (open-coordinator mode).
+Backward compat: existing v0.6.x JWTs without `user_id` / `org` are treated as `user_id='legacy', org='default', role='admin'` and accepted only when `AUTH_ENABLED=false` (open-coordinator mode). When `AUTH_ENABLED=true`, v0.6 JWTs are rejected — agents must re-authenticate via the device flow or CLI login to obtain a v0.7 JWT.
 
 ### D. Query scoping (Phase 1)
 
@@ -342,7 +359,7 @@ export class GitHubProvider implements IdPProvider {
     return `https://github.com/login/oauth/authorize?${params}`;
   }
 
-  async exchangeCode(code: string, redirectUri: string): Promise<IdpUserInfo> {
+  async exchangeCode(code: string, redirectUri: string, codeVerifier?: string): Promise<IdpUserInfo> {
     // POST https://github.com/login/oauth/access_token
     // GET https://api.github.com/user
     // GET https://api.github.com/user/emails (for primary verified email)
@@ -394,6 +411,8 @@ User clicks "Sign in", page redirects to `GET /auth/login?device_code=...`, whic
 4. Update `device_auth_requests.approved_user_id`
 5. Render success page: "You can close this browser. Your CLI/agent will continue."
 
+**User code format**: `BCDFGHJK-LMNPQRSTV` charset (RFC 8628 recommended, no vowels or visually confusable characters). Format: 8 characters with a central hyphen (e.g., `BCDF-GHJK`). The `user_code` field is generated with a `UNIQUE` constraint in the DB. On collision, generation retries up to 3 times before failing the device flow request.
+
 **Agent polling**:
 
 ```
@@ -401,6 +420,12 @@ POST /api/auth/device/token
 Request: { device_code: "8a4f9e2c-..." }
 Response (still pending):
   202 { status: "authorization_pending" }
+Response (polling too fast):
+  400 { error: "slow_down", interval: <updated-interval> }   // RFC 8628
+Response (user rejected):
+  400 { error: "access_denied" }
+Response (code expired):
+  400 { error: "expired_token" }                             // not HTTP 410 — RFC 8628 §3.5
 Response (approved):
   200 {
     refresh_token: "rt_...",         // long-lived (30 days), stored locally
@@ -409,26 +434,42 @@ Response (approved):
   }
 ```
 
-Agent polls every `interval` seconds. Pending → 202. Approved → 200 + tokens. Expired → 410. Coordinator deletes `device_auth_requests` row after issuing tokens.
+Agent polls every `interval` seconds. Pending → 202. Approved → 200 + tokens. Expired → 400 `expired_token`. Coordinator deletes `device_auth_requests` row after issuing tokens.
+
+**Abandoned device code cleanup**: a background sweeper (reusing the v0.6 sweeper pattern) deletes `device_auth_requests` rows where `expires_at < now AND approved_user_id IS NULL`. Runs every 5 minutes.
 
 ### G. CLI login (Phase 3)
 
 `mcp-coordinator-cli login [--provider github|google|oidc] [--coordinator-url URL]`:
 
-1. CLI starts an HTTP server on `127.0.0.1:<random-port>` with a single handler for `/cb`.
-2. CLI prints `Opening browser to authenticate...` and calls `open(...)` with the URL:
+1. CLI starts an HTTP server on `127.0.0.1:<random-port>` with a single handler for `/cb`. If the port is in use (`EADDRINUSE`), retry up to 5 times with a new random port before failing. Always print the auth URL to stdout regardless so the user can copy-paste it manually.
+2. CLI generates a PKCE pair:
+   - `code_verifier`: 43-character crypto-random string (A-Z a-z 0-9 - . _ ~), stored in a signed state JWT.
+   - `code_challenge`: `BASE64URL(SHA-256(ASCII(code_verifier)))` — S256 method, mandatory.
+3. If running under WSL (`WSL_DISTRO_NAME` env set) or SSH (`SSH_CONNECTION` env set), skip `open()` and print:
+   ```
+   Open this URL in your browser to authenticate:
+   https://coord.example.com/auth/login?...
+   ```
+   Otherwise call `open(url)` and also print the URL as fallback.
+4. CLI sends the URL:
    ```
    https://coord.example.com/auth/login
      ?provider=github
      &cb=http://127.0.0.1:<random-port>/cb
-     &state=<random>
+     &state=<signed-state-JWT containing: cb, code_verifier, nonce>
+     &code_challenge=<base64url-sha256-verifier>
+     &code_challenge_method=S256
    ```
-3. Coordinator handles `/auth/login`, redirects to the IdP's authorize URL with `state` carrying the original `cb`.
-4. User authenticates at the IdP, redirects back to coordinator's `/auth/callback/github?code=...&state=...`.
-5. Coordinator exchanges code, find-or-creates user, issues `refresh_token`.
-6. Coordinator redirects to `http://127.0.0.1:<random-port>/cb?refresh_token=...&device_label=cli-login`.
-7. CLI's local server receives the callback, extracts `refresh_token`, stores it in `~/.mcp-coordinator/auth.json` (mode 0600).
-8. CLI prints `Logged in as alice@example.com. You can close the browser.` and exits.
+5. Coordinator handles `/auth/login`, stores `code_verifier` from state JWT, redirects to the IdP's authorize URL with `code_challenge` and `code_challenge_method=S256`.
+6. User authenticates at the IdP, redirects back to coordinator's `/auth/callback/github?code=...&state=...`.
+7. Coordinator verifies `state` JWT (including `provider` claim matches URL path — mix-up defense), extracts `code_verifier`, calls `exchangeCode(code, redirectUri, codeVerifier)`.
+8. Coordinator exchanges code, find-or-creates user, issues `refresh_token`.
+9. Coordinator POSTs to `http://127.0.0.1:<random-port>/cb` with form-encoded body `refresh_token=...&device_label=cli-login`. (POST body, not query string — query strings are logged in browser history and intermediate proxies.)
+10. CLI's local server receives the POST, extracts `refresh_token`, stores it in `~/.mcp-coordinator/auth.json` (mode 0600).
+11. CLI prints `Logged in as alice@example.com. You can close the browser.` and exits.
+
+When `refresh_token` has fewer than 3 days remaining before expiry, the CLI logs a warning at startup. The `mcp-coordinator-cli auth status` subcommand shows the current expiration date.
 
 Storage format:
 
@@ -443,6 +484,8 @@ Storage format:
 ```
 
 OS keychain integration (optional, Phase 3 enhancement): if `keytar` is available, store `refresh_token` in the OS keychain instead of plaintext. Fallback to file mode 0600.
+
+**CLI binary structure**: All CLI commands ship as subcommands of the single `mcp-coordinator` binary. The pattern is `mcp-coordinator auth login`, `mcp-coordinator auth status`, `mcp-coordinator server backup`, etc. This avoids binary sprawl (`mcp-coordinator-cli` as a separate binary is deprecated in favor of the subcommand approach). The `bin` entry in `package.json` registers only `mcp-coordinator` (the daemon + CLI in one binary, with the first positional arg routing between daemon and CLI modes).
 
 ### H. Agent token derivation (Phase 2)
 
@@ -469,7 +512,26 @@ When the agent JWT expires (15 min), the agent calls `/api/auth/agent-token` aga
 
 ### I. Google + OIDC providers (Phase 4)
 
-`GoogleProvider` follows the same pattern as `GitHubProvider`, with different endpoints (`accounts.google.com/o/oauth2/v2/auth` and `oauth2.googleapis.com/token`).
+`GoogleProvider` follows the same pattern as `GitHubProvider`, with different endpoints (`accounts.google.com/o/oauth2/v2/auth` and `oauth2.googleapis.com/token`). Requested scope: `openid email profile`.
+
+The Google authorization request includes a `nonce=<random>` parameter. The coordinator verifies that the returned `id_token`'s `nonce` claim matches the value sent in the request.
+
+**id_token signature verification** (mandatory for both Google and generic OIDC):
+
+```typescript
+// Auto-discover JWKS endpoint via /.well-known/openid-configuration
+const jwks = jose.createRemoteJWKSet(new URL(issuer + '/.well-known/openid-configuration'));
+
+// Verify RS256 signature, issuer, audience, and nonce
+const { payload } = await jose.jwtVerify(idToken, jwks, {
+  issuer: OIDC_ISSUER,          // must match 'iss' claim
+  audience: OIDC_CLIENT_ID,     // must match 'aud' claim (prevents id_token misuse across apps)
+  algorithms: ['RS256'],         // RS256 only for OIDC id_tokens
+});
+// Then verify payload.nonce === nonce sent in authorization request
+```
+
+Skipping or relaxing any of `issuer`, `audience`, `algorithms`, or `nonce` validation is disallowed.
 
 `OIDCProvider` is generic — takes an `issuer_url` and auto-discovers via `<issuer>/.well-known/openid-configuration`. Configurable for Okta, Auth0, Azure AD, Keycloak, Authentik, etc.
 
@@ -491,22 +553,45 @@ Provider selection UI (`GET /auth/login` with no `?provider=`):
 
 ```typescript
 export async function authenticateRequest(req: IncomingMessage): Promise<AuthResult> {
-  if (!AUTH_ENABLED) {
-    // Open-coordinator mode: synthetic claims for legacy behavior
-    return { ok: true, claims: { sub: 'legacy', user_id: 'legacy', org: 'default', role: 'admin' } };
-  }
   const auth = req.headers.authorization;
+
+  if (!AUTH_ENABLED) {
+    // Open-coordinator mode: four sub-scenarios:
+    // (a) No Authorization header + AUTH_ENABLED=false → synthetic legacy claims (backward compat)
+    // (b) No Authorization header + AUTH_ENABLED=true  → 401 (handled in else branch)
+    // (c) Old v0.6 JWT (no user_id/org claims) + AUTH_ENABLED=false → accept, inject synthetic legacy claims
+    // (d) New v0.7 JWT + AUTH_ENABLED=false → standard verify (optional in open mode)
+    if (!auth || !auth.startsWith('Bearer ')) {
+      return { ok: true, claims: { sub: 'legacy', user_id: 'legacy', org: 'default', role: 'admin' } };
+    }
+    // Bearer present even in open mode — verify but tolerate missing v0.7 claims
+    try {
+      const claims = await verifyToken(auth.slice(7), { algorithms: ['HS256'] });
+      return { ok: true, claims: { user_id: 'legacy', org: 'default', role: 'admin', ...claims } };
+    } catch {
+      return { ok: true, claims: { sub: 'legacy', user_id: 'legacy', org: 'default', role: 'admin' } };
+    }
+  }
+
+  // AUTH_ENABLED=true
   if (!auth || !auth.startsWith('Bearer ')) {
-    return { ok: false, error: 'Missing Bearer token', status: 401 };
+    return { ok: false, error: 'Missing Bearer token', status: 401,
+             wwwAuthenticate: 'Bearer realm="mcp-coordinator", error="invalid_token"' };
   }
   try {
-    const claims = await verifyToken(auth.slice(7));
+    const claims = await verifyToken(auth.slice(7), { algorithms: ['HS256'] });
     return { ok: true, claims };
   } catch (err) {
-    return { ok: false, error: 'Invalid or expired token', status: 401 };
+    const isExpired = err instanceof errors.JWTExpired;
+    return { ok: false, error: isExpired ? 'Token expired' : 'Invalid token', status: 401,
+             wwwAuthenticate: `Bearer realm="mcp-coordinator", error="${isExpired ? 'expired_token' : 'invalid_token'}"` };
   }
 }
 ```
+
+**MCP transport JWT verification**: every MCP tool call (not just session-open) must carry a valid `Authorization: Bearer <agent_jwt>` header and pass through `authenticateRequest`. If the MCP session lives longer than the agent JWT TTL (15 min), the agent must call `/api/auth/agent-token` with its refresh token to obtain a new agent JWT and update the Authorization header on subsequent MCP requests. This is documented in the MCP client adapter.
+
+**Multi-tenant isolation**: `sseEmitter.emit()` and `addListener()` in `src/sse.ts` are extended with an `org_id` filter parameter. SSE clients are registered with their `org` claim and only receive events where `event.org_id === client.org_id`. The `handle-rest.ts` API change: SSE subscription endpoints extract `claims.org` and pass it to the emitter registry. MQTT topic structure: `coordinator/<org_id>/agents/...`. The Aedes ACL hook filters subscriptions by the `org` claim in the JWT, rejecting subscriptions to topics outside the subscriber's org.
 
 Every handler that uses `services.workingFiles.start(agent_id, ...)` etc. now passes `claims.org` so the service can scope DB queries.
 
@@ -579,7 +664,8 @@ agent          coordinator
 |---|---|---|---|
 | `COORDINATOR_AUTH_ENABLED` | `false` | Master switch. When `true`, all `/api/*` require JWT. | (existing) |
 | `COORDINATOR_PUBLIC_URL` | (host header) | Used as the base URL for OAuth callbacks. **Required** when `AUTH_ENABLED=true`. | 2 |
-| `COORDINATOR_JWT_SECRET` | (random per boot, transient) | HS256 signing key. Set explicitly in prod for cross-restart stability. | (existing) |
+| `COORDINATOR_JWT_SECRET` | (random per boot, transient) | HS256 signing key. **MUST be set explicitly in prod** — default random-per-boot invalidates all sessions on restart. | (existing) |
+| `COORDINATOR_JWT_PREV_SECRET` | (unset) | Optional previous signing key for zero-downtime rotation. Middleware verifies with current secret first; falls back to prev. Operator workflow: set both, restart, wait one JWT TTL, remove prev. | (existing) |
 | `COORDINATOR_GITHUB_CLIENT_ID` | (unset) | Enables GitHub provider when set. | 2 |
 | `COORDINATOR_GITHUB_CLIENT_SECRET` | (unset) | Required with above. | 2 |
 | `COORDINATOR_GOOGLE_CLIENT_ID` | (unset) | Enables Google provider. | 4 |
@@ -614,20 +700,23 @@ Documenting in README. Not implementing in-coordinator TLS termination (use a pr
 | User cancels OAuth | Provider redirects with `error=access_denied`; coordinator shows friendly "Login cancelled" page |
 | Provider returns 5xx during code exchange | 502 with retry hint; log error |
 | Refresh token revoked | `/api/auth/agent-token` returns 401; agent must re-authenticate (delete `auth.json`, re-run login) |
-| Device code expired before approval | `/api/auth/device/token` returns 410 `expired_token`; agent prints "Code expired, please retry" |
+| Device code expired before approval | `/api/auth/device/token` returns 400 `{ error: "expired_token" }` (RFC 8628 §3.5; not HTTP 410); agent prints "Code expired, please retry" |
 | User_code collision (1 in 16M) | Retry generation up to 3 times |
 | `org` claim in JWT mismatches stored user row (token was minted for different org) | 401 with log warn; could indicate token theft |
 | Cross-tenant query (handler forgets to scope) | Defense-in-depth: a unit test seeds 2 orgs, runs every public API method, asserts isolation |
 
 ## Security considerations
 
-- **State parameter**: every OAuth flow uses a signed-JWT state token containing the `device_code` (Flow 1) or `cb` URL (Flow 2) to prevent CSRF.
-- **PKCE**: implement PKCE (S256) for the CLI login flow even though it's a confidential client; defense-in-depth against authorization-code interception.
-- **Refresh token rotation**: each `/api/auth/refresh` issues a new refresh token and revokes the old one (refresh token rotation pattern). Detects compromise: if the old token is reused, both are revoked, user must re-login.
+- **State parameter**: every OAuth flow uses a signed-JWT state token containing the `device_code` (Flow 1) or `cb` URL (Flow 2) to prevent CSRF. From the IdP's perspective the state value is opaque — the fact that it's a JWT is an internal implementation detail. The state JWT includes a `provider` claim; the coordinator verifies this claim matches the URL path (`/auth/callback/<provider>`) on callback, defending against mix-up attacks where a user completes an OAuth flow with the wrong provider.
+- **State single-use (nonce)**: the state JWT includes a `nonce` claim (random per flow). Used nonces are tracked in the `device_auth_requests` table (or a dedicated `state_nonces` table). Post-exchange, the nonce is invalidated to prevent replay.
+- **PKCE (S256 mandatory)**: CLI login flow (Phase 3) generates a 43-character crypto-random `code_verifier`, derives `code_challenge = BASE64URL(SHA-256(code_verifier))`. The verifier is stored in the signed state JWT and passed to `exchangeCode`. S256 is the only accepted method — plain is rejected.
+- **JWS algorithm pinning**: `jwtVerify` must be called with `{ algorithms: ['HS256'] }` at every call site. This prevents algorithm confusion attacks (including `alg=none`). The `algorithms` parameter is mandatory per call — it is never omitted. Example: `jose.jwtVerify(token, secret, { algorithms: ['HS256'] })`. RS256 is only used for OIDC id_token verification (see OIDC section).
+- **Refresh token rotation**: each `/api/auth/refresh` issues a new refresh token and revokes the old one. Detects compromise via reuse detection: if two concurrent requests arrive with the same refresh token, only the first DB write succeeds (UNIQUE constraint on `last_used_at` update, or a compare-and-swap). The second attempt gets 401, **both** tokens are immediately revoked, and the user must re-login. This is the refresh-rotation reuse-detection pattern.
 - **JWT lifetime**: short (15 min) so revocation is fast (no full revocation list lookup needed for most requests).
 - **Refresh storage**: file mode 0600; OS keychain when available.
+- **401 WWW-Authenticate header**: on any 401 response, middleware includes `WWW-Authenticate: Bearer realm="mcp-coordinator", error="<reason>"` where reason is `invalid_token`, `expired_token`, or `insufficient_scope` per RFC 6750.
 - **Audit log**: every successful login, refresh, agent-token issue, revoke logged with `user_id`, IP, user-agent.
-- **Rate limiting**: `/api/auth/device/token` polling is rate-limited per device_code (the `interval` in the response).
+- **Rate limiting**: `/api/auth/device/token` polling is rate-limited per device_code (the `interval` in the response). User code entry (`POST /auth/device`) is rate-limited to 5 attempts per IP per minute and 20 attempts per device_code lifetime; after 20 attempts, the device code is expired.
 
 ## Testing
 
@@ -638,8 +727,14 @@ Documenting in README. Not implementing in-coordinator TLS termination (use a pr
 - `tests/unit/auth-device-flow.test.ts` — full flow: device init, approve, poll, exchange
 - `tests/unit/auth-cli-login.test.ts` — integration with a mock local HTTP server
 - `tests/unit/auth-cross-tenant-isolation.test.ts` — defense-in-depth: 2 orgs, every public API method, no row leak
-- `tests/unit/auth-pkce.test.ts` — verifier→challenge round-trip
+- `tests/unit/auth-pkce.test.ts` — verifier→challenge round-trip (43-char verifier → SHA-256 → base64url matches challenge); exchange with wrong verifier → rejected
+- `tests/unit/auth-state-nonce.test.ts` — state JWT nonce is single-use; replaying same nonce → rejected
+- `tests/unit/auth-mix-up.test.ts` — state JWT `provider` claim mismatch on callback URL → rejected
+- `tests/unit/auth-device-flow-rfc8628.test.ts` — `slow_down`, `access_denied`, `expired_token` error codes; user_code RFC 8628 charset; 20-attempt rate-limit expires the device code
+- `tests/unit/auth-refresh-reuse-race.test.ts` — concurrent refresh reuse → first succeeds, second gets 401, both revoked
+- `tests/unit/auth-alg-pinning.test.ts` — `alg=none` token rejected; RS256-signed token rejected for HS256 endpoint
 - `tests/unit/orgs-migration.test.ts` — v0.6.x DB with no `org_id` columns → boot v0.7 → all rows get `org_id='default'`
+- `tests/unit/auth-backward-compat.test.ts` — four AUTH_ENABLED scenarios (a/b/c/d) per migration table
 
 Integration: extend `tests/unit/s3-network-integration.test.ts` to set up a mock IdP server and run a complete device-flow happy path against a real coordinator instance.
 
@@ -651,17 +746,34 @@ Integration: extend `tests/unit/s3-network-integration.test.ts` to set up a mock
 - All existing rows get `org_id='default'` via the `DEFAULT 'default'` in the ALTER.
 - The `'default'` org is seeded.
 - `user_version` bumps from 6 → 7.
+- **ALTER TABLE note**: SQLite lacks online DDL. Each `ALTER TABLE ... ADD COLUMN` briefly blocks writes (~30-60s on large tables). Recommend stopping the coordinator before v0.7 boot, or accept this brief unavailability window. Migration is idempotent (try/catch on already-exists error).
+
+### Phase 1 data migration — v0.6 agents to v0.7 users
+
+When first booting v0.7 with `AUTH_ENABLED=true`:
+- Existing `agents` rows receive `org_id='default'` (via the ALTER migration above).
+- No `users` rows are auto-created for v0.6 agents. Each agent's human owner must authenticate via the device flow or CLI login to create a `users` row. There is no automatic mapping from `agent_name` to a user identity.
+- **All v0.6 JWTs are invalidated** when `AUTH_ENABLED=true` (the new middleware rejects tokens without `user_id` / `org` claims). Agents must re-authenticate. Communicate this breaking change in the v0.7 release notes.
+- Recommended migration sequence: (1) notify team, (2) boot v0.7 with `AUTH_ENABLED=false` first (zero disruption), (3) have everyone run `mcp-coordinator auth login`, (4) flip `AUTH_ENABLED=true`, (5) restart.
 
 ### Boot v0.7 with `AUTH_ENABLED=false`
 
-- Open-coordinator mode preserved. The middleware injects synthetic claims `{user_id:'legacy', org:'default', role:'admin'}`.
-- All existing v0.6 clients (essaim hooks, MCP tools) keep working unchanged — they target `org='default'`.
+The middleware handles four scenarios for backward compatibility:
+
+| Scenario | Behavior |
+|---|---|
+| (a) No `Authorization` header + `AUTH_ENABLED=false` | Inject synthetic claims `{user_id:'legacy', org:'default', role:'admin'}`. Backward compat for all v0.6 clients. |
+| (b) No `Authorization` header + `AUTH_ENABLED=true` | Return 401 with `WWW-Authenticate` header. |
+| (c) Old v0.6 JWT (no `user_id`/`org` claims) + `AUTH_ENABLED=false` | Accept; inject missing claims as `{user_id:'legacy', org:'default', role:'admin'}`. |
+| (d) New v0.7 JWT (has `user_id`/`org`) | Standard verify at both `AUTH_ENABLED` values. |
+
+All existing v0.6 clients (essaim hooks, MCP tools) keep working unchanged under scenario (a).
 
 ### Enable auth on an existing deployment
 
 - Set `AUTH_ENABLED=true` + IdP env vars + `COORDINATOR_PUBLIC_URL`.
 - Restart coordinator.
-- Users run `mcp-coordinator-cli login` once on their machines.
+- Users run `mcp-coordinator auth login` once on their machines.
 - essaim hooks already read `~/.mcp-coordinator/auth.json` and call `/api/auth/agent-token` (after Phase 2 changes to the hook scripts).
 
 ### Rollback v0.7 → v0.6

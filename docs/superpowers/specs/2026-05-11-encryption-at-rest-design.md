@@ -15,7 +15,7 @@ Effort: ~1 week. Single phase, single release.
 
 1. **Backup theft scenario** (threat A) — if `coordinator.db` or its tarball backup leaks (laptop loss, cloud bucket misconfig, employee copy), the contents are unreadable without the key.
 2. **Insider direct-read** (threat B partial) — a sysadmin with file system access cannot `sqlite3 coordinator.db .dump` and read messages without also having the master key.
-3. **Compliance baseline** (threat G partial) — SOC 2 CC6.1 "Implement encryption at rest" satisfied. GDPR Art. 32 "appropriate technical measures" satisfied.
+3. **Compliance baseline** (threat G partial) — SOC 2 CC6.1 baseline coverage (encryption only — key management policy, access controls, audit logs of key access, and certification by an audit firm remain operational responsibilities outside this spec). GDPR Art. 32 "appropriate technical measures" addressed by encryption at rest, though Art. 32 compliance in full additionally requires organizational controls.
 4. **Zero schema migration** — all v0.7 tables work as-is. SQLCipher is transparent at the SQL layer.
 5. **Manageable key lifecycle** — master key from env, file, or KMS. Documented rotation procedure.
 
@@ -27,6 +27,9 @@ Effort: ~1 week. Single phase, single release.
 - **Hardware HSM integration** — use cloud KMS services that expose KMS over HTTPS instead.
 - **Key escrow / recovery** — operator's responsibility (backup the passphrase securely).
 - **Encryption of MQTT broker state** — MQTT is ephemeral; no at-rest data.
+- **Bun runtime support** — the `createBunSqlite` path is disabled when encryption is enabled. Bun does not support `better-sqlite3-multiple-ciphers`. Bun support deferred to v0.8 (where column-level encryption may use a different approach).
+- **Online key rotation** — v0.7.5 requires daemon stop for key rotation. Online rotation (rolling, per-org DEK) is deferred to v0.8.
+- **Salt rotation** — salt rotation requires re-deriving the key. This is done implicitly via `rotate-encryption-key` (new passphrase) or fresh install. It is not exposed as a separate CLI operation.
 
 ## Background
 
@@ -45,10 +48,11 @@ For Team-PME deployments under a compliance regime (SOC 2 / GDPR / enterprise cl
 │  Process startup                                                    │
 │   ├─ Load master key (env / file / KMS)                             │
 │   ├─ Open DB via better-sqlite3-multiple-ciphers (drop-in)          │
-│   │   • db.pragma("cipher = 'aes256cbc'")                           │
+│   │   • db.pragma("cipher = 'aes256gcm'")          // default       │
 │   │   • db.pragma("key = '<derived-from-master>'")                  │
 │   │   • db.pragma("cipher_page_size = 4096")                        │
-│   │   • db.pragma("kdf_iter = 256000")                              │
+│   │   • db.pragma("kdf_iter = 600000")              // OWASP 2026   │
+│   │   • db.pragma("cache_size = -64000")            // 64 MB        │
 │   └─ All subsequent SQL transparent — application code unchanged    │
 └────────────────────────────────────────────────────────────────────┘
 
@@ -68,11 +72,15 @@ For Team-PME deployments under a compliance regime (SOC 2 / GDPR / enterprise cl
 Replace `better-sqlite3` with `better-sqlite3-multiple-ciphers` (or alternative SQLCipher binding). API is identical — the swap is in `package.json` + maybe one line in `src/database.ts`.
 
 Alternative candidates evaluated:
-- **`better-sqlite3-multiple-ciphers`** — drop-in replacement, supports SQLCipher4, ChaCha20, AES-256-CBC. **Recommended.**
+- **`better-sqlite3-multiple-ciphers`** — drop-in replacement, supports SQLCipher4, ChaCha20, AES-256-GCM. **Recommended.**
 - `@journeyapps/sqlcipher` — Node-API binding for SQLCipher. Older, less maintained.
 - Application-level encryption (write to plain SQLite but encrypt blob columns) — defers to v0.8; doesn't cover this phase's threats.
 
 Cost: native rebuild. The existing Dockerfile builder stage (`apk add python3 make g++` from v0.5.0) already handles this.
+
+**KMS SDK dependencies**: `aws-sdk`, `@google-cloud/kms`, and `node-vault` move to `optionalDependencies` in `package.json`. They are only installed when the respective `COORDINATOR_DB_KEY_SOURCE=kms` is selected. This keeps the default install lightweight for operators using `env` or `file` key sources.
+
+**age package**: the `age-encryption` npm package (community-maintained Node.js bindings for the age format). Pin the version in `optionalDependencies` (used only when `COORDINATOR_BACKUP_PASSPHRASE` is set).
 
 ### B. Master-key sources (pluggable)
 
@@ -85,7 +93,8 @@ export interface MasterKeyProvider {
 
 export class EnvVarKeyProvider implements MasterKeyProvider {
   // Reads COORDINATOR_DB_PASSPHRASE, derives via PBKDF2-HMAC-SHA256
-  // 100k iterations. Salt is fixed per-install (in coordinator.salt file).
+  // 600k iterations (OWASP 2026). Salt is fixed per-install (in coordinator.salt file).
+  // Startup blocks ~500-1500ms for derivation — this is expected and documented.
 }
 
 export class FileKeyProvider implements MasterKeyProvider {
@@ -104,13 +113,18 @@ Selection: env var `COORDINATOR_DB_KEY_SOURCE` ∈ `env | file | kms` (default `
 
 ### C. Backup encryption
 
-Existing `mcp-coordinator server backup` produces `tar.gz`. New behavior in v0.7.5: pipe through `age` (Go-style, has Node bindings) with a recipient or passphrase.
+Existing `mcp-coordinator server backup` produces `tar.gz`. New behavior in v0.7.5:
+
+1. Run `PRAGMA wal_checkpoint(TRUNCATE)` before creating the tarball to flush the WAL.
+2. Include `coordinator.db`, `coordinator.db-wal`, and `coordinator.db-shm` in the tarball (all three files are needed for a consistent restore).
+3. Include a `coordinator.db.sha256` file alongside the DB in the tarball; `server restore` verifies the SHA-256 before extracting.
+4. Optionally pipe through `age` (npm package: `age-encryption`) with a recipient or passphrase for a second encryption layer.
 
 ```bash
-# Existing
+# Existing behavior (still works, DB is already SQLCipher-encrypted)
 mcp-coordinator server backup --out backup.tar.gz
 
-# New flags
+# New: age-encrypted outer layer
 mcp-coordinator server backup --out backup.tar.gz.age --passphrase-from-env COORDINATOR_BACKUP_PASSPHRASE
 mcp-coordinator server backup --out backup.tar.gz.age --recipient age1xyz...
 
@@ -120,21 +134,35 @@ mcp-coordinator server restore --in backup.tar.gz.age --passphrase-from-env COOR
 
 The DB file inside the tarball is already encrypted by SQLCipher. The `age` layer adds passphrase-protection so even the encrypted DB is wrapped in a second layer for transit (offsite backup, email, etc.).
 
+**Backup retention**: operator's responsibility. Recommended: 7 daily + 4 weekly + 12 monthly backups, managed via OS-level cron invoking `mcp-coordinator server backup`. The coordinator does not implement retention policies itself.
+
 ### D. CLI commands
 
+The `--passphrase <secret>` flag is **not supported** on any command (shell history leak). Use one of:
+- `--passphrase-stdin` — read passphrase from stdin; supports piping (`echo 'secret' | mcp-coordinator init-encryption --passphrase-stdin`)
+- `--passphrase-file <path>` — read passphrase from file (mode 0600 recommended)
+- `COORDINATOR_DB_PASSPHRASE` env var (note: visible in `/proc/PID/environ`; prefer file or KMS in production)
+
+On a TTY (`init-encryption`, `migrate-to-encrypted`), passphrase is prompted twice and rejects mismatches. On piped stdin (scripting mode), passphrase is accepted once.
+
 ```bash
-# Initialize encryption on a fresh install (generates a passphrase if not provided)
-mcp-coordinator-cli init-encryption [--passphrase <secret>] [--key-source env|file|kms]
+# Initialize encryption on a fresh install
+mcp-coordinator init-encryption [--passphrase-stdin] [--passphrase-file <path>] [--key-source env|file|kms]
 
 # Migrate an existing PLAINTEXT v0.7 database to encrypted (one-shot)
-mcp-coordinator-cli migrate-to-encrypted --passphrase <secret>
+mcp-coordinator migrate-to-encrypted [--passphrase-stdin] [--passphrase-file <path>]
 # Internally: ATTACH 'plain.db' AS plain; ATTACH 'enc.db' AS enc KEY '...'; sqlcipher_export('enc');
 
 # Rotate the master key (generates new key, re-encrypts DB)
-mcp-coordinator-cli rotate-encryption-key --new-passphrase <secret>
+mcp-coordinator rotate-encryption-key [--passphrase-stdin] [--passphrase-file <path>]
 
 # Verify encryption is active (reads first page of DB, checks magic)
-mcp-coordinator-cli verify-encryption
+mcp-coordinator verify-encryption
+
+# Open an encrypted DB and dump tables to stdout (debugging when daemon fails to start)
+mcp-coordinator inspect-encrypted [--passphrase-stdin] [--passphrase-file <path>]
+# Attempts to dump each table individually, skipping corrupt pages.
+# Used when mcp-coordinator fails to start due to suspected key or corruption issue.
 ```
 
 ### E. Replace the v0.7 `PassthroughEncryption` stub
@@ -155,41 +183,61 @@ v0.7.5 wires the SQLCipher-backed implementation as the default when the DB is e
 
 No new tables. SQLCipher operates transparently. The audit_log table created in v0.7 Phase 1 starts populating with `data.access.*` events when v0.8 lands.
 
-A new small file `coordinator.salt` (16 bytes, random per-install) lives next to `coordinator.db`. Used by `EnvVarKeyProvider` for PBKDF2 salt. Created on first init.
+A new small file `coordinator.salt` (16 bytes, random per-install, mode 0600) lives next to `coordinator.db`. Used by `EnvVarKeyProvider` for PBKDF2 salt.
+
+**Salt lifecycle**:
+- **First start with empty/no DB**: generate 16 random bytes, write to `coordinator.salt` with mode 0600.
+- **Subsequent starts with existing DB**: if `coordinator.salt` is missing, refuse to start with: `"salt file missing, cannot derive decryption key — restore salt from backup or recovery documentation"`. Do NOT generate a new salt (would produce a different key and fail to open the DB).
+- The salt is not secret by design; it is unique per install. Backup it alongside the DB.
 
 ## Operational config
 
 | Variable | Default | Effect |
 |---|---|---|
 | `COORDINATOR_DB_KEY_SOURCE` | `env` | `env` \| `file` \| `kms` |
-| `COORDINATOR_DB_PASSPHRASE` | (unset) | When `env` source, the passphrase string. **Must be set** before first start. |
+| `COORDINATOR_DB_PASSPHRASE` | (unset) | When `env` source, the passphrase string. **Must be set** before first start. **Security note**: env vars are visible in `/proc/PID/environ` to all users with read access. Prefer `file` or `kms` source in production. |
 | `COORDINATOR_DB_KEY_FILE` | (unset) | When `file` or `kms` source, path to the key/wrapped-DEK file. |
+| `COORDINATOR_DB_CIPHER` | `aes256gcm` | Cipher selection: `aes256gcm` (default, AES-NI accelerated on x86_64) or `chacha20` (fallback for ARM without AES-NI or older hardware). |
+| `COORDINATOR_DB_CACHE_SIZE_KB` | `64000` | SQLite cache size in KB (`PRAGMA cache_size`). Tune for available RAM. |
 | `COORDINATOR_KMS_ARN` | (unset) | AWS KMS key ARN for unwrapping DEK |
 | `COORDINATOR_KMS_GCP_KEYNAME` | (unset) | GCP KMS keyName |
 | `COORDINATOR_VAULT_TRANSIT_KEY` | (unset) | Vault transit key name |
 | `COORDINATOR_VAULT_URL` | (unset) | Vault endpoint |
+| `COORDINATOR_KMS_FALLBACK_KEY_FILE` | (unset) | When set and `--allow-kms-fallback` CLI flag is present, loads a locally-wrapped DEK from this file if KMS is unreachable at startup. **Risk**: reduces security to file-level protection if KMS is permanently unreachable. Use only for non-production resilience. |
 | `COORDINATOR_BACKUP_PASSPHRASE` | (unset) | When set, `server backup` produces `.age`-encrypted output |
 
 ## Migration & rollback
 
 ### Fresh v0.7.5 install
 
-1. Operator runs `mcp-coordinator-cli init-encryption --passphrase <secret>` (or sets `COORDINATOR_DB_PASSPHRASE` and lets the daemon init on first start).
-2. Daemon initializes encrypted DB. `coordinator.salt` file created.
-3. All subsequent operations transparent.
+1. Operator runs `mcp-coordinator init-encryption --passphrase-stdin` (or sets `COORDINATOR_DB_PASSPHRASE` and lets the daemon init on first start).
+2. Daemon initializes encrypted DB.
+3. `coordinator.salt` (16 random bytes, mode 0600) is created on first start if absent. On subsequent starts, if `coordinator.salt` is missing alongside a non-empty DB, the daemon refuses to start with: `"salt file missing, cannot derive key — restore from backup or provide salt"`.
+4. All subsequent operations transparent.
 
 ### Existing v0.7 plaintext DB → v0.7.5 encrypted
 
-1. Stop daemon.
-2. Run `mcp-coordinator-cli migrate-to-encrypted --passphrase <secret>`. Tool reads plaintext DB, writes encrypted DB, swaps files.
-3. Start daemon with passphrase configured.
-4. Verify with `mcp-coordinator-cli verify-encryption`.
+Migration is **mandatory** before enabling encryption on an existing deployment. The procedure is atomic within the same filesystem:
+
+1. **Mandatory backup**: `mcp-coordinator migrate-to-encrypted` requires `--with-backup` flag. Fails without it. The backup is created first, before any modification.
+2. Stop daemon.
+3. Run migration tool: reads `coordinator.db` (plaintext), writes `coordinator.db.new` (encrypted) in the same directory using `sqlcipher_export`. Progress is reported every 10 MB.
+4. **Atomic rename**: `coordinator.db.new` → `coordinator.db`. The rename must be within the same filesystem (cross-filesystem rename is rejected with a clear error message).
+5. Start daemon with passphrase configured.
+6. Verify with `mcp-coordinator verify-encryption`.
+
+**Crash recovery**: if the daemon starts and `coordinator.db.new` exists alongside `coordinator.db`, it logs an error and refuses to start: `"Incomplete migration detected: coordinator.db.new exists. Inspect state and remove manually."` The daemon does NOT auto-recover (this is intentional — safer to require operator decision).
 
 ### Rotate the master key
 
-1. `mcp-coordinator-cli rotate-encryption-key --new-passphrase <new>` while daemon is **stopped**.
-2. Tool re-encrypts every page with the new key.
-3. Update env config with new passphrase. Restart.
+1. Take a mandatory backup first.
+2. Stop daemon. (Key rotation requires daemon to be stopped in v0.7.5; online rotation is a v0.8 feature.)
+3. Disable WAL mode: `PRAGMA journal_mode = DELETE` (WAL must be disabled before rekey to avoid WAL file inconsistency).
+4. Run `mcp-coordinator rotate-encryption-key --passphrase-stdin` (applies `PRAGMA rekey` with the new passphrase).
+5. Re-enable WAL: `PRAGMA journal_mode = WAL`.
+6. Run `mcp-coordinator verify-encryption` — mandatory before exiting the rotation procedure.
+7. An audit log entry `auth.jwt_secret.rotated` (or a new `db.encryption_key.rotated` event) is written to the audit log.
+8. Update env config with new passphrase. Restart.
 
 ### Rollback v0.7.5 → v0.7 (decrypt back to plaintext)
 
@@ -198,23 +246,45 @@ Not supported in CLI directly (would defeat the purpose). Manual procedure: back
 ## Testing
 
 - `tests/unit/master-key-providers.test.ts` — verify env/file/KMS impls round-trip
-- `tests/unit/encryption-migration.test.ts` — v0.7 plaintext DB → v0.7.5 encrypted (smoke test the migrate tool)
+- `tests/unit/encryption-migration.test.ts` — v0.7 plaintext DB → v0.7.5 encrypted (smoke test the migrate tool, including `--with-backup` flag requirement and crash recovery scenario where `coordinator.db.new` exists)
 - `tests/unit/encryption-readback.test.ts` — write data with key A, attempt read with key B → assert SQLite error
-- `tests/unit/backup-age-encryption.test.ts` — `server backup` produces `.age`, `server restore` round-trips
-- `tests/unit/cli-init-encryption.test.ts` — fresh init via CLI command
-- `tests/unit/perf-encryption-overhead.test.ts` — measure SQLCipher overhead vs plain (expect ~20-40%, document)
+- `tests/unit/backup-age-encryption.test.ts` — `server backup` produces `.age`, `server restore` round-trips; WAL checkpoint included; `.sha256` integrity verified on restore
+- `tests/unit/cli-init-encryption.test.ts` — fresh init via CLI command; passphrase confirmation (mismatch → rejected); piped stdin accepted once
+- `tests/unit/perf-encryption-overhead.test.ts` — measure SQLCipher overhead vs plain on ~50 agents, ~200 file activities, ~100 threads; assert overhead <50% (documents realistic numbers)
+- `tests/unit/salt-lifecycle.test.ts` — salt created on first start; missing salt on non-empty DB → daemon refuses to start with correct error message
+- `tests/unit/inspect-encrypted.test.ts` — `inspect-encrypted` command opens DB and dumps tables; cross-verify output against expected row counts
 
 ## Performance impact
 
-SQLCipher adds 5-30% overhead on most workloads depending on cipher choice and PRAGMA settings. Specifically for mcp-coordinator's profile:
+SQLCipher adds overhead on most workloads depending on cipher choice and PRAGMA settings. Specifically for mcp-coordinator's profile:
 
 - Hot path is `getFileToAgentsIndex` + scorer queries (small, frequent)
 - Tested baseline: 0.48ms p50 (v0.5 perf benchmark)
-- Expected with AES-256-CBC + 256k KDF iter: 0.55-0.65ms p50 (~15-30% slower)
+- Estimated with AES-256-GCM + 600k KDF iter: 0.55-0.70ms p50 (~15-30% slower, based on SQLCipher community benchmarks). Actual numbers validated by `tests/unit/perf-encryption-overhead.test.ts` which asserts <50% overhead on a realistic fixture (~50 agents, ~200 file activities, ~100 threads). The 15-30% figure is an estimate, not a guarantee.
 
-This still preserves the marketing `<5ms detection` claim with margin. If perf becomes the bottleneck, swap to ChaCha20 (faster on platforms without AES-NI).
+This still preserves the marketing `<5ms detection` claim with margin.
 
-The KDF iterations only happen ONCE at process start (key derivation). Per-query overhead is just the cipher itself.
+**AES-NI hardware acceleration**: assumed available on x86_64 servers. On ARM without AES-NI or older hardware, use `COORDINATOR_DB_CIPHER=chacha20` for better performance (runtime selection, no rekey required on a fresh DB).
+
+**GCM vs CBC**: default cipher is `aes256gcm` (SQLCipher 4). GCM provides an authentication tag per page, detecting both corruption and tampering at the page level. If the runtime environment lacks AES-NI support, ChaCha20 is the fallback.
+
+**KDF startup latency**: key derivation (600k PBKDF2-HMAC-SHA256 iterations) blocks the daemon for approximately 500–1500ms at startup. This is a one-time cost. Configure Kubernetes liveness probes accordingly: `livenessProbe.initialDelaySeconds: 5` minimum, `failureThreshold: 3`.
+
+**KDF iterations only happen once** at process start. Per-query overhead is just the cipher itself (page-level AES-256-GCM or ChaCha20).
+
+**Cache size**: `PRAGMA cache_size = -64000` (64 MB) set by default for production workloads. Configurable via `COORDINATOR_DB_CACHE_SIZE_KB`. Larger cache reduces disk I/O and amortizes cipher overhead.
+
+## Corruption recovery
+
+With AES-256-GCM (the default cipher), SQLCipher authenticates each page independently via GCM auth tags. A corrupt or tampered page is detected at the page level — reads from non-affected pages continue to work.
+
+**Recovery procedure** when a page fails GCM authentication:
+1. SQLite's `.recover` command does **not** work on encrypted databases. Do not attempt it.
+2. Use `mcp-coordinator inspect-encrypted` — opens the DB with the key and attempts to dump each table individually, skipping pages that fail GCM authentication. Output goes to stdout.
+3. If `inspect-encrypted` recovers enough data, export to a new plaintext DB and re-encrypt via `migrate-to-encrypted`.
+4. If corruption is extensive, restore from the most recent backup (`.sha256` integrity file verifies the backup before extract).
+
+Document this procedure in the runbook alongside the verify-encryption command.
 
 ## What was cut and why (for v0.7.5 specifically)
 
@@ -231,9 +301,9 @@ The KDF iterations only happen ONCE at process start (key derivation). Per-query
 ## Risks accepted
 
 - **Passphrase loss = data loss.** No key recovery. Operator must back up the passphrase securely.
-- **5-30% perf overhead** on SQLite operations. Documented; can swap ciphers if a perf issue surfaces.
+- **15-30% estimated perf overhead** on SQLite operations (AES-256-GCM with AES-NI). Documented; can swap to ChaCha20 if a perf issue surfaces on non-AES-NI hardware.
 - **No defense against process-memory dump** by an attacker with root. Out of scope.
-- **`coordinator.salt` next to `coordinator.db`** — both in same dir, same backup. The salt is not secret (it's by design public-but-unique). The compromise is if someone steals BOTH `coordinator.db` AND `coordinator.salt`, they have one PBKDF2 derivation to attempt. The cost of 256k iter slows brute force; a strong passphrase makes it infeasible. Document strong-passphrase requirement.
+- **`coordinator.salt` next to `coordinator.db`** — both in same dir, same backup. The salt is not secret (it's by design public-but-unique). The compromise is if someone steals BOTH `coordinator.db` AND `coordinator.salt`, they have one PBKDF2 derivation to attempt. The cost of 600k iter (OWASP 2026) slows brute force significantly (~1.2s per attempt); a strong passphrase (20+ random chars) makes it infeasible. Document strong-passphrase requirement. Startup latency of ~500-1500ms is the trade-off.
 
 ## References
 
