@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.6.1](https://github.com/swoofer/mcp-coordinator/compare/v0.6.0...v0.6.1) (2026-05-12)
+
+
+### Bug Fixes
+
+* **deps:** override ip-address to ^10.2.0 (resolves dependabot [#1](https://github.com/swoofer/mcp-coordinator/issues/1)) ([f65f441](https://github.com/swoofer/mcp-coordinator/commit/f65f441954f6860a70c23ef64bd332ef6d7a0c2b))
+* **deps:** override ip-address to ^10.2.0 (resolves GHSA-v2v4-37r5-5v8g) ([38bd705](https://github.com/swoofer/mcp-coordinator/commit/38bd705ad79473bc95dc2b8290ab868392d73aae))
+* **http:** enforce repo-relative path contract in v0.6 endpoints ([0aaaaf8](https://github.com/swoofer/mcp-coordinator/commit/0aaaaf88465633dc51739ac80fe5d8a1476f8974))
+* **http:** enforce repo-relative path contract in v0.6 endpoints ([eb9dbea](https://github.com/swoofer/mcp-coordinator/commit/eb9dbea05174c11a8381508ae1d6d74f17bce06c))
+
+
+### Documentation
+
+* add Contributor License Grant (relicense optionality) ([779c7d9](https://github.com/swoofer/mcp-coordinator/commit/779c7d9f62afad762ed870d5c3ddf96e47075e89))
+* **contributing:** add Contributor License Grant for relicense optionality ([60acb03](https://github.com/swoofer/mcp-coordinator/commit/60acb03f667168d5943cede152ac91999644459b))
+
 ## [0.6.0](https://github.com/swoofer/mcp-coordinator/compare/v0.5.0...v0.6.0) (2026-05-10)
 
 
