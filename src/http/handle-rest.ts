@@ -6,6 +6,7 @@ import { getDb } from "../database.js";
 import { runCommonAnnounceFlow } from "../announce-workflow.js";
 import { canResetDb } from "../reset-guard.js";
 import { parseBody, json } from "./utils.js";
+import { normalizePath } from "../path-normalize.js";
 
 /**
  * S1: REST router extracted from serve-http.ts. Was a 382-line `handleRest`
@@ -415,6 +416,14 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
       json(res, { error: "agent_name must be string when present" }, 400);
       return;
     }
+    const repoRoot = process.env.COORDINATOR_REPO_ROOT || null;
+    let filePath: string;
+    try {
+      filePath = normalizePath(repoRoot, body.file_path as string);
+    } catch (err) {
+      json(res, { error: `invalid file_path: ${(err as Error).message}` }, 400);
+      return;
+    }
     const MAX_CONTENT = 262144;
     let symbols: string[] | null = null;
     let contentHash: string | null = null;
@@ -424,14 +433,14 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
         return;
       }
       contentHash = createHash("sha256").update(body.content).digest("hex");
-      symbols = ctx.services.treeSitter.extract(body.file_path, body.content, null);
+      symbols = ctx.services.treeSitter.extract(filePath, body.content, null);
     }
     ctx.services.fileTracker.log({
       session_id: body.session_id,
       agent_id: body.agent_id,
       agent_name: body.agent_name,
       tool_name: body.tool_name,
-      file_path: body.file_path,
+      file_path: filePath,
       content_hash: contentHash,
       symbols_touched: symbols,
     });
@@ -442,8 +451,16 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
       json(res, { error: "agent_id and file_path required" }, 400);
       return;
     }
+    const repoRoot = process.env.COORDINATOR_REPO_ROOT || null;
+    let filePath: string;
+    try {
+      filePath = normalizePath(repoRoot, body.file_path as string);
+    } catch (err) {
+      json(res, { error: `invalid file_path: ${(err as Error).message}` }, 400);
+      return;
+    }
     const ttl = parseInt(process.env.COORDINATOR_WORKING_FILES_TTL_MIN || "30", 10);
-    services.workingFiles.start(body.agent_id as string, body.file_path as string, ttl);
+    services.workingFiles.start(body.agent_id as string, filePath, ttl);
     json(res, { ok: true });
 
   } else if (url === "/api/working-files/stop" && req.method === "POST") {
@@ -451,7 +468,15 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
       json(res, { error: "agent_id and file_path required" }, 400);
       return;
     }
-    services.workingFiles.stop(body.agent_id as string, body.file_path as string);
+    const repoRoot = process.env.COORDINATOR_REPO_ROOT || null;
+    let filePath: string;
+    try {
+      filePath = normalizePath(repoRoot, body.file_path as string);
+    } catch (err) {
+      json(res, { error: `invalid file_path: ${(err as Error).message}` }, 400);
+      return;
+    }
+    services.workingFiles.stop(body.agent_id as string, filePath);
     json(res, { ok: true });
 
   } else if (url?.startsWith("/api/scoring-stats") && req.method === "GET") {
