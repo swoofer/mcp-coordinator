@@ -79,6 +79,7 @@ export async function refreshToken(
     if (err instanceof errors.JWTExpired) {
       const { payload } = await jwtVerify(token, signingKey, {
         clockTolerance: gracePeriod,
+        algorithms: ["HS256"],
       });
       if (!payload.sub) throw new Error("Missing sub claim in token");
       const role = payload.role;
