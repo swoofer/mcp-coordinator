@@ -148,7 +148,8 @@ export async function handleHealth(
     warnings.push("AUTH_ENABLED=true but COORDINATOR_JWT_SECRET is unset — sessions invalidate on restart");
   }
   const body = {
-    status: "ok",
+    status: "alive",
+    uptime_seconds: uptimeSeconds(),
     version: VERSION,
     auth_enabled: authEnabled,
     jwt_secret_set: jwtSecretSet,
