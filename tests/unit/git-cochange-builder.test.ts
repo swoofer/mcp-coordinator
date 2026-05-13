@@ -6,6 +6,8 @@ import { initDatabase, getDb, closeDb } from "../../src/database.js";
 import { GitCochangeBuilder } from "../../src/git-cochange-builder.js";
 import { createGitFixture } from "../test-utils/git-fixture.js";
 
+type CochangeRow = { org_id: string; file_a: string; file_b: string; count: number; total_commits: number; computed_at: string };
+
 const TEST_DIR = mkdtempSync(path.join(tmpdir(), "gitcc-"));
 
 describe("GitCochangeBuilder", () => {
@@ -26,10 +28,10 @@ describe("GitCochangeBuilder", () => {
       { files: { "u.ts": "5" }, message: "5" },
     ]);
     const builder = new GitCochangeBuilder({ repoRoot: repo });
-    await builder.build();
+    await builder.build("default");
     // p.ts and q.ts share 2 of 5 commits; neither exceeds the 40% predictor cap
-    const row = getDb().prepare("SELECT count, total_commits FROM git_cochange WHERE file_a=? AND file_b=?")
-      .get("p.ts", "q.ts") as any;
+    const row = getDb().prepare("SELECT count, total_commits FROM git_cochange WHERE org_id = ? AND file_a=? AND file_b=?")
+      .get("default", "p.ts", "q.ts") as any;
     expect(row).toBeDefined();
     expect(row.count).toBe(2);
   });
@@ -40,7 +42,7 @@ describe("GitCochangeBuilder", () => {
       { files: { "package-lock.json": "2", "src/bar.ts": "2" }, message: "2" },
     ]);
     const builder = new GitCochangeBuilder({ repoRoot: repo });
-    await builder.build();
+    await builder.build("default");
     const rows = getDb().prepare(
       "SELECT * FROM git_cochange WHERE file_a LIKE '%package-lock%' OR file_b LIKE '%package-lock%'"
     ).all() as any[];
@@ -57,7 +59,7 @@ describe("GitCochangeBuilder", () => {
       { files: { "e.ts": "5" }, message: "5" },
     ]);
     const builder = new GitCochangeBuilder({ repoRoot: repo });
-    await builder.build();
+    await builder.build("default");
     const rows = getDb().prepare(
       "SELECT * FROM git_cochange WHERE file_a = ? OR file_b = ?"
     ).all("hotspot.ts", "hotspot.ts") as any[];
@@ -68,8 +70,68 @@ describe("GitCochangeBuilder", () => {
     const repo = createGitFixture([{ files: { "a.ts": "1" }, message: "1" }]);
     writeFileSync(path.join(repo, ".git/shallow"), "deadbeef\n");
     const builder = new GitCochangeBuilder({ repoRoot: repo });
-    await builder.build();
-    const meta = getDb().prepare("SELECT v FROM git_cochange_meta WHERE k='available'").get() as any;
+    await builder.build("default");
+    const meta = getDb().prepare("SELECT v FROM git_cochange_meta WHERE org_id = ? AND k = ?").get("default", "available") as any;
     expect(meta?.v).toBe("false");
+  });
+});
+
+describe("git-cochange-builder org_id scoping", () => {
+  beforeEach(() => {
+    initDatabase(TEST_DIR);
+    getDb().exec("DELETE FROM git_cochange; DELETE FROM git_cochange_meta");
+  });
+
+  it("build writes org_id on every cochange row", async () => {
+    // 5 commits; x.ts and y.ts co-change in 2 of 5 (40% threshold not exceeded for pairs)
+    const repo = createGitFixture([
+      { files: { "x.ts": "1", "y.ts": "1" }, message: "c1" },
+      { files: { "x.ts": "2", "y.ts": "2" }, message: "c2" },
+      { files: { "a.ts": "3" }, message: "c3" },
+      { files: { "b.ts": "4" }, message: "c4" },
+      { files: { "c.ts": "5" }, message: "c5" },
+    ]);
+    const builder = new GitCochangeBuilder({ repoRoot: repo });
+    await builder.build("org-a");
+    const rows = getDb().prepare("SELECT org_id FROM git_cochange").all() as { org_id: string }[];
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => r.org_id === "org-a")).toBe(true);
+  });
+
+  it("query scopes by org_id", async () => {
+    // Seed rows directly for org-a and org-b for the same file to test isolation
+    const db = getDb();
+    const now = new Date().toISOString();
+    db.prepare(
+      "INSERT INTO git_cochange (org_id, file_a, file_b, count, total_commits, computed_at) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run("org-a", "shared.ts", "z.ts", 3, 5, now);
+    db.prepare(
+      "INSERT INTO git_cochange (org_id, file_a, file_b, count, total_commits, computed_at) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run("org-b", "shared.ts", "w.ts", 2, 5, now);
+
+    const repo = createGitFixture([{ files: { "dummy.ts": "1" }, message: "init" }]);
+    const builder = new GitCochangeBuilder({ repoRoot: repo });
+    const aResults = builder.query("org-a", "shared.ts");
+    expect(aResults.length).toBe(1);
+    expect((aResults[0] as CochangeRow).org_id).toBe("org-a");
+    expect((aResults[0] as CochangeRow).file_b).toBe("z.ts");
+  });
+
+  it("build with org-a does not clear org-b rows", async () => {
+    const db = getDb();
+    const now = new Date().toISOString();
+    db.prepare(
+      "INSERT INTO git_cochange (org_id, file_a, file_b, count, total_commits, computed_at) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run("org-b", "b1.ts", "b2.ts", 1, 2, now);
+
+    const repo = createGitFixture([
+      { files: { "x.ts": "1", "y.ts": "1" }, message: "c1" },
+    ]);
+    const builder = new GitCochangeBuilder({ repoRoot: repo });
+    await builder.build("org-a");
+
+    const orgBRows = db.prepare("SELECT * FROM git_cochange WHERE org_id = ?").all("org-b") as CochangeRow[];
+    expect(orgBRows.length).toBe(1);
+    expect(orgBRows[0].file_a).toBe("b1.ts");
   });
 });

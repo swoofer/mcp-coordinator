@@ -102,8 +102,8 @@ export function handleReadyz(
   // Optional: git_cochange availability (does NOT gate readiness — Layer 4 degrades gracefully)
   try {
     const row = getDb()
-      .prepare("SELECT v FROM git_cochange_meta WHERE k = ?")
-      .get("available") as { v: string } | undefined;
+      .prepare("SELECT v FROM git_cochange_meta WHERE org_id = ? AND k = ?")
+      .get("default", "available") as { v: string } | undefined;
     checks.git_cochange = {
       available: row?.v === "true",
       status: row?.v ?? "unavailable",

@@ -87,7 +87,8 @@ export function createServices(config: CoordinatorConfig): CoordinatorServices {
         retryMs: parseInt(process.env.COORDINATOR_LAYER4_RETRY_MS || "300000", 10),
       })
     : null;
-  gitCochange?.startScheduler();
+  // TODO(Task 22): boot-time builder uses 'default' org because no auth context exists at startup; multi-org cochange (Phase 5) will require per-org boot or on-demand build.
+  gitCochange?.startScheduler("default");
 
   // Quota cache â€” macOS-only for now, Linux/Windows stubs return 503 via the
   // /api/quota handler so raids keep running without a quota guardrail there.
