@@ -65,7 +65,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
   } else if (url === "/api/session-start") {
     const online = registry.listOnline();
     const openThreads = consultation.listThreads({ status: "open" });
-    const hotFiles = fileTracker.getHotFiles(30);
+    const hotFiles = fileTracker.getHotFiles(ctx.claims.org, 30);
     const briefing = [
       `Agents en ligne: ${online.map((a) => a.name).join(", ") || "aucun"}`,
       `Consultations ouvertes: ${openThreads.length}`,
@@ -83,7 +83,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
 
   } else if (url === "/api/check-conflict") {
     const { file, agent_id } = body as { file: string; agent_id: string };
-    const conflict = fileTracker.checkFileConflict(file, agent_id, 30);
+    const conflict = fileTracker.checkFileConflict(ctx.claims.org, file, agent_id, 30);
     const warnings: string[] = [];
     if (conflict.conflict) {
       warnings.push(`File ${file} recently edited by: ${conflict.agents.join(", ")}`);
@@ -94,7 +94,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
     const { session_id, agent_id, agent_name, tool_name, file } = body as {
       session_id: string; agent_id: string; agent_name?: string; tool_name: string; file: string;
     };
-    fileTracker.log({ session_id, agent_id, agent_name, tool_name, file_path: file });
+    fileTracker.log({ org_id: ctx.claims.org, session_id, agent_id, agent_name, tool_name, file_path: file });
     activityTracker.reportFileActivity(agent_id, file);
     sseEmitter.emit("file_edited", { agent_id, agent_name: agent_name || agent_id, file, tool_name });
     json(res, { ok: true });
@@ -113,7 +113,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
     // impact_scored + introspection SSE, plan-quality downgrade event). Same
     // function used by the MCP announce_work tool path.
     const { updated, categorized, respondents, planQuality } = runCommonAnnounceFlow(services, thread.id, {
-      agent_id, subject, plan, target_modules, target_files, depends_on_files, exports_affected, keep_open,
+      org_id: ctx.claims.org, agent_id, subject, plan, target_modules, target_files, depends_on_files, exports_affected, keep_open,
       target_symbols,
     });
 
@@ -257,7 +257,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
 
   } else if (url === "/api/hot-files") {
     const { since_minutes } = body as { since_minutes?: number };
-    json(res, fileTracker.getHotFiles(since_minutes || 30));
+    json(res, fileTracker.getHotFiles(ctx.claims.org, since_minutes || 30));
 
   } else if (url === "/api/quota") {
     // Pre-flight + live widget endpoint. 200 with fresh QuotaInfo when the
@@ -439,6 +439,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
       symbols = ctx.services.treeSitter.extract(filePath, body.content, null);
     }
     ctx.services.fileTracker.log({
+      org_id: ctx.claims.org,
       session_id: body.session_id,
       agent_id: body.agent_id,
       agent_name: body.agent_name,
@@ -530,7 +531,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
     json(res, {
       online: online.length,
       open_threads: openThreads.length,
-      hot_files: fileTracker.getHotFiles(30).length,
+      hot_files: fileTracker.getHotFiles(ctx.claims.org, 30).length,
       mqtt: services.mqttBridge.isConnected(),
     });
 

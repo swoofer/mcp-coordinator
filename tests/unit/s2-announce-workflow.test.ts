@@ -31,7 +31,7 @@ describe("S2 fix - runCommonAnnounceFlow extracts shared orchestration", () => {
       agent_id: "a1", subject: "alone", target_modules: ["src/auth"], target_files: [],
     });
     const result = runCommonAnnounceFlow(services, thread.id, {
-      agent_id: "a1", subject: "alone", target_modules: ["src/auth"], target_files: [],
+      org_id: "default", agent_id: "a1", subject: "alone", target_modules: ["src/auth"], target_files: [],
     });
     expect(result.updated.status).toBe("resolved");
     expect(result.respondents).toEqual([]);
@@ -52,7 +52,7 @@ describe("S2 fix - runCommonAnnounceFlow extracts shared orchestration", () => {
       agent_id: "a1", subject: "a1 then", target_modules: ["src/auth"], target_files: ["src/auth/types.ts"],
     });
     const result = runCommonAnnounceFlow(services, thread.id, {
-      agent_id: "a1", subject: "a1 then", target_modules: ["src/auth"], target_files: ["src/auth/types.ts"],
+      org_id: "default", agent_id: "a1", subject: "a1 then", target_modules: ["src/auth"], target_files: ["src/auth/types.ts"],
     });
     expect(result.updated.status).toBe("open");
     expect(result.respondents).toContain("a2");
@@ -69,7 +69,7 @@ describe("S2 fix - runCommonAnnounceFlow extracts shared orchestration", () => {
       agent_id: "a1", subject: "scored", target_modules: ["src/auth"], target_files: [],
     });
     runCommonAnnounceFlow(services, thread.id, {
-      agent_id: "a1", subject: "scored", target_modules: ["src/auth"], target_files: [],
+      org_id: "default", agent_id: "a1", subject: "scored", target_modules: ["src/auth"], target_files: [],
     });
 
     await flush();
@@ -84,7 +84,7 @@ describe("S2 fix - runCommonAnnounceFlow extracts shared orchestration", () => {
       agent_id: "a1", subject: "keep", target_modules: ["src/auth"], target_files: [], keep_open: true,
     });
     const result = runCommonAnnounceFlow(services, thread.id, {
-      agent_id: "a1", subject: "keep", target_modules: ["src/auth"], target_files: [], keep_open: true,
+      org_id: "default", agent_id: "a1", subject: "keep", target_modules: ["src/auth"], target_files: [], keep_open: true,
     });
     expect(result.updated.status).toBe("open");
   });
@@ -95,7 +95,7 @@ describe("S2 fix - runCommonAnnounceFlow extracts shared orchestration", () => {
       agent_id: "a1", subject: "with plan", plan: "do something", target_modules: ["src/auth"], target_files: [],
     });
     const result = runCommonAnnounceFlow(services, thread.id, {
-      agent_id: "a1", subject: "with plan", plan: "do something", target_modules: ["src/auth"], target_files: [],
+      org_id: "default", agent_id: "a1", subject: "with plan", plan: "do something", target_modules: ["src/auth"], target_files: [],
     });
     expect(result.planQuality).toBeDefined();
     expect(result.planQuality.mode).toBeDefined();
@@ -110,7 +110,7 @@ describe("S2 fix - runCommonAnnounceFlow extracts shared orchestration", () => {
       agent_id: "a1", subject: "vague", plan: "do thing", target_modules: ["src/auth"], target_files: [],
     });
     runCommonAnnounceFlow(services, thread.id, {
-      agent_id: "a1", subject: "vague", plan: "do thing", target_modules: ["src/auth"], target_files: [],
+      org_id: "default", agent_id: "a1", subject: "vague", plan: "do thing", target_modules: ["src/auth"], target_files: [],
     });
 
     await flush();

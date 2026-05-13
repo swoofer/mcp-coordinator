@@ -38,6 +38,7 @@ export interface CommonFlowResult {
 }
 
 export interface CommonFlowParams {
+  org_id: string;
   agent_id: string;
   subject: string;
   plan?: string;
@@ -64,6 +65,7 @@ export function runCommonAnnounceFlow(
 
   // 1. Score impact: categorize all online agents into concerned / gray_zone / pass.
   const categorized = impactScorer.categorize({
+    org_id: params.org_id,
     agent_id: params.agent_id,
     target_modules: params.target_modules,
     target_files: params.target_files,

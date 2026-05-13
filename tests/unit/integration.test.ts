@@ -178,9 +178,10 @@ describe("Integration: Impact Scoring + Introspection", () => {
     registry.register("agent-c", "Agent C", ["src/api"]);          // no overlap = 0
 
     // Agent B also recently edited the target file
-    fileTracker.log({ session_id: "s1", agent_id: "agent-b", tool_name: "Edit", file_path: "src/shared/types.ts" });
+    fileTracker.log({ org_id: "default", session_id: "s1", agent_id: "agent-b", tool_name: "Edit", file_path: "src/shared/types.ts" });
 
     const categorized = impactScorer.categorize({
+      org_id: "default",
       agent_id: "agent-a",
       target_modules: ["src/shared"],
       target_files: ["src/shared/types.ts"],
@@ -200,6 +201,7 @@ describe("Integration: Impact Scoring + Introspection", () => {
     registry.register("agent-b", "Agent B", ["src/shared"]); // module overlap = 30 (gray zone)
 
     const categorized = impactScorer.categorize({
+      org_id: "default",
       agent_id: "agent-a",
       target_modules: ["src/shared"],
       target_files: ["src/shared/types.ts"],

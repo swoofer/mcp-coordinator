@@ -18,7 +18,8 @@ export function registerStatusTools(
     const online = registry.listOnline();
     const openThreads = consultation.listThreads({ status: "open" });
     const resolvingThreads = consultation.listThreads({ status: "resolving" });
-    const hotFiles = fileTracker.getHotFiles(30);
+    // TODO(Task 19d): thread real org_id into MCP tool context; for now MCP uses 'default'
+    const hotFiles = fileTracker.getHotFiles("default", 30);
     const status = {
       agents_online: online.length,
       agents: online.map((a) => ({ id: a.id, name: a.name, modules: JSON.parse(a.modules) })),

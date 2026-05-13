@@ -143,6 +143,7 @@ describe("ConflictDetector", () => {
 
   it("hot file overlap from file activity â€” detect() reports file_overlap for recently edited file", () => {
     fileTracker.log({
+      org_id: "default",
       session_id: "sess-a2",
       agent_id: "a2",
       agent_name: "Agent B",
@@ -187,6 +188,7 @@ describe("ConflictDetector", () => {
     });
     // a2 also has file activity on the same file (hot file overlap)
     fileTracker.log({
+      org_id: "default",
       session_id: "sess-a2",
       agent_id: "a2",
       agent_name: "Agent B",

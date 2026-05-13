@@ -25,12 +25,12 @@ describe("Layer 4 git_cochange lookup", () => {
     registry.register("bob",   "B", []);
     registry.setOnline("alice"); registry.setOnline("bob");
     // Bob recently edited b.ts
-    fileTracker.log({ session_id: "s", agent_id: "bob", tool_name: "Edit", file_path: "b.ts" });
+    fileTracker.log({ org_id: "default", session_id: "s", agent_id: "bob", tool_name: "Edit", file_path: "b.ts" });
   });
   afterAll(() => { closeDb(); rmSync(TEST_DIR, { recursive: true, force: true }); });
 
   it("scores 60 when ratio > 0.5 (alice→a.ts, bob touched b.ts which co-changes 0.6)", () => {
-    const scores = scorer.score({ agent_id: "alice", target_modules: [], target_files: ["a.ts"] });
+    const scores = scorer.score({ org_id: "default", agent_id: "alice", target_modules: [], target_files: ["a.ts"] });
     const bob = scores.find(s => s.agent_id === "bob")!;
     expect(bob.score).toBeGreaterThanOrEqual(60);
     expect(bob.reasons.join(" ")).toMatch(/co-change/i);
@@ -39,8 +39,8 @@ describe("Layer 4 git_cochange lookup", () => {
   it("canonical lookup (alice→b.ts → finds pair when bob touched a.ts)", () => {
     // Reverse direction: alice announces b.ts, bob touched a.ts
     getDb().exec("DELETE FROM file_activity");
-    fileTracker.log({ session_id: "s", agent_id: "bob", tool_name: "Edit", file_path: "a.ts" });
-    const scores = scorer.score({ agent_id: "alice", target_modules: [], target_files: ["b.ts"] });
+    fileTracker.log({ org_id: "default", session_id: "s", agent_id: "bob", tool_name: "Edit", file_path: "a.ts" });
+    const scores = scorer.score({ org_id: "default", agent_id: "alice", target_modules: [], target_files: ["b.ts"] });
     const bob = scores.find(s => s.agent_id === "bob")!;
     expect(bob.score).toBeGreaterThanOrEqual(60);
   });

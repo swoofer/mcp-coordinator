@@ -33,6 +33,7 @@ describe("ImpactScorer Layer 1 union with working_files", () => {
   it("scores 100 when another agent has working_files on the same path", () => {
     workingFiles.start("bob", "src/foo.ts", 30);
     const scores = scorer.score({
+      org_id: "default",
       agent_id: "alice",
       target_modules: [],
       target_files: ["src/foo.ts"],

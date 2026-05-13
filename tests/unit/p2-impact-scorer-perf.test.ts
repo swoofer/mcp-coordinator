@@ -60,7 +60,7 @@ afterAll(() => {
  * Returns the announce_work params used in the timing run so the snapshot
  * test can compare scoring output against a known-correct baseline.
  */
-function seedScale(): { agent_id: string; target_modules: string[]; target_files: string[]; depends_on_files: string[] } {
+function seedScale(): { org_id: string; agent_id: string; target_modules: string[]; target_files: string[]; depends_on_files: string[] } {
   // 50 agents, agent ids agent-00 .. agent-49.
   const agentIds: string[] = [];
   for (let i = 0; i < 50; i++) {
@@ -82,6 +82,7 @@ function seedScale(): { agent_id: string; target_modules: string[]; target_files
       ? `src/shared/types-${f % 10}.ts`
       : `src/mod-${f % 50}/file-${f}.ts`;
     tracker.log({
+      org_id: "default",
       session_id: `s-${f}`,
       agent_id: agent,
       tool_name: "Edit",
@@ -121,6 +122,7 @@ function seedScale(): { agent_id: string; target_modules: string[]; target_files
 
   return {
     // Use a fresh announcer id NOT in agentIds so all 50 agents are scored.
+    org_id: "default",
     agent_id: "announcer-x",
     target_modules: ["src/shared", "src/mod-3"],
     target_files: ["src/shared/types-0.ts", "src/shared/types-1.ts"],

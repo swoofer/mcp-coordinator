@@ -54,8 +54,9 @@ export function registerConsultationTools(
         .run(JSON.stringify(conflicts), thread.id);
     }
 
+    // TODO(Task 19d): thread real org_id into MCP tool context; for now MCP uses 'default'
     const { updated, categorized, respondents, planQuality } = runCommonAnnounceFlow(services, thread.id, {
-      agent_id, subject, plan, target_modules, target_files, depends_on_files, exports_affected, keep_open, target_symbols,
+      org_id: "default", agent_id, subject, plan, target_modules, target_files, depends_on_files, exports_affected, keep_open, target_symbols,
     });
 
     sseEmitter.emit("thread_opened", {

@@ -17,14 +17,16 @@ export function registerFilesTools(
   server.tool("hot_files", "List files modified by multiple agents", {
     since_minutes: z.number().optional(),
   }, async ({ since_minutes }) => {
-    const files = fileTracker.getHotFiles(since_minutes || 30);
+    // TODO(Task 19d): thread real org_id into MCP tool context; for now MCP uses 'default'
+    const files = fileTracker.getHotFiles("default", since_minutes || 30);
     return { content: [{ type: "text", text: JSON.stringify(files) }] };
   });
 
   server.tool("get_session_files", "Get files modified in a session", {
     session_id: z.string(),
   }, async ({ session_id }) => {
-    const files = fileTracker.getBySession(session_id);
+    // TODO(Task 19d): thread real org_id into MCP tool context; for now MCP uses 'default'
+    const files = fileTracker.getBySession("default", session_id);
     return { content: [{ type: "text", text: JSON.stringify(files) }] };
   });
 
@@ -33,7 +35,8 @@ export function registerFilesTools(
     agent_id: z.string(),
     within_minutes: z.number().optional(),
   }, async ({ file_path, agent_id, within_minutes }) => {
-    const result = fileTracker.checkFileConflict(file_path, agent_id, within_minutes || 30);
+    // TODO(Task 19d): thread real org_id into MCP tool context; for now MCP uses 'default'
+    const result = fileTracker.checkFileConflict("default", file_path, agent_id, within_minutes || 30);
     return { content: [{ type: "text", text: JSON.stringify(result) }] };
   });
 }

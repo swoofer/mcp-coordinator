@@ -19,6 +19,7 @@ export interface CategorizedImpact {
 }
 
 interface AnnounceParams {
+  org_id: string;
   agent_id: string;
   target_modules: string[];
   target_files: string[];
@@ -71,7 +72,7 @@ export class ImpactScorer {
       ...(params.depends_on_files || []),
     ];
     const fileToAgents = filesToIndex.length > 0
-      ? this.fileTracker.getFileToAgentsIndex(filesToIndex, params.agent_id, FILE_ACTIVITY_WINDOW_MINUTES)
+      ? this.fileTracker.getFileToAgentsIndex(params.org_id, filesToIndex, params.agent_id, FILE_ACTIVITY_WINDOW_MINUTES)
       : new Map<string, Set<string>>();
 
     const inFlightToAgents = this.workingFiles

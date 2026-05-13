@@ -46,7 +46,7 @@ describe("SummaryContextProvider", () => {
       file_path: "src/auth/middleware.ts",
       summary: "Added JWT validation",
     });
-    tracker.log({ session_id: "s1", agent_id: "a1", tool_name: "Edit", file_path: "src/auth/middleware.ts" });
+    tracker.log({ org_id: "default", session_id: "s1", agent_id: "a1", tool_name: "Edit", file_path: "src/auth/middleware.ts" });
 
     const ctx = provider.getRelevantContext("a1", {
       thread_id: "t1",
