@@ -945,10 +945,10 @@ describe("consultation org_id scoping", () => {
     // a2 is "interested in" both orgs (registered globally), but the org-scoped query must only show one side.
     const updatesA = consultation.getThreadUpdates("org-a", "a2");
     const updatesB = consultation.getThreadUpdates("org-b", "a2");
-    const allASubjects = updatesA.map((u) => u.subject);
-    const allBSubjects = updatesB.map((u) => u.subject);
-    expect(allASubjects).not.toContain("B");
-    expect(allBSubjects).not.toContain("A");
+    const aContents = updatesA.map((u) => u.content);
+    const bContents = updatesB.map((u) => u.content);
+    expect(aContents).not.toContain("B-msg");
+    expect(bContents).not.toContain("A-msg");
   });
 });
 
