@@ -331,6 +331,22 @@ export function initDatabase(dataDir: string): void {
     db.exec("CREATE INDEX IF NOT EXISTS idx_events_org_id ON events(org_id, id)");
   } catch { /* already exists */ }
 
+  // v0.7.1: composite indexes for org-scoped hot queries (Tasks 15/17 reads).
+  // Created AFTER the ALTER loop above — these indexes reference org_id which
+  // doesn't exist on the legacy tables until the ALTER runs. file_activity is
+  // append-only and grows fast in multi-org deployments; the single-column
+  // path index alone forces a full scan of all-org rows before the WHERE
+  // org_id filter applies.
+  try {
+    db.exec("CREATE INDEX IF NOT EXISTS idx_file_activity_org_path_time ON file_activity(org_id, file_path, created_at)");
+  } catch { /* already exists */ }
+  try {
+    db.exec("CREATE INDEX IF NOT EXISTS idx_threads_org_status ON threads(org_id, status)");
+  } catch { /* already exists */ }
+  try {
+    db.exec("CREATE INDEX IF NOT EXISTS idx_summaries_org_agent ON action_summaries(org_id, agent_id)");
+  } catch { /* already exists */ }
+
   // v0.7: SQLite lacks ALTER PRIMARY KEY. Pattern per table:
   //   1. Create new table with composite PK.
   //   2. Copy all rows from old to new.
@@ -385,6 +401,14 @@ export function initDatabase(dataDir: string): void {
       PRIMARY KEY (org_id, id)
     )`,
     "id, org_id, name, modules, status, registered_at, last_seen_at",
+    // LOAD-BEARING: this UNIQUE index is what makes the 5 FKs to agents(id)
+    // (thread_messages, action_summaries, introspections, threads.initiator_id,
+    // agent_activity_status) still enforceable after the composite-PK migration.
+    // SQLite FKs require the referenced column to be UNIQUE or a single-column
+    // PK; agents.id alone is now neither (PK is (org_id, id)). Dropping this
+    // index silently breaks FK enforcement across those 5 tables. As a side
+    // effect, same-id-different-org rows are rejected in `agents` (test pinned
+    // in tests/unit/composite-pk-migration.test.ts).
     ["CREATE UNIQUE INDEX IF NOT EXISTS idx_agents_id ON agents(id)"],
   );
 

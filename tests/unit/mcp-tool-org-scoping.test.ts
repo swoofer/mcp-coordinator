@@ -126,6 +126,9 @@ beforeEach(() => {
 afterAll(() => {
   closeDb();
   fs.rmSync(TEST_DIR, { recursive: true, force: true });
+  // Reset auth module state so signingKey/prevKey don't contaminate later
+  // test files under vitest fileParallelism: false (auth.ts is a singleton).
+  initAuth(SECRET);
 });
 
 // ─── Claims lookup helper ─────────────────────────────────────────────────────
