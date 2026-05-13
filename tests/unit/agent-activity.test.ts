@@ -1,4 +1,4 @@
-﻿// tests/agent-activity.test.ts â€” TDD RED phase
+// tests/agent-activity.test.ts - TDD RED phase
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
 import { AgentRegistry } from "../../src/agent-registry.js";
@@ -30,7 +30,7 @@ afterAll(() => {
 });
 
 describe("AgentActivityTracker", () => {
-  // â”€â”€ Core status transitions â”€â”€
+  // -- Core status transitions --
 
   it("new agent starts as idle", () => {
     const activity = tracker.getActivity("a1");
@@ -40,7 +40,7 @@ describe("AgentActivityTracker", () => {
   });
 
   it("transitions to working when file activity reported", () => {
-    tracker.reportFileActivity("a1", "src/auth/login.ts");
+    tracker.reportFileActivity("default", "a1", "src/auth/login.ts");
     const activity = tracker.getActivity("a1");
     expect(activity.activity_status).toBe("working");
     expect(activity.current_file).toBe("src/auth/login.ts");
@@ -55,15 +55,15 @@ describe("AgentActivityTracker", () => {
 
   it("transitions back to working after waiting", () => {
     tracker.reportWaiting("a1", "thread-123");
-    tracker.reportFileActivity("a1", "src/auth/login.ts");
+    tracker.reportFileActivity("default", "a1", "src/auth/login.ts");
     const activity = tracker.getActivity("a1");
     expect(activity.activity_status).toBe("working");
     expect(activity.current_thread).toBeNull();
   });
 
   it("transitions to offline when agent goes offline", () => {
-    tracker.reportFileActivity("a1", "src/auth/login.ts");
-    tracker.reportOffline("a1");
+    tracker.reportFileActivity("default", "a1", "src/auth/login.ts");
+    tracker.reportOffline("default", "a1");
     const activity = tracker.getActivity("a1");
     expect(activity.activity_status).toBe("offline");
     expect(activity.current_file).toBeNull();
@@ -71,7 +71,7 @@ describe("AgentActivityTracker", () => {
   });
 
   it("transitions to idle after inactivity timeout", () => {
-    tracker.reportFileActivity("a1", "src/auth/login.ts");
+    tracker.reportFileActivity("default", "a1", "src/auth/login.ts");
     // Simulate old timestamp
     const db = getDb();
     db.prepare("UPDATE agent_activity_status SET last_activity_at = datetime('now', '-10 minutes') WHERE agent_id = ?")
@@ -80,7 +80,7 @@ describe("AgentActivityTracker", () => {
     expect(activity.activity_status).toBe("idle");
   });
 
-  // â”€â”€ Heartbeat enrichi â”€â”€
+  // -- Heartbeat enrichi --
 
   it("heartbeat updates last_activity_at and current state", () => {
     tracker.heartbeat("a1", { currentFile: "src/auth/login.ts", currentThread: null });
@@ -89,23 +89,23 @@ describe("AgentActivityTracker", () => {
     expect(activity.current_file).toBe("src/auth/login.ts");
   });
 
-  it("heartbeat with no file and no thread â†’ idle", () => {
+  it("heartbeat with no file and no thread -> idle", () => {
     tracker.heartbeat("a1", { currentFile: null, currentThread: null });
     const activity = tracker.getActivity("a1");
     expect(activity.activity_status).toBe("idle");
   });
 
-  it("heartbeat with thread and no file â†’ waiting", () => {
+  it("heartbeat with thread and no file -> waiting", () => {
     tracker.heartbeat("a1", { currentFile: null, currentThread: "thread-456" });
     const activity = tracker.getActivity("a1");
     expect(activity.activity_status).toBe("waiting");
     expect(activity.current_thread).toBe("thread-456");
   });
 
-  // â”€â”€ Listing â”€â”€
+  // -- Listing --
 
   it("listAll returns activity for all online agents", () => {
-    tracker.reportFileActivity("a1", "src/auth/login.ts");
+    tracker.reportFileActivity("default", "a1", "src/auth/login.ts");
     tracker.reportWaiting("a2", "thread-789");
     const all = tracker.listAll();
     expect(all).toHaveLength(2);
@@ -129,7 +129,7 @@ describe("AgentActivityTracker", () => {
     expect(all[0].agent_id).toBe("a1");
   });
 
-  // â”€â”€ Edge cases â”€â”€
+  // -- Edge cases --
 
   it("getActivity for unknown agent returns offline", () => {
     const activity = tracker.getActivity("unknown-agent");
@@ -137,14 +137,14 @@ describe("AgentActivityTracker", () => {
   });
 
   it("reportFileActivity updates current_file on repeated calls", () => {
-    tracker.reportFileActivity("a1", "src/auth/login.ts");
-    tracker.reportFileActivity("a1", "src/auth/validate.ts");
+    tracker.reportFileActivity("default", "a1", "src/auth/login.ts");
+    tracker.reportFileActivity("default", "a1", "src/auth/validate.ts");
     const activity = tracker.getActivity("a1");
     expect(activity.current_file).toBe("src/auth/validate.ts");
   });
 
   it("preserves activity across heartbeats", () => {
-    tracker.reportFileActivity("a1", "src/auth/login.ts");
+    tracker.reportFileActivity("default", "a1", "src/auth/login.ts");
     tracker.heartbeat("a1", { currentFile: "src/auth/login.ts", currentThread: null });
     const activity = tracker.getActivity("a1");
     expect(activity.activity_status).toBe("working");
@@ -152,11 +152,48 @@ describe("AgentActivityTracker", () => {
   });
 
   it("stays working when activity is recent (not timed out)", () => {
-    tracker.reportFileActivity("a1", "src/auth/login.ts");
-    // Don't backdate â€” activity just happened
+    tracker.reportFileActivity("default", "a1", "src/auth/login.ts");
+    // Don't backdate -- activity just happened
     const activity = tracker.getActivity("a1", { idleAfterMinutes: 5 });
     expect(activity.activity_status).toBe("working");
   });
 });
 
+describe("agent-activity org_id scoping", () => {
+  beforeEach(() => {
+    getDb().exec("DELETE FROM agent_activity_status");
+    // Register agents so FK (agent_id) -> agents(id) is satisfied.
+    // idx_agents_id is UNIQUE on agents(id) alone, so agent-1/agent-2 can only live
+    // in one org row -- we use 'default' but write activity rows for org-a/org-b.
+    registry.register("default", "agent-1", "Agent One", []);
+    registry.register("default", "agent-2", "Agent Two", []);
+  });
 
+  it("reportFileActivity writes org_id", () => {
+    tracker.reportFileActivity("org-a", "agent-1", "x.ts");
+    const row = getDb().prepare("SELECT org_id FROM agent_activity_status").get() as { org_id: string };
+    expect(row.org_id).toBe("org-a");
+  });
+
+  it("getStatus scopes by org", () => {
+    tracker.reportFileActivity("org-a", "agent-1", "a.ts");
+    tracker.reportFileActivity("org-b", "agent-1", "b.ts");
+    expect(tracker.getStatus("org-a", "agent-1")?.current_file).toBe("a.ts");
+    expect(tracker.getStatus("org-b", "agent-1")?.current_file).toBe("b.ts");
+  });
+
+  it("listActive scopes by org", () => {
+    tracker.reportFileActivity("org-a", "agent-1", "a.ts");
+    tracker.reportFileActivity("org-b", "agent-2", "b.ts");
+    expect(tracker.listActive("org-a")).toHaveLength(1);
+    expect(tracker.listActive("org-a")[0].agent_id).toBe("agent-1");
+  });
+
+  it("reportOffline scopes by org", () => {
+    tracker.reportFileActivity("org-a", "agent-1", "x.ts");
+    tracker.reportOffline("org-b", "agent-1");  // wrong org, no-op
+    expect(tracker.getStatus("org-a", "agent-1")).not.toBeNull();
+    tracker.reportOffline("org-a", "agent-1");
+    expect(tracker.getStatus("org-a", "agent-1")?.activity_status).toBe("offline");
+  });
+});

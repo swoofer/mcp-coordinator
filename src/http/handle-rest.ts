@@ -76,7 +76,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
   } else if (url === "/api/session-stop") {
     const { agent_id } = body as { agent_id: string };
     registry.setOffline(ctx.claims.org, agent_id);
-    activityTracker.reportOffline(agent_id);
+    activityTracker.reportOffline(ctx.claims.org, agent_id);
     consultation.handleAgentDeparture(agent_id);
     sseEmitter.emit("agent_offline", { agent_id });
     json(res, { ok: true });
@@ -95,7 +95,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
       session_id: string; agent_id: string; agent_name?: string; tool_name: string; file: string;
     };
     fileTracker.log({ org_id: ctx.claims.org, session_id, agent_id, agent_name, tool_name, file_path: file });
-    activityTracker.reportFileActivity(agent_id, file);
+    activityTracker.reportFileActivity(ctx.claims.org, agent_id, file);
     sseEmitter.emit("file_edited", { agent_id, agent_name: agent_name || agent_id, file, tool_name });
     json(res, { ok: true });
 
