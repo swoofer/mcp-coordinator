@@ -234,17 +234,6 @@ export class ImpactScorer {
     };
   }
 
-  private getRecentSymbolsForFile(orgId: string, filePath: string, agentId: string): string[] | null {
-    const db = getDb();
-    const row = db.prepare(
-      `SELECT symbols_touched FROM file_activity
-       WHERE org_id = ? AND agent_id = ? AND file_path = ? AND symbols_touched IS NOT NULL
-       ORDER BY id DESC LIMIT 1`
-    ).get(orgId, agentId, filePath) as { symbols_touched: string | null } | undefined;
-    if (!row || !row.symbols_touched) return null;
-    try { return JSON.parse(row.symbols_touched) as string[]; } catch { return null; }
-  }
-
   private _collectSymbolsTouched(orgId: string, files: string[]): Map<string, string[]> {
     const db = getDb();
     const placeholders = files.map(() => "?").join(",");
