@@ -64,7 +64,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
 
   } else if (url === "/api/session-start") {
     const online = registry.listOnline(ctx.claims.org);
-    const openThreads = consultation.listThreads({ status: "open" });
+    const openThreads = consultation.listThreads(ctx.claims.org, { status: "open" });
     const hotFiles = fileTracker.getHotFiles(ctx.claims.org, 30);
     const briefing = [
       `Agents en ligne: ${online.map((a) => a.name).join(", ") || "aucun"}`,
@@ -106,7 +106,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
       target_symbols?: string[];
     };
 
-    const thread = consultation.announceWork({ agent_id, subject, plan, target_modules, target_files, depends_on_files, exports_affected, keep_open, assigned_to });
+    const thread = consultation.announceWork(ctx.claims.org, { agent_id, subject, plan, target_modules, target_files, depends_on_files, exports_affected, keep_open, assigned_to });
     const agentInfo = registry.get(ctx.claims.org, agent_id);
 
     // S2 fix: shared workflow (impact scoring, override respondents, auto-resolve,
@@ -137,7 +137,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
     // Pre-check the thread so we can return actionable status codes instead
     // of always-500 on any error. The client uses the status to decide
     // whether to warn (unexpected) or silently skip (normal race).
-    const targetThread = consultation.getThread(thread_id);
+    const targetThread = consultation.getThread(ctx.claims.org, thread_id);
     if (!targetThread) {
       json(res, { error: "thread_not_found", thread_id }, 404);
       return;
@@ -146,8 +146,8 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
       json(res, { error: "thread_cancelled", thread_id }, 410);
       return;
     }
-    const msg = consultation.postToThread({ thread_id, agent_id, agent_name, type, content });
-    const thread = consultation.getThread(thread_id);
+    const msg = consultation.postToThread(ctx.claims.org, { thread_id, agent_id, agent_name, type, content });
+    const thread = consultation.getThread(ctx.claims.org, thread_id);
     sseEmitter.emit("message_posted", {
       thread_id, agent_id, agent_name: agent_name || agent_id,
       type, content, round: thread?.round || 1,
@@ -208,7 +208,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
       sseEmitter.emit("task_claimed", { thread_id, agent_id });
       json(res, { success: true });
     } else {
-      const thread = consultation.getThread(thread_id);
+      const thread = consultation.getThread(ctx.claims.org, thread_id);
       // Surface the assigned_to in the 'why not' response so clients can
       // distinguish "already claimed by X" from "reserved for Y".
       json(res, {
@@ -222,23 +222,23 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
   } else if (url === "/api/propose-resolution") {
     const { thread_id, agent_id, summary } = body as { thread_id: string; agent_id: string; summary: string };
     const agentInfo = registry.get(ctx.claims.org, agent_id);
-    consultation.proposeResolution(thread_id, agent_id, summary);
+    consultation.proposeResolution(ctx.claims.org, thread_id, agent_id, summary);
     sseEmitter.emit("resolution_proposed", {
       thread_id, agent_id, agent_name: agentInfo?.name || agent_id, summary,
     });
-    json(res, consultation.getThread(thread_id));
+    json(res, consultation.getThread(ctx.claims.org, thread_id));
     mqttBridge.publishTaskCompleted(thread_id, agent_id, summary);
 
   } else if (url === "/api/approve-resolution") {
     const { thread_id, agent_id } = body as { thread_id: string; agent_id: string };
     const agentInfo = registry.get(ctx.claims.org, agent_id);
-    consultation.approveResolution(thread_id, agent_id, agentInfo?.name);
-    const t = consultation.getThread(thread_id)!;
+    consultation.approveResolution(ctx.claims.org, thread_id, agent_id, agentInfo?.name ?? undefined);
+    const t = consultation.getThread(ctx.claims.org, thread_id)!;
     json(res, t);
 
   } else if (url?.startsWith("/api/consultation/") && url?.endsWith("/status")) {
     const threadId = url.split("/")[3];
-    const thread = consultation.getThreadWithMessages(threadId);
+    const thread = consultation.getThreadWithMessages(ctx.claims.org, threadId);
     if (!thread) {
       json(res, { error: "not found" }, 404);
     } else {
@@ -251,8 +251,8 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
     }
 
   } else if (url === "/api/threads-active") {
-    const open = consultation.listThreads({ status: "open" });
-    const resolving = consultation.listThreads({ status: "resolving" });
+    const open = consultation.listThreads(ctx.claims.org, { status: "open" });
+    const resolving = consultation.listThreads(ctx.claims.org, { status: "resolving" });
     json(res, [...open, ...resolving]);
 
   } else if (url === "/api/hot-files") {
@@ -313,7 +313,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
     // If concerned, add to thread's expected_respondents
     if (concerned && intro) {
       const db = getDb();
-      const thread = consultation.getThread(intro.thread_id);
+      const thread = consultation.getThread(ctx.claims.org, intro.thread_id);
       if (thread && (thread.status === "open" || thread.status === "resolving")) {
         const respondents: string[] = JSON.parse(thread.expected_respondents || "[]");
         if (!respondents.includes(intro.agent_id)) {
@@ -380,8 +380,8 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
     // Covers both open threads (waiting for initial response) and resolving threads
     // (waiting for approval/contest of a proposed resolution).
     const pendingThreads = [
-      ...consultation.listThreads({ status: "open" }),
-      ...consultation.listThreads({ status: "resolving" }),
+      ...consultation.listThreads(ctx.claims.org, { status: "open" }),
+      ...consultation.listThreads(ctx.claims.org, { status: "resolving" }),
     ].filter((t) => {
       const respondents: string[] = JSON.parse(t.expected_respondents || "[]");
       return respondents.includes(agent_id);
@@ -527,7 +527,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
 
   } else if (url === "/api/status") {
     const online = registry.listOnline(ctx.claims.org);
-    const openThreads = consultation.listThreads({ status: "open" });
+    const openThreads = consultation.listThreads(ctx.claims.org, { status: "open" });
     json(res, {
       online: online.length,
       open_threads: openThreads.length,

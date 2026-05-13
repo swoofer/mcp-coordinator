@@ -62,7 +62,7 @@ describe("Integration: Full Consultation Lifecycle", () => {
     registry.register("default", "agent-b", "Agent B", ["src/api", "src/shared"]);
 
     // Agent A announces work
-    const thread = consultation.announceWork({
+    const thread = consultation.announceWork("default", {
       agent_id: "agent-a",
       subject: "Refactor auth middleware",
       target_modules: ["src/shared"],
@@ -71,7 +71,7 @@ describe("Integration: Full Consultation Lifecycle", () => {
     expect(thread.status).toBe("open");
 
     // Agent B responds with context
-    const msg = consultation.postToThread({
+    const msg = consultation.postToThread("default", {
       thread_id: thread.id,
       agent_id: "agent-b",
       agent_name: "Agent B",
@@ -81,18 +81,18 @@ describe("Integration: Full Consultation Lifecycle", () => {
     expect(msg.round).toBe(1);
 
     // Agent A proposes resolution
-    consultation.proposeResolution(thread.id, "agent-a", "Keep interface backward compatible");
-    const resolving = consultation.getThread(thread.id)!;
+    consultation.proposeResolution("default", thread.id, "agent-a", "Keep interface backward compatible");
+    const resolving = consultation.getThread("default", thread.id)!;
     expect(resolving.status).toBe("resolving");
 
     // Agent B approves
-    consultation.approveResolution(thread.id, "agent-b");
-    const resolved = consultation.getThread(thread.id)!;
+    consultation.approveResolution("default", thread.id, "agent-b");
+    const resolved = consultation.getThread("default", thread.id)!;
     expect(resolved.status).toBe("resolved");
     expect(resolved.resolved_at).toBeDefined();
 
     // Verify thread has all messages
-    const full = consultation.getThreadWithMessages(thread.id)!;
+    const full = consultation.getThreadWithMessages("default", thread.id)!;
     expect(full.messages.length).toBeGreaterThanOrEqual(3); // warning + resolution + approve
   });
 
@@ -100,34 +100,34 @@ describe("Integration: Full Consultation Lifecycle", () => {
     registry.register("default", "agent-a", "Agent A", ["src/shared"]);
     registry.register("default", "agent-b", "Agent B", ["src/shared"]);
 
-    const thread = consultation.announceWork({
+    const thread = consultation.announceWork("default", {
       agent_id: "agent-a",
       subject: "Change shared interface",
       target_modules: ["src/shared"],
       target_files: [],
     });
 
-    consultation.postToThread({
+    consultation.postToThread("default", {
       thread_id: thread.id, agent_id: "agent-b", type: "context", content: "noted",
     });
 
     // Propose
-    consultation.proposeResolution(thread.id, "agent-a", "My approach");
+    consultation.proposeResolution("default", thread.id, "agent-a", "My approach");
 
     // Contest
-    consultation.contestResolution(thread.id, "agent-b", "This breaks my code");
-    const contested = consultation.getThread(thread.id)!;
+    consultation.contestResolution("default", thread.id, "agent-b", "This breaks my code");
+    const contested = consultation.getThread("default", thread.id)!;
     expect(contested.status).toBe("open");
     expect(contested.round).toBe(2);
 
     // Re-propose with adjusted plan
-    consultation.postToThread({
+    consultation.postToThread("default", {
       thread_id: thread.id, agent_id: "agent-a", type: "suggestion", content: "How about this instead",
     });
-    consultation.proposeResolution(thread.id, "agent-a", "Adjusted approach");
-    consultation.approveResolution(thread.id, "agent-b");
+    consultation.proposeResolution("default", thread.id, "agent-a", "Adjusted approach");
+    consultation.approveResolution("default", thread.id, "agent-b");
 
-    const final = consultation.getThread(thread.id)!;
+    const final = consultation.getThread("default", thread.id)!;
     expect(final.status).toBe("resolved");
   });
 
@@ -135,7 +135,7 @@ describe("Integration: Full Consultation Lifecycle", () => {
     registry.register("default", "agent-a", "Agent A", ["src/auth"]);
     registry.register("default", "agent-b", "Agent B", ["src/users"]);
 
-    const thread = consultation.announceWork({
+    const thread = consultation.announceWork("default", {
       agent_id: "agent-a",
       subject: "Internal auth change",
       target_modules: ["src/auth"],
@@ -149,7 +149,7 @@ describe("Integration: Full Consultation Lifecycle", () => {
     registry.register("default", "agent-b", "Agent B", ["src/shared"]);
     registry.register("default", "agent-c", "Agent C", ["src/shared"]);
 
-    const thread = consultation.announceWork({
+    const thread = consultation.announceWork("default", {
       agent_id: "agent-a",
       subject: "Refactor shared",
       target_modules: ["src/shared"],
@@ -157,16 +157,16 @@ describe("Integration: Full Consultation Lifecycle", () => {
     });
 
     // B responds, C departs
-    consultation.postToThread({
+    consultation.postToThread("default", {
       thread_id: thread.id, agent_id: "agent-b", type: "context", content: "ok",
     });
     consultation.handleAgentDeparture("agent-c");
 
     // Only B needs to approve now
-    consultation.proposeResolution(thread.id, "agent-a", "My plan");
-    consultation.approveResolution(thread.id, "agent-b");
+    consultation.proposeResolution("default", thread.id, "agent-a", "My plan");
+    consultation.approveResolution("default", thread.id, "agent-b");
 
-    const resolved = consultation.getThread(thread.id)!;
+    const resolved = consultation.getThread("default", thread.id)!;
     expect(resolved.status).toBe("resolved");
   });
 });
@@ -212,7 +212,7 @@ describe("Integration: Impact Scoring + Introspection", () => {
     expect(categorized.gray_zone[0].score).toBe(30);
 
     // Create introspection for gray zone agent
-    const thread = consultation.announceWork({
+    const thread = consultation.announceWork("default", {
       agent_id: "agent-a",
       subject: "test",
       target_modules: ["src/shared"],
@@ -241,7 +241,7 @@ describe("Integration: Impact Scoring + Introspection", () => {
     registry.register("default", "agent-a", "Agent A", ["src/auth"]);
     registry.register("default", "agent-b", "Agent B", ["src/shared"]);
 
-    const thread = consultation.announceWork({
+    const thread = consultation.announceWork("default", {
       agent_id: "agent-a",
       subject: "test",
       target_modules: ["src/shared"],
@@ -262,7 +262,7 @@ describe("Integration: Impact Scoring + Introspection", () => {
 
     // Manually add to expected_respondents (as serve-http.ts would)
     const db = getDb();
-    const t = consultation.getThread(thread.id)!;
+    const t = consultation.getThread("default", thread.id)!;
     const respondents: string[] = JSON.parse(t.expected_respondents || "[]");
     if (!respondents.includes("agent-b")) {
       respondents.push("agent-b");
@@ -270,7 +270,7 @@ describe("Integration: Impact Scoring + Introspection", () => {
         .run(JSON.stringify(respondents), thread.id);
     }
 
-    const updated = consultation.getThread(thread.id)!;
+    const updated = consultation.getThread("default", thread.id)!;
     const updatedRespondents: string[] = JSON.parse(updated.expected_respondents || "[]");
     expect(updatedRespondents).toContain("agent-b");
   });
@@ -282,7 +282,7 @@ describe("Integration: Conflict Detection + Dependencies", () => {
     registry.register("default", "agent-b", "Agent B", ["src/shared"]);
 
     // Agent B has open thread on src/shared
-    consultation.announceWork({
+    consultation.announceWork("default", {
       agent_id: "agent-b",
       subject: "Working on shared",
       target_modules: ["src/shared"],
@@ -308,7 +308,7 @@ describe("Integration: Conflict Detection + Dependencies", () => {
       "src/auth": { module_id: "src/auth", depends_on: ["src/shared"], exports: [], owners: [] },
     });
 
-    consultation.announceWork({
+    consultation.announceWork("default", {
       agent_id: "agent-b",
       subject: "Modifying shared",
       target_modules: ["src/shared"],
@@ -372,11 +372,11 @@ describe("Integration: SSE Events", () => {
 describe("Integration: Context Provider", () => {
   it("provides relevant context for overlapping agent", () => {
     registry.register("default", "agent-a", "Agent A", ["src/shared"]);
-    consultation.logActionSummary({
+    consultation.logActionSummary("default", {
       session_id: "s1", agent_id: "agent-a",
       file_path: "src/shared/types.ts", summary: "Added User.role_permissions field",
     });
-    consultation.logActionSummary({
+    consultation.logActionSummary("default", {
       session_id: "s1", agent_id: "agent-a",
       file_path: "src/shared/utils.ts", summary: "Added permission helper",
     });

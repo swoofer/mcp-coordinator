@@ -97,7 +97,7 @@ export function runCommonAnnounceFlow(
   // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
   const otherOnlineCount = registry.listOnline("default").filter((a) => a.id !== params.agent_id).length;
   const shouldAutoResolve = concernedIds.length === 0 && otherOnlineCount === 0;
-  const currentThread = consultation.getThread(threadId)!;
+  const currentThread = consultation.getThread(params.org_id, threadId)!;
   if (shouldAutoResolve && currentThread.status === "open" && !params.keep_open) {
     db.prepare("UPDATE threads SET status = 'resolved', resolved_at = ? WHERE id = ?")
       .run(new Date().toISOString(), threadId);
@@ -144,7 +144,7 @@ export function runCommonAnnounceFlow(
     } as Parameters<typeof sseEmitter.emit>[1]);
   }
 
-  const updated = consultation.getThread(threadId)!;
+  const updated = consultation.getThread(params.org_id, threadId)!;
   const respondents: string[] = JSON.parse(updated.expected_respondents || "[]");
 
   return { updated, categorized, respondents, planQuality };

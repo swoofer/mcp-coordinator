@@ -41,7 +41,8 @@ export class SummaryContextProvider implements ContextProvider {
     }
 
     // Get action summaries for this agent
-    const summaries = this.consultation.getActionSummaries(agentId);
+    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
+    const summaries = this.consultation.getActionSummaries("default", agentId);
 
     // Get recent files from action summaries (agent writes these via MCP tool)
     const recentFiles = summaries

@@ -135,7 +135,7 @@ describe("ImpactScorer", () => {
     registry.register("default", "a2", "Agent B", ["src/shared"]);
 
     // a2 announces work on types.ts
-    consultation.announceWork({
+    consultation.announceWork("default", {
       agent_id: "a2",
       subject: "Refactor shared types",
       target_modules: ["src/shared"],
@@ -164,7 +164,7 @@ describe("ImpactScorer", () => {
     registry.register("default", "a2", "Agent B", ["src/shared"]);
 
     // a2 announces it will modify types.ts as a target
-    consultation.announceWork({
+    consultation.announceWork("default", {
       agent_id: "a2",
       subject: "Update types",
       target_modules: ["src/shared"],
@@ -194,7 +194,7 @@ describe("ImpactScorer", () => {
     registry.register("default", "a2", "Agent B", ["src/shared"]);
 
     // a2 announces work that depends on types.ts
-    consultation.announceWork({
+    consultation.announceWork("default", {
       agent_id: "a2",
       subject: "Build feature using types",
       target_modules: ["src/shared"],
@@ -319,7 +319,7 @@ describe("ImpactScorer", () => {
     registry.register("default", "a2", "Agent B", ["src/shared"]);
 
     // Create a thread then force target_files to null in DB to simulate null/missing data
-    const thread = consultation.announceWork({
+    const thread = consultation.announceWork("default", {
       agent_id: "a2",
       subject: "Partial announce",
       target_modules: ["src/shared"],
@@ -347,7 +347,7 @@ describe("ImpactScorer", () => {
     registry.register("default", "a2", "Agent B", ["src/shared"]);
 
     // Create a thread then force depends_on_files to null in DB
-    const thread = consultation.announceWork({
+    const thread = consultation.announceWork("default", {
       agent_id: "a2",
       subject: "Announce without deps",
       target_modules: ["src/shared"],
@@ -374,7 +374,7 @@ describe("ImpactScorer", () => {
     registry.register("default", "a1", "Agent A", ["src/auth"]);
     registry.register("default", "a2", "Agent B", ["src/shared"]);
 
-    consultation.announceWork({
+    consultation.announceWork("default", {
       agent_id: "a2",
       subject: "Update types",
       target_modules: ["src/shared"],
@@ -402,7 +402,7 @@ describe("ImpactScorer", () => {
     registry.register("default", "a1", "Agent A", ["src/auth"]);
     registry.register("default", "a2", "Agent B", ["src/shared"]);
     // a2 announces work on a specific file
-    c.announceWork({
+    c.announceWork("default", {
       agent_id: "a2", subject: "Work on shared", target_modules: ["src/shared"], target_files: ["src/shared/utils.ts"],
     });
     // a1 depends on a DIFFERENT file than what a2 targets
@@ -428,7 +428,7 @@ describe("ImpactScorer", () => {
 
     // a2 creates a thread that targets types.ts â€" auto-resolves because a1's
     // modules (src/auth) don't overlap with src/shared.
-    const thread = consultation.announceWork({
+    const thread = consultation.announceWork("default", {
       agent_id: "a2",
       subject: "Old work on types",
       target_modules: ["src/shared"],

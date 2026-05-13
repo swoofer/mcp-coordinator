@@ -1,4 +1,4 @@
-﻿import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -31,23 +31,23 @@ describe("B1 fix - approveResolution CAS pattern", () => {
     const events: unknown[] = [];
     consultation.onResolve((e) => events.push(e));
 
-    const thread = consultation.announceWork({
+    const thread = consultation.announceWork("default", {
       agent_id: "a1", subject: "B1 test", target_modules: ["src/auth"], target_files: [],
     });
-    consultation.postToThread({ thread_id: thread.id, agent_id: "a2", type: "context", content: "ok" });
-    consultation.proposeResolution(thread.id, "a1", "Agreed");
-    consultation.approveResolution(thread.id, "a2", "Agent B");
+    consultation.postToThread("default", { thread_id: thread.id, agent_id: "a2", type: "context", content: "ok" });
+    consultation.proposeResolution("default", thread.id, "a1", "Agreed");
+    consultation.approveResolution("default", thread.id, "a2", "Agent B");
 
     expect(events).toHaveLength(1);
   });
 
   it("CAS UPDATE...WHERE status='resolving' affects 0 rows when status was already changed", () => {
     registry.register("default", "a2", "Agent B", ["src/auth"]);
-    const thread = consultation.announceWork({
+    const thread = consultation.announceWork("default", {
       agent_id: "a1", subject: "B1 CAS test", target_modules: ["src/auth"], target_files: [],
     });
-    consultation.postToThread({ thread_id: thread.id, agent_id: "a2", type: "context", content: "ok" });
-    consultation.proposeResolution(thread.id, "a1", "Agreed");
+    consultation.postToThread("default", { thread_id: thread.id, agent_id: "a2", type: "context", content: "ok" });
+    consultation.proposeResolution("default", thread.id, "a1", "Agreed");
 
     // Simulate a race winner: another path already transitioned to resolved
     const db = getDb();
@@ -65,15 +65,15 @@ describe("B1 fix - approveResolution CAS pattern", () => {
     const events: unknown[] = [];
     consultation.onResolve((e) => events.push(e));
 
-    const thread = consultation.announceWork({
+    const thread = consultation.announceWork("default", {
       agent_id: "a1", subject: "B1 reject double", target_modules: ["src/auth"], target_files: [],
     });
-    consultation.postToThread({ thread_id: thread.id, agent_id: "a2", type: "context", content: "ok" });
-    consultation.proposeResolution(thread.id, "a1", "Agreed");
-    consultation.approveResolution(thread.id, "a2", "Agent B");
+    consultation.postToThread("default", { thread_id: thread.id, agent_id: "a2", type: "context", content: "ok" });
+    consultation.proposeResolution("default", thread.id, "a1", "Agreed");
+    consultation.approveResolution("default", thread.id, "a2", "Agent B");
 
     // Now the thread is resolved. A second approve should throw — and not emit.
-    expect(() => consultation.approveResolution(thread.id, "a2", "Agent B")).toThrow();
+    expect(() => consultation.approveResolution("default", thread.id, "a2", "Agent B")).toThrow();
     expect(events).toHaveLength(1);
   });
 });
@@ -86,7 +86,7 @@ describe("B1 fix - announceWork transaction atomicity", () => {
     // appear in expected_respondents.
     registry.register("default", "a2", "Agent B", ["src/auth"]);
 
-    const thread = consultation.announceWork({
+    const thread = consultation.announceWork("default", {
       agent_id: "a1", subject: "B1 atomicity", target_modules: ["src/auth"], target_files: [],
     });
 
@@ -100,11 +100,10 @@ describe("B1 fix - announceWork transaction atomicity", () => {
 
   it("respondents list is consistent with status (auto-resolve when 0 respondents)", () => {
     // No other agents online → autoResolve should be true
-    const thread = consultation.announceWork({
+    const thread = consultation.announceWork("default", {
       agent_id: "a1", subject: "B1 consistency", target_modules: ["src/auth"], target_files: [],
     });
     expect(thread.status).toBe("resolved");
     expect(JSON.parse(thread.expected_respondents || "[]")).toEqual([]);
   });
 });
-

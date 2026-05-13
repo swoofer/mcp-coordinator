@@ -64,7 +64,10 @@ export class Consultation {
 
   emitResolution(threadId: string, type: ResolutionType, approvedBy?: string, approvedByName?: string): void {
     const db = getDb();
-    const thread = this.getThread(threadId);
+    // emitResolution is called internally after we already know the thread belongs
+    // to the right org. We look it up cross-org here intentionally so that
+    // handleAgentDeparture (which is cross-org) can still emit resolution events.
+    const thread = this.getThreadCrossOrg(threadId);
     if (!thread) return;
 
     const messageCount = (db.prepare("SELECT COUNT(*) as count FROM thread_messages WHERE thread_id = ?").get(threadId) as { count: number }).count;
@@ -91,7 +94,7 @@ export class Consultation {
     }
   }
 
-  announceWork(params: {
+  announceWork(orgId: string, params: {
     agent_id: string;
     subject: string;
     plan?: string;
@@ -115,8 +118,8 @@ export class Consultation {
     // thread then stays open forever waiting for an absent voter.
     const tx = db.transaction(() => {
       const onlineAgents = db
-        .prepare("SELECT id, modules FROM agents WHERE status = 'online' AND id != ?")
-        .all(params.agent_id) as { id: string; modules: string }[];
+        .prepare("SELECT id, modules FROM agents WHERE status = 'online' AND id != ? AND org_id = ?")
+        .all(params.agent_id, orgId) as { id: string; modules: string }[];
 
       const respondents = onlineAgents.filter((agent) => {
         const agentModules: string[] = JSON.parse(agent.modules);
@@ -134,10 +137,11 @@ export class Consultation {
       const autoResolve = respondentIds.length === 0 && !keepOpen;
 
       db.prepare(
-        `INSERT INTO threads (id, initiator_id, subject, plan, target_modules, target_files, status, expected_respondents, resolved_at, depends_on_files, exports_affected, timeout_seconds, assigned_to)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO threads (id, org_id, initiator_id, subject, plan, target_modules, target_files, status, expected_respondents, resolved_at, depends_on_files, exports_affected, timeout_seconds, assigned_to)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).run(
         id,
+        orgId,
         params.agent_id,
         params.subject,
         params.plan || null,
@@ -159,6 +163,7 @@ export class Consultation {
 
     this.log.info({
       thread_id: id,
+      org_id: orgId,
       agent_id: params.agent_id,
       subject: params.subject,
       target_modules: params.target_modules,
@@ -167,10 +172,10 @@ export class Consultation {
       assigned_to: assignedTo,
     }, "Thread opened");
 
-    return this.getThread(id)!;
+    return this.getThread(orgId, id)!;
   }
 
-  postToThread(params: {
+  postToThread(orgId: string, params: {
     thread_id: string;
     agent_id: string;
     agent_name?: string;
@@ -180,7 +185,7 @@ export class Consultation {
     in_reply_to?: string;
   }): ThreadMessage {
     const db = getDb();
-    const thread = this.getThread(params.thread_id);
+    const thread = this.getThread(orgId, params.thread_id);
     if (!thread) throw new Error(`Thread ${params.thread_id} not found`);
     // Cancelled threads are explicit aborts — reject posts.
     // Resolved threads accept late posts (audit/enrichment) because the review
@@ -193,10 +198,11 @@ export class Consultation {
     // Simple token estimate: ~4 chars per token for English/French
     const tokenEstimate = Math.ceil(params.content.length / 4);
     db.prepare(
-      `INSERT INTO thread_messages (id, thread_id, agent_id, agent_name, type, content, context_snapshot, in_reply_to, round, token_estimate)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO thread_messages (id, org_id, thread_id, agent_id, agent_name, type, content, context_snapshot, in_reply_to, round, token_estimate)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
+      orgId,
       params.thread_id,
       params.agent_id,
       params.agent_name || null,
@@ -218,24 +224,24 @@ export class Consultation {
     return db.prepare("SELECT * FROM thread_messages WHERE id = ?").get(id) as ThreadMessage;
   }
 
-  proposeResolution(threadId: string, agentId: string, summary: string): void {
+  proposeResolution(orgId: string, threadId: string, agentId: string, summary: string): void {
     const db = getDb();
-    const thread = this.getThread(threadId);
+    const thread = this.getThread(orgId, threadId);
     if (!thread) throw new Error(`Thread ${threadId} not found`);
     if (thread.initiator_id !== agentId && thread.claimed_by !== agentId)
       throw new Error("Only the initiator or the claimant can propose a resolution");
 
     db.prepare(
-      "UPDATE threads SET status = 'resolving', resolution_summary = ? WHERE id = ?"
-    ).run(summary, threadId);
+      "UPDATE threads SET status = 'resolving', resolution_summary = ? WHERE id = ? AND org_id = ?"
+    ).run(summary, threadId, orgId);
 
     // Post resolution message
-    this.postResolutionMessage(threadId, agentId, "resolution", summary);
+    this.postResolutionMessage(orgId, threadId, agentId, "resolution", summary);
   }
 
-  approveResolution(threadId: string, agentId: string, agentName?: string): void {
+  approveResolution(orgId: string, threadId: string, agentId: string, agentName?: string): void {
     const db = getDb();
-    const thread = this.getThread(threadId);
+    const thread = this.getThread(orgId, threadId);
     if (!thread) throw new Error(`Thread ${threadId} not found`);
     if (thread.status !== "resolving")
       throw new Error(`Thread is ${thread.status}, not resolving`);
@@ -246,11 +252,11 @@ export class Consultation {
     // the first transaction wins the consensus race; the loser's UPDATE
     // affects 0 rows and emit is suppressed.
     const tx = db.transaction(() => {
-      this.postResolutionMessage(threadId, agentId, "approve", "Approved");
-      if (!this.allRespondentsApproved(threadId)) return false;
+      this.postResolutionMessage(orgId, threadId, agentId, "approve", "Approved");
+      if (!this.allRespondentsApproved(orgId, threadId)) return false;
       const res = db
-        .prepare("UPDATE threads SET status = 'resolved', resolved_at = ? WHERE id = ? AND status = 'resolving'")
-        .run(new Date().toISOString(), threadId);
+        .prepare("UPDATE threads SET status = 'resolved', resolved_at = ? WHERE id = ? AND org_id = ? AND status = 'resolving'")
+        .run(new Date().toISOString(), threadId, orgId);
       return res.changes > 0;
     });
 
@@ -261,15 +267,15 @@ export class Consultation {
     }
   }
 
-  contestResolution(threadId: string, agentId: string, reason: string): void {
+  contestResolution(orgId: string, threadId: string, agentId: string, reason: string): void {
     const db = getDb();
-    const thread = this.getThread(threadId);
+    const thread = this.getThread(orgId, threadId);
     if (!thread) throw new Error(`Thread ${threadId} not found`);
     if (thread.status !== "resolving")
       throw new Error(`Thread is ${thread.status}, not resolving`);
 
     // Post contest message
-    this.postResolutionMessage(threadId, agentId, "contest", reason);
+    this.postResolutionMessage(orgId, threadId, agentId, "contest", reason);
     this.log.debug({ thread_id: threadId, agent_id: agentId, reason }, "Resolution contested");
 
     // Return to open with next round
@@ -277,35 +283,35 @@ export class Consultation {
     if (nextRound > thread.max_rounds) {
       // Max rounds reached — force resolve
       db.prepare(
-        "UPDATE threads SET status = 'resolved', resolved_at = ? WHERE id = ?"
-      ).run(new Date().toISOString(), threadId);
+        "UPDATE threads SET status = 'resolved', resolved_at = ? WHERE id = ? AND org_id = ?"
+      ).run(new Date().toISOString(), threadId, orgId);
       this.emitResolution(threadId, "max_rounds");
     } else {
       db.prepare(
-        "UPDATE threads SET status = 'open', round = ?, resolution_summary = NULL WHERE id = ?"
-      ).run(nextRound, threadId);
+        "UPDATE threads SET status = 'open', round = ?, resolution_summary = NULL WHERE id = ? AND org_id = ?"
+      ).run(nextRound, threadId, orgId);
     }
   }
 
-  cancelThread(threadId: string, agentId: string, reason?: string): void {
+  cancelThread(orgId: string, threadId: string, agentId: string, reason?: string): void {
     const db = getDb();
-    const thread = this.getThread(threadId);
+    const thread = this.getThread(orgId, threadId);
     if (!thread) throw new Error(`Thread ${threadId} not found`);
     if (thread.initiator_id !== agentId)
       throw new Error("Only the initiator can cancel");
 
     db.prepare(
-      "UPDATE threads SET status = 'cancelled', resolved_at = ? WHERE id = ?"
-    ).run(new Date().toISOString(), threadId);
+      "UPDATE threads SET status = 'cancelled', resolved_at = ? WHERE id = ? AND org_id = ?"
+    ).run(new Date().toISOString(), threadId, orgId);
 
     if (reason) {
-      this.postResolutionMessage(threadId, agentId, "context", `Cancelled: ${reason}`);
+      this.postResolutionMessage(orgId, threadId, agentId, "context", `Cancelled: ${reason}`);
     }
   }
 
-  closeThread(threadId: string, agentId: string, summary: string): void {
+  closeThread(orgId: string, threadId: string, agentId: string, summary: string): void {
     const db = getDb();
-    const thread = this.getThread(threadId);
+    const thread = this.getThread(orgId, threadId);
     if (!thread) {
       throw new Error(`Thread ${threadId} not found`);
     }
@@ -320,11 +326,15 @@ export class Consultation {
       );
     }
     db.prepare(
-      "UPDATE threads SET status = 'resolved', resolution_summary = ?, resolved_at = ? WHERE id = ?"
-    ).run(summary, new Date().toISOString(), threadId);
+      "UPDATE threads SET status = 'resolved', resolution_summary = ?, resolved_at = ? WHERE id = ? AND org_id = ?"
+    ).run(summary, new Date().toISOString(), threadId, orgId);
     this.emitResolution(threadId, "closed");
   }
 
+  /**
+   * Cross-org maintenance sweep — stays at v0.6 signature per Phase 1 plan.
+   * handleAgentDeparture iterates ALL orgs (internal maintenance only).
+   */
   handleAgentDeparture(agentId: string): void {
     const db = getDb();
     // Unclaim any tasks claimed by the departing agent
@@ -333,8 +343,8 @@ export class Consultation {
 
     // Remove departed agent from expected_respondents of all open/resolving threads
     const threads = db
-      .prepare("SELECT id, expected_respondents FROM threads WHERE status IN ('open', 'resolving')")
-      .all() as { id: string; expected_respondents: string | null }[];
+      .prepare("SELECT id, org_id, expected_respondents FROM threads WHERE status IN ('open', 'resolving')")
+      .all() as { id: string; org_id: string; expected_respondents: string | null }[];
 
     for (const thread of threads) {
       const respondents: string[] = JSON.parse(thread.expected_respondents || "[]");
@@ -345,8 +355,8 @@ export class Consultation {
       );
 
       // If resolving and all remaining approved, resolve
-      const t = this.getThread(thread.id)!;
-      if (t.status === "resolving" && this.allRespondentsApproved(thread.id)) {
+      const t = this.getThreadCrossOrg(thread.id)!;
+      if (t.status === "resolving" && this.allRespondentsApproved(thread.org_id, thread.id)) {
         db.prepare(
           "UPDATE threads SET status = 'resolved', resolved_at = ? WHERE id = ?"
         ).run(new Date().toISOString(), thread.id);
@@ -362,6 +372,10 @@ export class Consultation {
     }
   }
 
+  /**
+   * Cross-org sweeper — stays at v0.6 signature per Phase 1 plan.
+   * checkTimeouts scans ALL orgs (internal maintenance only).
+   */
   checkTimeouts(): void {
     const db = getDb();
     // B2 fix: SELECT-then-UPDATE wrapped in a transaction so two concurrent
@@ -402,27 +416,27 @@ export class Consultation {
     }
   }
 
-  getThread(threadId: string): Thread | null {
+  getThread(orgId: string, threadId: string): Thread | null {
     // B2 fix: timeout sweeping moved to startTimeoutSweeper() background timer.
     // Reads no longer mutate state. Tests that need synchronous timeout
     // resolution should call checkTimeouts() explicitly.
     const db = getDb();
     return (
-      (db.prepare("SELECT * FROM threads WHERE id = ?").get(threadId) as Thread) || null
+      (db.prepare("SELECT * FROM threads WHERE id = ? AND org_id = ?").get(threadId, orgId) as Thread) || null
     );
   }
 
-  getThreadWithMessages(threadId: string): { thread: Thread; messages: ThreadMessage[] } | null {
-    const thread = this.getThread(threadId);
+  getThreadWithMessages(orgId: string, threadId: string): { thread: Thread; messages: ThreadMessage[] } | null {
+    const thread = this.getThread(orgId, threadId);
     if (!thread) return null;
     const db = getDb();
     const messages = db
-      .prepare("SELECT * FROM thread_messages WHERE thread_id = ? ORDER BY created_at")
-      .all(threadId) as ThreadMessage[];
+      .prepare("SELECT tm.* FROM thread_messages tm JOIN threads t ON tm.thread_id = t.id WHERE tm.thread_id = ? AND t.org_id = ? ORDER BY tm.created_at")
+      .all(threadId, orgId) as ThreadMessage[];
     return { thread, messages };
   }
 
-  listThreads(filters: {
+  listThreads(orgId: string, filters: {
     status?: string;
     agent_id?: string;
     module?: string;
@@ -445,8 +459,8 @@ export class Consultation {
   }): Thread[] {
     // B2 fix: removed checkTimeouts() side-effect; sweeper handles it.
     const db = getDb();
-    let sql = "SELECT * FROM threads WHERE 1=1";
-    const params: unknown[] = [];
+    let sql = "SELECT * FROM threads WHERE org_id = ?";
+    const params: unknown[] = [orgId];
 
     if (filters.status) {
       sql += " AND status = ?";
@@ -479,13 +493,14 @@ export class Consultation {
     return db.prepare(sql).all(...params) as Thread[];
   }
 
-  getThreadUpdates(agentId: string, since?: string): ThreadMessage[] {
+  getThreadUpdates(orgId: string, agentId: string, since?: string): ThreadMessage[] {
     const db = getDb();
     let sql = `SELECT tm.* FROM thread_messages tm
                JOIN threads t ON tm.thread_id = t.id
-               WHERE t.status IN ('open', 'resolving')
+               WHERE t.org_id = ?
+               AND t.status IN ('open', 'resolving')
                AND tm.agent_id != ?`;
-    const params: unknown[] = [agentId];
+    const params: unknown[] = [orgId, agentId];
 
     if (since) {
       sql += " AND tm.created_at >= ?";
@@ -504,7 +519,7 @@ export class Consultation {
     return db.prepare(sql).all(...params) as ThreadMessage[];
   }
 
-  logActionSummary(params: {
+  logActionSummary(orgId: string, params: {
     session_id: string;
     agent_id: string;
     file_path?: string;
@@ -513,16 +528,16 @@ export class Consultation {
     const db = getDb();
     const id = randomUUID();
     db.prepare(
-      `INSERT INTO action_summaries (id, session_id, agent_id, file_path, summary)
-       VALUES (?, ?, ?, ?, ?)`
-    ).run(id, params.session_id, params.agent_id, params.file_path || null, params.summary);
+      `INSERT INTO action_summaries (id, org_id, session_id, agent_id, file_path, summary)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(id, orgId, params.session_id, params.agent_id, params.file_path || null, params.summary);
     return db.prepare("SELECT * FROM action_summaries WHERE id = ?").get(id) as ActionSummary;
   }
 
-  getActionSummaries(agentId: string, since?: string): ActionSummary[] {
+  getActionSummaries(orgId: string, agentId: string, since?: string): ActionSummary[] {
     const db = getDb();
-    let sql = "SELECT * FROM action_summaries WHERE agent_id = ?";
-    const params: unknown[] = [agentId];
+    let sql = "SELECT * FROM action_summaries WHERE org_id = ? AND agent_id = ?";
+    const params: unknown[] = [orgId, agentId];
     if (since) {
       sql += " AND created_at > ?";
       params.push(since);
@@ -531,33 +546,45 @@ export class Consultation {
     return db.prepare(sql).all(...params) as ActionSummary[];
   }
 
-  getActionSummariesBySession(sessionId: string): ActionSummary[] {
+  getActionSummariesBySession(orgId: string, sessionId: string): ActionSummary[] {
     const db = getDb();
     return db
-      .prepare("SELECT * FROM action_summaries WHERE session_id = ? ORDER BY created_at")
-      .all(sessionId) as ActionSummary[];
+      .prepare("SELECT * FROM action_summaries WHERE org_id = ? AND session_id = ? ORDER BY created_at")
+      .all(orgId, sessionId) as ActionSummary[];
   }
 
   // ── Private helpers ──
 
+  /**
+   * Cross-org thread lookup for internal sweepers/departure handlers.
+   * Do NOT call from public methods — use getThread(orgId, id) instead.
+   */
+  private getThreadCrossOrg(threadId: string): Thread | null {
+    const db = getDb();
+    return (
+      (db.prepare("SELECT * FROM threads WHERE id = ?").get(threadId) as Thread) || null
+    );
+  }
+
   private postResolutionMessage(
+    orgId: string,
     threadId: string,
     agentId: string,
     type: MessageType,
     content: string
   ): void {
     const db = getDb();
-    const thread = this.getThread(threadId)!;
+    const thread = this.getThread(orgId, threadId)!;
     const id = randomUUID();
     db.prepare(
-      `INSERT INTO thread_messages (id, thread_id, agent_id, type, content, round)
-       VALUES (?, ?, ?, ?, ?, ?)`
-    ).run(id, threadId, agentId, type, content, thread.round);
+      `INSERT INTO thread_messages (id, org_id, thread_id, agent_id, type, content, round)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(id, orgId, threadId, agentId, type, content, thread.round);
   }
 
-  private allRespondentsApproved(threadId: string): boolean {
+  private allRespondentsApproved(orgId: string, threadId: string): boolean {
     const db = getDb();
-    const thread = this.getThread(threadId)!;
+    const thread = this.getThread(orgId, threadId)!;
     const expected: string[] = JSON.parse(thread.expected_respondents || "[]");
     if (expected.length === 0) return true;
 

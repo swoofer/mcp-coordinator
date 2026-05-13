@@ -1,4 +1,4 @@
-﻿import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -27,35 +27,35 @@ afterEach(() => {
 describe("B2 fix - timeout sweeper as background worker (no read side-effect)", () => {
   it("getThread no longer triggers timeout check (bug B2)", () => {
     registry.register("default", "a2", "Agent B", ["src/auth"]);
-    const thread = consultation.announceWork({
+    const thread = consultation.announceWork("default", {
       agent_id: "a1", subject: "B2 read no-mutate", target_modules: ["src/auth"], target_files: [],
     });
     const db = getDb();
     db.prepare("UPDATE threads SET created_at=datetime('now', '-5 minutes'), timeout_seconds=1 WHERE id=?").run(thread.id);
 
     // Read should NOT change status now
-    const read1 = consultation.getThread(thread.id);
+    const read1 = consultation.getThread("default", thread.id);
     expect(read1!.status).toBe("open");
 
     // Explicit checkTimeouts must transition it
     consultation.checkTimeouts();
-    const read2 = consultation.getThread(thread.id);
+    const read2 = consultation.getThread("default", thread.id);
     expect(read2!.status).toBe("resolved");
   });
 
   it("listThreads no longer triggers timeout check", () => {
     registry.register("default", "a2", "Agent B", ["src/auth"]);
-    const thread = consultation.announceWork({
+    const thread = consultation.announceWork("default", {
       agent_id: "a1", subject: "B2 list no-mutate", target_modules: ["src/auth"], target_files: [],
     });
     const db = getDb();
     db.prepare("UPDATE threads SET created_at=datetime('now', '-5 minutes'), timeout_seconds=1 WHERE id=?").run(thread.id);
 
-    const list1 = consultation.listThreads({});
+    const list1 = consultation.listThreads("default", {});
     expect(list1.find(t => t.id === thread.id)!.status).toBe("open");
 
     consultation.checkTimeouts();
-    const list2 = consultation.listThreads({});
+    const list2 = consultation.listThreads("default", {});
     expect(list2.find(t => t.id === thread.id)!.status).toBe("resolved");
   });
 
@@ -63,7 +63,7 @@ describe("B2 fix - timeout sweeper as background worker (no read side-effect)", 
     registry.register("default", "a2", "Agent B", ["src/auth"]);
     const events: unknown[] = [];
     consultation.onResolve((e) => events.push(e));
-    const thread = consultation.announceWork({
+    const thread = consultation.announceWork("default", {
       agent_id: "a1", subject: "B2 single-emit", target_modules: ["src/auth"], target_files: [],
     });
     const db = getDb();
@@ -91,7 +91,7 @@ describe("B2 fix - timeout sweeper as background worker (no read side-effect)", 
     registry.register("default", "a2", "Agent B", ["src/auth"]);
     const events: unknown[] = [];
     consultation.onResolve((e) => events.push(e));
-    const thread = consultation.announceWork({
+    const thread = consultation.announceWork("default", {
       agent_id: "a1", subject: "B2 bg sweeper", target_modules: ["src/auth"], target_files: [],
     });
     const db = getDb();
@@ -104,8 +104,7 @@ describe("B2 fix - timeout sweeper as background worker (no read side-effect)", 
 
     expect(events.length).toBeGreaterThanOrEqual(1);
     expect(events.length).toBeLessThanOrEqual(1); // exactly 1, not double-emitted across ticks
-    const updated = consultation.getThread(thread.id);
+    const updated = consultation.getThread("default", thread.id);
     expect(updated!.status).toBe("resolved");
   });
 });
-

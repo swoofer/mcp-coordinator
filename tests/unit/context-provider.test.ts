@@ -40,7 +40,7 @@ afterAll(() => {
 describe("SummaryContextProvider", () => {
   it("returns context for agent with matching modules", () => {
     registry.register("default", "a1", "Agent A", ["src/auth"]);
-    consultation.logActionSummary({
+    consultation.logActionSummary("default", {
       session_id: "s1",
       agent_id: "a1",
       file_path: "src/auth/middleware.ts",

@@ -100,7 +100,7 @@ function seedScale(): { org_id: string; agent_id: string; target_modules: string
     const targetFiles = isRecent
       ? ["src/shared/types-0.ts"]
       : [`src/mod-${t % 50}/old-file-${t}.ts`];
-    const thread = consultation.announceWork({
+    const thread = consultation.announceWork("default", {
       agent_id: initiator,
       subject: `Old work ${t}`,
       target_modules: [`src/mod-${t % 50}`],

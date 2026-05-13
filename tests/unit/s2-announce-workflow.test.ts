@@ -27,7 +27,7 @@ afterEach(() => {
 describe("S2 fix - runCommonAnnounceFlow extracts shared orchestration", () => {
   it("auto-resolves when initiator is alone", () => {
     services.registry.register("default", "a1", "Agent A", ["src/auth"]);
-    const thread = services.consultation.announceWork({
+    const thread = services.consultation.announceWork("default", {
       agent_id: "a1", subject: "alone", target_modules: ["src/auth"], target_files: [],
     });
     const result = runCommonAnnounceFlow(services, thread.id, {
@@ -43,12 +43,12 @@ describe("S2 fix - runCommonAnnounceFlow extracts shared orchestration", () => {
     services.registry.register("default", "a2", "Agent B", ["src/auth"]);
     // First, a2 announces work on a file — this populates file_activity so
     // a1's subsequent announce sees the overlap as Layer 0 (score 100 = concerned).
-    services.consultation.announceWork({
+    services.consultation.announceWork("default", {
       agent_id: "a2", subject: "a2 first", target_modules: ["src/auth"], target_files: ["src/auth/types.ts"],
       keep_open: true, // keep open so we can match against it
     });
 
-    const thread = services.consultation.announceWork({
+    const thread = services.consultation.announceWork("default", {
       agent_id: "a1", subject: "a1 then", target_modules: ["src/auth"], target_files: ["src/auth/types.ts"],
     });
     const result = runCommonAnnounceFlow(services, thread.id, {
@@ -65,7 +65,7 @@ describe("S2 fix - runCommonAnnounceFlow extracts shared orchestration", () => {
     const events: { type: string; payload: string }[] = [];
     services.sseEmitter.addListener((e) => events.push({ type: e.type, payload: e.payload }));
 
-    const thread = services.consultation.announceWork({
+    const thread = services.consultation.announceWork("default", {
       agent_id: "a1", subject: "scored", target_modules: ["src/auth"], target_files: [],
     });
     runCommonAnnounceFlow(services, thread.id, {
@@ -80,7 +80,7 @@ describe("S2 fix - runCommonAnnounceFlow extracts shared orchestration", () => {
 
   it("does not auto-resolve when keep_open=true even if alone", () => {
     services.registry.register("default", "a1", "Agent A", ["src/auth"]);
-    const thread = services.consultation.announceWork({
+    const thread = services.consultation.announceWork("default", {
       agent_id: "a1", subject: "keep", target_modules: ["src/auth"], target_files: [], keep_open: true,
     });
     const result = runCommonAnnounceFlow(services, thread.id, {
@@ -91,7 +91,7 @@ describe("S2 fix - runCommonAnnounceFlow extracts shared orchestration", () => {
 
   it("returns plan quality assessment", () => {
     services.registry.register("default", "a1", "Agent A", ["src/auth"]);
-    const thread = services.consultation.announceWork({
+    const thread = services.consultation.announceWork("default", {
       agent_id: "a1", subject: "with plan", plan: "do something", target_modules: ["src/auth"], target_files: [],
     });
     const result = runCommonAnnounceFlow(services, thread.id, {
@@ -106,7 +106,7 @@ describe("S2 fix - runCommonAnnounceFlow extracts shared orchestration", () => {
     const events: { type: string; payload: string }[] = [];
     services.sseEmitter.addListener((e) => events.push({ type: e.type, payload: e.payload }));
 
-    const thread = services.consultation.announceWork({
+    const thread = services.consultation.announceWork("default", {
       agent_id: "a1", subject: "vague", plan: "do thing", target_modules: ["src/auth"], target_files: [],
     });
     runCommonAnnounceFlow(services, thread.id, {

@@ -116,9 +116,10 @@ export class ImpactScorer {
     let activeThreadsByAgent: Map<string, ThreadLike[]> | null = null;
     if (this.consultation) {
       const allActive = [
-        ...this.consultation.listThreads({ status: "open" }),
-        ...this.consultation.listThreads({ status: "resolving" }),
-        ...this.consultation.listThreads({ status: "resolved", since_minutes: LAYER_0_WINDOW_MINUTES }),
+        // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
+        ...this.consultation.listThreads(params.org_id, { status: "open" }),
+        ...this.consultation.listThreads(params.org_id, { status: "resolving" }),
+        ...this.consultation.listThreads(params.org_id, { status: "resolved", since_minutes: LAYER_0_WINDOW_MINUTES }),
       ];
       // Group by initiator_id so the per-agent loop is O(threads-for-this-agent)
       // rather than O(all-active-threads). Avoids an outer-product scan over

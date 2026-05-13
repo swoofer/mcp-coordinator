@@ -24,7 +24,7 @@ export class ConflictDetector {
   }): ConflictReport[] {
     const conflicts: ConflictReport[] = [];
     // Include open, resolving, and recently resolved (auto-quorum) threads — exclude only cancelled
-    const allThreads = this.consultation.listThreads({});
+    const allThreads = this.consultation.listThreads(params.org_id, {});
     const activeThreads = allThreads.filter((t) => t.status !== "cancelled");
 
     for (const thread of activeThreads) {

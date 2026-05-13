@@ -38,7 +38,7 @@ describe("IntrospectionManager", () => {
   it("creates and retrieves an introspection", () => {
     registry.register("default", "a1", "Agent A", ["src/auth"]);
     registry.register("default", "a2", "Agent B", ["src/shared"]);
-    const thread = consultation.announceWork({
+    const thread = consultation.announceWork("default", {
       agent_id: "a1", subject: "test", target_modules: ["src/shared"], target_files: [],
     });
     const intro = introspection.create({
@@ -51,7 +51,7 @@ describe("IntrospectionManager", () => {
   it("responds as concerned", () => {
     registry.register("default", "a1", "Agent A", ["src/auth"]);
     registry.register("default", "a2", "Agent B", ["src/shared"]);
-    const thread = consultation.announceWork({
+    const thread = consultation.announceWork("default", {
       agent_id: "a1", subject: "test", target_modules: ["src/shared"], target_files: [],
     });
     const intro = introspection.create({
@@ -67,7 +67,7 @@ describe("IntrospectionManager", () => {
   it("responds as not concerned", () => {
     registry.register("default", "a1", "Agent A", ["src/auth"]);
     registry.register("default", "a2", "Agent B", ["src/shared"]);
-    const thread = consultation.announceWork({
+    const thread = consultation.announceWork("default", {
       agent_id: "a1", subject: "test", target_modules: ["src/shared"], target_files: [],
     });
     const intro = introspection.create({
@@ -81,7 +81,7 @@ describe("IntrospectionManager", () => {
   it("lists pending introspections for an agent", () => {
     registry.register("default", "a1", "Agent A", ["src/auth"]);
     registry.register("default", "a2", "Agent B", ["src/shared"]);
-    const thread = consultation.announceWork({
+    const thread = consultation.announceWork("default", {
       agent_id: "a1", subject: "test", target_modules: ["src/shared"], target_files: [],
     });
     introspection.create({ thread_id: thread.id, agent_id: "a2", score: 40, reasons: ["overlap"] });
@@ -94,7 +94,7 @@ describe("IntrospectionManager", () => {
     registry.register("default", "a1", "Agent A", ["src/auth"]);
     registry.register("default", "a2", "Agent B", ["src/shared"]);
     registry.register("default", "a3", "Agent C", ["src/users"]);
-    const thread = consultation.announceWork({
+    const thread = consultation.announceWork("default", {
       agent_id: "a1", subject: "test", target_modules: ["src/shared"], target_files: [],
     });
     introspection.create({ thread_id: thread.id, agent_id: "a2", score: 45, reasons: ["overlap"] });
