@@ -13,7 +13,7 @@ const __dirname = path.dirname(__filename);
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createServices, createMcpServer, CoordinatorServices } from "./server-setup.js";
 import { createLogger, type Logger } from "./logger.js";
-import { initAuth, authenticateRequest, createToken, refreshToken, revokeAgent, setAuthLogger, verifyToken, type AuthResult, type AuthRole } from "./auth.js";
+import { initAuth, authenticateRequest, createToken, refreshToken, revokeAgent, setAuthLogger, verifyToken, type AuthResult, type AuthRole, type AuthClaims } from "./auth.js";
 import { canResetDb } from "./reset-guard.js";
 import { safeJoinUnderRoot } from "./path-guard.js";
 import { handleRest as handleRestExt, type RestContext } from "./http/handle-rest.js";
@@ -84,11 +84,13 @@ function safeEqual(a: string, b: string): boolean {
 // startServer's call site stable while the 382-line REST router lives in its
 // own module. currentRunConfig stays here as the single mutable owner; the
 // extracted function reads/writes via getRunConfig/setRunConfig accessors.
-async function handleRest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+// claims: always populated by the caller (synthetic legacy claims when AUTH_ENABLED=false).
+async function handleRest(req: IncomingMessage, res: ServerResponse, claims: AuthClaims): Promise<void> {
   const ctx: RestContext = {
     services,
     httpLog,
     authEnabled: AUTH_ENABLED,
+    claims,
     getRunConfig: () => currentRunConfig,
     setRunConfig: (cfg) => { currentRunConfig = cfg; },
   };
@@ -438,19 +440,19 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
           json(res, { error: "Session not found. Send a request without mcp-session-id to start a new session." }, 404);
         }
       } else {
-        // Auth guard for protected routes
-        if (AUTH_ENABLED) {
-          const authResult = await authenticateRequest(req, { authEnabled: AUTH_ENABLED });
-          if (!authResult.ok) {
-            authLog.warn({ reason: authResult.error, url, ip: req.socket.remoteAddress }, "Auth rejected");
-            services.metrics.recordAuthRejected();
-            jsonAuthError(res, authResult);
-            return;
-          }
+        // Always authenticate — under AUTH_ENABLED=false this returns synthetic legacy claims
+        // so handlers can always read claims.org. Required for Tasks 15-19 which scope every
+        // database query by claims.org.
+        const authResult = await authenticateRequest(req, { authEnabled: AUTH_ENABLED });
+        if (!authResult.ok) {
+          authLog.warn({ reason: authResult.error, url, ip: req.socket.remoteAddress }, "Auth rejected");
+          services.metrics.recordAuthRejected();
+          jsonAuthError(res, authResult);
+          return;
         }
 
         if (url.startsWith("/api/") && (req.method === "POST" || req.method === "GET")) {
-          await handleRest(req, res);
+          await handleRest(req, res, authResult.claims);
           services.metrics.recordHttpRequest((url.split("?")[0] || ""), res.statusCode || 0);
         } else {
           json(res, { error: "not found" }, 404);

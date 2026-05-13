@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "http";
 import type { CoordinatorServices } from "../server-setup.js";
 import type { Logger } from "../logger.js";
+import type { AuthClaims } from "../auth.js";
 import { createHash } from "crypto";
 import { getDb } from "../database.js";
 import { runCommonAnnounceFlow } from "../announce-workflow.js";
@@ -25,6 +26,8 @@ export interface RestContext {
   services: CoordinatorServices;
   httpLog: Logger;
   authEnabled: boolean;
+  /** Authenticated identity for this request. Synthetic legacy claims when AUTH_ENABLED=false and no Bearer. */
+  claims: AuthClaims;
   getRunConfig: () => Record<string, unknown> | null;
   setRunConfig: (cfg: Record<string, unknown> | null) => void;
 }
