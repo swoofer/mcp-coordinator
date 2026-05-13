@@ -19,7 +19,7 @@ import { safeJoinUnderRoot } from "./path-guard.js";
 import { handleRest as handleRestExt, type RestContext } from "./http/handle-rest.js";
 import { handleLivez, handleReadyz, handleHealth } from "./http/handle-health.js";
 import { serveMetrics } from "./metrics.js";
-import { parseBody as parseBodyShared, json as jsonShared } from "./http/utils.js";
+import { parseBody as parseBodyShared, json as jsonShared, jsonAuthError as jsonAuthErrorShared } from "./http/utils.js";
 import { assessPlanQuality } from "./plan-quality.js";
 import type { CoordinatorEvent } from "./types.js";
 import { getVersion } from "../cli/version.js";
@@ -64,6 +64,7 @@ let currentRunConfig: Record<string, unknown> | null = null;
 // startServer) can keep using `parseBody` / `json` without changes.
 const parseBody = parseBodyShared;
 const json = jsonShared;
+const jsonAuthError = jsonAuthErrorShared;
 
 function decodeJwtPayload(token: string): Record<string, unknown> {
   // Used only on tokens we just minted ourselves (to read the `exp` claim
@@ -152,7 +153,7 @@ async function handleAuth(req: IncomingMessage, res: ServerResponse): Promise<vo
   } else if (url === "/api/auth/revoke" && req.method === "POST") {
     const authResult = await authenticateRequest(req);
     if (!authResult.ok) {
-      json(res, { error: authResult.error }, authResult.status);
+      jsonAuthError(res, authResult);
       return;
     }
 
@@ -410,7 +411,7 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
             const authResult = await authenticateRequest(req);
             if (!authResult.ok) {
               authLog.warn({ reason: authResult.error, url, ip: req.socket.remoteAddress }, "Auth rejected");
-              json(res, { error: authResult.error }, authResult.status);
+              jsonAuthError(res, authResult);
               return;
             }
             authenticatedAgent = authResult.claims.sub;
@@ -443,7 +444,7 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
           if (!authResult.ok) {
             authLog.warn({ reason: authResult.error, url, ip: req.socket.remoteAddress }, "Auth rejected");
             services.metrics.recordAuthRejected();
-            json(res, { error: authResult.error }, authResult.status);
+            jsonAuthError(res, authResult);
             return;
           }
         }

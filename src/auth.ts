@@ -142,12 +142,17 @@ const ADMIN_ONLY_ROUTES = ["/api/auth/revoke", "/api/reset"];
 
 export type AuthResult =
   | { ok: true; claims: AuthClaims }
-  | { ok: false; status: 401 | 403; error: string };
+  | { ok: false; status: 401 | 403; error: string; wwwAuthenticate?: string };
 
 export async function authenticateRequest(req: IncomingMessage): Promise<AuthResult> {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return { ok: false, status: 401, error: "Missing or invalid Authorization header" };
+    return {
+      ok: false,
+      status: 401,
+      error: "Missing or invalid Authorization header",
+      wwwAuthenticate: 'Bearer realm="mcp-coordinator", error="invalid_token"',
+    };
   }
 
   const token = authHeader.slice(7);
@@ -156,7 +161,13 @@ export async function authenticateRequest(req: IncomingMessage): Promise<AuthRes
     claims = await verifyToken(token);
   } catch (err) {
     log.error({ err }, "JWT verification error");
-    return { ok: false, status: 401, error: "Invalid or expired token" };
+    const isExpired = err instanceof errors.JWTExpired;
+    return {
+      ok: false,
+      status: 401,
+      error: isExpired ? "Token expired" : "Invalid or expired token",
+      wwwAuthenticate: `Bearer realm="mcp-coordinator", error="${isExpired ? "expired_token" : "invalid_token"}"`,
+    };
   }
 
   if (isRevoked(claims.sub)) {

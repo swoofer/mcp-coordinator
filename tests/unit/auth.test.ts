@@ -113,6 +113,10 @@ function mockRequest(headers: Record<string, string> = {}, url = "/api/register"
 }
 
 describe("authenticateRequest guard", () => {
+  beforeAll(() => {
+    initAuth("test-secret-at-least-32-characters-long!");
+  });
+
   it("rejects request without Authorization header", async () => {
     const result = await authenticateRequest(mockRequest());
     expect(result.ok).toBe(false);
@@ -158,6 +162,25 @@ describe("authenticateRequest guard", () => {
     const result = await authenticateRequest(mockRequest({ authorization: `Bearer ${token}` }));
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.status).toBe(403);
+  });
+
+  it("populates WWW-Authenticate on 401 for missing Bearer", async () => {
+    const result = await authenticateRequest(mockRequest());
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.wwwAuthenticate).toMatch(/Bearer realm="mcp-coordinator"/);
+      expect(result.wwwAuthenticate).toMatch(/error="invalid_token"/);
+    }
+  });
+
+  it("populates WWW-Authenticate with error=expired_token on expired JWT", async () => {
+    const expiredToken = await createToken("agent-exp", "agent", "0s");
+    await new Promise((r) => setTimeout(r, 1100));
+    const result = await authenticateRequest(mockRequest({ authorization: `Bearer ${expiredToken}` }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.wwwAuthenticate).toMatch(/error="expired_token"/);
+    }
   });
 });
 
