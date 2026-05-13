@@ -46,7 +46,8 @@ export function registerAgentTools(
       currentFile: current_file || null,
       currentThread: current_thread || null,
     });
-    const activity = activityTracker.getActivity(agent_id);
+    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
+    const activity = activityTracker.getActivity("default", agent_id);
     sseEmitter.emit("agent_activity", {
       agent_id, activity_status: activity.activity_status,
       current_file: activity.current_file, current_thread: activity.current_thread,
@@ -55,7 +56,8 @@ export function registerAgentTools(
   });
 
   server.tool("agent_activity", "Get activity status for all online agents", {}, async () => {
-    const activities = activityTracker.listAll({ idleAfterMinutes: 5 });
+    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
+    const activities = activityTracker.listAll("default", { idleAfterMinutes: 5 });
     return { content: [{ type: "text", text: JSON.stringify(activities) }] };
   });
 }

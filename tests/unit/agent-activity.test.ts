@@ -33,7 +33,7 @@ describe("AgentActivityTracker", () => {
   // -- Core status transitions --
 
   it("new agent starts as idle", () => {
-    const activity = tracker.getActivity("a1");
+    const activity = tracker.getActivity("default", "a1");
     expect(activity.activity_status).toBe("idle");
     expect(activity.current_file).toBeNull();
     expect(activity.current_thread).toBeNull();
@@ -41,14 +41,14 @@ describe("AgentActivityTracker", () => {
 
   it("transitions to working when file activity reported", () => {
     tracker.reportFileActivity("default", "a1", "src/auth/login.ts");
-    const activity = tracker.getActivity("a1");
+    const activity = tracker.getActivity("default", "a1");
     expect(activity.activity_status).toBe("working");
     expect(activity.current_file).toBe("src/auth/login.ts");
   });
 
   it("transitions to waiting when thread is open", () => {
     tracker.reportWaiting("a1", "thread-123");
-    const activity = tracker.getActivity("a1");
+    const activity = tracker.getActivity("default", "a1");
     expect(activity.activity_status).toBe("waiting");
     expect(activity.current_thread).toBe("thread-123");
   });
@@ -56,7 +56,7 @@ describe("AgentActivityTracker", () => {
   it("transitions back to working after waiting", () => {
     tracker.reportWaiting("a1", "thread-123");
     tracker.reportFileActivity("default", "a1", "src/auth/login.ts");
-    const activity = tracker.getActivity("a1");
+    const activity = tracker.getActivity("default", "a1");
     expect(activity.activity_status).toBe("working");
     expect(activity.current_thread).toBeNull();
   });
@@ -64,7 +64,7 @@ describe("AgentActivityTracker", () => {
   it("transitions to offline when agent goes offline", () => {
     tracker.reportFileActivity("default", "a1", "src/auth/login.ts");
     tracker.reportOffline("default", "a1");
-    const activity = tracker.getActivity("a1");
+    const activity = tracker.getActivity("default", "a1");
     expect(activity.activity_status).toBe("offline");
     expect(activity.current_file).toBeNull();
     expect(activity.current_thread).toBeNull();
@@ -76,7 +76,7 @@ describe("AgentActivityTracker", () => {
     const db = getDb();
     db.prepare("UPDATE agent_activity_status SET last_activity_at = datetime('now', '-10 minutes') WHERE agent_id = ?")
       .run("a1");
-    const activity = tracker.getActivity("a1", { idleAfterMinutes: 5 });
+    const activity = tracker.getActivity("default", "a1", { idleAfterMinutes: 5 });
     expect(activity.activity_status).toBe("idle");
   });
 
@@ -84,20 +84,20 @@ describe("AgentActivityTracker", () => {
 
   it("heartbeat updates last_activity_at and current state", () => {
     tracker.heartbeat("a1", { currentFile: "src/auth/login.ts", currentThread: null });
-    const activity = tracker.getActivity("a1");
+    const activity = tracker.getActivity("default", "a1");
     expect(activity.activity_status).toBe("working");
     expect(activity.current_file).toBe("src/auth/login.ts");
   });
 
   it("heartbeat with no file and no thread -> idle", () => {
     tracker.heartbeat("a1", { currentFile: null, currentThread: null });
-    const activity = tracker.getActivity("a1");
+    const activity = tracker.getActivity("default", "a1");
     expect(activity.activity_status).toBe("idle");
   });
 
   it("heartbeat with thread and no file -> waiting", () => {
     tracker.heartbeat("a1", { currentFile: null, currentThread: "thread-456" });
-    const activity = tracker.getActivity("a1");
+    const activity = tracker.getActivity("default", "a1");
     expect(activity.activity_status).toBe("waiting");
     expect(activity.current_thread).toBe("thread-456");
   });
@@ -107,7 +107,7 @@ describe("AgentActivityTracker", () => {
   it("listAll returns activity for all online agents", () => {
     tracker.reportFileActivity("default", "a1", "src/auth/login.ts");
     tracker.reportWaiting("a2", "thread-789");
-    const all = tracker.listAll();
+    const all = tracker.listAll("default");
     expect(all).toHaveLength(2);
     const a1 = all.find((a) => a.agent_id === "a1");
     const a2 = all.find((a) => a.agent_id === "a2");
@@ -117,14 +117,14 @@ describe("AgentActivityTracker", () => {
 
   it("listAll includes idle agents with no activity record", () => {
     // a1 and a2 are online but have no activity recorded
-    const all = tracker.listAll();
+    const all = tracker.listAll("default");
     expect(all).toHaveLength(2);
     expect(all.every((a) => a.activity_status === "idle")).toBe(true);
   });
 
   it("listAll excludes offline agents", () => {
     registry.setOffline("default", "a2");
-    const all = tracker.listAll();
+    const all = tracker.listAll("default");
     expect(all).toHaveLength(1);
     expect(all[0].agent_id).toBe("a1");
   });
@@ -132,21 +132,21 @@ describe("AgentActivityTracker", () => {
   // -- Edge cases --
 
   it("getActivity for unknown agent returns offline", () => {
-    const activity = tracker.getActivity("unknown-agent");
+    const activity = tracker.getActivity("default", "unknown-agent");
     expect(activity.activity_status).toBe("offline");
   });
 
   it("reportFileActivity updates current_file on repeated calls", () => {
     tracker.reportFileActivity("default", "a1", "src/auth/login.ts");
     tracker.reportFileActivity("default", "a1", "src/auth/validate.ts");
-    const activity = tracker.getActivity("a1");
+    const activity = tracker.getActivity("default", "a1");
     expect(activity.current_file).toBe("src/auth/validate.ts");
   });
 
   it("preserves activity across heartbeats", () => {
     tracker.reportFileActivity("default", "a1", "src/auth/login.ts");
     tracker.heartbeat("a1", { currentFile: "src/auth/login.ts", currentThread: null });
-    const activity = tracker.getActivity("a1");
+    const activity = tracker.getActivity("default", "a1");
     expect(activity.activity_status).toBe("working");
     expect(activity.last_activity_at).toBeDefined();
   });
@@ -154,7 +154,7 @@ describe("AgentActivityTracker", () => {
   it("stays working when activity is recent (not timed out)", () => {
     tracker.reportFileActivity("default", "a1", "src/auth/login.ts");
     // Don't backdate -- activity just happened
-    const activity = tracker.getActivity("a1", { idleAfterMinutes: 5 });
+    const activity = tracker.getActivity("default", "a1", { idleAfterMinutes: 5 });
     expect(activity.activity_status).toBe("working");
   });
 });

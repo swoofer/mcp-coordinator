@@ -73,16 +73,15 @@ export class AgentActivityTracker {
     ).all(orgId) as AgentActivity[];
   }
 
-  /** Get activity for a single agent, with optional idle timeout */
-  getActivity(agentId: string, options?: GetActivityOptions): AgentActivity {
-    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window - single-tenant only)
-    const agent = this.registry.get("default", agentId);
+  /** Get activity for a single agent, with optional idle timeout (org-scoped) */
+  getActivity(orgId: string, agentId: string, options?: GetActivityOptions): AgentActivity {
+    const agent = this.registry.get(orgId, agentId);
     if (!agent || agent.status === "offline") {
       return { agent_id: agentId, activity_status: "offline", current_file: null, current_thread: null, last_activity_at: new Date().toISOString() };
     }
 
     const db = getDb();
-    const row = db.prepare("SELECT * FROM agent_activity_status WHERE org_id = 'default' AND agent_id = ?").get(agentId) as AgentActivity | undefined;
+    const row = db.prepare("SELECT * FROM agent_activity_status WHERE org_id = ? AND agent_id = ?").get(orgId, agentId) as AgentActivity | undefined;
 
     if (!row) {
       return { agent_id: agentId, activity_status: "idle", current_file: null, current_thread: null, last_activity_at: new Date().toISOString() };
@@ -100,11 +99,10 @@ export class AgentActivityTracker {
     return row;
   }
 
-  /** List activity for all online agents */
-  listAll(options?: GetActivityOptions): AgentActivity[] {
-    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window - single-tenant only)
-    const onlineAgents = this.registry.listOnline("default");
-    return onlineAgents.map((agent) => this.getActivity(agent.id, options));
+  /** List activity for all online agents in an org */
+  listAll(orgId: string, options?: GetActivityOptions): AgentActivity[] {
+    const onlineAgents = this.registry.listOnline(orgId);
+    return onlineAgents.map((agent) => this.getActivity(orgId, agent.id, options));
   }
 
   // -- Private --

@@ -405,7 +405,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
     if (!agent) {
       json(res, { registered: false, status: "unknown" });
     } else {
-      const activity = activityTracker.getActivity(aid, { idleAfterMinutes: 5 });
+      const activity = activityTracker.getActivity(ctx.claims.org, aid, { idleAfterMinutes: 5 });
       json(res, { registered: true, status: agent.status, activity: activity.activity_status });
     }
 
