@@ -45,7 +45,8 @@ export function registerConsultationTools(
   }, async ({ agent_id, subject, plan, target_modules, target_files, depends_on_files, exports_affected, keep_open, assigned_to, target_symbols }) => {
     mcpLog.info({ tool: "announce_work", agent_id, subject, target_modules, target_files, assigned_to }, "Tool called");
 
-    const conflicts = conflictDetector.detect({ agent_id, target_modules, target_files });
+    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
+    const conflicts = conflictDetector.detect({ org_id: "default", agent_id, target_modules, target_files });
     const thread = consultation.announceWork({
       agent_id, subject, plan, target_modules, target_files, depends_on_files, exports_affected, keep_open, assigned_to,
     });
@@ -54,7 +55,7 @@ export function registerConsultationTools(
         .run(JSON.stringify(conflicts), thread.id);
     }
 
-    // TODO(Task 19d): thread real org_id into MCP tool context; for now MCP uses 'default'
+    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
     const { updated, categorized, respondents, planQuality } = runCommonAnnounceFlow(services, thread.id, {
       org_id: "default", agent_id, subject, plan, target_modules, target_files, depends_on_files, exports_affected, keep_open, target_symbols,
     });

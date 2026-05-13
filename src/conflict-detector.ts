@@ -17,7 +17,7 @@ export class ConflictDetector {
   }
 
   detect(params: {
-    org_id?: string;
+    org_id: string;
     agent_id: string;
     target_modules: string[];
     target_files: string[];
@@ -102,10 +102,8 @@ export class ConflictDetector {
     }
 
     // 4. Hot file overlap (from actual file activity, not just declared files)
-    // TODO(Task 19d): org_id defaults to 'default' for conflict-detector callers that don't yet pass it
-    const orgId = params.org_id ?? "default";
     for (const targetFile of params.target_files) {
-      const activity = this.fileTracker.checkFileConflict(orgId, targetFile, params.agent_id, 60);
+      const activity = this.fileTracker.checkFileConflict(params.org_id, targetFile, params.agent_id, 60);
       if (activity.conflict) {
         for (const otherAgent of activity.agents) {
           // Avoid duplicating with file_overlap already detected

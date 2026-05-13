@@ -290,6 +290,7 @@ describe("Integration: Conflict Detection + Dependencies", () => {
     });
 
     const conflicts = conflictDetector.detect({
+      org_id: "default",
       agent_id: "agent-a",
       target_modules: ["src/shared"],
       target_files: [],
@@ -315,6 +316,7 @@ describe("Integration: Conflict Detection + Dependencies", () => {
     });
 
     const conflicts = conflictDetector.detect({
+      org_id: "default",
       agent_id: "agent-a",
       target_modules: ["src/auth"],
       target_files: [],

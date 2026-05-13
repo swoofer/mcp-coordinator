@@ -17,7 +17,7 @@ export function registerFilesTools(
   server.tool("hot_files", "List files modified by multiple agents", {
     since_minutes: z.number().optional(),
   }, async ({ since_minutes }) => {
-    // TODO(Task 19d): thread real org_id into MCP tool context; for now MCP uses 'default'
+    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
     const files = fileTracker.getHotFiles("default", since_minutes || 30);
     return { content: [{ type: "text", text: JSON.stringify(files) }] };
   });
@@ -25,7 +25,7 @@ export function registerFilesTools(
   server.tool("get_session_files", "Get files modified in a session", {
     session_id: z.string(),
   }, async ({ session_id }) => {
-    // TODO(Task 19d): thread real org_id into MCP tool context; for now MCP uses 'default'
+    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
     const files = fileTracker.getBySession("default", session_id);
     return { content: [{ type: "text", text: JSON.stringify(files) }] };
   });
@@ -35,7 +35,7 @@ export function registerFilesTools(
     agent_id: z.string(),
     within_minutes: z.number().optional(),
   }, async ({ file_path, agent_id, within_minutes }) => {
-    // TODO(Task 19d): thread real org_id into MCP tool context; for now MCP uses 'default'
+    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
     const result = fileTracker.checkFileConflict("default", file_path, agent_id, within_minutes || 30);
     return { content: [{ type: "text", text: JSON.stringify(result) }] };
   });

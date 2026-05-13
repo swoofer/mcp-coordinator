@@ -18,7 +18,7 @@ export function registerStatusTools(
     const online = registry.listOnline();
     const openThreads = consultation.listThreads({ status: "open" });
     const resolvingThreads = consultation.listThreads({ status: "resolving" });
-    // TODO(Task 19d): thread real org_id into MCP tool context; for now MCP uses 'default'
+    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
     const hotFiles = fileTracker.getHotFiles("default", 30);
     const status = {
       agents_online: online.length,

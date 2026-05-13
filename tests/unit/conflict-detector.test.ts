@@ -54,6 +54,7 @@ describe("ConflictDetector", () => {
       target_files: [],
     });
     const conflicts = detector.detect({
+      org_id: "default",
       agent_id: "a1",
       target_modules: ["src/auth"],
       target_files: [],
@@ -69,6 +70,7 @@ describe("ConflictDetector", () => {
       target_files: ["src/shared/types.ts"],
     });
     const conflicts = detector.detect({
+      org_id: "default",
       agent_id: "a1",
       target_modules: ["src/shared"],
       target_files: ["src/shared/types.ts"],
@@ -88,6 +90,7 @@ describe("ConflictDetector", () => {
       target_files: [],
     });
     const conflicts = detector.detect({
+      org_id: "default",
       agent_id: "a1",
       target_modules: ["src/auth"],
       target_files: [],
@@ -103,6 +106,7 @@ describe("ConflictDetector", () => {
       target_files: ["src/users/service.ts"],
     });
     const conflicts = detector.detect({
+      org_id: "default",
       agent_id: "a1",
       target_modules: ["src/auth"],
       target_files: ["src/auth/middleware.ts"],
@@ -119,6 +123,7 @@ describe("ConflictDetector", () => {
     });
     consultation.cancelThread(thread.id, "a2", "no longer needed");
     const conflicts = detector.detect({
+      org_id: "default",
       agent_id: "a1",
       target_modules: ["src/auth"],
       target_files: [],
@@ -134,6 +139,7 @@ describe("ConflictDetector", () => {
       target_files: [],
     });
     const conflicts = detector.detect({
+      org_id: "default",
       agent_id: "a1",
       target_modules: ["src/auth"],
       target_files: [],
@@ -151,6 +157,7 @@ describe("ConflictDetector", () => {
       file_path: "src/auth/service.ts",
     });
     const conflicts = detector.detect({
+      org_id: "default",
       agent_id: "a1",
       target_modules: ["src/auth"],
       target_files: ["src/auth/service.ts"],
@@ -171,6 +178,7 @@ describe("ConflictDetector", () => {
       target_files: [],
     });
     const conflicts = detector.detect({
+      org_id: "default",
       agent_id: "a1",
       target_modules: ["src/shared"],
       target_files: [],
@@ -196,6 +204,7 @@ describe("ConflictDetector", () => {
       file_path: "src/shared/types.ts",
     });
     const conflicts = detector.detect({
+      org_id: "default",
       agent_id: "a1",
       target_modules: ["src/shared"],
       target_files: ["src/shared/types.ts"],
@@ -218,6 +227,7 @@ describe("ConflictDetector", () => {
     // a1 targets a module not in the dep map â€” getModuleInfo returns null, should skip gracefully
     expect(() => {
       const conflicts = detector.detect({
+        org_id: "default",
         agent_id: "a1",
         target_modules: ["src/nonexistent"],
         target_files: [],
@@ -245,6 +255,7 @@ describe("ConflictDetector", () => {
 
     // a1 modifies src/core â€” blast radius includes src/shared (direct) and src/auth (indirect)
     const conflicts = detector.detect({
+      org_id: "default",
       agent_id: "a1",
       target_modules: ["src/core"],
       target_files: [],
