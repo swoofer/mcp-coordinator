@@ -917,5 +917,38 @@ describe("consultation org_id scoping", () => {
     expect(() => consultation.proposeResolution("org-b", t.id, "a1", "summary")).toThrow(/not found/i);
     expect(() => consultation.proposeResolution("org-a", t.id, "a1", "summary")).not.toThrow();
   });
+
+  it("approveResolution / contestResolution / cancelThread / closeThread reject cross-org access", () => {
+    // Each state-transition method must refuse to mutate a thread it cannot see.
+    const t = consultation.announceWork("org-a", {
+      agent_id: "a1", subject: "subj", target_modules: [], target_files: [], keep_open: true,
+    });
+    consultation.postToThread("org-a", { thread_id: t.id, agent_id: "a2", type: "context", content: "respond" });
+    consultation.proposeResolution("org-a", t.id, "a1", "summary");
+
+    expect(() => consultation.approveResolution("org-b", t.id, "a2")).toThrow(/not found/i);
+    expect(() => consultation.contestResolution("org-b", t.id, "a2", "no")).toThrow(/not found/i);
+    expect(() => consultation.cancelThread("org-b", t.id, "a1")).toThrow(/not found/i);
+    expect(() => consultation.closeThread("org-b", t.id, "a1", "done")).toThrow(/not found/i);
+
+    // Sanity: same-org calls still work.
+    expect(() => consultation.contestResolution("org-a", t.id, "a2", "no")).not.toThrow();
+  });
+
+  it("getThreadUpdates does not leak messages from other orgs' threads", () => {
+    // org-a has a thread with one message; org-b also opens one with a message.
+    const tA = consultation.announceWork("org-a", { agent_id: "a1", subject: "A", target_modules: [], target_files: [], keep_open: true });
+    consultation.postToThread("org-a", { thread_id: tA.id, agent_id: "a2", type: "context", content: "A-msg" });
+    const tB = consultation.announceWork("org-b", { agent_id: "a3", subject: "B", target_modules: [], target_files: [], keep_open: true });
+    consultation.postToThread("org-b", { thread_id: tB.id, agent_id: "a2", type: "context", content: "B-msg" });
+
+    // a2 is "interested in" both orgs (registered globally), but the org-scoped query must only show one side.
+    const updatesA = consultation.getThreadUpdates("org-a", "a2");
+    const updatesB = consultation.getThreadUpdates("org-b", "a2");
+    const allASubjects = updatesA.map((u) => u.subject);
+    const allBSubjects = updatesB.map((u) => u.subject);
+    expect(allASubjects).not.toContain("B");
+    expect(allBSubjects).not.toContain("A");
+  });
 });
 

@@ -116,7 +116,6 @@ export class ImpactScorer {
     let activeThreadsByAgent: Map<string, ThreadLike[]> | null = null;
     if (this.consultation) {
       const allActive = [
-        // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
         ...this.consultation.listThreads(params.org_id, { status: "open" }),
         ...this.consultation.listThreads(params.org_id, { status: "resolving" }),
         ...this.consultation.listThreads(params.org_id, { status: "resolved", since_minutes: LAYER_0_WINDOW_MINUTES }),
