@@ -15,6 +15,10 @@ beforeAll(() => {
 });
 afterAll(() => { closeDb(); fs.rmSync(DIR, { recursive: true, force: true }); });
 
+// CRITICAL: reset auth state so prevKey doesn't contaminate later test files
+// under vitest's fileParallelism: false. See "Module-state hygiene" in Conventions.
+afterAll(() => { initAuth(SECRET); });
+
 function mockRequest(headers: Record<string, string> = {}, url = "/api/log-file"): IncomingMessage {
   return { headers, url, method: "POST" } as unknown as IncomingMessage;
 }
