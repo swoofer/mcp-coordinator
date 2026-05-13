@@ -1,5 +1,5 @@
 import path from "path";
-import { mkdirSync } from "fs";
+import { mkdirSync, chmodSync } from "fs";
 import { createRequire } from "module";
 import type { DatabaseAdapter } from "./db-adapter.js";
 
@@ -285,6 +285,13 @@ export function initDatabase(dataDir: string): void {
   }
 
   db.exec(SCHEMA);
+
+  // v0.7 security baseline: only owner can read/write the DB file.
+  // Idempotent re-chmod on every boot so existing v0.6 DBs are tightened too.
+  // POSIX-only: chmod is a no-op on Windows (NTFS permissions don't map).
+  try {
+    chmodSync(path.join(dataDir, "coordinator.db"), 0o600);
+  } catch { /* non-POSIX or permission error — log-only would be too noisy */ }
 
   // Migrations for existing databases — columns may already exist
   try { db.exec("ALTER TABLE threads ADD COLUMN claimed_by TEXT"); } catch { /* already exists */ }
