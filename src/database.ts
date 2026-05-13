@@ -389,6 +389,7 @@ export function initDatabase(dataDir: string): void {
       current_file TEXT,
       current_thread TEXT,
       last_activity_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (agent_id) REFERENCES agents(id),
       PRIMARY KEY (org_id, agent_id)
     )`,
     "agent_id, org_id, activity_status, current_file, current_thread, last_activity_at",

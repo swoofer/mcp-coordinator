@@ -44,4 +44,21 @@ describe("composite PK migration", () => {
     expect(rows[0].depends_on).toBe('["a"]');
     expect(rows[1].depends_on).toBe('["b"]');
   });
+
+  it("agent_activity_status: FK to agents(id) is enforced post-migration", () => {
+    const db = getDb();
+    // Insert a valid agent first
+    db.prepare("INSERT OR IGNORE INTO agents (id, org_id, name) VALUES (?, ?, ?)")
+      .run("a-fk-test", "default", "fk-test-agent");
+    // Inserting agent_activity_status with the valid agent should succeed
+    expect(() =>
+      db.prepare("INSERT INTO agent_activity_status (agent_id, org_id, activity_status) VALUES (?, ?, ?)")
+        .run("a-fk-test", "default", "idle")
+    ).not.toThrow();
+    // Inserting agent_activity_status with an unknown agent_id should throw FK violation
+    expect(() =>
+      db.prepare("INSERT INTO agent_activity_status (agent_id, org_id, activity_status) VALUES (?, ?, ?)")
+        .run("nonexistent-agent", "default", "idle")
+    ).toThrow(/FOREIGN KEY/i);
+  });
 });
