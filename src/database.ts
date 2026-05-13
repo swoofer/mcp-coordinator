@@ -183,6 +183,20 @@ const SCHEMA = `
       created_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS users (
+      id              TEXT PRIMARY KEY,
+      org_id          TEXT NOT NULL REFERENCES orgs(id),
+      email           TEXT NOT NULL,
+      name            TEXT,
+      idp_provider    TEXT NOT NULL,
+      idp_user_id     TEXT NOT NULL,
+      role            TEXT NOT NULL DEFAULT 'member',
+      created_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      last_login_at   TEXT,
+      UNIQUE(idp_provider, idp_user_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_users_org ON users(org_id);
+
     INSERT OR IGNORE INTO orgs (id, name) VALUES ('default', 'Default Organization');
 `;
 
