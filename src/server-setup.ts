@@ -70,7 +70,7 @@ export function createServices(config: CoordinatorConfig): CoordinatorServices {
   const conflictDetector = new ConflictDetector(consultation, depMap, fileTracker, logger.child({ component: "conflict" }));
   const contextProvider = new SummaryContextProvider(registry, consultation, fileTracker);
   const sseEmitter = new SseEmitter();
-  const mqttBridge = new MqttBridge(logger.child({ component: "mqtt" }));
+  const mqttBridge = new MqttBridge("default", logger.child({ component: "mqtt" }));
 
   const treeSitter = new TreeSitterExtractor(metrics);
   treeSitter.load().catch(() => { /* errors are logged inside; status() reflects state */ });

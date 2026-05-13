@@ -24,7 +24,7 @@ import { assessPlanQuality } from "./plan-quality.js";
 import type { CoordinatorEvent } from "./types.js";
 import { getVersion } from "../cli/version.js";
 const VERSION = getVersion();
-import { startEmbeddedMqttBroker } from "./mqtt-broker.js";
+import { startEmbeddedMqttBroker, type MqttAuthResult } from "./mqtt-broker.js";
 
 const SERVER_FILE_DIR = path.dirname(__filename);
 
@@ -492,24 +492,24 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
   // B3 fix: when AUTH_ENABLED, gate every MQTT CONNECT by JWT in the password
   // field. Anonymous connections are rejected. Default off (essaim and any
   // client without auth keep working unchanged).
-  const mqttAuth = AUTH_ENABLED
-    ? async (_username: string | undefined, password: Buffer | undefined): Promise<boolean> => {
-        if (!password) return false;
-        try {
-          await verifyToken(password.toString("utf-8"));
-          return true;
-        } catch {
-          return false;
-        }
-      }
-    : undefined;
-
+  // Only install the verifier (and therefore the ACL hooks) when auth is enabled.
+  // Without this guard, AUTH_ENABLED=false would still reject anonymous v0.6
+  // MQTT clients at the authenticate hook, breaking backward compatibility.
   const broker = await startEmbeddedMqttBroker({
     tcpPort: mqttTcpPort,
     httpServer,
     wsPath: mqttWsPath,
     logger: log.child({ component: "mqtt-broker" }),
-    authenticate: mqttAuth,
+    ...(AUTH_ENABLED ? {
+      authenticate: async (_username: string | undefined, password: Buffer | undefined): Promise<MqttAuthResult> => {
+        if (!password) return { ok: false };
+        try {
+          const { verifyTokenStrict } = await import("./auth.js");
+          const { claims } = await verifyTokenStrict(password.toString("utf-8"));
+          return { ok: true as const, org: claims.org };
+        } catch { return { ok: false }; }
+      },
+    } : {}),
   });
 
   // B3: when AUTH_ENABLED, the internal coordinator client must authenticate
