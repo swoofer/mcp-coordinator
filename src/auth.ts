@@ -5,6 +5,7 @@ import { getDb } from "./database.js";
 import { silentLogger, type Logger } from "./logger.js";
 
 let signingKey: Uint8Array;
+let prevKey: Uint8Array | null = null;
 let defaultExpiry = "24h";
 let log: Logger = silentLogger;
 
@@ -27,8 +28,13 @@ export interface CreateTokenOptions {
   org?: string;
 }
 
-export function initAuth(secret: string, expiry?: string): void {
+export interface InitAuthOptions {
+  prevSecret?: string;
+}
+
+export function initAuth(secret: string, expiry?: string, options: InitAuthOptions = {}): void {
   signingKey = new TextEncoder().encode(secret);
+  prevKey = options.prevSecret ? new TextEncoder().encode(options.prevSecret) : null;
   if (expiry) defaultExpiry = expiry;
 }
 
@@ -53,7 +59,16 @@ export async function createToken(
 }
 
 export async function verifyToken(token: string): Promise<AuthClaims> {
-  const { payload } = await jwtVerify(token, signingKey, { algorithms: ["HS256"] });
+  let payload: Awaited<ReturnType<typeof jwtVerify>>["payload"];
+  try {
+    ({ payload } = await jwtVerify(token, signingKey, { algorithms: ["HS256"] }));
+  } catch (err) {
+    if (prevKey && err instanceof errors.JWSSignatureVerificationFailed) {
+      ({ payload } = await jwtVerify(token, prevKey, { algorithms: ["HS256"] }));
+    } else {
+      throw err;
+    }
+  }
   if (!payload.sub) throw new Error("Missing sub claim in token");
   const role = payload.role;
   if (role !== "agent" && role !== "admin" && role !== "member") {
@@ -68,6 +83,8 @@ export async function verifyToken(token: string): Promise<AuthClaims> {
   };
 }
 
+// NOTE: Task 11 will UPDATE this function to use verifyTokenStrict and gate on
+// wasLegacy when AUTH_ENABLED is true (prevents silent v0.6→v0.7 token rotation).
 export async function refreshToken(
   token: string,
   gracePeriod = "1h",
@@ -77,16 +94,25 @@ export async function refreshToken(
     claims = await verifyToken(token);
   } catch (err) {
     if (err instanceof errors.JWTExpired) {
-      const { payload } = await jwtVerify(token, signingKey, {
-        clockTolerance: gracePeriod,
-        algorithms: ["HS256"],
-      });
+      const verifyWith = async (key: Uint8Array) =>
+        jwtVerify(token, key, { clockTolerance: gracePeriod, algorithms: ["HS256"] });
+      let payload: Awaited<ReturnType<typeof jwtVerify>>["payload"];
+      try {
+        ({ payload } = await verifyWith(signingKey));
+      } catch (err2) {
+        if (prevKey && err2 instanceof errors.JWSSignatureVerificationFailed) {
+          ({ payload } = await verifyWith(prevKey));
+        } else {
+          throw err2;
+        }
+      }
       if (!payload.sub) throw new Error("Missing sub claim in token");
       const role = payload.role;
-      if (role !== "agent" && role !== "admin" && role !== "member") throw new Error("Invalid role in token");
+      if (role !== "agent" && role !== "admin" && role !== "member") {
+        throw new Error("Invalid role in token");
+      }
       claims = {
-        sub: payload.sub,
-        role,
+        sub: payload.sub, role,
         user_id: typeof payload.user_id === "string" ? payload.user_id : "legacy",
         org: typeof payload.org === "string" ? payload.org : "default",
         jti: typeof payload.jti === "string" ? payload.jti : randomUUID(),

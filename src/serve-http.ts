@@ -49,6 +49,7 @@ const MQTT_WS_PATH = process.env.COORDINATOR_MQTT_WS_PATH || "/mqtt";
 const AUTH_ENABLED = process.env.COORDINATOR_AUTH_ENABLED === "true";
 const JWT_SECRET = process.env.COORDINATOR_JWT_SECRET || "";
 const JWT_EXPIRY = process.env.COORDINATOR_JWT_EXPIRY || "24h";
+const JWT_PREV_SECRET = process.env.COORDINATOR_JWT_PREV_SECRET || "";
 const REGISTRATION_SECRET = process.env.COORDINATOR_REGISTRATION_SECRET || "";
 const ADMIN_SECRET = process.env.COORDINATOR_ADMIN_SECRET || "";
 
@@ -316,7 +317,7 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
       log.fatal("COORDINATOR_ADMIN_SECRET is required when auth is enabled");
       process.exit(1);
     }
-    initAuth(JWT_SECRET, JWT_EXPIRY);
+    initAuth(JWT_SECRET, JWT_EXPIRY, JWT_PREV_SECRET ? { prevSecret: JWT_PREV_SECRET } : {});
     log.info("Auth enabled (JWT HS256)");
   }
 
