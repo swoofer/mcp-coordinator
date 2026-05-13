@@ -25,7 +25,7 @@ export class DependencyMapper {
     const stmt = db.prepare(
       `INSERT INTO dependency_map (module_id, depends_on, exports, owners)
        VALUES (?, ?, ?, ?)
-       ON CONFLICT(module_id) DO UPDATE SET
+       ON CONFLICT(org_id, module_id) DO UPDATE SET
          depends_on = excluded.depends_on, exports = excluded.exports, owners = excluded.owners`
     );
     withTransaction(db, () => {

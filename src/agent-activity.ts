@@ -81,7 +81,7 @@ export class AgentActivityTracker {
     db.prepare(
       `INSERT INTO agent_activity_status (agent_id, activity_status, current_file, current_thread, last_activity_at)
        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-       ON CONFLICT(agent_id) DO UPDATE SET
+       ON CONFLICT(org_id, agent_id) DO UPDATE SET
          activity_status = excluded.activity_status,
          current_file = excluded.current_file,
          current_thread = excluded.current_thread,

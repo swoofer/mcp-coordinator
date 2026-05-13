@@ -324,6 +324,148 @@ export function initDatabase(dataDir: string): void {
     db.exec("CREATE INDEX IF NOT EXISTS idx_events_org_id ON events(org_id, id)");
   } catch { /* already exists */ }
 
+  // v0.7: SQLite lacks ALTER PRIMARY KEY. Pattern per table:
+  //   1. Create new table with composite PK.
+  //   2. Copy all rows from old to new.
+  //   3. Drop old.
+  //   4. Rename new to old.
+  //   5. Recreate indexes.
+  // Idempotent: skip if the table's PK already includes org_id.
+  function migrateToCompositePK(
+    targetDb: DatabaseAdapter,
+    tableName: string,
+    newCreateSql: string,
+    columnList: string,
+    indexCreateSqls: string[],
+  ): void {
+    // Check if migration already happened by inspecting PK columns
+    const cols = targetDb.prepare(`PRAGMA table_info(${tableName})`).all() as { name: string; pk: number }[];
+    const pkCols = cols.filter((c) => c.pk > 0).map((c) => c.name);
+    if (pkCols.includes("org_id")) return; // already migrated
+
+    // SQLite: FK enforcement blocks DROP TABLE when other tables hold FK refs.
+    // PRAGMA foreign_keys must be toggled OUTSIDE the transaction (it's a no-op
+    // inside an open transaction). The finally block guarantees FKs are re-enabled
+    // even on error to avoid permanent corruption.
+    targetDb.exec("PRAGMA foreign_keys = OFF");
+    try {
+      targetDb.exec("BEGIN");
+      try {
+        targetDb.exec(newCreateSql.replace(tableName, `${tableName}_new`));
+        targetDb.exec(`INSERT INTO ${tableName}_new (${columnList}) SELECT ${columnList} FROM ${tableName}`);
+        targetDb.exec(`DROP TABLE ${tableName}`);
+        targetDb.exec(`ALTER TABLE ${tableName}_new RENAME TO ${tableName}`);
+        for (const idxSql of indexCreateSqls) targetDb.exec(idxSql);
+        targetDb.exec("COMMIT");
+      } catch (e) {
+        targetDb.exec("ROLLBACK");
+        throw e;
+      }
+    } finally {
+      targetDb.exec("PRAGMA foreign_keys = ON");
+    }
+  }
+
+  migrateToCompositePK(db, "agents",
+    `CREATE TABLE agents (
+      id TEXT NOT NULL,
+      org_id TEXT NOT NULL DEFAULT 'default',
+      name TEXT NOT NULL,
+      modules TEXT DEFAULT '[]',
+      status TEXT DEFAULT 'offline',
+      registered_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      last_seen_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (org_id, id)
+    )`,
+    "id, org_id, name, modules, status, registered_at, last_seen_at",
+    ["CREATE UNIQUE INDEX IF NOT EXISTS idx_agents_id ON agents(id)"],
+  );
+
+  migrateToCompositePK(db, "agent_activity_status",
+    `CREATE TABLE agent_activity_status (
+      agent_id TEXT NOT NULL,
+      org_id TEXT NOT NULL DEFAULT 'default',
+      activity_status TEXT DEFAULT 'idle',
+      current_file TEXT,
+      current_thread TEXT,
+      last_activity_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (org_id, agent_id)
+    )`,
+    "agent_id, org_id, activity_status, current_file, current_thread, last_activity_at",
+    [],
+  );
+
+  migrateToCompositePK(db, "revoked_agents",
+    `CREATE TABLE revoked_agents (
+      agent_id TEXT NOT NULL,
+      org_id TEXT NOT NULL DEFAULT 'default',
+      revoked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      revoked_by TEXT NOT NULL,
+      PRIMARY KEY (org_id, agent_id)
+    )`,
+    "agent_id, org_id, revoked_at, revoked_by",
+    [],
+  );
+
+  migrateToCompositePK(db, "working_files",
+    `CREATE TABLE working_files (
+      agent_id TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      org_id TEXT NOT NULL DEFAULT 'default',
+      started_at TEXT NOT NULL,
+      last_activity_at TEXT NOT NULL,
+      claim_until TEXT NOT NULL,
+      PRIMARY KEY (org_id, agent_id, file_path)
+    )`,
+    "agent_id, file_path, org_id, started_at, last_activity_at, claim_until",
+    [
+      "CREATE INDEX IF NOT EXISTS idx_working_files_path  ON working_files(file_path)",
+      "CREATE INDEX IF NOT EXISTS idx_working_files_until ON working_files(claim_until)",
+    ],
+  );
+
+  migrateToCompositePK(db, "dependency_map",
+    `CREATE TABLE dependency_map (
+      module_id TEXT NOT NULL,
+      org_id TEXT NOT NULL DEFAULT 'default',
+      depends_on TEXT DEFAULT '[]',
+      exports TEXT DEFAULT '[]',
+      owners TEXT DEFAULT '[]',
+      PRIMARY KEY (org_id, module_id)
+    )`,
+    "module_id, org_id, depends_on, exports, owners",
+    [],
+  );
+
+  migrateToCompositePK(db, "git_cochange",
+    `CREATE TABLE git_cochange (
+      file_a TEXT NOT NULL,
+      file_b TEXT NOT NULL,
+      org_id TEXT NOT NULL DEFAULT 'default',
+      count INTEGER NOT NULL,
+      total_commits INTEGER NOT NULL,
+      computed_at TEXT NOT NULL,
+      PRIMARY KEY (org_id, file_a, file_b),
+      CHECK (file_a < file_b)
+    )`,
+    "file_a, file_b, org_id, count, total_commits, computed_at",
+    [
+      "CREATE INDEX IF NOT EXISTS idx_cochange_a ON git_cochange(file_a)",
+      "CREATE INDEX IF NOT EXISTS idx_cochange_b ON git_cochange(file_b)",
+    ],
+  );
+
+  migrateToCompositePK(db, "git_cochange_meta",
+    `CREATE TABLE git_cochange_meta (
+      k TEXT NOT NULL,
+      org_id TEXT NOT NULL DEFAULT 'default',
+      v TEXT,
+      PRIMARY KEY (org_id, k)
+    )`,
+    "k, org_id, v",
+    [],
+  );
+
   // v0.7: bump version marker LAST — after every CREATE TABLE and ALTER above succeeded.
   // A crash before this line leaves user_version=6 and the next boot retries the migration
   // (idempotent). Bumping earlier would make a partial migration look complete.

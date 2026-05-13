@@ -35,7 +35,7 @@ export class WorkingFilesTracker {
     db.prepare(
       `INSERT INTO working_files (agent_id, file_path, started_at, last_activity_at, claim_until)
        VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '+' || CAST(? AS TEXT) || ' minutes'))
-       ON CONFLICT(agent_id, file_path) DO UPDATE SET
+       ON CONFLICT(org_id, agent_id, file_path) DO UPDATE SET
          last_activity_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
          claim_until      = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '+' || CAST(? AS TEXT) || ' minutes')`
     ).run(agentId, filePath, ttlMinutes, ttlMinutes);
