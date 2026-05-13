@@ -65,14 +65,14 @@ export class MqttBridge {
         this.connected = true;
         this.log.info({ url: config.url }, "MQTT connected");
 
-        // Subscribe to agent status for LWT detection
+        // All SUBSCRIBE packets must be sent AFTER CONNACK or the broker may
+        // silently drop them under clean:true sessions. Keep the three
+        // subscribes co-located inside this handler.
         this.client!.subscribe(`coordinator/${this.orgId}/agents/+/status`);
+        this.client!.subscribe(`coordinator/${this.orgId}/consultations/#`);
+        this.client!.subscribe(`coordinator/${this.orgId}/broadcast`);
         resolve();
       });
-
-      // Subscribe to consultation topics for agent listeners
-      this.client!.subscribe(`coordinator/${this.orgId}/consultations/#`);
-      this.client!.subscribe(`coordinator/${this.orgId}/broadcast`);
 
       this.client.on("message", (topic, message) => {
         const parts = topic.split("/");
