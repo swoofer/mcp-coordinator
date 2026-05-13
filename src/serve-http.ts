@@ -13,7 +13,7 @@ const __dirname = path.dirname(__filename);
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createServices, createMcpServer, CoordinatorServices } from "./server-setup.js";
 import { createLogger, type Logger } from "./logger.js";
-import { initAuth, authenticateRequest, createToken, refreshToken, revokeAgent, setAuthLogger, verifyToken, type AuthResult } from "./auth.js";
+import { initAuth, authenticateRequest, createToken, refreshToken, revokeAgent, setAuthLogger, verifyToken, type AuthResult, type AuthRole } from "./auth.js";
 import { canResetDb } from "./reset-guard.js";
 import { safeJoinUnderRoot } from "./path-guard.js";
 import { handleRest as handleRestExt, type RestContext } from "./http/handle-rest.js";
@@ -113,7 +113,7 @@ async function handleAuth(req: IncomingMessage, res: ServerResponse): Promise<vo
       return;
     }
 
-    let role: "agent" | "admin" = "agent";
+    let role: AuthRole = "agent";
     if (safeEqual(registration_secret, ADMIN_SECRET)) {
       role = "admin";
     } else if (!safeEqual(registration_secret, REGISTRATION_SECRET)) {

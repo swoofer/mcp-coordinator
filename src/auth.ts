@@ -12,9 +12,19 @@ export function setAuthLogger(logger: Logger): void {
   log = logger;
 }
 
+export type AuthRole = "agent" | "admin" | "member";
+
 export interface AuthClaims {
   sub: string;
-  role: "agent" | "admin";
+  user_id: string;
+  org: string;
+  role: AuthRole;
+  jti: string;
+}
+
+export interface CreateTokenOptions {
+  user_id?: string;
+  org?: string;
 }
 
 export function initAuth(secret: string, expiry?: string): void {
@@ -24,24 +34,38 @@ export function initAuth(secret: string, expiry?: string): void {
 
 export async function createToken(
   agentId: string,
-  role: "agent" | "admin",
+  role: AuthRole,
   expiry?: string,
+  options: CreateTokenOptions = {},
 ): Promise<string> {
-  return new SignJWT({ role })
+  const jti = randomUUID();
+  return new SignJWT({
+    role,
+    user_id: options.user_id ?? agentId,
+    org: options.org ?? "default",
+  })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(agentId)
-    .setJti(randomUUID())
+    .setJti(jti)
     .setIssuedAt()
     .setExpirationTime(expiry || defaultExpiry)
     .sign(signingKey);
 }
 
 export async function verifyToken(token: string): Promise<AuthClaims> {
-  const { payload } = await jwtVerify(token, signingKey);
+  const { payload } = await jwtVerify(token, signingKey, { algorithms: ["HS256"] });
   if (!payload.sub) throw new Error("Missing sub claim in token");
   const role = payload.role;
-  if (role !== "agent" && role !== "admin") throw new Error("Invalid role in token");
-  return { sub: payload.sub, role };
+  if (role !== "agent" && role !== "admin" && role !== "member") {
+    throw new Error("Invalid role in token");
+  }
+  return {
+    sub: payload.sub,
+    role,
+    user_id: typeof payload.user_id === "string" ? payload.user_id : "legacy",
+    org: typeof payload.org === "string" ? payload.org : "default",
+    jti: typeof payload.jti === "string" ? payload.jti : randomUUID(),
+  };
 }
 
 export async function refreshToken(
@@ -58,13 +82,22 @@ export async function refreshToken(
       });
       if (!payload.sub) throw new Error("Missing sub claim in token");
       const role = payload.role;
-      if (role !== "agent" && role !== "admin") throw new Error("Invalid role in token");
-      claims = { sub: payload.sub, role };
+      if (role !== "agent" && role !== "admin" && role !== "member") throw new Error("Invalid role in token");
+      claims = {
+        sub: payload.sub,
+        role,
+        user_id: typeof payload.user_id === "string" ? payload.user_id : "legacy",
+        org: typeof payload.org === "string" ? payload.org : "default",
+        jti: typeof payload.jti === "string" ? payload.jti : randomUUID(),
+      };
     } else {
       throw err;
     }
   }
-  return createToken(claims.sub, claims.role);
+  return createToken(claims.sub, claims.role, undefined, {
+    user_id: claims.user_id,
+    org: claims.org,
+  });
 }
 
 export function isRevoked(agentId: string): boolean {

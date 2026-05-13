@@ -68,6 +68,44 @@ describe("JWT operations", () => {
     expect(claims.sub).toBe("agent-1");
     expect(claims.role).toBe("agent");
   });
+
+  it("createToken includes user_id, org, jti claims", async () => {
+    const token = await createToken("agent-1", "agent");
+    const claims = await verifyToken(token);
+    expect(claims.user_id).toBeDefined();
+    expect(claims.org).toBe("default");
+    expect(claims.jti).toMatch(/^[0-9a-f-]{36}$/); // UUID v4
+  });
+
+  it("createToken accepts new optional user_id and org parameters", async () => {
+    const token = await createToken("agent-1", "agent", undefined, {
+      user_id: "user-abc",
+      org: "acme-corp",
+    });
+    const claims = await verifyToken(token);
+    expect(claims.user_id).toBe("user-abc");
+    expect(claims.org).toBe("acme-corp");
+  });
+
+  it("verifyToken defaults missing user_id/org on legacy tokens (backward compat)", async () => {
+    // Manually mint a v0.6-shaped token (no user_id, no org) using internal jose
+    const { SignJWT } = await import("jose");
+    const key = new TextEncoder().encode("test-secret-at-least-32-characters-long!");
+    const legacyToken = await new SignJWT({ role: "agent" })
+      .setProtectedHeader({ alg: "HS256" })
+      .setSubject("legacy-agent")
+      .setExpirationTime("1h")
+      .sign(key);
+    const claims = await verifyToken(legacyToken);
+    expect(claims.user_id).toBe("legacy");
+    expect(claims.org).toBe("default");
+  });
+
+  it("createToken supports the 'member' role", async () => {
+    const token = await createToken("user-1", "member");
+    const claims = await verifyToken(token);
+    expect(claims.role).toBe("member");
+  });
 });
 
 function mockRequest(headers: Record<string, string> = {}, url = "/api/register"): IncomingMessage {
