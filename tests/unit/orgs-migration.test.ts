@@ -155,3 +155,35 @@ describe("audit_log table", () => {
     expect(names).toContain("idx_audit_action");
   });
 });
+
+describe("ALTER existing tables for org_id", () => {
+  const TABLES_NEEDING_ORG = [
+    "agents", "threads", "thread_messages", "action_summaries",
+    "file_activity", "events", "dependency_map", "introspections",
+    "agent_activity_status", "revoked_agents", "working_files",
+    "git_cochange", "git_cochange_meta", "layer_firings",
+  ];
+
+  it.each(TABLES_NEEDING_ORG)("table %s has org_id column", (table) => {
+    const db = getDb();
+    const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+    const names = cols.map((c) => c.name);
+    expect(names).toContain("org_id");
+  });
+
+  it("inserts default org_id when omitted (DEFAULT 'default')", () => {
+    const db = getDb();
+    db.prepare("INSERT INTO agents (id, name) VALUES (?, ?)").run("a-test", "test-agent");
+    const row = db.prepare("SELECT org_id FROM agents WHERE id = 'a-test'").get() as
+      { org_id: string };
+    expect(row.org_id).toBe("default");
+  });
+});
+
+describe("user_version after migration", () => {
+  it("is 7 after a fresh init", () => {
+    const db = getDb();
+    const row = db.prepare("PRAGMA user_version").get() as { user_version: number };
+    expect(row.user_version).toBe(7);
+  });
+});

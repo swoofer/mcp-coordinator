@@ -303,8 +303,31 @@ export function initDatabase(dataDir: string): void {
   try { db.exec("ALTER TABLE file_activity ADD COLUMN symbols_touched TEXT"); } catch { /* already exists */ }
   try { db.exec("ALTER TABLE file_activity ADD COLUMN content_hash TEXT"); } catch { /* already exists */ }
 
-  // v0.6: schema version marker. Used by cli/server/restore.ts to refuse downgrades.
-  // PRAGMA user_version is set at end of Task 5 — after all migrations succeed.
+  // v0.7: multi-tenant org_id column on every table that participates in scoping.
+  // SQLite lacks online DDL — each ALTER briefly blocks writes. Migration is
+  // idempotent (already-exists is caught silently).
+  // SECURITY: `t` is from a compile-time constant array only — never user input.
+  const TABLES_NEEDING_ORG = [
+    "agents", "threads", "thread_messages", "action_summaries",
+    "file_activity", "events", "dependency_map", "introspections",
+    "agent_activity_status", "revoked_agents", "working_files",
+    "git_cochange", "git_cochange_meta", "layer_firings",
+  ] as const;
+  for (const t of TABLES_NEEDING_ORG) {
+    try {
+      db.exec(`ALTER TABLE ${t} ADD COLUMN org_id TEXT NOT NULL DEFAULT 'default'`);
+    } catch { /* already exists */ }
+  }
+
+  // v0.7: scan index for events table — getEventsSince queries by (org_id, id)
+  try {
+    db.exec("CREATE INDEX IF NOT EXISTS idx_events_org_id ON events(org_id, id)");
+  } catch { /* already exists */ }
+
+  // v0.7: bump version marker LAST — after every CREATE TABLE and ALTER above succeeded.
+  // A crash before this line leaves user_version=6 and the next boot retries the migration
+  // (idempotent). Bumping earlier would make a partial migration look complete.
+  db.exec("PRAGMA user_version = 7");
 }
 
 export function getDb(): DatabaseAdapter {

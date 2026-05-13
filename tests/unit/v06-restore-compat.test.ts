@@ -5,7 +5,7 @@ import path from "path";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
 
 describe("v0.6 restore compat", () => {
-  it("daemon starts on a v0.4-shaped DB and PRAGMA user_version becomes 6", () => {
+  it("daemon starts on a v0.4-shaped DB and PRAGMA user_version becomes 7", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "rc-"));
     initDatabase(dir);
     // Simulate older schema version
@@ -14,7 +14,7 @@ describe("v0.6 restore compat", () => {
     // Re-init with current binary
     initDatabase(dir);
     const v = getDb().prepare("PRAGMA user_version").get() as any;
-    expect(v.user_version).toBe(6);
+    expect(v.user_version).toBe(7);
     closeDb();
     rmSync(dir, { recursive: true, force: true });
   });

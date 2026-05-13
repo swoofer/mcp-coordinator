@@ -13,20 +13,20 @@ describe("v0.6 schema", () => {
   it("working_files table exists with expected columns", () => {
     const cols = getDb().prepare("PRAGMA table_info(working_files)").all() as { name: string }[];
     expect(cols.map(c => c.name).sort()).toEqual(
-      ["agent_id", "claim_until", "file_path", "last_activity_at", "started_at"].sort()
+      ["agent_id", "claim_until", "file_path", "last_activity_at", "org_id", "started_at"].sort()
     );
   });
 
   it("git_cochange table exists with canonical-pair CHECK", () => {
     const cols = getDb().prepare("PRAGMA table_info(git_cochange)").all() as { name: string }[];
     expect(cols.map(c => c.name).sort()).toEqual(
-      ["computed_at", "count", "file_a", "file_b", "total_commits"].sort()
+      ["computed_at", "count", "file_a", "file_b", "org_id", "total_commits"].sort()
     );
   });
 
   it("git_cochange_meta table exists", () => {
     const cols = getDb().prepare("PRAGMA table_info(git_cochange_meta)").all() as { name: string }[];
-    expect(cols.map(c => c.name).sort()).toEqual(["k", "v"].sort());
+    expect(cols.map(c => c.name).sort()).toEqual(["k", "org_id", "v"].sort());
   });
 
   it("layer_firings table exists", () => {
@@ -41,8 +41,8 @@ describe("v0.6 schema", () => {
     expect(cols.map(c => c.name)).toContain("content_hash");
   });
 
-  it("user_version is 6", () => {
+  it("user_version is 7", () => {
     const v = getDb().prepare("PRAGMA user_version").get() as { user_version: number };
-    expect(v.user_version).toBe(6);
+    expect(v.user_version).toBe(7);
   });
 });
