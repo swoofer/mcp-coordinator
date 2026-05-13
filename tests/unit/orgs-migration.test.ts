@@ -187,3 +187,13 @@ describe("user_version after migration", () => {
     expect(row.user_version).toBe(7);
   });
 });
+
+describe("indexes added by Task 5 migration", () => {
+  it("idx_events_org_id exists (composite index on events for org-scoped reads)", () => {
+    const db = getDb();
+    const row = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_events_org_id'")
+      .get() as { name: string } | undefined;
+    expect(row?.name).toBe("idx_events_org_id");
+  });
+});
