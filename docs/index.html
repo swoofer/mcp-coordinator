@@ -3655,6 +3655,10 @@
       "mechanism.v05.symbol.body": "tree-sitter parse 15 langages (TS/TSX/JS/JSX/Python/Go/Rust/Java/C#/C/C++/Ruby/PHP/Kotlin/Swift/Bash). Deux agents qui éditent le même fichier mais des fonctions différentes obtiennent une raison annotée — pas un blocage silencieux.",
       "mechanism.v05.cochange.title": "Scoring de co-changement git",
       "mechanism.v05.cochange.body": "Les fichiers qui bougent ensemble dans l'historique git (config + consommateur, fixture + test) sont scorés comme liés : impact 60 si co-changement &gt;50%, 40 si &gt;20%. Détecte des régressions invisibles au matching par nom de fichier.",
+      "faq.q11": "Quels langages de programmation la détection de conflits supporte-t-elle ?",
+      "faq.a11": "v0.5.0 livre 15 langages via tree-sitter : TypeScript, TSX, JavaScript, JSX, Python, Go, Rust, Java, C#, C, C++, Ruby, PHP, Kotlin et Swift. Un pattern de strategy-registry rend l'ajout de langages une contribution sur un seul fichier.",
+      "faq.q12": "Comment fonctionne la détection de conflits en interne ?",
+      "faq.a12": "Six couches de scoring, la plus sévère l'emporte : correspondance exacte de fichier (100), chevauchement AST conscient des symboles (raison annotée, pas blocage silencieux), graphe de dépendances (80), frontière de module (30), heuristique d'éditions récentes, et co-changement git — les fichiers à historique de commits partagé scorent 60 ou 40 selon le ratio de co-changement.",
     },
     es: {
       "nav.how": "Cómo",
@@ -4080,6 +4084,10 @@
       "mechanism.v05.symbol.body": "tree-sitter analiza 15 lenguajes (TS/TSX/JS/JSX/Python/Go/Rust/Java/C#/C/C++/Ruby/PHP/Kotlin/Swift/Bash). Dos agentes que editan el mismo archivo pero funciones distintas reciben una razón anotada — no un bloqueo silencioso.",
       "mechanism.v05.cochange.title": "Scoring por co-cambio git",
       "mechanism.v05.cochange.body": "Los archivos que se mueven juntos en el historial git (config + consumidor, fixture + test) se puntúan como relacionados: impacto 60 si co-cambio &gt;50%, 40 si &gt;20%. Detecta regresiones invisibles para el matching por nombre de archivo.",
+      "faq.q11": "¿Qué lenguajes de programación soporta la detección de conflictos?",
+      "faq.a11": "v0.5.0 incluye 15 lenguajes vía tree-sitter: TypeScript, TSX, JavaScript, JSX, Python, Go, Rust, Java, C#, C, C++, Ruby, PHP, Kotlin y Swift. Un patrón de strategy-registry hace que añadir más lenguajes sea una contribución de un solo archivo.",
+      "faq.q12": "¿Cómo funciona la detección de conflictos por dentro?",
+      "faq.a12": "Seis capas de scoring, gana la más severa: match exacto de archivo (100), solapamiento AST consciente de símbolos (razón anotada, no bloqueo silencioso), grafo de dependencias (80), frontera de módulo (30), heurística de ediciones recientes, y co-cambio git — los archivos con historial de commits compartido puntúan 60 o 40 según la ratio de co-cambio.",
     },
     de: {
       "nav.how": "Funktionsweise",
@@ -4505,6 +4513,10 @@
       "mechanism.v05.symbol.body": "tree-sitter parst 15 Sprachen (TS/TSX/JS/JSX/Python/Go/Rust/Java/C#/C/C++/Ruby/PHP/Kotlin/Swift/Bash). Zwei Agenten, die dieselbe Datei aber unterschiedliche Funktionen bearbeiten, erhalten einen annotierten Grund — keine stille Blockade.",
       "mechanism.v05.cochange.title": "Git-Co-Change-Scoring",
       "mechanism.v05.cochange.body": "Dateien, die sich in der Git-Historie zusammen bewegen (config + Consumer, Fixture + Test), werden als verwandt gescort: Impact 60 bei &gt;50 % Co-Change, 40 bei &gt;20 %. Erfasst Regressionen, die für Dateinamen-Matching unsichtbar bleiben.",
+      "faq.q11": "Welche Programmiersprachen unterstützt die Konflikterkennung?",
+      "faq.a11": "v0.5.0 liefert 15 Sprachen via tree-sitter: TypeScript, TSX, JavaScript, JSX, Python, Go, Rust, Java, C#, C, C++, Ruby, PHP, Kotlin und Swift. Ein Strategy-Registry-Pattern macht das Hinzufügen weiterer Sprachen zu einem Single-File-Beitrag.",
+      "faq.q12": "Wie funktioniert die Konflikterkennung intern?",
+      "faq.a12": "Sechs Scoring-Layer, die schwerwiegendste gewinnt: exakter Dateimatch (100), symbol-bewusste AST-Überlappung (annotierter Grund, keine stille Blockade), Abhängigkeitsgraph (80), Modulgrenze (30), Recent-Edit-Heuristik und Git-Co-Change — Dateien mit gemeinsamer Commit-Historie scoren 60 oder 40 je nach Co-Change-Verhältnis.",
     },
     zh: {
       "nav.how": "原理",
@@ -4930,6 +4942,10 @@
       "mechanism.v05.symbol.body": "tree-sitter 解析 15 种语言(TS/TSX/JS/JSX/Python/Go/Rust/Java/C#/C/C++/Ruby/PHP/Kotlin/Swift/Bash)。两个 agent 编辑同一文件但不同函数时,会得到带标注的原因——而非静默阻塞。",
       "mechanism.v05.cochange.title": "Git 协同变更评分",
       "mechanism.v05.cochange.body": "在 git 历史中同进同出的文件(config + 消费者、fixture + 测试)被评为相关:协同变更率 &gt;50% 时影响 60,&gt;20% 时影响 40。能捕获文件名匹配看不到的回归。",
+      "faq.q11": "冲突检测支持哪些编程语言?",
+      "faq.a11": "v0.5.0 通过 tree-sitter 提供 15 种语言:TypeScript、TSX、JavaScript、JSX、Python、Go、Rust、Java、C#、C、C++、Ruby、PHP、Kotlin 和 Swift。策略注册表模式让新增语言成为单文件级别的贡献。",
+      "faq.q12": "底层的冲突检测如何工作?",
+      "faq.a12": "六层评分,最严重的层胜出:精确文件匹配(100)、符号感知 AST 重叠(标注原因,而非静默阻塞)、依赖图(80)、模块边界(30)、最近编辑启发式,以及 git 协同变更——共享提交历史的文件依据协同变更率得分 60 或 40。",
     },
     ja: {
       "nav.how": "仕組み",
@@ -5354,7 +5370,11 @@
       "mechanism.v05.symbol.title": "シンボル認識スコアリング",
       "mechanism.v05.symbol.body": "tree-sitter が 15 言語 (TS/TSX/JS/JSX/Python/Go/Rust/Java/C#/C/C++/Ruby/PHP/Kotlin/Swift/Bash) をパースします。同じファイルの異なる関数を編集する 2 つのエージェントには、注釈付きの理由が返されます — サイレントブロックではありません。",
       "mechanism.v05.cochange.title": "Git co-change スコアリング",
-      "mechanism.v05.cochange.body": "Git 履歴で一緒に動くファイル (config + コンシューマー、fixture + テスト) は関連していると判定されます: co-change &gt;50% でインパクト 60、&gt;20% で 40。ファイル名マッチングでは見えないリグレッションを捕捉します。"
+      "mechanism.v05.cochange.body": "Git 履歴で一緒に動くファイル (config + コンシューマー、fixture + テスト) は関連していると判定されます: co-change &gt;50% でインパクト 60、&gt;20% で 40。ファイル名マッチングでは見えないリグレッションを捕捉します。",
+      "faq.q11": "競合検出はどのプログラミング言語をサポートしますか?",
+      "faq.a11": "v0.5.0 は tree-sitter を介して 15 言語をサポートします:TypeScript、TSX、JavaScript、JSX、Python、Go、Rust、Java、C#、C、C++、Ruby、PHP、Kotlin、Swift。strategy-registry パターンにより、言語の追加は 1 ファイルの貢献で済みます。",
+      "faq.q12": "競合検出は内部でどのように動作しますか?",
+      "faq.a12": "6 つのスコアリングレイヤー、最も深刻なものが採用されます:完全なファイル一致 (100)、シンボル認識 AST 重複 (注釈付き理由、サイレントブロックではない)、依存グラフ (80)、モジュール境界 (30)、最近の編集ヒューリスティック、そして git co-change — 共有コミット履歴を持つファイルは co-change 比率に応じて 60 または 40 を獲得します。"
     }
   };
 
