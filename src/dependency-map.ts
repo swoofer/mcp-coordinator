@@ -3,10 +3,56 @@ import { withTransaction } from "./db-adapter.js";
 import type { ModuleInfo, DependencyMap, BlastRadius, Thread } from "./types.js";
 
 export class DependencyMapper {
+  /**
+   * Set a single module's dependencies, scoped by org_id.
+   * After Task 5.5, dependency_map PK is (org_id, module_id). Composite conflict target.
+   */
+  setDependencies(orgId: string, moduleId: string, params: { depends_on: string[]; exports: string[]; owners: string[] }): void {
+    const db = getDb();
+    db.prepare(
+      `INSERT INTO dependency_map (org_id, module_id, depends_on, exports, owners) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(org_id, module_id) DO UPDATE SET
+         depends_on = excluded.depends_on,
+         exports = excluded.exports,
+         owners = excluded.owners`
+    ).run(orgId, moduleId, JSON.stringify(params.depends_on), JSON.stringify(params.exports), JSON.stringify(params.owners));
+  }
+
+  /**
+   * Get a single module's dependencies, scoped by org_id.
+   */
+  getDependencies(orgId: string, moduleId: string): { depends_on: string[]; exports: string[]; owners: string[] } | null {
+    const db = getDb();
+    const row = db.prepare(
+      "SELECT depends_on, exports, owners FROM dependency_map WHERE org_id = ? AND module_id = ?"
+    ).get(orgId, moduleId) as { depends_on: string; exports: string; owners: string } | undefined;
+    if (!row) return null;
+    return {
+      depends_on: JSON.parse(row.depends_on || "[]"),
+      exports: JSON.parse(row.exports || "[]"),
+      owners: JSON.parse(row.owners || "[]"),
+    };
+  }
+
+  /**
+   * List all owners in an org's dependency map.
+   */
+  listOwners(orgId: string): string[] {
+    const db = getDb();
+    const rows = db.prepare(
+      "SELECT owners FROM dependency_map WHERE org_id = ?"
+    ).all(orgId) as { owners: string }[];
+    const all = new Set<string>();
+    for (const r of rows) JSON.parse(r.owners || "[]").forEach((o: string) => all.add(o));
+    return Array.from(all);
+  }
+
+  // Legacy methods (for backward compatibility during migration)
+
   getMap(): DependencyMap {
     const db = getDb();
     const rows = db.prepare("SELECT * FROM dependency_map").all() as {
-      module_id: string; depends_on: string; exports: string; owners: string;
+      org_id: string; module_id: string; depends_on: string; exports: string; owners: string;
     }[];
     const map: DependencyMap = {};
     for (const row of rows) {
@@ -23,14 +69,14 @@ export class DependencyMapper {
   setMap(map: DependencyMap): void {
     const db = getDb();
     const stmt = db.prepare(
-      `INSERT INTO dependency_map (module_id, depends_on, exports, owners)
-       VALUES (?, ?, ?, ?)
+      `INSERT INTO dependency_map (org_id, module_id, depends_on, exports, owners)
+       VALUES (?, ?, ?, ?, ?)
        ON CONFLICT(org_id, module_id) DO UPDATE SET
          depends_on = excluded.depends_on, exports = excluded.exports, owners = excluded.owners`
     );
     withTransaction(db, () => {
       for (const [id, info] of Object.entries(map)) {
-        stmt.run(id, JSON.stringify(info.depends_on), JSON.stringify(info.exports), JSON.stringify(info.owners));
+        stmt.run("default", id, JSON.stringify(info.depends_on), JSON.stringify(info.exports), JSON.stringify(info.owners));
       }
     });
   }

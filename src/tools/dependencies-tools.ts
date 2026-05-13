@@ -18,6 +18,7 @@ export function registerDependenciesTools(
     modules: z.string(), // JSON DependencyMap
   }, async ({ modules }) => {
     const map = JSON.parse(modules);
+    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
     depMap.setMap(map);
     return { content: [{ type: "text", text: "ok" }] };
   });
@@ -25,6 +26,7 @@ export function registerDependenciesTools(
   server.tool("get_blast_radius", "Calculate impact of changes to a module", {
     module_id: z.string(),
   }, async ({ module_id }) => {
+    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
     const radius = depMap.getBlastRadius(module_id);
     return { content: [{ type: "text", text: JSON.stringify(radius) }] };
   });
@@ -32,6 +34,7 @@ export function registerDependenciesTools(
   server.tool("get_module_info", "Get module dependency info", {
     module_id: z.string(),
   }, async ({ module_id }) => {
+    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
     const info = depMap.getModuleInfo(module_id);
     return { content: [{ type: "text", text: JSON.stringify(info) }] };
   });

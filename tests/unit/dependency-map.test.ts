@@ -80,4 +80,29 @@ describe("DependencyMapper", () => {
   });
 });
 
+describe("dependency-map org_id scoping", () => {
+  beforeEach(() => { getDb().exec("DELETE FROM dependency_map"); });
+
+  it("setDependencies writes org_id", () => {
+    depMap.setDependencies("org-a", "moduleX", { depends_on: ["a"], exports: ["b"], owners: ["c"] });
+    const row = getDb().prepare("SELECT org_id FROM dependency_map WHERE module_id = 'moduleX'").get() as { org_id: string };
+    expect(row.org_id).toBe("org-a");
+  });
+
+  it("getDependencies scopes by org", () => {
+    depMap.setDependencies("org-a", "moduleX", { depends_on: ["a"], exports: [], owners: [] });
+    depMap.setDependencies("org-b", "moduleX", { depends_on: ["b"], exports: [], owners: [] });
+    expect(depMap.getDependencies("org-a", "moduleX")?.depends_on).toEqual(["a"]);
+    expect(depMap.getDependencies("org-b", "moduleX")?.depends_on).toEqual(["b"]);
+  });
+
+  it("listOwners scopes by org", () => {
+    depMap.setDependencies("org-a", "modA", { depends_on: [], exports: [], owners: ["alice"] });
+    depMap.setDependencies("org-b", "modB", { depends_on: [], exports: [], owners: ["bob"] });
+    const owners = depMap.listOwners("org-a");
+    expect(owners).toContain("alice");
+    expect(owners).not.toContain("bob");
+  });
+});
+
 
