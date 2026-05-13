@@ -44,7 +44,8 @@ export class AgentActivityTracker {
 
   /** Get activity for a single agent, with optional idle timeout */
   getActivity(agentId: string, options?: GetActivityOptions): AgentActivity {
-    const agent = this.registry.get(agentId);
+    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
+    const agent = this.registry.get("default", agentId);
     if (!agent || agent.status === "offline") {
       return { agent_id: agentId, activity_status: "offline", current_file: null, current_thread: null, last_activity_at: new Date().toISOString() };
     }
@@ -70,7 +71,8 @@ export class AgentActivityTracker {
 
   /** List activity for all online agents */
   listAll(options?: GetActivityOptions): AgentActivity[] {
-    const onlineAgents = this.registry.listOnline();
+    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
+    const onlineAgents = this.registry.listOnline("default");
     return onlineAgents.map((agent) => this.getActivity(agent.id, options));
   }
 

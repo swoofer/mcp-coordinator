@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+﻿import { describe, it, expect, beforeEach } from "vitest";
 import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -15,7 +15,7 @@ beforeEach(() => {
   initDatabase(dataDir);
   registry = new AgentRegistry();
   consultation = new Consultation();
-  registry.register("a1", "Agent A", ["src/auth"]);
+  registry.register("default", "a1", "Agent A", ["src/auth"]);
 });
 
 afterEach(() => {
@@ -27,7 +27,7 @@ import { afterEach } from "vitest";
 
 describe("B1 fix - approveResolution CAS pattern", () => {
   it("emits consensus event exactly once on normal approve flow", () => {
-    registry.register("a2", "Agent B", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/auth"]);
     const events: unknown[] = [];
     consultation.onResolve((e) => events.push(e));
 
@@ -42,7 +42,7 @@ describe("B1 fix - approveResolution CAS pattern", () => {
   });
 
   it("CAS UPDATE...WHERE status='resolving' affects 0 rows when status was already changed", () => {
-    registry.register("a2", "Agent B", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/auth"]);
     const thread = consultation.announceWork({
       agent_id: "a1", subject: "B1 CAS test", target_modules: ["src/auth"], target_files: [],
     });
@@ -61,7 +61,7 @@ describe("B1 fix - approveResolution CAS pattern", () => {
   });
 
   it("approveResolution rejects if thread already resolved (no double consensus)", () => {
-    registry.register("a2", "Agent B", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/auth"]);
     const events: unknown[] = [];
     consultation.onResolve((e) => events.push(e));
 
@@ -84,14 +84,14 @@ describe("B1 fix - announceWork transaction atomicity", () => {
     // the result of announceWork respects the snapshot taken at call time:
     // adding a respondent AFTER announce returns must not retroactively
     // appear in expected_respondents.
-    registry.register("a2", "Agent B", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/auth"]);
 
     const thread = consultation.announceWork({
       agent_id: "a1", subject: "B1 atomicity", target_modules: ["src/auth"], target_files: [],
     });
 
     // Add a3 AFTER announce. Should NOT appear in respondents.
-    registry.register("a3", "Agent C", ["src/auth"]);
+    registry.register("default", "a3", "Agent C", ["src/auth"]);
 
     const respondents = JSON.parse(thread.expected_respondents || "[]");
     expect(respondents).toEqual(["a2"]);
@@ -107,3 +107,4 @@ describe("B1 fix - announceWork transaction atomicity", () => {
     expect(JSON.parse(thread.expected_respondents || "[]")).toEqual([]);
   });
 });
+

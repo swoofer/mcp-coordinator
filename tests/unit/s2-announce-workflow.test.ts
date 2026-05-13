@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+﻿import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -26,7 +26,7 @@ afterEach(() => {
 
 describe("S2 fix - runCommonAnnounceFlow extracts shared orchestration", () => {
   it("auto-resolves when initiator is alone", () => {
-    services.registry.register("a1", "Agent A", ["src/auth"]);
+    services.registry.register("default", "a1", "Agent A", ["src/auth"]);
     const thread = services.consultation.announceWork({
       agent_id: "a1", subject: "alone", target_modules: ["src/auth"], target_files: [],
     });
@@ -39,8 +39,8 @@ describe("S2 fix - runCommonAnnounceFlow extracts shared orchestration", () => {
   });
 
   it("keeps thread open and scorer flags concerned agents on file overlap", () => {
-    services.registry.register("a1", "Agent A", ["src/auth"]);
-    services.registry.register("a2", "Agent B", ["src/auth"]);
+    services.registry.register("default", "a1", "Agent A", ["src/auth"]);
+    services.registry.register("default", "a2", "Agent B", ["src/auth"]);
     // First, a2 announces work on a file — this populates file_activity so
     // a1's subsequent announce sees the overlap as Layer 0 (score 100 = concerned).
     services.consultation.announceWork({
@@ -59,9 +59,9 @@ describe("S2 fix - runCommonAnnounceFlow extracts shared orchestration", () => {
   });
 
   it("emits impact_scored SSE for every scored agent", async () => {
-    services.registry.register("a1", "Agent A", ["src/auth"]);
-    services.registry.register("a2", "Agent B", ["src/auth"]);
-    services.registry.register("a3", "Agent C", ["src/web"]);
+    services.registry.register("default", "a1", "Agent A", ["src/auth"]);
+    services.registry.register("default", "a2", "Agent B", ["src/auth"]);
+    services.registry.register("default", "a3", "Agent C", ["src/web"]);
     const events: { type: string; payload: string }[] = [];
     services.sseEmitter.addListener((e) => events.push({ type: e.type, payload: e.payload }));
 
@@ -79,7 +79,7 @@ describe("S2 fix - runCommonAnnounceFlow extracts shared orchestration", () => {
   });
 
   it("does not auto-resolve when keep_open=true even if alone", () => {
-    services.registry.register("a1", "Agent A", ["src/auth"]);
+    services.registry.register("default", "a1", "Agent A", ["src/auth"]);
     const thread = services.consultation.announceWork({
       agent_id: "a1", subject: "keep", target_modules: ["src/auth"], target_files: [], keep_open: true,
     });
@@ -90,7 +90,7 @@ describe("S2 fix - runCommonAnnounceFlow extracts shared orchestration", () => {
   });
 
   it("returns plan quality assessment", () => {
-    services.registry.register("a1", "Agent A", ["src/auth"]);
+    services.registry.register("default", "a1", "Agent A", ["src/auth"]);
     const thread = services.consultation.announceWork({
       agent_id: "a1", subject: "with plan", plan: "do something", target_modules: ["src/auth"], target_files: [],
     });
@@ -102,7 +102,7 @@ describe("S2 fix - runCommonAnnounceFlow extracts shared orchestration", () => {
   });
 
   it("emits plan-quality downgrade event when plan is vague", async () => {
-    services.registry.register("a1", "Agent A", ["src/auth"]);
+    services.registry.register("default", "a1", "Agent A", ["src/auth"]);
     const events: { type: string; payload: string }[] = [];
     services.sseEmitter.addListener((e) => events.push({ type: e.type, payload: e.payload }));
 
@@ -122,3 +122,4 @@ describe("S2 fix - runCommonAnnounceFlow extracts shared orchestration", () => {
     expect(downgrade).toBeDefined();
   });
 });
+

@@ -21,7 +21,8 @@ export class SummaryContextProvider implements ContextProvider {
     agentId: string,
     query: ConsultationAnnounce
   ): AgentContext {
-    const agent = this.registry.get(agentId);
+    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
+    const agent = this.registry.get("default", agentId);
     if (!agent) {
       return { agent_id: agentId, modules: [], recent_files: [], action_summaries: [] };
     }

@@ -24,9 +24,9 @@ beforeEach(() => {
   db.exec("DELETE FROM agents");
   registry = new AgentRegistry();
   consultation = new Consultation();
-  registry.register("a1", "Agent A", ["src/auth"]);
-  registry.register("a2", "Agent B", ["src/users"]);
-  registry.register("a3", "Agent C", ["src/api"]);
+  registry.register("default", "a1", "Agent A", ["src/auth"]);
+  registry.register("default", "a2", "Agent B", ["src/users"]);
+  registry.register("default", "a3", "Agent C", ["src/api"]);
 });
 
 afterAll(() => {
@@ -36,7 +36,7 @@ afterAll(() => {
 
 describe("Consultation", () => {
   it("opens a thread with announce_work", () => {
-    registry.register("a2", "Agent B", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/auth"]);
     const thread = consultation.announceWork({
       agent_id: "a1",
       subject: "Refactor auth middleware",
@@ -67,7 +67,7 @@ describe("Consultation", () => {
   });
 
   it("identifies expected respondents based on module overlap", () => {
-    registry.register("a2", "Agent B", ["src/auth", "src/users"]);
+    registry.register("default", "a2", "Agent B", ["src/auth", "src/users"]);
     const thread = consultation.announceWork({
       agent_id: "a1",
       subject: "Refactor auth",
@@ -81,7 +81,7 @@ describe("Consultation", () => {
   });
 
   it("posts a message to a thread", () => {
-    registry.register("a2", "Agent B", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/auth"]);
     const thread = consultation.announceWork({
       agent_id: "a1",
       subject: "Refactor auth",
@@ -100,7 +100,7 @@ describe("Consultation", () => {
   });
 
   it("proposes resolution and transitions to resolving", () => {
-    registry.register("a2", "Agent B", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/auth"]);
     const thread = consultation.announceWork({
       agent_id: "a1",
       subject: "Refactor auth",
@@ -120,7 +120,7 @@ describe("Consultation", () => {
   });
 
   it("approves resolution and resolves thread", () => {
-    registry.register("a2", "Agent B", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/auth"]);
     const thread = consultation.announceWork({
       agent_id: "a1",
       subject: "Refactor auth",
@@ -138,7 +138,7 @@ describe("Consultation", () => {
   });
 
   it("contests resolution and returns to open", () => {
-    registry.register("a2", "Agent B", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/auth"]);
     const thread = consultation.announceWork({
       agent_id: "a1",
       subject: "Refactor auth",
@@ -223,7 +223,7 @@ describe("Consultation", () => {
   });
 
   it("gets thread with messages", () => {
-    registry.register("a2", "Agent B", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/auth"]);
     const thread = consultation.announceWork({
       agent_id: "a1",
       subject: "Refactor auth",
@@ -251,7 +251,7 @@ describe("Consultation", () => {
   });
 
   it("gets thread updates since timestamp", () => {
-    registry.register("a2", "Agent B", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/auth"]);
     const thread = consultation.announceWork({
       agent_id: "a1",
       subject: "Refactor auth",
@@ -267,7 +267,7 @@ describe("Consultation", () => {
   });
 
   it("auto-resolves thread on timeout", () => {
-    registry.register("a2", "Agent B", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/auth"]);
     const thread = consultation.announceWork({
       agent_id: "a1",
       subject: "test timeout",
@@ -289,7 +289,7 @@ describe("Consultation", () => {
   // â”€â”€ Resolution event tests â”€â”€
 
   it("emits consensus resolution event on approve", () => {
-    registry.register("a2", "Agent B", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/auth"]);
     const events: any[] = [];
     consultation.onResolve((e) => events.push(e));
 
@@ -325,7 +325,7 @@ describe("Consultation", () => {
   });
 
   it("emits timeout resolution event", () => {
-    registry.register("a2", "Agent B", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/auth"]);
     const events: any[] = [];
     consultation.onResolve((e) => events.push(e));
 
@@ -344,7 +344,7 @@ describe("Consultation", () => {
   });
 
   it("emits max_rounds resolution event", () => {
-    registry.register("a2", "Agent B", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/auth"]);
     const events: any[] = [];
     consultation.onResolve((e) => events.push(e));
 
@@ -365,7 +365,7 @@ describe("Consultation", () => {
   it("emits closed resolution event", () => {
     // Register another agent with overlapping modules so the thread stays open
     // (auto-resolves to 'resolved' if no concerned agents, which would prevent manual close)
-    registry.register("a-overlap", "Overlap", ["src/auth"]);
+    registry.register("default", "a-overlap", "Overlap", ["src/auth"]);
     const events: any[] = [];
     consultation.onResolve((e) => events.push(e));
 
@@ -380,7 +380,7 @@ describe("Consultation", () => {
   });
 
   it("emits agent_departure resolution event", () => {
-    registry.register("a2", "Agent B", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/auth"]);
     const events: any[] = [];
     consultation.onResolve((e) => events.push(e));
 
@@ -394,7 +394,7 @@ describe("Consultation", () => {
   });
 
   it("had_messages is true when thread has messages", () => {
-    registry.register("a2", "Agent B", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/auth"]);
     const events: any[] = [];
     consultation.onResolve((e) => events.push(e));
 
@@ -441,7 +441,7 @@ describe("Consultation", () => {
   });
 
   it("proposeResolution by non-initiator throws", () => {
-    registry.register("a2", "Agent B", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/auth"]);
     const thread = consultation.announceWork({
       agent_id: "a1",
       subject: "Refactor auth",
@@ -454,7 +454,7 @@ describe("Consultation", () => {
   });
 
   it("cancelThread by non-initiator throws", () => {
-    registry.register("a2", "Agent B", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/auth"]);
     const thread = consultation.announceWork({
       agent_id: "a1",
       subject: "Refactor auth",
@@ -467,7 +467,7 @@ describe("Consultation", () => {
   });
 
   it("contestResolution on non-resolving thread throws", () => {
-    registry.register("a2", "Agent B", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/auth"]);
     const thread = consultation.announceWork({
       agent_id: "a1",
       subject: "Refactor auth",
@@ -481,7 +481,7 @@ describe("Consultation", () => {
   });
 
   it("approveResolution on non-resolving thread throws", () => {
-    registry.register("a2", "Agent B", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/auth"]);
     const thread = consultation.announceWork({
       agent_id: "a1",
       subject: "Refactor auth",
@@ -505,7 +505,7 @@ describe("Consultation", () => {
   });
 
   it("checkTimeouts does nothing when no threads are timed out", () => {
-    registry.register("a2", "Agent B", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/auth"]);
     const thread = consultation.announceWork({
       agent_id: "a1",
       subject: "Fresh thread",
@@ -573,8 +573,8 @@ describe("Consultation", () => {
   });
 
   it("handles agent departure mid-thread", () => {
-    registry.register("a2", "Agent B", ["src/auth"]);
-    registry.register("a3", "Agent C", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/auth"]);
+    registry.register("default", "a3", "Agent C", ["src/auth"]);
     const thread = consultation.announceWork({
       agent_id: "a1",
       subject: "Refactor auth",
@@ -640,7 +640,7 @@ describe("Consultation", () => {
   });
 
   it("getThreadUpdates respects since parameter", () => {
-    registry.register("a2", "Agent B", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/auth"]);
     const thread = consultation.announceWork({
       agent_id: "a1", subject: "Refactor auth", target_modules: ["src/auth"], target_files: [],
     });
@@ -664,8 +664,8 @@ describe("Consultation", () => {
   // â”€â”€ Edge case tests (Agent Delta) â”€â”€
 
   it("handleAgentDeparture resolves resolving thread when last respondent approved then departs", () => {
-    registry.register("a2", "Agent B", ["src/auth"]);
-    registry.register("a3", "Agent C", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/auth"]);
+    registry.register("default", "a3", "Agent C", ["src/auth"]);
     const events: any[] = [];
     consultation.onResolve((e) => events.push(e));
 
@@ -690,7 +690,7 @@ describe("Consultation", () => {
   });
 
   it("checkTimeouts emits timeout with had_messages=true on thread that has messages", () => {
-    registry.register("a2", "Agent B", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/auth"]);
     const events: any[] = [];
     consultation.onResolve((e) => events.push(e));
 
@@ -734,7 +734,7 @@ describe("Consultation", () => {
   });
 
   it("getThreadUpdates with since returns matching messages", () => {
-    registry.register("a2", "Agent B", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/auth"]);
     const thread = consultation.announceWork({
       agent_id: "a1", subject: "Updates test", target_modules: ["src/auth"], target_files: [],
     });
@@ -757,7 +757,7 @@ describe("Consultation", () => {
   });
 
   it("BUG: closeThread allows non-initiator to close another agent's thread", () => {
-    registry.register("a2", "Agent B", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/auth"]);
     const thread = consultation.announceWork({
       agent_id: "a1",
       subject: "Owned by a1",
@@ -787,7 +787,7 @@ describe("Consultation", () => {
   // â”€â”€ Bug: getThreadUpdates date normalization (Chasseur Alpha) â”€â”€
 
   it("BUG: getThreadUpdates fails with timezone offset dates like +05:00", () => {
-    registry.register("a2", "Agent B", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/auth"]);
     const thread = consultation.announceWork({
       agent_id: "a1",
       subject: "Date normalization test",
@@ -810,8 +810,8 @@ describe("Consultation", () => {
   // â”€â”€ Bug: stale approvals across rounds (Chasseur Bravo) â”€â”€
 
   it("BUG: allRespondentsApproved should not count approvals from previous rounds", () => {
-    registry.register("a2", "Agent B", ["src/auth"]);
-    registry.register("a3", "Agent C", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/auth"]);
+    registry.register("default", "a3", "Agent C", ["src/auth"]);
 
     const thread = consultation.announceWork({
       agent_id: "a1",
@@ -868,5 +868,6 @@ describe("Consultation", () => {
     expect(allMatchExact).toBe(true);
   });
 });
+
 
 

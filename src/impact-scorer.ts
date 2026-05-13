@@ -47,8 +47,9 @@ export class ImpactScorer {
   ) {}
 
   score(params: AnnounceParams): ImpactScore[] {
+    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
     const onlineAgents = this.registry
-      .listOnline()
+      .listOnline("default")
       .filter((a) => a.id !== params.agent_id);
 
     if (onlineAgents.length === 0) return [];

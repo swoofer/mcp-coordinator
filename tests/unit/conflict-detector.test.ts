@@ -34,8 +34,8 @@ beforeEach(() => {
   depMap = new DependencyMapper();
   fileTracker = new FileTracker();
   detector = new ConflictDetector(consultation, depMap, fileTracker);
-  registry.register("a1", "Agent A", ["src/auth"]);
-  registry.register("a2", "Agent B", ["src/users"]);
+  registry.register("default", "a1", "Agent A", ["src/auth"]);
+  registry.register("default", "a2", "Agent B", ["src/users"]);
 });
 
 afterAll(() => {
@@ -46,7 +46,7 @@ afterAll(() => {
 describe("ConflictDetector", () => {
   it("detects module overlap", () => {
     // a2 has an open thread on src/auth
-    registry.register("a2", "Agent B", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/auth"]);
     consultation.announceWork({
       agent_id: "a2",
       subject: "Work on auth",
@@ -268,5 +268,6 @@ describe("ConflictDetector", () => {
     expect(depChainConflicts.some(c => c.description.includes("src/auth"))).toBe(true);
   });
 });
+
 
 

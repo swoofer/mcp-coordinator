@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+﻿import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -15,7 +15,7 @@ beforeEach(() => {
   initDatabase(dataDir);
   registry = new AgentRegistry();
   consultation = new Consultation();
-  registry.register("a1", "Agent A", ["src/auth"]);
+  registry.register("default", "a1", "Agent A", ["src/auth"]);
 });
 
 afterEach(() => {
@@ -26,7 +26,7 @@ afterEach(() => {
 
 describe("B2 fix - timeout sweeper as background worker (no read side-effect)", () => {
   it("getThread no longer triggers timeout check (bug B2)", () => {
-    registry.register("a2", "Agent B", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/auth"]);
     const thread = consultation.announceWork({
       agent_id: "a1", subject: "B2 read no-mutate", target_modules: ["src/auth"], target_files: [],
     });
@@ -44,7 +44,7 @@ describe("B2 fix - timeout sweeper as background worker (no read side-effect)", 
   });
 
   it("listThreads no longer triggers timeout check", () => {
-    registry.register("a2", "Agent B", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/auth"]);
     const thread = consultation.announceWork({
       agent_id: "a1", subject: "B2 list no-mutate", target_modules: ["src/auth"], target_files: [],
     });
@@ -60,7 +60,7 @@ describe("B2 fix - timeout sweeper as background worker (no read side-effect)", 
   });
 
   it("checkTimeouts emits exactly one event per timed-out thread (no double-emit on repeat call)", () => {
-    registry.register("a2", "Agent B", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/auth"]);
     const events: unknown[] = [];
     consultation.onResolve((e) => events.push(e));
     const thread = consultation.announceWork({
@@ -88,7 +88,7 @@ describe("B2 fix - timeout sweeper as background worker (no read side-effect)", 
   });
 
   it("background sweeper times out threads on its own (integration)", async () => {
-    registry.register("a2", "Agent B", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/auth"]);
     const events: unknown[] = [];
     consultation.onResolve((e) => events.push(e));
     const thread = consultation.announceWork({
@@ -108,3 +108,4 @@ describe("B2 fix - timeout sweeper as background worker (no read side-effect)", 
     expect(updated!.status).toBe("resolved");
   });
 });
+

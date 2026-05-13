@@ -123,7 +123,8 @@ export function registerConsultationTools(
     agent_id: z.string(),
   }, async ({ thread_id, agent_id }) => {
     mcpLog.info({ tool: "approve_resolution", thread_id, agent_id }, "Tool called");
-    const agentInfo = registry.get(agent_id);
+    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
+    const agentInfo = registry.get("default", agent_id);
     consultation.approveResolution(thread_id, agent_id, agentInfo?.name);
     const thread = consultation.getThread(thread_id)!;
     return { content: [{ type: "text", text: JSON.stringify(thread) }] };

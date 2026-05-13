@@ -15,7 +15,8 @@ export function registerStatusTools(
   const { registry, consultation, fileTracker, mqttBridge } = services;
 
   server.tool("coordinator_status", "Full system status", {}, async () => {
-    const online = registry.listOnline();
+    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
+    const online = registry.listOnline("default");
     const openThreads = consultation.listThreads({ status: "open" });
     const resolvingThreads = consultation.listThreads({ status: "resolving" });
     // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
@@ -44,7 +45,8 @@ export function registerStatusTools(
     mcpLog.info({ tool: "wait_for_peers", agent_id, min_peers: targetPeers, timeout_seconds: timeoutMs / 1000 }, "Tool called");
 
     while (Date.now() - startedAt < timeoutMs) {
-      const peers = registry.listOnline().filter((a) => a.id !== agent_id);
+      // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
+      const peers = registry.listOnline("default").filter((a) => a.id !== agent_id);
       if (peers.length >= targetPeers) {
         return {
           content: [{
@@ -60,7 +62,8 @@ export function registerStatusTools(
       await new Promise((r) => setTimeout(r, pollIntervalMs));
     }
 
-    const finalPeers = registry.listOnline().filter((a) => a.id !== agent_id);
+    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
+    const finalPeers = registry.listOnline("default").filter((a) => a.id !== agent_id);
     return {
       content: [{
         type: "text",

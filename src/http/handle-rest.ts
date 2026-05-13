@@ -58,12 +58,12 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
 
   if (url === "/api/register") {
     const { agent_id, name, modules } = body as { agent_id: string; name: string; modules: string[] };
-    const agent = registry.register(agent_id, name, modules || []);
+    const agent = registry.register(ctx.claims.org, agent_id, name, modules || []);
     sseEmitter.emit("agent_online", { agent_id, name, modules });
     json(res, agent);
 
   } else if (url === "/api/session-start") {
-    const online = registry.listOnline();
+    const online = registry.listOnline(ctx.claims.org);
     const openThreads = consultation.listThreads({ status: "open" });
     const hotFiles = fileTracker.getHotFiles(ctx.claims.org, 30);
     const briefing = [
@@ -75,7 +75,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
 
   } else if (url === "/api/session-stop") {
     const { agent_id } = body as { agent_id: string };
-    registry.setOffline(agent_id);
+    registry.setOffline(ctx.claims.org, agent_id);
     activityTracker.reportOffline(agent_id);
     consultation.handleAgentDeparture(agent_id);
     sseEmitter.emit("agent_offline", { agent_id });
@@ -107,7 +107,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
     };
 
     const thread = consultation.announceWork({ agent_id, subject, plan, target_modules, target_files, depends_on_files, exports_affected, keep_open, assigned_to });
-    const agentInfo = registry.get(agent_id);
+    const agentInfo = registry.get(ctx.claims.org, agent_id);
 
     // S2 fix: shared workflow (impact scoring, override respondents, auto-resolve,
     // impact_scored + introspection SSE, plan-quality downgrade event). Same
@@ -221,7 +221,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
 
   } else if (url === "/api/propose-resolution") {
     const { thread_id, agent_id, summary } = body as { thread_id: string; agent_id: string; summary: string };
-    const agentInfo = registry.get(agent_id);
+    const agentInfo = registry.get(ctx.claims.org, agent_id);
     consultation.proposeResolution(thread_id, agent_id, summary);
     sseEmitter.emit("resolution_proposed", {
       thread_id, agent_id, agent_name: agentInfo?.name || agent_id, summary,
@@ -231,7 +231,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
 
   } else if (url === "/api/approve-resolution") {
     const { thread_id, agent_id } = body as { thread_id: string; agent_id: string };
-    const agentInfo = registry.get(agent_id);
+    const agentInfo = registry.get(ctx.claims.org, agent_id);
     consultation.approveResolution(thread_id, agent_id, agentInfo?.name);
     const t = consultation.getThread(thread_id)!;
     json(res, t);
@@ -324,7 +324,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
       }
     }
 
-    const agentInfo = registry.get(intro?.agent_id || "");
+    const agentInfo = registry.get(ctx.claims.org, intro?.agent_id || "");
     sseEmitter.emit("introspection_completed", {
       introspection_id, thread_id: intro?.thread_id,
       agent_id: intro?.agent_id, agent_name: agentInfo?.name || intro?.agent_id,
@@ -401,7 +401,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
 
   } else if (url?.startsWith("/api/agent-status/")) {
     const aid = url.split("/")[3];
-    const agent = registry.get(aid);
+    const agent = registry.get(ctx.claims.org, aid);
     if (!agent) {
       json(res, { registered: false, status: "unknown" });
     } else {
@@ -526,7 +526,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
     });
 
   } else if (url === "/api/status") {
-    const online = registry.listOnline();
+    const online = registry.listOnline(ctx.claims.org);
     const openThreads = consultation.listThreads({ status: "open" });
     json(res, {
       online: online.length,

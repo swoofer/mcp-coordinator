@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterAll } from "vitest";
+﻿import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
@@ -21,9 +21,9 @@ describe("Layer 4 git_cochange lookup", () => {
     registry = new AgentRegistry();
     fileTracker = new FileTracker();
     scorer = new ImpactScorer(registry, fileTracker);
-    registry.register("alice", "A", []);
-    registry.register("bob",   "B", []);
-    registry.setOnline("alice"); registry.setOnline("bob");
+    registry.register("default", "alice", "A", []);
+    registry.register("default", "bob", "B", []);
+    registry.setOnline("default", "alice"); registry.setOnline("default", "bob");
     // Bob recently edited b.ts
     fileTracker.log({ org_id: "default", session_id: "s", agent_id: "bob", tool_name: "Edit", file_path: "b.ts" });
   });
@@ -45,3 +45,5 @@ describe("Layer 4 git_cochange lookup", () => {
     expect(bob.score).toBeGreaterThanOrEqual(60);
   });
 });
+
+

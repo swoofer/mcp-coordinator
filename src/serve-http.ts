@@ -503,7 +503,8 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
     agentId: "coordinator-internal",
   });
   services.mqttBridge.onOffline((agentId) => {
-    services.registry.setOffline(agentId);
+    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
+    services.registry.setOffline("default", agentId);
     services.consultation.handleAgentDeparture(agentId);
     // Clear in-flight working_files AFTER consultation cleanup so any future
     // consultation logic that might inspect working_files state for this agent

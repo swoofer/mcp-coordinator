@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+﻿import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -68,7 +68,7 @@ function seedScale(): { org_id: string; agent_id: string; target_modules: string
     agentIds.push(id);
     // Two modules per agent: a "src" module and a "lib" module, deterministic
     // by index so prefix-overlap with "src/shared" stays predictable.
-    registry.register(id, `Agent ${i}`, [`src/mod-${i}`, `lib/util-${i % 5}`]);
+    registry.register("default", id, `Agent ${i}`, [`src/mod-${i}`, `lib/util-${i % 5}`]);
   }
 
   // 200 file activities spread across the agents. ~10 of them touch files
@@ -198,3 +198,4 @@ describe("P2 perf - impact-scorer at scale", () => {
     expect(mod3Agent!.reasons.some((r) => r.includes("module overlap"))).toBe(true);
   });
 });
+

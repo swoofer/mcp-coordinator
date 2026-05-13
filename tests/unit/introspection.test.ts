@@ -36,8 +36,8 @@ afterAll(() => {
 
 describe("IntrospectionManager", () => {
   it("creates and retrieves an introspection", () => {
-    registry.register("a1", "Agent A", ["src/auth"]);
-    registry.register("a2", "Agent B", ["src/shared"]);
+    registry.register("default", "a1", "Agent A", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/shared"]);
     const thread = consultation.announceWork({
       agent_id: "a1", subject: "test", target_modules: ["src/shared"], target_files: [],
     });
@@ -49,8 +49,8 @@ describe("IntrospectionManager", () => {
   });
 
   it("responds as concerned", () => {
-    registry.register("a1", "Agent A", ["src/auth"]);
-    registry.register("a2", "Agent B", ["src/shared"]);
+    registry.register("default", "a1", "Agent A", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/shared"]);
     const thread = consultation.announceWork({
       agent_id: "a1", subject: "test", target_modules: ["src/shared"], target_files: [],
     });
@@ -65,8 +65,8 @@ describe("IntrospectionManager", () => {
   });
 
   it("responds as not concerned", () => {
-    registry.register("a1", "Agent A", ["src/auth"]);
-    registry.register("a2", "Agent B", ["src/shared"]);
+    registry.register("default", "a1", "Agent A", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/shared"]);
     const thread = consultation.announceWork({
       agent_id: "a1", subject: "test", target_modules: ["src/shared"], target_files: [],
     });
@@ -79,8 +79,8 @@ describe("IntrospectionManager", () => {
   });
 
   it("lists pending introspections for an agent", () => {
-    registry.register("a1", "Agent A", ["src/auth"]);
-    registry.register("a2", "Agent B", ["src/shared"]);
+    registry.register("default", "a1", "Agent A", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/shared"]);
     const thread = consultation.announceWork({
       agent_id: "a1", subject: "test", target_modules: ["src/shared"], target_files: [],
     });
@@ -91,9 +91,9 @@ describe("IntrospectionManager", () => {
   });
 
   it("lists introspections by thread", () => {
-    registry.register("a1", "Agent A", ["src/auth"]);
-    registry.register("a2", "Agent B", ["src/shared"]);
-    registry.register("a3", "Agent C", ["src/users"]);
+    registry.register("default", "a1", "Agent A", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/shared"]);
+    registry.register("default", "a3", "Agent C", ["src/users"]);
     const thread = consultation.announceWork({
       agent_id: "a1", subject: "test", target_modules: ["src/shared"], target_files: [],
     });
@@ -108,5 +108,6 @@ describe("IntrospectionManager", () => {
     expect(result).toBeNull();
   });
 });
+
 
 

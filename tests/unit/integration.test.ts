@@ -58,8 +58,8 @@ afterAll(() => {
 describe("Integration: Full Consultation Lifecycle", () => {
   it("complete flow: announce â†’ respond â†’ propose â†’ approve â†’ resolve", () => {
     // Setup: 2 agents with overlapping modules
-    registry.register("agent-a", "Agent A", ["src/auth", "src/shared"]);
-    registry.register("agent-b", "Agent B", ["src/api", "src/shared"]);
+    registry.register("default", "agent-a", "Agent A", ["src/auth", "src/shared"]);
+    registry.register("default", "agent-b", "Agent B", ["src/api", "src/shared"]);
 
     // Agent A announces work
     const thread = consultation.announceWork({
@@ -97,8 +97,8 @@ describe("Integration: Full Consultation Lifecycle", () => {
   });
 
   it("contestation triggers new round", () => {
-    registry.register("agent-a", "Agent A", ["src/shared"]);
-    registry.register("agent-b", "Agent B", ["src/shared"]);
+    registry.register("default", "agent-a", "Agent A", ["src/shared"]);
+    registry.register("default", "agent-b", "Agent B", ["src/shared"]);
 
     const thread = consultation.announceWork({
       agent_id: "agent-a",
@@ -132,8 +132,8 @@ describe("Integration: Full Consultation Lifecycle", () => {
   });
 
   it("auto-resolves when no agents overlap", () => {
-    registry.register("agent-a", "Agent A", ["src/auth"]);
-    registry.register("agent-b", "Agent B", ["src/users"]);
+    registry.register("default", "agent-a", "Agent A", ["src/auth"]);
+    registry.register("default", "agent-b", "Agent B", ["src/users"]);
 
     const thread = consultation.announceWork({
       agent_id: "agent-a",
@@ -145,9 +145,9 @@ describe("Integration: Full Consultation Lifecycle", () => {
   });
 
   it("handles agent departure mid-consultation", () => {
-    registry.register("agent-a", "Agent A", ["src/shared"]);
-    registry.register("agent-b", "Agent B", ["src/shared"]);
-    registry.register("agent-c", "Agent C", ["src/shared"]);
+    registry.register("default", "agent-a", "Agent A", ["src/shared"]);
+    registry.register("default", "agent-b", "Agent B", ["src/shared"]);
+    registry.register("default", "agent-c", "Agent C", ["src/shared"]);
 
     const thread = consultation.announceWork({
       agent_id: "agent-a",
@@ -173,9 +173,9 @@ describe("Integration: Full Consultation Lifecycle", () => {
 
 describe("Integration: Impact Scoring + Introspection", () => {
   it("scores agents correctly: file hit > module overlap > no link", () => {
-    registry.register("agent-a", "Agent A", ["src/auth"]);
-    registry.register("agent-b", "Agent B", ["src/shared"]);       // module overlap = 30
-    registry.register("agent-c", "Agent C", ["src/api"]);          // no overlap = 0
+    registry.register("default", "agent-a", "Agent A", ["src/auth"]);
+    registry.register("default", "agent-b", "Agent B", ["src/shared"]);       // module overlap = 30
+    registry.register("default", "agent-c", "Agent C", ["src/api"]);          // no overlap = 0
 
     // Agent B also recently edited the target file
     fileTracker.log({ org_id: "default", session_id: "s1", agent_id: "agent-b", tool_name: "Edit", file_path: "src/shared/types.ts" });
@@ -197,8 +197,8 @@ describe("Integration: Impact Scoring + Introspection", () => {
   });
 
   it("gray zone agent triggers introspection", () => {
-    registry.register("agent-a", "Agent A", ["src/auth"]);
-    registry.register("agent-b", "Agent B", ["src/shared"]); // module overlap = 30 (gray zone)
+    registry.register("default", "agent-a", "Agent A", ["src/auth"]);
+    registry.register("default", "agent-b", "Agent B", ["src/shared"]); // module overlap = 30 (gray zone)
 
     const categorized = impactScorer.categorize({
       org_id: "default",
@@ -238,8 +238,8 @@ describe("Integration: Impact Scoring + Introspection", () => {
   });
 
   it("introspection: concerned agent gets added to thread", () => {
-    registry.register("agent-a", "Agent A", ["src/auth"]);
-    registry.register("agent-b", "Agent B", ["src/shared"]);
+    registry.register("default", "agent-a", "Agent A", ["src/auth"]);
+    registry.register("default", "agent-b", "Agent B", ["src/shared"]);
 
     const thread = consultation.announceWork({
       agent_id: "agent-a",
@@ -278,8 +278,8 @@ describe("Integration: Impact Scoring + Introspection", () => {
 
 describe("Integration: Conflict Detection + Dependencies", () => {
   it("detects module overlap conflict", () => {
-    registry.register("agent-a", "Agent A", ["src/shared"]);
-    registry.register("agent-b", "Agent B", ["src/shared"]);
+    registry.register("default", "agent-a", "Agent A", ["src/shared"]);
+    registry.register("default", "agent-b", "Agent B", ["src/shared"]);
 
     // Agent B has open thread on src/shared
     consultation.announceWork({
@@ -300,8 +300,8 @@ describe("Integration: Conflict Detection + Dependencies", () => {
   });
 
   it("detects dependency chain via blast radius", () => {
-    registry.register("agent-a", "Agent A", ["src/auth"]);
-    registry.register("agent-b", "Agent B", ["src/shared"]);
+    registry.register("default", "agent-a", "Agent A", ["src/auth"]);
+    registry.register("default", "agent-b", "Agent B", ["src/shared"]);
 
     depMap.setMap({
       "src/shared": { module_id: "src/shared", depends_on: [], exports: ["User"], owners: [] },
@@ -371,7 +371,7 @@ describe("Integration: SSE Events", () => {
 
 describe("Integration: Context Provider", () => {
   it("provides relevant context for overlapping agent", () => {
-    registry.register("agent-a", "Agent A", ["src/shared"]);
+    registry.register("default", "agent-a", "Agent A", ["src/shared"]);
     consultation.logActionSummary({
       session_id: "s1", agent_id: "agent-a",
       file_path: "src/shared/types.ts", summary: "Added User.role_permissions field",
@@ -392,7 +392,7 @@ describe("Integration: Context Provider", () => {
   });
 
   it("returns empty context for non-overlapping agent", () => {
-    registry.register("agent-a", "Agent A", ["src/users"]);
+    registry.register("default", "agent-a", "Agent A", ["src/users"]);
 
     const ctx = contextProvider.getRelevantContext("agent-a", {
       thread_id: "t1", subject: "Refactor auth",
@@ -407,7 +407,7 @@ describe("Integration: Context Provider", () => {
 describe("Integration: /api/reset parity (Chasseur Bravo)", () => {
   it("reset should clear agent_activity_status table", () => {
     const db = getDb();
-    registry.register("agent-a", "Agent A", ["src/auth"]);
+    registry.register("default", "agent-a", "Agent A", ["src/auth"]);
     // Insert activity status
     db.prepare(
       `INSERT INTO agent_activity_status (agent_id, activity_status, current_file, last_activity_at)
@@ -458,5 +458,6 @@ describe("Integration: /api/reset parity (Chasseur Bravo)", () => {
     expect(rows.count).toBe(0);
   });
 });
+
 
 

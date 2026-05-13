@@ -4,6 +4,7 @@ export type ActivityStatus = "working" | "idle" | "waiting" | "offline";
 
 export interface Agent {
   id: string;
+  org_id: string;
   name: string;
   modules: string; // JSON array
   status: AgentConnectionStatus;

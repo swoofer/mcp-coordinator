@@ -94,7 +94,8 @@ export function runCommonAnnounceFlow(
   db.prepare("UPDATE threads SET expected_respondents = ? WHERE id = ?")
     .run(JSON.stringify(concernedIds), threadId);
 
-  const otherOnlineCount = registry.listOnline().filter((a) => a.id !== params.agent_id).length;
+  // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
+  const otherOnlineCount = registry.listOnline("default").filter((a) => a.id !== params.agent_id).length;
   const shouldAutoResolve = concernedIds.length === 0 && otherOnlineCount === 0;
   const currentThread = consultation.getThread(threadId)!;
   if (shouldAutoResolve && currentThread.status === "open" && !params.keep_open) {
@@ -135,7 +136,8 @@ export function runCommonAnnounceFlow(
     sseEmitter.emit("impact_scored" as "impact_scored", {
       thread_id: threadId,
       agent_id: params.agent_id,
-      agent_name: registry.get(params.agent_id)?.name || params.agent_id,
+      // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
+      agent_name: registry.get("default", params.agent_id)?.name || params.agent_id,
       score: planQuality.score,
       reasons: [planDowngradeReason(planQuality)],
       category: "plan_quality",

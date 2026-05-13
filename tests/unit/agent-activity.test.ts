@@ -20,8 +20,8 @@ beforeEach(() => {
   db.exec("DELETE FROM agents");
   registry = new AgentRegistry();
   tracker = new AgentActivityTracker(registry);
-  registry.register("a1", "Agent Alpha", ["src/auth"]);
-  registry.register("a2", "Agent Beta", ["src/shared"]);
+  registry.register("default", "a1", "Agent Alpha", ["src/auth"]);
+  registry.register("default", "a2", "Agent Beta", ["src/shared"]);
 });
 
 afterAll(() => {
@@ -123,7 +123,7 @@ describe("AgentActivityTracker", () => {
   });
 
   it("listAll excludes offline agents", () => {
-    registry.setOffline("a2");
+    registry.setOffline("default", "a2");
     const all = tracker.listAll();
     expect(all).toHaveLength(1);
     expect(all[0].agent_id).toBe("a1");

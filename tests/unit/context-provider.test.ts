@@ -39,7 +39,7 @@ afterAll(() => {
 
 describe("SummaryContextProvider", () => {
   it("returns context for agent with matching modules", () => {
-    registry.register("a1", "Agent A", ["src/auth"]);
+    registry.register("default", "a1", "Agent A", ["src/auth"]);
     consultation.logActionSummary({
       session_id: "s1",
       agent_id: "a1",
@@ -61,7 +61,7 @@ describe("SummaryContextProvider", () => {
   });
 
   it("returns empty context when no overlap", () => {
-    registry.register("a1", "Agent A", ["src/users"]);
+    registry.register("default", "a1", "Agent A", ["src/users"]);
     const ctx = provider.getRelevantContext("a1", {
       thread_id: "t1",
       subject: "Refactor auth",
@@ -73,7 +73,7 @@ describe("SummaryContextProvider", () => {
   });
 
   it("returns empty context for agent with no registered modules", () => {
-    registry.register("a1", "Agent A", []);
+    registry.register("default", "a1", "Agent A", []);
     const ctx = provider.getRelevantContext("a1", {
       thread_id: "t1",
       subject: "Work on auth",
@@ -99,5 +99,6 @@ describe("SummaryContextProvider", () => {
     expect(ctx.action_summaries).toHaveLength(0);
   });
 });
+
 
 

@@ -35,8 +35,8 @@ afterAll(() => {
 
 describe("ImpactScorer", () => {
   it("scores 100 for same file recently modified", () => {
-    registry.register("a1", "Agent A", ["src/auth"]);
-    registry.register("a2", "Agent B", ["src/users"]);
+    registry.register("default", "a1", "Agent A", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/users"]);
     tracker.log({ org_id: "default", session_id: "s1", agent_id: "a2", tool_name: "Edit", file_path: "src/shared/types.ts" });
     const scores = scorer.score({
       org_id: "default",
@@ -51,8 +51,8 @@ describe("ImpactScorer", () => {
   });
 
   it("scores 80 for depends_on file modified by other agent", () => {
-    registry.register("a1", "Agent A", ["src/auth"]);
-    registry.register("a2", "Agent B", ["src/api"]);
+    registry.register("default", "a1", "Agent A", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/api"]);
     tracker.log({ org_id: "default", session_id: "s1", agent_id: "a2", tool_name: "Edit", file_path: "config/jwt.yml" });
     const scores = scorer.score({
       org_id: "default",
@@ -68,8 +68,8 @@ describe("ImpactScorer", () => {
   });
 
   it("scores 30 for module overlap only", () => {
-    registry.register("a1", "Agent A", ["src/shared"]);
-    registry.register("a2", "Agent B", ["src/shared"]);
+    registry.register("default", "a1", "Agent A", ["src/shared"]);
+    registry.register("default", "a2", "Agent B", ["src/shared"]);
     const scores = scorer.score({
       org_id: "default",
       agent_id: "a1",
@@ -82,8 +82,8 @@ describe("ImpactScorer", () => {
   });
 
   it("scores 0 for unrelated agent", () => {
-    registry.register("a1", "Agent A", ["src/auth"]);
-    registry.register("a2", "Agent B", ["src/users"]);
+    registry.register("default", "a1", "Agent A", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/users"]);
     const scores = scorer.score({
       org_id: "default",
       agent_id: "a1",
@@ -96,9 +96,9 @@ describe("ImpactScorer", () => {
   });
 
   it("categorizes into concerned, gray_zone, pass", () => {
-    registry.register("a1", "Agent A", ["src/shared"]);
-    registry.register("a2", "Agent B", ["src/shared"]);
-    registry.register("a3", "Agent C", ["src/users"]);
+    registry.register("default", "a1", "Agent A", ["src/shared"]);
+    registry.register("default", "a2", "Agent B", ["src/shared"]);
+    registry.register("default", "a3", "Agent C", ["src/users"]);
     tracker.log({ org_id: "default", session_id: "s1", agent_id: "a2", tool_name: "Edit", file_path: "src/shared/types.ts" });
     const result = scorer.categorize({
       org_id: "default",
@@ -111,8 +111,8 @@ describe("ImpactScorer", () => {
   });
 
   it("takes highest score when multiple layers match", () => {
-    registry.register("a1", "Agent A", ["src/auth"]);
-    registry.register("a2", "Agent B", ["src/shared"]);  // module overlap = 30
+    registry.register("default", "a1", "Agent A", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/shared"]);  // module overlap = 30
     tracker.log({ org_id: "default", session_id: "s1", agent_id: "a2", tool_name: "Edit", file_path: "src/shared/types.ts" }); // same file = 100
     const scores = scorer.score({
       org_id: "default",
@@ -131,8 +131,8 @@ describe("ImpactScorer", () => {
     const consultation = new Consultation();
     const scorerWithConsultation = new ImpactScorer(registry, tracker, consultation);
 
-    registry.register("a1", "Agent A", ["src/auth"]);
-    registry.register("a2", "Agent B", ["src/shared"]);
+    registry.register("default", "a1", "Agent A", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/shared"]);
 
     // a2 announces work on types.ts
     consultation.announceWork({
@@ -160,8 +160,8 @@ describe("ImpactScorer", () => {
     const consultation = new Consultation();
     const scorerWithConsultation = new ImpactScorer(registry, tracker, consultation);
 
-    registry.register("a1", "Agent A", ["src/auth"]);
-    registry.register("a2", "Agent B", ["src/shared"]);
+    registry.register("default", "a1", "Agent A", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/shared"]);
 
     // a2 announces it will modify types.ts as a target
     consultation.announceWork({
@@ -190,8 +190,8 @@ describe("ImpactScorer", () => {
     const consultation = new Consultation();
     const scorerWithConsultation = new ImpactScorer(registry, tracker, consultation);
 
-    registry.register("a1", "Agent A", ["src/auth"]);
-    registry.register("a2", "Agent B", ["src/shared"]);
+    registry.register("default", "a1", "Agent A", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/shared"]);
 
     // a2 announces work that depends on types.ts
     consultation.announceWork({
@@ -219,9 +219,9 @@ describe("ImpactScorer", () => {
   // â"€â"€ Module prefix matching â"€â"€
 
   it("module prefix: parent module matches child module (startsWith)", () => {
-    registry.register("a1", "Agent A", ["src/auth"]);
+    registry.register("default", "a1", "Agent A", ["src/auth"]);
     // a2 is registered on the child module
-    registry.register("a2", "Agent B", ["src/auth/middleware"]);
+    registry.register("default", "a2", "Agent B", ["src/auth/middleware"]);
 
     // a1 targets parent â€" should match a2's child
     const scores = scorer.score({
@@ -238,9 +238,9 @@ describe("ImpactScorer", () => {
   });
 
   it("module prefix: child module matches parent module (startsWith reverse)", () => {
-    registry.register("a1", "Agent A", ["src/auth/middleware"]);
+    registry.register("default", "a1", "Agent A", ["src/auth/middleware"]);
     // a2 is registered on the parent module
-    registry.register("a2", "Agent B", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/auth"]);
 
     // a1 targets child â€" should match a2's parent
     const scores = scorer.score({
@@ -260,7 +260,7 @@ describe("ImpactScorer", () => {
 
   it("returns empty array when no other agents are online", () => {
     // Only a1 is registered â€" no peers
-    registry.register("a1", "Agent A", ["src/auth"]);
+    registry.register("default", "a1", "Agent A", ["src/auth"]);
 
     const scores = scorer.score({
       org_id: "default",
@@ -273,8 +273,8 @@ describe("ImpactScorer", () => {
   });
 
   it("reason is 'no link detected' when score is 0", () => {
-    registry.register("a1", "Agent A", ["src/auth"]);
-    registry.register("a2", "Agent B", ["src/users"]);
+    registry.register("default", "a1", "Agent A", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/users"]);
 
     const scores = scorer.score({
       org_id: "default",
@@ -292,8 +292,8 @@ describe("ImpactScorer", () => {
 
   it("skips Layer 0 gracefully when scorer has no consultation", () => {
     // scorer (no consultation) â€" should not throw and should still compute layers 1-3
-    registry.register("a1", "Agent A", ["src/shared"]);
-    registry.register("a2", "Agent B", ["src/shared"]);
+    registry.register("default", "a1", "Agent A", ["src/shared"]);
+    registry.register("default", "a2", "Agent B", ["src/shared"]);
     tracker.log({ org_id: "default", session_id: "s1", agent_id: "a2", tool_name: "Edit", file_path: "src/shared/types.ts" });
 
     let scores: ReturnType<typeof scorer.score>;
@@ -315,8 +315,8 @@ describe("ImpactScorer", () => {
     const consultation = new Consultation();
     const scorerWithConsultation = new ImpactScorer(registry, tracker, consultation);
 
-    registry.register("a1", "Agent A", ["src/auth"]);
-    registry.register("a2", "Agent B", ["src/shared"]);
+    registry.register("default", "a1", "Agent A", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/shared"]);
 
     // Create a thread then force target_files to null in DB to simulate null/missing data
     const thread = consultation.announceWork({
@@ -343,8 +343,8 @@ describe("ImpactScorer", () => {
     const consultation = new Consultation();
     const scorerWithConsultation = new ImpactScorer(registry, tracker, consultation);
 
-    registry.register("a1", "Agent A", ["src/auth"]);
-    registry.register("a2", "Agent B", ["src/shared"]);
+    registry.register("default", "a1", "Agent A", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/shared"]);
 
     // Create a thread then force depends_on_files to null in DB
     const thread = consultation.announceWork({
@@ -371,8 +371,8 @@ describe("ImpactScorer", () => {
     const consultation = new Consultation();
     const scorerWithConsultation = new ImpactScorer(registry, tracker, consultation);
 
-    registry.register("a1", "Agent A", ["src/auth"]);
-    registry.register("a2", "Agent B", ["src/shared"]);
+    registry.register("default", "a1", "Agent A", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/shared"]);
 
     consultation.announceWork({
       agent_id: "a2",
@@ -399,8 +399,8 @@ describe("ImpactScorer", () => {
   it("Layer 0b: no score when depends_on does not overlap thread target_files", () => {
     const c = new Consultation();
     const scorerWithConsult = new ImpactScorer(registry, tracker, c);
-    registry.register("a1", "Agent A", ["src/auth"]);
-    registry.register("a2", "Agent B", ["src/shared"]);
+    registry.register("default", "a1", "Agent A", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/shared"]);
     // a2 announces work on a specific file
     c.announceWork({
       agent_id: "a2", subject: "Work on shared", target_modules: ["src/shared"], target_files: ["src/shared/utils.ts"],
@@ -423,8 +423,8 @@ describe("ImpactScorer", () => {
     const consultation = new Consultation();
     const scorerWithConsultation = new ImpactScorer(registry, tracker, consultation);
 
-    registry.register("a1", "Agent A", ["src/auth"]);
-    registry.register("a2", "Agent B", ["src/shared"]);
+    registry.register("default", "a1", "Agent A", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/shared"]);
 
     // a2 creates a thread that targets types.ts â€" auto-resolves because a1's
     // modules (src/auth) don't overlap with src/shared.
@@ -456,5 +456,6 @@ describe("ImpactScorer", () => {
     expect(hasStaleReason).toBe(false);
   });
 });
+
 
 

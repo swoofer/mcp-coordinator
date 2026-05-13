@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterAll } from "vitest";
+﻿import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
@@ -18,9 +18,9 @@ describe("Layer 0.5 annotation", () => {
     fileTracker = new FileTracker();
     scorer = new ImpactScorer(registry, fileTracker);
     // Use the actual register signature (positional). If different in your codebase, adapt.
-    registry.register("alice", "A", []);
-    registry.register("bob",   "B", []);
-    registry.setOnline("alice"); registry.setOnline("bob");
+    registry.register("default", "alice", "A", []);
+    registry.register("default", "bob", "B", []);
+    registry.setOnline("default", "alice"); registry.setOnline("default", "bob");
     // Bob recently edited foo.ts touching getById only
     fileTracker.log({
       org_id: "default",
@@ -51,3 +51,5 @@ describe("Layer 0.5 annotation", () => {
     expect(bob.reasons.join(" ")).not.toMatch(/disjoint/);
   });
 });
+
+
