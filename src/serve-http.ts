@@ -209,7 +209,28 @@ const SSE_HEARTBEAT_MS = (() => {
   return Number.isFinite(n) && n > 0 ? n : 30_000;
 })();
 
-function handleSse(req: IncomingMessage, res: ServerResponse): void {
+async function handleSse(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  // Task 21.5: authenticate SSE GET requests. EventSource does not send
+  // Authorization headers, so we also accept a ?token= query param on GET.
+  // The ?token= fallback is handled inside authenticateRequest (GET-only,
+  // Authorization header takes precedence when both are present).
+  const authResult = await authenticateRequest(req, { authEnabled: AUTH_ENABLED });
+  if (!authResult.ok) {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+    };
+    if (authResult.wwwAuthenticate) {
+      headers["WWW-Authenticate"] = authResult.wwwAuthenticate;
+    }
+    res.writeHead(authResult.status, headers);
+    res.end(JSON.stringify({ error: authResult.error }));
+    services.metrics.recordHttpRequest("/api/events", authResult.status);
+    return;
+  }
+
+  const orgId = authResult.claims.org;
+
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache",
@@ -218,10 +239,6 @@ function handleSse(req: IncomingMessage, res: ServerResponse): void {
   });
   services.metrics.incSseClients();
   services.metrics.recordHttpRequest("/api/events", 200);
-
-  // TODO(Task 21.5): authenticate the SSE GET request and extract orgId from claims.
-  // For now, using "default" for single-tenant Phase 1 compatibility.
-  const orgId = "default";
 
   // Use Last-Event-ID for resumption, otherwise send last 50
   const lastEventId = parseInt(req.headers["last-event-id"] as string || "0", 10);
@@ -397,7 +414,7 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
         await serveMetrics(req, res, services, services.metrics);
         services.metrics.recordHttpRequest("/metrics", 200);
       } else if (url === "/api/events" && req.method === "GET") {
-        handleSse(req, res);
+        await handleSse(req, res);
       } else if (url.startsWith("/api/auth/")) {
         if (!AUTH_ENABLED && url !== "/api/auth/refresh") {
           json(res, { error: "Authentication is not enabled on this coordinator" }, 501);

@@ -195,8 +195,28 @@ export async function authenticateRequest(req: IncomingMessage, options: Authent
   const { authEnabled } = options;
   const authHeader = req.headers.authorization;
 
-  // Scenario (a)/(b): No Authorization header
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+  // EventSource-compatible token transport: allow ?token=<JWT> on GET requests.
+  // POST/PUT/PATCH are excluded (smuggling defense: POST endpoints use the body
+  // as a credential channel, so hoisting a query param to auth would let an
+  // attacker lure a victim's browser into a CSRF-authenticated POST).
+  // Authorization header always takes precedence when both are present.
+  let effectiveAuthHeader = authHeader;
+  if (!effectiveAuthHeader && req.method === "GET") {
+    try {
+      // req.url may be relative (e.g. "/api/events?token=…") — prepend a dummy
+      // base so URL can parse it. Attacker-controlled, so we wrap in try/catch.
+      const parsed = new URL(req.url ?? "", "http://localhost");
+      const qToken = parsed.searchParams.get("token");
+      if (qToken) {
+        effectiveAuthHeader = `Bearer ${qToken}`;
+      }
+    } catch {
+      // Malformed URL — no fallback, fall through to scenario (b) 401.
+    }
+  }
+
+  // Scenario (a)/(b): No Authorization header (and no ?token= fallback)
+  if (!effectiveAuthHeader || !effectiveAuthHeader.startsWith("Bearer ")) {
     if (!authEnabled) {
       // Scenario (a): AUTH_ENABLED=false → inject synthetic legacy claims
       return {
@@ -220,7 +240,7 @@ export async function authenticateRequest(req: IncomingMessage, options: Authent
   }
 
   // Has a Bearer token — verify it
-  const token = authHeader.slice(7);
+  const token = effectiveAuthHeader.slice(7);
   let claims: AuthClaims;
   let wasLegacy: boolean;
   try {
