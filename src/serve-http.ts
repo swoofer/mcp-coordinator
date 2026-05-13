@@ -141,7 +141,7 @@ async function handleAuth(req: IncomingMessage, res: ServerResponse): Promise<vo
     }
 
     try {
-      const newToken = await refreshToken(authHeader.slice(7));
+      const newToken = await refreshToken(authHeader.slice(7), { authEnabled: AUTH_ENABLED });
       const payload = decodeJwtPayload(newToken);
       const expiresAt = new Date((payload.exp as number) * 1000).toISOString();
       authLog.info({ agent_id: payload.sub }, "Token refreshed");
@@ -151,7 +151,7 @@ async function handleAuth(req: IncomingMessage, res: ServerResponse): Promise<vo
     }
 
   } else if (url === "/api/auth/revoke" && req.method === "POST") {
-    const authResult = await authenticateRequest(req);
+    const authResult = await authenticateRequest(req, { authEnabled: AUTH_ENABLED });
     if (!authResult.ok) {
       jsonAuthError(res, authResult);
       return;
@@ -393,7 +393,7 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
       } else if (url === "/api/events" && req.method === "GET") {
         handleSse(req, res);
       } else if (url.startsWith("/api/auth/")) {
-        if (!AUTH_ENABLED) {
+        if (!AUTH_ENABLED && url !== "/api/auth/refresh") {
           json(res, { error: "Authentication is not enabled on this coordinator" }, 501);
         } else {
           await handleAuth(req, res);
@@ -408,7 +408,7 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
           // New session â€” auth guard required
           let authenticatedAgent: string | undefined;
           if (AUTH_ENABLED) {
-            const authResult = await authenticateRequest(req);
+            const authResult = await authenticateRequest(req, { authEnabled: AUTH_ENABLED });
             if (!authResult.ok) {
               authLog.warn({ reason: authResult.error, url, ip: req.socket.remoteAddress }, "Auth rejected");
               jsonAuthError(res, authResult);
@@ -440,7 +440,7 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
       } else {
         // Auth guard for protected routes
         if (AUTH_ENABLED) {
-          const authResult = await authenticateRequest(req);
+          const authResult = await authenticateRequest(req, { authEnabled: AUTH_ENABLED });
           if (!authResult.ok) {
             authLog.warn({ reason: authResult.error, url, ip: req.socket.remoteAddress }, "Auth rejected");
             services.metrics.recordAuthRejected();

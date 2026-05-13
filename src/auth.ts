@@ -32,6 +32,10 @@ export interface InitAuthOptions {
   prevSecret?: string;
 }
 
+export interface AuthenticateOptions {
+  authEnabled: boolean;
+}
+
 export function initAuth(secret: string, expiry?: string, options: InitAuthOptions = {}): void {
   signingKey = new TextEncoder().encode(secret);
   prevKey = options.prevSecret ? new TextEncoder().encode(options.prevSecret) : null;
@@ -83,19 +87,56 @@ export async function verifyToken(token: string): Promise<AuthClaims> {
   };
 }
 
-// NOTE: Task 11 will UPDATE this function to use verifyTokenStrict and gate on
-// wasLegacy when AUTH_ENABLED is true (prevents silent v0.6→v0.7 token rotation).
+export async function verifyTokenStrict(token: string): Promise<{ claims: AuthClaims; wasLegacy: boolean }> {
+  let payload: Awaited<ReturnType<typeof jwtVerify>>["payload"];
+  try {
+    ({ payload } = await jwtVerify(token, signingKey, { algorithms: ["HS256"] }));
+  } catch (err) {
+    if (prevKey && err instanceof errors.JWSSignatureVerificationFailed) {
+      ({ payload } = await jwtVerify(token, prevKey, { algorithms: ["HS256"] }));
+    } else {
+      throw err;
+    }
+  }
+  if (!payload.sub) throw new Error("Missing sub claim in token");
+  // Tolerate missing/unknown role on v0.6 tokens. Default to 'member' (LEAST PRIVILEGE).
+  const rawRole = payload.role;
+  const role: AuthRole =
+    rawRole === "agent" || rawRole === "admin" || rawRole === "member"
+      ? rawRole
+      : "member";
+  // v0.7 detection: BOTH user_id AND org must be present strings.
+  const hasV07 = typeof payload.user_id === "string" && typeof payload.org === "string";
+  return {
+    claims: {
+      sub: payload.sub, role,
+      user_id: typeof payload.user_id === "string" ? payload.user_id : "legacy",
+      org: typeof payload.org === "string" ? payload.org : "default",
+      jti: typeof payload.jti === "string" ? payload.jti : randomUUID(),
+    },
+    wasLegacy: !hasV07,
+  };
+}
+
 export async function refreshToken(
   token: string,
-  gracePeriod = "1h",
+  options?: AuthenticateOptions,
+  gracePeriod?: string,
 ): Promise<string> {
+  const authEnabled = options?.authEnabled ?? false;
+  const grace = gracePeriod ?? "1h";
+
   let claims: AuthClaims;
   try {
-    claims = await verifyToken(token);
+    const { claims: c, wasLegacy } = await verifyTokenStrict(token);
+    if (wasLegacy && authEnabled) {
+      throw new Error("v0.6 token rejected: upgrade required (AUTH_ENABLED=true)");
+    }
+    claims = c;
   } catch (err) {
     if (err instanceof errors.JWTExpired) {
       const verifyWith = async (key: Uint8Array) =>
-        jwtVerify(token, key, { clockTolerance: gracePeriod, algorithms: ["HS256"] });
+        jwtVerify(token, key, { clockTolerance: grace, algorithms: ["HS256"] });
       let payload: Awaited<ReturnType<typeof jwtVerify>>["payload"];
       try {
         ({ payload } = await verifyWith(signingKey));
@@ -107,9 +148,15 @@ export async function refreshToken(
         }
       }
       if (!payload.sub) throw new Error("Missing sub claim in token");
-      const role = payload.role;
-      if (role !== "agent" && role !== "admin" && role !== "member") {
-        throw new Error("Invalid role in token");
+      // Tolerate missing/unknown role on v0.6 tokens. Default to 'member' (LEAST PRIVILEGE).
+      const rawRole = payload.role;
+      const role: AuthRole =
+        rawRole === "agent" || rawRole === "admin" || rawRole === "member"
+          ? rawRole
+          : "member";
+      const hasV07 = typeof payload.user_id === "string" && typeof payload.org === "string";
+      if (!hasV07 && authEnabled) {
+        throw new Error("v0.6 token rejected: upgrade required (AUTH_ENABLED=true)");
       }
       claims = {
         sub: payload.sub, role,
@@ -144,9 +191,26 @@ export type AuthResult =
   | { ok: true; claims: AuthClaims }
   | { ok: false; status: 401 | 403; error: string; wwwAuthenticate?: string };
 
-export async function authenticateRequest(req: IncomingMessage): Promise<AuthResult> {
+export async function authenticateRequest(req: IncomingMessage, options: AuthenticateOptions = { authEnabled: true }): Promise<AuthResult> {
+  const { authEnabled } = options;
   const authHeader = req.headers.authorization;
+
+  // Scenario (a)/(b): No Authorization header
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    if (!authEnabled) {
+      // Scenario (a): AUTH_ENABLED=false → inject synthetic legacy claims
+      return {
+        ok: true,
+        claims: {
+          sub: "legacy",
+          user_id: "legacy",
+          org: "default",
+          role: "admin",
+          jti: randomUUID(),
+        },
+      };
+    }
+    // Scenario (b): AUTH_ENABLED=true → 401 with WWW-Authenticate
     return {
       ok: false,
       status: 401,
@@ -155,10 +219,12 @@ export async function authenticateRequest(req: IncomingMessage): Promise<AuthRes
     };
   }
 
+  // Has a Bearer token — verify it
   const token = authHeader.slice(7);
   let claims: AuthClaims;
+  let wasLegacy: boolean;
   try {
-    claims = await verifyToken(token);
+    ({ claims, wasLegacy } = await verifyTokenStrict(token));
   } catch (err) {
     log.error({ err }, "JWT verification error");
     const isExpired = err instanceof errors.JWTExpired;
@@ -170,6 +236,17 @@ export async function authenticateRequest(req: IncomingMessage): Promise<AuthRes
     };
   }
 
+  // Scenario (c): v0.6 token (wasLegacy=true) under AUTH_ENABLED=true → reject
+  if (wasLegacy && authEnabled) {
+    return {
+      ok: false,
+      status: 401,
+      error: "v0.6 token rejected: upgrade required (AUTH_ENABLED=true)",
+      wwwAuthenticate: 'Bearer realm="mcp-coordinator", error="invalid_token"',
+    };
+  }
+
+  // Scenario (c) AUTH_ENABLED=false or Scenario (d): proceed with claims
   if (isRevoked(claims.sub)) {
     return { ok: false, status: 403, error: "Agent has been revoked" };
   }
