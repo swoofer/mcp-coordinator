@@ -21,6 +21,11 @@ afterEach(async () => {
   if (broker) { await broker.close(); broker = null; }
   closeDb();
   rmSync(dataDir, { recursive: true, force: true });
+  // CRITICAL: this test calls initAuth with a non-canonical secret AND a
+  // non-default expiry ("1h"). Reset module state to canonical values so
+  // subsequent test files in the same worker (vitest fileParallelism:false)
+  // don't pick up the contaminated signing key or defaultExpiry.
+  initAuth("test-secret-at-least-32-characters-long!");
 });
 
 function getFreePort(): Promise<number> {
@@ -53,63 +58,63 @@ describe("B3 fix - opt-in MQTT JWT auth", () => {
   it("verifier function accepts a valid JWT in the password field", async () => {
     const token = await createToken("test-agent", "agent");
 
-    const verify = async (_username: string | undefined, password: Buffer | undefined): Promise<boolean> => {
-      if (!password) return false;
+    const verify = async (_username: string | undefined, password: Buffer | undefined): Promise<{ ok: true; org: string } | { ok: false }> => {
+      if (!password) return { ok: false };
       try {
         const { verifyToken } = await import("../../src/auth.js");
-        await verifyToken(password.toString("utf-8"));
-        return true;
+        const claims = await verifyToken(password.toString("utf-8"));
+        return { ok: true as const, org: claims.org };
       } catch {
-        return false;
+        return { ok: false };
       }
     };
 
-    const ok = await verify(undefined, Buffer.from(token, "utf-8"));
-    expect(ok).toBe(true);
+    const result = await verify(undefined, Buffer.from(token, "utf-8"));
+    expect(result.ok).toBe(true);
   });
 
   it("verifier rejects missing password", async () => {
-    const verify = async (_u: string | undefined, password: Buffer | undefined): Promise<boolean> => {
-      if (!password) return false;
+    const verify = async (_u: string | undefined, password: Buffer | undefined): Promise<{ ok: true; org: string } | { ok: false }> => {
+      if (!password) return { ok: false };
       try {
         const { verifyToken } = await import("../../src/auth.js");
-        await verifyToken(password.toString("utf-8"));
-        return true;
+        const claims = await verifyToken(password.toString("utf-8"));
+        return { ok: true as const, org: claims.org };
       } catch {
-        return false;
+        return { ok: false };
       }
     };
-    expect(await verify(undefined, undefined)).toBe(false);
+    expect((await verify(undefined, undefined)).ok).toBe(false);
   });
 
   it("verifier rejects invalid token", async () => {
-    const verify = async (_u: string | undefined, password: Buffer | undefined): Promise<boolean> => {
-      if (!password) return false;
+    const verify = async (_u: string | undefined, password: Buffer | undefined): Promise<{ ok: true; org: string } | { ok: false }> => {
+      if (!password) return { ok: false };
       try {
         const { verifyToken } = await import("../../src/auth.js");
-        await verifyToken(password.toString("utf-8"));
-        return true;
+        const claims = await verifyToken(password.toString("utf-8"));
+        return { ok: true as const, org: claims.org };
       } catch {
-        return false;
+        return { ok: false };
       }
     };
-    expect(await verify(undefined, Buffer.from("not-a-jwt", "utf-8"))).toBe(false);
-    expect(await verify(undefined, Buffer.from("eyJhbGciOiJIUzI1NiJ9.fake.signature", "utf-8"))).toBe(false);
+    expect((await verify(undefined, Buffer.from("not-a-jwt", "utf-8"))).ok).toBe(false);
+    expect((await verify(undefined, Buffer.from("eyJhbGciOiJIUzI1NiJ9.fake.signature", "utf-8"))).ok).toBe(false);
   });
 
   it("verifier accepts admin tokens too (used by internal coordinator client)", async () => {
     const adminToken = await createToken("coordinator-internal", "admin");
-    const verify = async (_u: string | undefined, password: Buffer | undefined): Promise<boolean> => {
-      if (!password) return false;
+    const verify = async (_u: string | undefined, password: Buffer | undefined): Promise<{ ok: true; org: string } | { ok: false }> => {
+      if (!password) return { ok: false };
       try {
         const { verifyToken } = await import("../../src/auth.js");
-        await verifyToken(password.toString("utf-8"));
-        return true;
+        const claims = await verifyToken(password.toString("utf-8"));
+        return { ok: true as const, org: claims.org };
       } catch {
-        return false;
+        return { ok: false };
       }
     };
-    expect(await verify(undefined, Buffer.from(adminToken, "utf-8"))).toBe(true);
+    expect((await verify(undefined, Buffer.from(adminToken, "utf-8"))).ok).toBe(true);
   });
 
   it("broker with authenticate option starts (full integration covered by smoke tests)", async () => {
@@ -120,7 +125,7 @@ describe("B3 fix - opt-in MQTT JWT auth", () => {
       logger: silentLogger,
       authenticate: async (user, _pw) => {
         calls.push({ user, ok: false });
-        return false; // reject all
+        return { ok: false }; // reject all
       },
     });
     expect(broker.tcpPort).toBe(port);

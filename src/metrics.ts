@@ -222,7 +222,8 @@ export class Metrics {
    */
   gaugeSnapshot(services: CoordinatorServices): void {
     try {
-      this.agentsOnline.set(services.registry.listOnline().length);
+      // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
+      this.agentsOnline.set(services.registry.listOnline("default").length);
     } catch {
       // Registry not initialised yet (test bootstrap race) â€” leave gauge at 0.
     }

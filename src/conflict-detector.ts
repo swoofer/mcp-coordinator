@@ -17,13 +17,14 @@ export class ConflictDetector {
   }
 
   detect(params: {
+    org_id: string;
     agent_id: string;
     target_modules: string[];
     target_files: string[];
   }): ConflictReport[] {
     const conflicts: ConflictReport[] = [];
     // Include open, resolving, and recently resolved (auto-quorum) threads — exclude only cancelled
-    const allThreads = this.consultation.listThreads({});
+    const allThreads = this.consultation.listThreads(params.org_id, {});
     const activeThreads = allThreads.filter((t) => t.status !== "cancelled");
 
     for (const thread of activeThreads) {
@@ -64,7 +65,7 @@ export class ConflictDetector {
 
       // 3. Dependency chain
       for (const targetModule of params.target_modules) {
-        const info = this.depMap.getModuleInfo(targetModule);
+        const info = this.depMap.getModuleInfo(params.org_id, targetModule);
         if (!info) continue;
         for (const dep of info.depends_on) {
           if (threadModules.includes(dep)) {
@@ -79,7 +80,7 @@ export class ConflictDetector {
           }
         }
         // Reverse: someone depends on what we're modifying
-        const radius = this.depMap.getBlastRadius(targetModule);
+        const radius = this.depMap.getBlastRadius(params.org_id, targetModule);
         this.log.debug({
           module_id: targetModule,
           direct_dependents: radius.direct_dependents,
@@ -102,7 +103,7 @@ export class ConflictDetector {
 
     // 4. Hot file overlap (from actual file activity, not just declared files)
     for (const targetFile of params.target_files) {
-      const activity = this.fileTracker.checkFileConflict(targetFile, params.agent_id, 60);
+      const activity = this.fileTracker.checkFileConflict(params.org_id, targetFile, params.agent_id, 60);
       if (activity.conflict) {
         for (const otherAgent of activity.agents) {
           // Avoid duplicating with file_overlap already detected

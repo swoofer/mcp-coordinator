@@ -39,16 +39,16 @@ afterAll(() => {
 
 describe("SummaryContextProvider", () => {
   it("returns context for agent with matching modules", () => {
-    registry.register("a1", "Agent A", ["src/auth"]);
-    consultation.logActionSummary({
+    registry.register("default", "a1", "Agent A", ["src/auth"]);
+    consultation.logActionSummary("default", {
       session_id: "s1",
       agent_id: "a1",
       file_path: "src/auth/middleware.ts",
       summary: "Added JWT validation",
     });
-    tracker.log({ session_id: "s1", agent_id: "a1", tool_name: "Edit", file_path: "src/auth/middleware.ts" });
+    tracker.log({ org_id: "default", session_id: "s1", agent_id: "a1", tool_name: "Edit", file_path: "src/auth/middleware.ts" });
 
-    const ctx = provider.getRelevantContext("a1", {
+    const ctx = provider.getRelevantContext("default", "a1", {
       thread_id: "t1",
       subject: "Refactor auth",
       target_modules: ["src/auth"],
@@ -61,8 +61,8 @@ describe("SummaryContextProvider", () => {
   });
 
   it("returns empty context when no overlap", () => {
-    registry.register("a1", "Agent A", ["src/users"]);
-    const ctx = provider.getRelevantContext("a1", {
+    registry.register("default", "a1", "Agent A", ["src/users"]);
+    const ctx = provider.getRelevantContext("default", "a1", {
       thread_id: "t1",
       subject: "Refactor auth",
       target_modules: ["src/auth"],
@@ -73,8 +73,8 @@ describe("SummaryContextProvider", () => {
   });
 
   it("returns empty context for agent with no registered modules", () => {
-    registry.register("a1", "Agent A", []);
-    const ctx = provider.getRelevantContext("a1", {
+    registry.register("default", "a1", "Agent A", []);
+    const ctx = provider.getRelevantContext("default", "a1", {
       thread_id: "t1",
       subject: "Work on auth",
       target_modules: ["src/auth"],
@@ -87,7 +87,7 @@ describe("SummaryContextProvider", () => {
   });
 
   it("returns empty context for unknown agent", () => {
-    const ctx = provider.getRelevantContext("nonexistent-agent", {
+    const ctx = provider.getRelevantContext("default", "nonexistent-agent", {
       thread_id: "t1",
       subject: "test",
       target_modules: ["src/auth"],
@@ -99,5 +99,6 @@ describe("SummaryContextProvider", () => {
     expect(ctx.action_summaries).toHaveLength(0);
   });
 });
+
 
 

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterAll } from "vitest";
+﻿import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
@@ -23,16 +23,17 @@ describe("ImpactScorer Layer 1 union with working_files", () => {
     fileTracker = new FileTracker();
     workingFiles = new WorkingFilesTracker();
     scorer = new ImpactScorer(registry, fileTracker, undefined, workingFiles);
-    registry.register("alice", "Alice", []);
-    registry.register("bob",   "Bob",   []);
-    registry.setOnline("alice");
-    registry.setOnline("bob");
+    registry.register("default", "alice", "Alice", []);
+    registry.register("default", "bob", "Bob", []);
+    registry.setOnline("default", "alice");
+    registry.setOnline("default", "bob");
   });
   afterAll(() => { closeDb(); rmSync(TEST_DIR, { recursive: true, force: true }); });
 
   it("scores 100 when another agent has working_files on the same path", () => {
-    workingFiles.start("bob", "src/foo.ts", 30);
+    workingFiles.start("default", "bob", "src/foo.ts", 30);
     const scores = scorer.score({
+      org_id: "default",
       agent_id: "alice",
       target_modules: [],
       target_files: ["src/foo.ts"],
@@ -42,3 +43,5 @@ describe("ImpactScorer Layer 1 union with working_files", () => {
     expect(bobScore.reasons.join(" ")).toMatch(/in flight/);
   });
 });
+
+

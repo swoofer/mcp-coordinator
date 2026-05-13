@@ -1,9 +1,10 @@
 import type { IncomingMessage, ServerResponse } from "http";
 import { timingSafeEqual } from "crypto";
+import type { AuthResult } from "../auth.js";
 
 /**
  * S1: shared HTTP helpers extracted from serve-http.ts.
- * parseBody, json, decodeJwtPayload, safeEqual.
+ * parseBody, json, decodeJwtPayload, safeEqual, jsonAuthError.
  */
 
 const MAX_BODY_BYTES = parseInt(process.env.COORDINATOR_MAX_BODY_BYTES || "1048576", 10);
@@ -52,4 +53,11 @@ export function decodeJwtPayload(token: string): Record<string, unknown> {
 export function safeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   return timingSafeEqual(Buffer.from(a), Buffer.from(b));
+}
+
+export function jsonAuthError(res: ServerResponse, authResult: Exclude<AuthResult, { ok: true }>): void {
+  if (authResult.wwwAuthenticate) {
+    res.setHeader("WWW-Authenticate", authResult.wwwAuthenticate);
+  }
+  json(res, { error: authResult.error }, authResult.status);
 }

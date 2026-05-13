@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterAll } from "vitest";
+﻿import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
@@ -18,11 +18,12 @@ describe("Layer 0.5 annotation", () => {
     fileTracker = new FileTracker();
     scorer = new ImpactScorer(registry, fileTracker);
     // Use the actual register signature (positional). If different in your codebase, adapt.
-    registry.register("alice", "A", []);
-    registry.register("bob",   "B", []);
-    registry.setOnline("alice"); registry.setOnline("bob");
+    registry.register("default", "alice", "A", []);
+    registry.register("default", "bob", "B", []);
+    registry.setOnline("default", "alice"); registry.setOnline("default", "bob");
     // Bob recently edited foo.ts touching getById only
     fileTracker.log({
+      org_id: "default",
       session_id: "s", agent_id: "bob", tool_name: "Edit", file_path: "src/foo.ts",
       symbols_touched: ["getById"],
     });
@@ -31,6 +32,7 @@ describe("Layer 0.5 annotation", () => {
 
   it("score stays 100 with annotated reason when symbols disjoint", () => {
     const scores = scorer.score({
+      org_id: "default",
       agent_id: "alice", target_modules: [], target_files: ["src/foo.ts"],
       target_symbols: ["update"],
     });
@@ -41,6 +43,7 @@ describe("Layer 0.5 annotation", () => {
 
   it("score 100 plain reason when target_symbols absent", () => {
     const scores = scorer.score({
+      org_id: "default",
       agent_id: "alice", target_modules: [], target_files: ["src/foo.ts"],
     });
     const bob = scores.find(s => s.agent_id === "bob")!;
@@ -48,3 +51,5 @@ describe("Layer 0.5 annotation", () => {
     expect(bob.reasons.join(" ")).not.toMatch(/disjoint/);
   });
 });
+
+

@@ -34,8 +34,8 @@ beforeEach(() => {
   depMap = new DependencyMapper();
   fileTracker = new FileTracker();
   detector = new ConflictDetector(consultation, depMap, fileTracker);
-  registry.register("a1", "Agent A", ["src/auth"]);
-  registry.register("a2", "Agent B", ["src/users"]);
+  registry.register("default", "a1", "Agent A", ["src/auth"]);
+  registry.register("default", "a2", "Agent B", ["src/users"]);
 });
 
 afterAll(() => {
@@ -46,14 +46,15 @@ afterAll(() => {
 describe("ConflictDetector", () => {
   it("detects module overlap", () => {
     // a2 has an open thread on src/auth
-    registry.register("a2", "Agent B", ["src/auth"]);
-    consultation.announceWork({
+    registry.register("default", "a2", "Agent B", ["src/auth"]);
+    consultation.announceWork("default", {
       agent_id: "a2",
       subject: "Work on auth",
       target_modules: ["src/auth"],
       target_files: [],
     });
     const conflicts = detector.detect({
+      org_id: "default",
       agent_id: "a1",
       target_modules: ["src/auth"],
       target_files: [],
@@ -62,13 +63,14 @@ describe("ConflictDetector", () => {
   });
 
   it("detects file overlap", () => {
-    consultation.announceWork({
+    consultation.announceWork("default", {
       agent_id: "a2",
       subject: "Edit shared types",
       target_modules: ["src/shared"],
       target_files: ["src/shared/types.ts"],
     });
     const conflicts = detector.detect({
+      org_id: "default",
       agent_id: "a1",
       target_modules: ["src/shared"],
       target_files: ["src/shared/types.ts"],
@@ -77,17 +79,18 @@ describe("ConflictDetector", () => {
   });
 
   it("detects dependency chain conflict", () => {
-    depMap.setMap({
+    depMap.setMap("default", {
       "src/shared": { module_id: "src/shared", depends_on: [], exports: ["User"], owners: [] },
       "src/auth": { module_id: "src/auth", depends_on: ["src/shared"], exports: [], owners: [] },
     });
-    consultation.announceWork({
+    consultation.announceWork("default", {
       agent_id: "a2",
       subject: "Refactor shared types",
       target_modules: ["src/shared"],
       target_files: [],
     });
     const conflicts = detector.detect({
+      org_id: "default",
       agent_id: "a1",
       target_modules: ["src/auth"],
       target_files: [],
@@ -96,13 +99,14 @@ describe("ConflictDetector", () => {
   });
 
   it("no conflicts on unrelated modules", () => {
-    consultation.announceWork({
+    consultation.announceWork("default", {
       agent_id: "a2",
       subject: "Work on users",
       target_modules: ["src/users"],
       target_files: ["src/users/service.ts"],
     });
     const conflicts = detector.detect({
+      org_id: "default",
       agent_id: "a1",
       target_modules: ["src/auth"],
       target_files: ["src/auth/middleware.ts"],
@@ -111,14 +115,15 @@ describe("ConflictDetector", () => {
   });
 
   it("cancelled threads are excluded from conflict detection", () => {
-    const thread = consultation.announceWork({
+    const thread = consultation.announceWork("default", {
       agent_id: "a2",
       subject: "Work on auth (will be cancelled)",
       target_modules: ["src/auth"],
       target_files: [],
     });
-    consultation.cancelThread(thread.id, "a2", "no longer needed");
+    consultation.cancelThread("default", thread.id, "a2", "no longer needed");
     const conflicts = detector.detect({
+      org_id: "default",
       agent_id: "a1",
       target_modules: ["src/auth"],
       target_files: [],
@@ -127,13 +132,14 @@ describe("ConflictDetector", () => {
   });
 
   it("own threads are excluded â€” agent does not conflict with itself", () => {
-    consultation.announceWork({
+    consultation.announceWork("default", {
       agent_id: "a1",
       subject: "My own work on auth",
       target_modules: ["src/auth"],
       target_files: [],
     });
     const conflicts = detector.detect({
+      org_id: "default",
       agent_id: "a1",
       target_modules: ["src/auth"],
       target_files: [],
@@ -143,6 +149,7 @@ describe("ConflictDetector", () => {
 
   it("hot file overlap from file activity â€” detect() reports file_overlap for recently edited file", () => {
     fileTracker.log({
+      org_id: "default",
       session_id: "sess-a2",
       agent_id: "a2",
       agent_name: "Agent B",
@@ -150,6 +157,7 @@ describe("ConflictDetector", () => {
       file_path: "src/auth/service.ts",
     });
     const conflicts = detector.detect({
+      org_id: "default",
       agent_id: "a1",
       target_modules: ["src/auth"],
       target_files: ["src/auth/service.ts"],
@@ -158,18 +166,19 @@ describe("ConflictDetector", () => {
   });
 
   it("reverse dependency chain â€” a2 works on a module that depends on what a1 is modifying", () => {
-    depMap.setMap({
+    depMap.setMap("default", {
       "src/shared": { module_id: "src/shared", depends_on: [], exports: ["User"], owners: [] },
       "src/auth": { module_id: "src/auth", depends_on: ["src/shared"], exports: [], owners: [] },
     });
     // a2 works on src/auth, which depends on src/shared (what a1 will modify)
-    consultation.announceWork({
+    consultation.announceWork("default", {
       agent_id: "a2",
       subject: "Work on auth module",
       target_modules: ["src/auth"],
       target_files: [],
     });
     const conflicts = detector.detect({
+      org_id: "default",
       agent_id: "a1",
       target_modules: ["src/shared"],
       target_files: [],
@@ -179,7 +188,7 @@ describe("ConflictDetector", () => {
 
   it("no duplicate file_overlap â€” thread file overlap and hot file activity on same agent produce only one conflict", () => {
     // a2 announces work on the same file (thread-level overlap)
-    consultation.announceWork({
+    consultation.announceWork("default", {
       agent_id: "a2",
       subject: "Work on shared types",
       target_modules: ["src/shared"],
@@ -187,6 +196,7 @@ describe("ConflictDetector", () => {
     });
     // a2 also has file activity on the same file (hot file overlap)
     fileTracker.log({
+      org_id: "default",
       session_id: "sess-a2",
       agent_id: "a2",
       agent_name: "Agent B",
@@ -194,6 +204,7 @@ describe("ConflictDetector", () => {
       file_path: "src/shared/types.ts",
     });
     const conflicts = detector.detect({
+      org_id: "default",
       agent_id: "a1",
       target_modules: ["src/shared"],
       target_files: ["src/shared/types.ts"],
@@ -206,7 +217,7 @@ describe("ConflictDetector", () => {
 
   it("dependency chain â€” no crash when getModuleInfo returns null (unknown module)", () => {
     // No dependency map set â†’ getModuleInfo will return null for any module
-    consultation.announceWork({
+    consultation.announceWork("default", {
       agent_id: "a2",
       subject: "Work on unknown module",
       target_modules: ["src/unknown"],
@@ -216,6 +227,7 @@ describe("ConflictDetector", () => {
     // a1 targets a module not in the dep map â€” getModuleInfo returns null, should skip gracefully
     expect(() => {
       const conflicts = detector.detect({
+        org_id: "default",
         agent_id: "a1",
         target_modules: ["src/nonexistent"],
         target_files: [],
@@ -227,14 +239,14 @@ describe("ConflictDetector", () => {
 
   it("blast radius with indirect_dependents detects transitive dependency conflict", () => {
     // src/core â†’ src/shared â†’ src/auth (transitive: src/auth indirectly depends on src/core)
-    depMap.setMap({
+    depMap.setMap("default", {
       "src/core": { module_id: "src/core", depends_on: [], exports: ["CoreUtil"], owners: [] },
       "src/shared": { module_id: "src/shared", depends_on: ["src/core"], exports: ["User"], owners: [] },
       "src/auth": { module_id: "src/auth", depends_on: ["src/shared"], exports: [], owners: [] },
     });
 
     // a2 works on src/auth (indirect dependent of src/core)
-    consultation.announceWork({
+    consultation.announceWork("default", {
       agent_id: "a2",
       subject: "Work on auth",
       target_modules: ["src/auth"],
@@ -243,6 +255,7 @@ describe("ConflictDetector", () => {
 
     // a1 modifies src/core â€” blast radius includes src/shared (direct) and src/auth (indirect)
     const conflicts = detector.detect({
+      org_id: "default",
       agent_id: "a1",
       target_modules: ["src/core"],
       target_files: [],
@@ -255,5 +268,6 @@ describe("ConflictDetector", () => {
     expect(depChainConflicts.some(c => c.description.includes("src/auth"))).toBe(true);
   });
 });
+
 
 

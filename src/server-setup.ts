@@ -1,13 +1,12 @@
 ﻿import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
-import { initDatabase, getDb } from "./database.js";
-import { runCommonAnnounceFlow } from "./announce-workflow.js";
+import { initDatabase } from "./database.js";
 import { registerConsultationTools } from "./tools/consultation-tools.js";
 import { registerAgentTools } from "./tools/agents-tools.js";
 import { registerFilesTools } from "./tools/files-tools.js";
 import { registerDependenciesTools } from "./tools/dependencies-tools.js";
 import { registerStatusTools } from "./tools/status-tools.js";
 import { registerMqttTools } from "./tools/mqtt-tools.js";
+import type { AuthClaims } from "./auth.js";
 import { AgentRegistry } from "./agent-registry.js";
 import { Consultation } from "./consultation.js";
 import { ConflictDetector } from "./conflict-detector.js";
@@ -70,7 +69,7 @@ export function createServices(config: CoordinatorConfig): CoordinatorServices {
   const conflictDetector = new ConflictDetector(consultation, depMap, fileTracker, logger.child({ component: "conflict" }));
   const contextProvider = new SummaryContextProvider(registry, consultation, fileTracker);
   const sseEmitter = new SseEmitter();
-  const mqttBridge = new MqttBridge(logger.child({ component: "mqtt" }));
+  const mqttBridge = new MqttBridge("default", logger.child({ component: "mqtt" }));
 
   const treeSitter = new TreeSitterExtractor(metrics);
   treeSitter.load().catch(() => { /* errors are logged inside; status() reflects state */ });
@@ -87,7 +86,8 @@ export function createServices(config: CoordinatorConfig): CoordinatorServices {
         retryMs: parseInt(process.env.COORDINATOR_LAYER4_RETRY_MS || "300000", 10),
       })
     : null;
-  gitCochange?.startScheduler();
+  // TODO(Task 22): boot-time builder uses 'default' org because no auth context exists at startup; multi-org cochange (Phase 5) will require per-org boot or on-demand build.
+  gitCochange?.startScheduler("default");
 
   // Quota cache â€” macOS-only for now, Linux/Windows stubs return 503 via the
   // /api/quota handler so raids keep running without a quota guardrail there.
@@ -96,12 +96,14 @@ export function createServices(config: CoordinatorConfig): CoordinatorServices {
   const quotaCache = new QuotaCache({
     logger: logger.child({ component: "quota" }),
     onRefresh: (info) => {
+      // TODO(Task 22): quota_update has no org context at the quota-cache callback level;
+      // using "default" (single-tenant Phase 1). Multi-org Phase 5 will require per-org quota.
       sseEmitter.emit("quota_update", {
         five_hour: info.fiveHour,
         seven_day: info.sevenDay,
         seven_day_sonnet: info.sevenDaySonnet,
         fetched_at: info.fetchedAt,
-      });
+      }, { org_id: "default" });
       mqttBridge.publishQuotaUpdate(info);
     },
   });
@@ -109,7 +111,9 @@ export function createServices(config: CoordinatorConfig): CoordinatorServices {
   // SSE events for agent_online/agent_offline since they're already emitted by
   // the REST handler on /api/register and the offline hook. Avoids plumbing a
   // dedicated observer through AgentRegistry.
-  sseEmitter.addListener((event) => {
+  // TODO(Task 22): quota observer uses "default" org — single-tenant Phase 1 only.
+  // Multi-org Phase 5 will require per-org quota listeners.
+  sseEmitter.addListener("default", (event) => {
     if (event.type === "agent_online") quotaCache.onAgentActive();
     else if (event.type === "agent_offline") quotaCache.onAgentInactive();
   });
@@ -117,6 +121,8 @@ export function createServices(config: CoordinatorConfig): CoordinatorServices {
   // Centralized resolution â†’ SSE + MQTT + metrics
   consultation.onResolve((event) => {
     metrics.recordThreadResolved(event.resolution_type);
+    // Approach (a): event.org_id is threaded from emitResolution via getThreadCrossOrg,
+    // so the correct org is always available here without an extra DB lookup.
     sseEmitter.emit("thread_resolved", {
       thread_id: event.thread_id,
       resolution_type: event.resolution_type,
@@ -126,7 +132,7 @@ export function createServices(config: CoordinatorConfig): CoordinatorServices {
       created_at: event.created_at,
       resolved_at: event.resolved_at,
       had_messages: event.had_messages,
-    });
+    }, { org_id: event.org_id });
     if (event.resolution_type !== "auto_resolved") {
       mqttBridge.publishResolution(event.thread_id, "resolved", event.resolution_summary || "");
     }
@@ -143,8 +149,20 @@ export function createServices(config: CoordinatorConfig): CoordinatorServices {
   };
 }
 
-/** Create a new McpServer bound to the shared services (one per MCP session). */
-export function createMcpServer(services: CoordinatorServices): McpServer {
+/** Create a new McpServer bound to the shared services (one per MCP session).
+ *
+ * @param getSessionClaims - Looks up per-session claims by sessionId. In STDIO
+ *   mode there are no sessions so this defaults to a no-op that always returns
+ *   null, which causes tool handlers to throw "Session has no captured claims"
+ *   (expected — STDIO mode is single-tenant and unauthenticated; tool callers
+ *   in that mode should rely on the AUTH_ENABLED=false synthetic-claims path
+ *   added to authenticateMcpRequest, which is not invoked for STDIO).
+ *   Pass a real getter in serve-http.ts's streamable-HTTP path.
+ */
+export function createMcpServer(
+  services: CoordinatorServices,
+  getSessionClaims: (sessionId: string) => AuthClaims | null = () => null,
+): McpServer {
   const { registry, activityTracker, consultation, conflictDetector, depMap, fileTracker, impactScorer, introspection, contextProvider, sseEmitter, mqttBridge } = services;
   const mcpLog = services.logger.child({ component: "mcp" });
 
@@ -154,14 +172,16 @@ export function createMcpServer(services: CoordinatorServices): McpServer {
   });
 
   // S1: all 23 MCP tools registered via per-domain modules under src/tools/.
-  // Each register*Tools function takes (server, services, mcpLog) and wires
-  // its tool group; nothing else lives here. See src/tools/*.ts for behavior.
-  registerAgentTools(server, services, mcpLog);
-  registerConsultationTools(server, services, mcpLog);
-  registerFilesTools(server, services, mcpLog);
-  registerDependenciesTools(server, services, mcpLog);
-  registerStatusTools(server, services, mcpLog);
-  registerMqttTools(server, services, mcpLog);
+  // Each register*Tools function takes (server, services, mcpLog, getSessionClaims)
+  // and wires its tool group. See src/tools/*.ts for behavior.
+  // Task 23.5: getSessionClaims is threaded into each tool registration so
+  // handlers can scope DB queries to claims.org instead of the literal "default".
+  registerAgentTools(server, services, mcpLog, getSessionClaims);
+  registerConsultationTools(server, services, mcpLog, getSessionClaims);
+  registerFilesTools(server, services, mcpLog, getSessionClaims);
+  registerDependenciesTools(server, services, mcpLog, getSessionClaims);
+  registerStatusTools(server, services, mcpLog, getSessionClaims);
+  registerMqttTools(server, services, mcpLog, getSessionClaims);
 
   return server;
 }

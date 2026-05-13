@@ -46,10 +46,10 @@ export class GitCochangeBuilder {
   }
 
   /** Build once. Resolves after persistence. */
-  async build(): Promise<void> {
+  async build(orgId: string): Promise<void> {
     const db = getDb();
     const setMeta = (k: string, v: string) =>
-      db.prepare("INSERT OR REPLACE INTO git_cochange_meta (k, v) VALUES (?, ?)").run(k, v);
+      db.prepare("INSERT OR REPLACE INTO git_cochange_meta (org_id, k, v) VALUES (?, ?, ?)").run(orgId, k, v);
 
     if (!existsSync(path.join(this.repoRoot, ".git"))) {
       this.log.info({}, "Layer 4 unavailable: no .git");
@@ -108,9 +108,10 @@ export class GitCochangeBuilder {
       this.log.info({ count: promiscuous.size, files: Array.from(promiscuous) }, "Layer 4 dynamic predictor cap excluded files");
     }
 
-    db.exec("DELETE FROM git_cochange");
+    // Scope the DELETE to this org only — never wipe another org's rows.
+    db.prepare("DELETE FROM git_cochange WHERE org_id = ?").run(orgId);
     const stmt = db.prepare(
-      "INSERT INTO git_cochange (file_a, file_b, count, total_commits, computed_at) VALUES (?, ?, ?, ?, datetime('now'))"
+      "INSERT INTO git_cochange (org_id, file_a, file_b, count, total_commits, computed_at) VALUES (?, ?, ?, ?, ?, datetime('now'))"
     );
     const insertMany = db.transaction(() => {
       for (const [key, count] of pairs.entries()) {
@@ -119,7 +120,7 @@ export class GitCochangeBuilder {
         // as target only, but a pair where it's a predictor is dropped). For the
         // index entry to be useful, both files must be non-promiscuous predictors.
         if (promiscuous.has(a) || promiscuous.has(b)) continue;
-        if (a < b) stmt.run(a, b, count, totalCommits);
+        if (a < b) stmt.run(orgId, a, b, count, totalCommits);
       }
     });
     insertMany();
@@ -127,6 +128,16 @@ export class GitCochangeBuilder {
     setMeta("last_built_at", new Date().toISOString());
     this.metrics?.gitCochangeBuilds.inc({ outcome: "success" });
     this.metrics?.gitCochangePairs.set(pairs.size);
+  }
+
+  /** Query co-change partners for a file, scoped to the given org. */
+  query(orgId: string, filePath: string): Array<{ org_id: string; file_a: string; file_b: string; count: number; total_commits: number; computed_at: string }> {
+    const db = getDb();
+    return db.prepare(
+      `SELECT org_id, file_a, file_b, count, total_commits, computed_at FROM git_cochange
+       WHERE org_id = ? AND (file_a = ? OR file_b = ?)
+       ORDER BY count DESC LIMIT 50`
+    ).all(orgId, filePath, filePath) as Array<{ org_id: string; file_a: string; file_b: string; count: number; total_commits: number; computed_at: string }>;
   }
 
   private runGitLog(): Promise<string> {
@@ -232,10 +243,10 @@ export class GitCochangeBuilder {
   }
 
   /** Schedule a refresh loop. unref() so it doesn't keep the loop alive. */
-  startScheduler(): void {
+  startScheduler(orgId: string): void {
     const tick = async () => {
       try {
-        await this.build();
+        await this.build(orgId);
         this.timer = setTimeout(tick, this.refreshMs);
       } catch (err) {
         this.log.warn({ err }, "build failed, retrying");

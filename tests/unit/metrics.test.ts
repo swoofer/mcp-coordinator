@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+﻿import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
 import { Metrics, serveMetrics } from "../../src/metrics.js";
 import { createServices } from "../../src/server-setup.js";
@@ -90,10 +90,10 @@ describe("Metrics counters", () => {
 
 describe("Metrics gauges", () => {
   it("gaugeSnapshot reflects online agents from services.registry", async () => {
-    services.registry.register("a1", "Agent A", ["src/auth"]);
-    services.registry.register("a2", "Agent B", ["src/users"]);
-    services.registry.register("a3", "Agent C", ["src/api"]);
-    services.registry.setOffline("a3");
+    services.registry.register("default", "a1", "Agent A", ["src/auth"]);
+    services.registry.register("default", "a2", "Agent B", ["src/users"]);
+    services.registry.register("default", "a3", "Agent C", ["src/api"]);
+    services.registry.setOffline("default", "a3");
 
     metrics.gaugeSnapshot(services);
     const text = (await metrics.render()).body;
@@ -102,7 +102,7 @@ describe("Metrics gauges", () => {
 
   it("gaugeSnapshot counts open + resolving threads from DB", async () => {
     // FK on threads.initiator_id -> agents.id; register before inserting.
-    services.registry.register("a1", "Agent A", []);
+    services.registry.register("default", "a1", "Agent A", []);
     const db = getDb();
     // Insert minimal thread rows directly â€” avoids triggering the full
     // announce workflow which has side effects on quota / SSE / MQTT.
@@ -223,3 +223,5 @@ describe("Metrics text exposition format", () => {
     expect(t2).toMatch(/mcp_coordinator_announces_total\{result="thread_opened"\}\s+1/);
   });
 });
+
+

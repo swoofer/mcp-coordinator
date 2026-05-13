@@ -40,24 +40,31 @@ export interface EmbeddedMqttBroker {
 
 /**
  * B3 fix: opt-in MQTT authentication. When provided, every CONNECT packet's
- * password field is passed to authenticate(). Returning false rejects the
- * client. When omitted (default), the broker accepts anonymous connections —
- * preserving the existing behavior so essaim and other clients without auth
- * keep working unchanged.
+ * password field is passed to authenticate(). Returns `{ ok: true, org }` on
+ * success — the org is attached to the Aedes client and used by the ACL hooks.
+ * Returns `{ ok: false }` to reject the CONNECT.
+ * When omitted (default), the broker accepts anonymous connections — preserving
+ * the existing behavior so essaim and other clients without auth keep working.
  *
  * The internal coordinator client (MqttBridge) bypasses this by passing an
  * internal admin token when AUTH_ENABLED is true.
  */
-export type MqttAuthVerifier = (username: string | undefined, password: Buffer | undefined) => Promise<boolean>;
+export type MqttAuthResult = { ok: false } | { ok: true; org: string };
+export type MqttAuthVerifier = (
+  username: string | undefined,
+  password: Buffer | undefined,
+) => Promise<MqttAuthResult>;
 
 export interface EmbeddedMqttOptions {
-  tcpPort?: number; // 0 or undefined → skip TCP
+  tcpPort?: number; // 0 = OS-assigned (read back from EmbeddedMqttBroker.tcpPort), undefined = skip TCP
   httpServer?: HttpServer; // undefined → skip WS
   wsPath?: string; // default "/mqtt"
   logger: Logger;
   /**
-   * Per-CONNECT auth verifier. Omit to allow anonymous (default — backwards
-   * compatible with essaim and any client not using auth).
+   * Per-CONNECT auth verifier. Returns `{ ok: true, org }` on success — the org is
+   * attached to the Aedes client and used by authorizeSubscribe/authorizePublish.
+   * Returning `{ ok: false }` rejects the CONNECT.
+   * Omit to allow anonymous (default — Phase 1 backward compat).
    */
   authenticate?: MqttAuthVerifier;
 }
@@ -73,25 +80,64 @@ export interface EmbeddedMqttOptions {
  */
 export async function startEmbeddedMqttBroker(opts: EmbeddedMqttOptions): Promise<EmbeddedMqttBroker> {
   const { tcpPort, httpServer, wsPath = "/mqtt", logger, authenticate } = opts;
-  const broker = await Aedes.createBroker();
+
+  // Build Aedes options. Hooks are passed at construction time to guarantee
+  // they are set before the broker accepts any connections.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const aedesOpts: Record<string, any> = {};
 
   if (authenticate) {
     // B3 fix: when AUTH_ENABLED, every CONNECT must present a valid token.
-    (broker as unknown as { authenticate: (client: Client, username: string | undefined, password: Buffer | undefined, cb: (err: Error | null, success: boolean) => void) => void }).authenticate =
-      (client, username, password, cb) => {
-        Promise.resolve(authenticate(username, password)).then(
-          (ok) => {
-            if (!ok) logger.warn({ client_id: client?.id, username }, "MQTT auth rejected");
-            cb(null, ok);
-          },
-          (err) => {
-            logger.warn({ client_id: client?.id, err: err.message }, "MQTT auth error");
+    aedesOpts.authenticate = (client: Client, username: string | undefined, password: Buffer | undefined, cb: (err: Error | null, success: boolean) => void) => {
+      Promise.resolve(authenticate(username, password)).then(
+        (result) => {
+          if (!result.ok) {
+            logger.warn({ client_id: client?.id, username }, "MQTT auth rejected");
             cb(null, false);
+            return;
           }
-        );
-      };
+          // Attach org to the Aedes client object — survives the connection lifetime.
+          (client as unknown as { org: string }).org = result.org;
+          cb(null, true);
+        },
+        (err) => {
+          logger.warn({ client_id: client?.id, err: (err as Error).message }, "MQTT auth error");
+          cb(null, false);
+        }
+      );
+    };
+
+    // ACL: subscriptions must match coordinator/<org>/...
+    // cb(null, null) → granted=128 (subscription failure per MQTT 3.1.1)
+    aedesOpts.authorizeSubscribe = (client: Client, sub: { topic: string; qos: number }, cb: (err: Error | null, sub: { topic: string; qos: number } | null) => void) => {
+      const org = (client as unknown as { org?: string }).org;
+      if (!org) return cb(new Error("MQTT client missing org"), null);
+      const prefix = `coordinator/${org}/`;
+      if (!sub.topic.startsWith(prefix)) {
+        logger.warn({ client_id: client?.id, org, topic: sub.topic }, "MQTT subscribe denied (cross-org)");
+        return cb(null, null);
+      }
+      cb(null, sub);
+    };
+
+    // ACL: publishes must match coordinator/<org>/...
+    // Passing an Error to cb causes Aedes to disconnect the client (intended:
+    // cross-org publish is treated as a protocol violation, not silently dropped).
+    aedesOpts.authorizePublish = (client: Client, packet: { topic: string }, cb: (err: Error | null) => void) => {
+      const org = (client as unknown as { org?: string }).org;
+      if (!org) return cb(new Error("MQTT client missing org"));
+      const prefix = `coordinator/${org}/`;
+      if (!packet.topic.startsWith(prefix)) {
+        logger.warn({ client_id: client?.id, org, topic: packet.topic }, "MQTT publish denied (cross-org) — client will be disconnected");
+        return cb(new Error("Cross-org publish denied"));
+      }
+      cb(null);
+    };
+
     logger.info("MQTT auth enabled (token in CONNECT password)");
   }
+
+  const broker = await Aedes.createBroker(aedesOpts);
 
   broker.on("client", (client: Client) => {
     logger.debug({ client_id: client?.id }, "MQTT client connected");
@@ -105,8 +151,9 @@ export async function startEmbeddedMqttBroker(opts: EmbeddedMqttOptions): Promis
 
   let tcpServerClose: (() => Promise<void>) | null = null;
   let wsServerClose: (() => Promise<void>) | null = null;
+  let resolvedTcpPort: number | null = null;
 
-  if (tcpPort && tcpPort > 0) {
+  if (tcpPort !== undefined && tcpPort >= 0) {
     const tcpServer = createTcpServer((socket) => {
       broker.handle(socket as unknown as Duplex);
     });
@@ -116,12 +163,18 @@ export async function startEmbeddedMqttBroker(opts: EmbeddedMqttOptions): Promis
       tcpServer.once("error", reject);
       tcpServer.listen(tcpPort, "127.0.0.1", () => {
         tcpServer.off("error", reject);
-        logger.info({ port: tcpPort, transport: "tcp" }, "Embedded MQTT broker listening");
+        const addr = tcpServer.address();
+        // TS narrowing doesn't flow into this callback. `tcpPort` is typed
+        // `number | undefined` here even though the outer guard rules out
+        // undefined. Use `?? null` to keep the assignment compatible with
+        // `number | null`.
+        resolvedTcpPort = typeof addr === "object" && addr ? addr.port : (tcpPort ?? null);
+        logger.info({ port: resolvedTcpPort, transport: "tcp" }, "Embedded MQTT broker listening");
         resolve();
       });
     });
     tcpServer.on("error", (err) => {
-      logger.error({ err, port: tcpPort }, "Embedded MQTT TCP server error");
+      logger.error({ err, port: resolvedTcpPort }, "Embedded MQTT TCP server error");
     });
     tcpServerClose = () => new Promise<void>((resolve) => tcpServer.close(() => resolve()));
   }
@@ -143,7 +196,7 @@ export async function startEmbeddedMqttBroker(opts: EmbeddedMqttOptions): Promis
   }
 
   return {
-    tcpPort: tcpPort && tcpPort > 0 ? tcpPort : null,
+    tcpPort: resolvedTcpPort,
     wsPath: httpServer ? wsPath : null,
     close: async () => {
       if (tcpServerClose) await tcpServerClose();

@@ -38,6 +38,7 @@ export interface CommonFlowResult {
 }
 
 export interface CommonFlowParams {
+  org_id: string;
   agent_id: string;
   subject: string;
   plan?: string;
@@ -64,6 +65,7 @@ export function runCommonAnnounceFlow(
 
   // 1. Score impact: categorize all online agents into concerned / gray_zone / pass.
   const categorized = impactScorer.categorize({
+    org_id: params.org_id,
     agent_id: params.agent_id,
     target_modules: params.target_modules,
     target_files: params.target_files,
@@ -89,15 +91,15 @@ export function runCommonAnnounceFlow(
   // announce can match via Layer 0. Thread will timeout naturally if no one joins.
   const db = getDb();
   const concernedIds = categorized.concerned.map((s) => s.agent_id);
-  db.prepare("UPDATE threads SET expected_respondents = ? WHERE id = ?")
-    .run(JSON.stringify(concernedIds), threadId);
+  db.prepare("UPDATE threads SET expected_respondents = ? WHERE id = ? AND org_id = ?")
+    .run(JSON.stringify(concernedIds), threadId, params.org_id);
 
-  const otherOnlineCount = registry.listOnline().filter((a) => a.id !== params.agent_id).length;
+  const otherOnlineCount = registry.listOnline(params.org_id).filter((a) => a.id !== params.agent_id).length;
   const shouldAutoResolve = concernedIds.length === 0 && otherOnlineCount === 0;
-  const currentThread = consultation.getThread(threadId)!;
+  const currentThread = consultation.getThread(params.org_id, threadId)!;
   if (shouldAutoResolve && currentThread.status === "open" && !params.keep_open) {
-    db.prepare("UPDATE threads SET status = 'resolved', resolved_at = ? WHERE id = ?")
-      .run(new Date().toISOString(), threadId);
+    db.prepare("UPDATE threads SET status = 'resolved', resolved_at = ? WHERE id = ? AND org_id = ?")
+      .run(new Date().toISOString(), threadId, params.org_id);
     consultation.emitResolution(threadId, "auto_resolved");
   }
 
@@ -110,19 +112,19 @@ export function runCommonAnnounceFlow(
       score: s.score,
       reasons: s.reasons,
       category: scoredCategory(s),
-    });
+    }, { org_id: params.org_id });
   }
 
   // 4. Create introspection records and emit introspection_requested for gray_zone agents.
   for (const s of categorized.gray_zone) {
-    introspection.create({ thread_id: threadId, agent_id: s.agent_id, score: s.score, reasons: s.reasons });
+    introspection.create(params.org_id, { thread_id: threadId, agent_id: s.agent_id, score: s.score, reasons: s.reasons });
     sseEmitter.emit("introspection_requested", {
       thread_id: threadId,
       agent_id: s.agent_id,
       agent_name: s.agent_name,
       score: s.score,
       reasons: s.reasons,
-    });
+    }, { org_id: params.org_id });
   }
 
   // 5. Plan quality downgrade event — both transports emit this when a plan
@@ -133,14 +135,14 @@ export function runCommonAnnounceFlow(
     sseEmitter.emit("impact_scored" as "impact_scored", {
       thread_id: threadId,
       agent_id: params.agent_id,
-      agent_name: registry.get(params.agent_id)?.name || params.agent_id,
+      agent_name: registry.get(params.org_id, params.agent_id)?.name || params.agent_id,
       score: planQuality.score,
       reasons: [planDowngradeReason(planQuality)],
       category: "plan_quality",
-    } as Parameters<typeof sseEmitter.emit>[1]);
+    } as Parameters<typeof sseEmitter.emit>[1], { org_id: params.org_id });
   }
 
-  const updated = consultation.getThread(threadId)!;
+  const updated = consultation.getThread(params.org_id, threadId)!;
   const respondents: string[] = JSON.parse(updated.expected_respondents || "[]");
 
   return { updated, categorized, respondents, planQuality };

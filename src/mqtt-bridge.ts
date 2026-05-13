@@ -13,6 +13,7 @@ interface AgentListener {
 }
 
 export class MqttBridge {
+  private orgId: string;
   private client: mqtt.MqttClient | null = null;
   private connected = false;
   private onOfflineHandler: ((agentId: string) => void) | null = null;
@@ -20,15 +21,16 @@ export class MqttBridge {
   private log: Logger;
   private agentId: string = "coordinator-internal";
   /**
-   * P1: track the last threadId we retained on `coordinator/consultations/new`.
+   * P1: track the last threadId we retained on `coordinator/<orgId>/consultations/new`.
    * The topic is fixed (not per-thread), so retain holds only the LAST event.
    * `clearRetainedConsultation(threadId)` only clears when it matches, so a
    * later consultation isn't accidentally wiped by a stale resolve callback.
    */
   private lastRetainedConsultationThreadId: string | null = null;
 
-  constructor(logger?: Logger) {
-    this.log = logger || silentLogger;
+  constructor(orgId: string, logger?: Logger) {
+    this.orgId = orgId;
+    this.log = logger ?? silentLogger;
   }
 
   async connect(config: { url: string; username?: string; password?: string; agentId?: string }): Promise<void> {
@@ -51,7 +53,7 @@ export class MqttBridge {
         // bridge automatically broadcasts offline status. Without this the
         // agent appears online indefinitely after an unexpected disconnect.
         will: {
-          topic: `coordinator/agents/${this.agentId}/status`,
+          topic: `coordinator/${this.orgId}/agents/${this.agentId}/status`,
           payload: Buffer.from(JSON.stringify({ status: "offline", reason: "lwt_unexpected" })),
           qos: 1,
           retain: false,
@@ -63,19 +65,20 @@ export class MqttBridge {
         this.connected = true;
         this.log.info({ url: config.url }, "MQTT connected");
 
-        // Subscribe to agent status for LWT detection
-        this.client!.subscribe("coordinator/agents/+/status");
+        // All SUBSCRIBE packets must be sent AFTER CONNACK or the broker may
+        // silently drop them under clean:true sessions. Keep the three
+        // subscribes co-located inside this handler.
+        this.client!.subscribe(`coordinator/${this.orgId}/agents/+/status`);
+        this.client!.subscribe(`coordinator/${this.orgId}/consultations/#`);
+        this.client!.subscribe(`coordinator/${this.orgId}/broadcast`);
         resolve();
       });
 
-      // Subscribe to consultation topics for agent listeners
-      this.client!.subscribe("coordinator/consultations/#");
-      this.client!.subscribe("coordinator/broadcast");
-
       this.client.on("message", (topic, message) => {
         const parts = topic.split("/");
-        if (parts[1] === "agents" && parts[3] === "status") {
-          const agentId = parts[2];
+        // Topic: coordinator/<orgId>/agents/<agentId>/status → parts[2]="agents", parts[3]=agentId, parts[4]="status"
+        if (parts[2] === "agents" && parts[4] === "status") {
+          const agentId = parts[3];
           const status = message.toString();
           if (status === "offline" && this.onOfflineHandler) {
             this.onOfflineHandler(agentId);
@@ -83,7 +86,8 @@ export class MqttBridge {
         }
 
         // Route consultation messages to agent listeners
-        if (parts[1] === "consultations" || parts[1] === "broadcast") {
+        // Topic: coordinator/<orgId>/consultations/... or coordinator/<orgId>/broadcast
+        if (parts[2] === "consultations" || parts[2] === "broadcast") {
           try {
             const payload = JSON.parse(message.toString());
             const msg: QueuedMessage = { topic, payload, timestamp: Date.now() };
@@ -119,7 +123,7 @@ export class MqttBridge {
   registerAgent(agentId: string, name: string): void {
     if (!this.client || !this.connected) return;
     this.client.publish(
-      `coordinator/agents/${agentId}/status`,
+      `coordinator/${this.orgId}/agents/${agentId}/status`,
       JSON.stringify({ status: "online", name }),
       { retain: true }
     );
@@ -132,7 +136,7 @@ export class MqttBridge {
     // the active state without an event-history replay.
     this.lastRetainedConsultationThreadId = threadId;
     this.client.publish(
-      "coordinator/consultations/new",
+      `coordinator/${this.orgId}/consultations/new`,
       JSON.stringify({ thread_id: threadId, agent_id: agentId, subject, target_modules: targetModules }),
       { qos: 1, retain: true }
     );
@@ -151,7 +155,7 @@ export class MqttBridge {
     if (!this.client || !this.connected) return;
     if (this.lastRetainedConsultationThreadId !== threadId) return;
     this.client.publish(
-      "coordinator/consultations/new",
+      `coordinator/${this.orgId}/consultations/new`,
       "",
       { qos: 1, retain: true }
     );
@@ -162,7 +166,7 @@ export class MqttBridge {
     if (!this.client || !this.connected) return;
     // QoS 0: high-frequency chat-style traffic, lossy-OK.
     this.client.publish(
-      `coordinator/consultations/${threadId}/messages`,
+      `coordinator/${this.orgId}/consultations/${threadId}/messages`,
       JSON.stringify({ agent_id: agentId, type, content })
     );
   }
@@ -171,7 +175,7 @@ export class MqttBridge {
     if (!this.client || !this.connected) return;
     // P1 fix: QoS 1 (at-least-once) — resolution is a state-change event.
     this.client.publish(
-      `coordinator/consultations/${threadId}/status`,
+      `coordinator/${this.orgId}/consultations/${threadId}/status`,
       JSON.stringify({ status, summary }),
       { qos: 1, retain: true }
     );
@@ -180,7 +184,7 @@ export class MqttBridge {
   publishBroadcast(agentId: string, message: string): void {
     if (!this.client || !this.connected) return;
     this.client.publish(
-      "coordinator/broadcast",
+      `coordinator/${this.orgId}/broadcast`,
       JSON.stringify({ agent_id: agentId, message })
     );
   }
@@ -188,7 +192,7 @@ export class MqttBridge {
   publishAgentOffline(agentId: string): void {
     if (!this.client || !this.connected) return;
     this.client.publish(
-      `coordinator/agents/${agentId}/status`,
+      `coordinator/${this.orgId}/agents/${agentId}/status`,
       JSON.stringify({ status: "offline" }),
       { retain: true }
     );
@@ -199,7 +203,7 @@ export class MqttBridge {
     // P1 fix: QoS 1 — claim is a coordination state-change. Loss would mean
     // multiple agents think a task is unclaimed.
     this.client.publish(
-      `coordinator/consultations/${threadId}/claimed`,
+      `coordinator/${this.orgId}/consultations/${threadId}/claimed`,
       JSON.stringify({ agent_id: claimedBy, claimed_by: claimedBy, claimed_at: new Date().toISOString() }),
       { qos: 1 }
     );
@@ -209,7 +213,7 @@ export class MqttBridge {
     if (!this.client || !this.connected) return;
     // P1 fix: QoS 1 — completion is a coordination state-change.
     this.client.publish(
-      `coordinator/consultations/${threadId}/completed`,
+      `coordinator/${this.orgId}/consultations/${threadId}/completed`,
       JSON.stringify({ agent_id: completedBy, completed_by: completedBy, summary }),
       { qos: 1 }
     );
@@ -223,7 +227,7 @@ export class MqttBridge {
   publishQuotaUpdate(info: unknown): void {
     if (!this.client || !this.connected) return;
     // QoS 0: high-frequency telemetry, lossy-OK (the next refresh overwrites).
-    this.client.publish("coordinator/quota/update", JSON.stringify(info));
+    this.client.publish(`coordinator/${this.orgId}/quota/update`, JSON.stringify(info));
   }
 
   // ── Agent listener methods (for integrated MCP tools) ──
@@ -273,7 +277,12 @@ export class MqttBridge {
 
   mqttPublish(topic: string, payload: string): void {
     if (this.client && this.connected) {
-      this.client.publish(topic, payload);
+      // Ensure all outbound topics are org-scoped. If caller passes an unscoped
+      // topic, prepend the org prefix; if already prefixed, pass through.
+      const scopedTopic = topic.startsWith(`coordinator/${this.orgId}/`)
+        ? topic
+        : `coordinator/${this.orgId}/${topic.replace(/^coordinator\//, "")}`;
+      this.client.publish(scopedTopic, payload);
     }
   }
 

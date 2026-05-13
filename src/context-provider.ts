@@ -5,6 +5,7 @@ import type { FileTracker } from "./file-tracker.js";
 
 export interface ContextProvider {
   getRelevantContext(
+    orgId: string,
     agentId: string,
     query: ConsultationAnnounce
   ): AgentContext;
@@ -18,10 +19,11 @@ export class SummaryContextProvider implements ContextProvider {
   ) {}
 
   getRelevantContext(
+    orgId: string,
     agentId: string,
     query: ConsultationAnnounce
   ): AgentContext {
-    const agent = this.registry.get(agentId);
+    const agent = this.registry.get(orgId, agentId);
     if (!agent) {
       return { agent_id: agentId, modules: [], recent_files: [], action_summaries: [] };
     }
@@ -39,8 +41,7 @@ export class SummaryContextProvider implements ContextProvider {
       return { agent_id: agentId, modules: [], recent_files: [], action_summaries: [] };
     }
 
-    // Get action summaries for this agent
-    const summaries = this.consultation.getActionSummaries(agentId);
+    const summaries = this.consultation.getActionSummaries(orgId, agentId);
 
     // Get recent files from action summaries (agent writes these via MCP tool)
     const recentFiles = summaries

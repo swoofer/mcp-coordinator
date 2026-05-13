@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+﻿import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -60,7 +60,7 @@ afterAll(() => {
  * Returns the announce_work params used in the timing run so the snapshot
  * test can compare scoring output against a known-correct baseline.
  */
-function seedScale(): { agent_id: string; target_modules: string[]; target_files: string[]; depends_on_files: string[] } {
+function seedScale(): { org_id: string; agent_id: string; target_modules: string[]; target_files: string[]; depends_on_files: string[] } {
   // 50 agents, agent ids agent-00 .. agent-49.
   const agentIds: string[] = [];
   for (let i = 0; i < 50; i++) {
@@ -68,7 +68,7 @@ function seedScale(): { agent_id: string; target_modules: string[]; target_files
     agentIds.push(id);
     // Two modules per agent: a "src" module and a "lib" module, deterministic
     // by index so prefix-overlap with "src/shared" stays predictable.
-    registry.register(id, `Agent ${i}`, [`src/mod-${i}`, `lib/util-${i % 5}`]);
+    registry.register("default", id, `Agent ${i}`, [`src/mod-${i}`, `lib/util-${i % 5}`]);
   }
 
   // 200 file activities spread across the agents. ~10 of them touch files
@@ -82,6 +82,7 @@ function seedScale(): { agent_id: string; target_modules: string[]; target_files
       ? `src/shared/types-${f % 10}.ts`
       : `src/mod-${f % 50}/file-${f}.ts`;
     tracker.log({
+      org_id: "default",
       session_id: `s-${f}`,
       agent_id: agent,
       tool_name: "Edit",
@@ -99,7 +100,7 @@ function seedScale(): { agent_id: string; target_modules: string[]; target_files
     const targetFiles = isRecent
       ? ["src/shared/types-0.ts"]
       : [`src/mod-${t % 50}/old-file-${t}.ts`];
-    const thread = consultation.announceWork({
+    const thread = consultation.announceWork("default", {
       agent_id: initiator,
       subject: `Old work ${t}`,
       target_modules: [`src/mod-${t % 50}`],
@@ -121,6 +122,7 @@ function seedScale(): { agent_id: string; target_modules: string[]; target_files
 
   return {
     // Use a fresh announcer id NOT in agentIds so all 50 agents are scored.
+    org_id: "default",
     agent_id: "announcer-x",
     target_modules: ["src/shared", "src/mod-3"],
     target_files: ["src/shared/types-0.ts", "src/shared/types-1.ts"],
@@ -196,3 +198,4 @@ describe("P2 perf - impact-scorer at scale", () => {
     expect(mod3Agent!.reasons.some((r) => r.includes("module overlap"))).toBe(true);
   });
 });
+
