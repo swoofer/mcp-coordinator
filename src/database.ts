@@ -7,7 +7,7 @@ const require = createRequire(import.meta.url);
 
 let db: DatabaseAdapter;
 
-const CURRENT_USER_VERSION = 6;
+const CURRENT_USER_VERSION = 7;
 
 const SCHEMA = `
     CREATE TABLE IF NOT EXISTS agents (
@@ -239,7 +239,7 @@ export function initDatabase(dataDir: string): void {
   try { db.exec("ALTER TABLE file_activity ADD COLUMN content_hash TEXT"); } catch { /* already exists */ }
 
   // v0.6: schema version marker. Used by cli/server/restore.ts to refuse downgrades.
-  db.exec("PRAGMA user_version = 6");
+  // PRAGMA user_version is set at end of Task 5 — after all migrations succeed.
 }
 
 export function getDb(): DatabaseAdapter {
