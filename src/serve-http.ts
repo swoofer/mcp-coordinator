@@ -144,6 +144,11 @@ async function handleAuth(req: IncomingMessage, res: ServerResponse): Promise<vo
   } else if (url === "/api/auth/refresh" && req.method === "POST") {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      // RFC 6750 §3: 401 from a Bearer-protected endpoint must include
+      // WWW-Authenticate. /api/auth/refresh doesn't go through
+      // authenticateRequest (it consumes the prior token, doesn't enforce
+      // current validity), so we set the header manually here.
+      res.setHeader("WWW-Authenticate", 'Bearer realm="mcp-coordinator", error="invalid_token"');
       json(res, { error: "Bearer token required" }, 401);
       return;
     }
@@ -155,6 +160,7 @@ async function handleAuth(req: IncomingMessage, res: ServerResponse): Promise<vo
       authLog.info({ agent_id: payload.sub }, "Token refreshed");
       json(res, { token: newToken, expires_at: expiresAt });
     } catch {
+      res.setHeader("WWW-Authenticate", 'Bearer realm="mcp-coordinator", error="invalid_token"');
       json(res, { error: "Invalid or expired token (beyond grace period)" }, 401);
     }
 
