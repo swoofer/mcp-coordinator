@@ -182,6 +182,9 @@ export function isRevoked(agentId: string): boolean {
 
 export function revokeAgent(agentId: string, revokedBy: string): void {
   const db = getDb();
+  // INTENTIONALLY cross-org: revoked_agents is a global blocklist by design.
+  // A revocation issued by an admin must be effective across every org where
+  // that agent_id appears — there is no per-org revocation in Phase 1.
   db.prepare("INSERT OR IGNORE INTO revoked_agents (agent_id, revoked_by) VALUES (?, ?)").run(agentId, revokedBy);
 }
 

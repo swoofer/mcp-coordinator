@@ -21,6 +21,11 @@ afterEach(async () => {
   if (broker) { await broker.close(); broker = null; }
   closeDb();
   rmSync(dataDir, { recursive: true, force: true });
+  // CRITICAL: this test calls initAuth with a non-canonical secret AND a
+  // non-default expiry ("1h"). Reset module state to canonical values so
+  // subsequent test files in the same worker (vitest fileParallelism:false)
+  // don't pick up the contaminated signing key or defaultExpiry.
+  initAuth("test-secret-at-least-32-characters-long!");
 });
 
 function getFreePort(): Promise<number> {

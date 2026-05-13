@@ -31,7 +31,7 @@ export class AgentActivityTracker {
 
   /** Report agent is waiting on a consultation thread */
   reportWaiting(agentId: string, threadId: string): void {
-    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window - single-tenant only)
+    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
     this.upsert("default", agentId, "waiting", null, threadId);
   }
 
@@ -53,7 +53,7 @@ export class AgentActivityTracker {
     } else {
       status = "idle";
     }
-    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window - single-tenant only)
+    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
     this.upsert("default", agentId, status, payload.currentFile, payload.currentThread);
   }
 
