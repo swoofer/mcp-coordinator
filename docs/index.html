@@ -38,7 +38,7 @@
     "applicationCategory": "DeveloperApplication",
     "applicationSubCategory": "AI Agent Coordination",
     "operatingSystem": "Linux, macOS, Windows",
-    "softwareVersion": "0.2.1",
+    "softwareVersion": "0.7.0",
     "license": "https://opensource.org/licenses/MIT",
     "codeRepository": "https://github.com/swoofer/mcp-coordinator",
     "programmingLanguage": ["JavaScript", "Node.js"],
@@ -1552,10 +1552,33 @@
       gap: 1rem; flex-wrap: wrap;
     }
 
+    /* COMPLIANCE — enterprise capability table */
+    #compliance .container { max-width: 1100px; }
+    .compliance-table-wrap { overflow-x: auto; margin: 2rem 0; border: 1px solid var(--border); border-radius: 8px; }
+    .compliance-table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+    .compliance-table th, .compliance-table td { padding: 0.85rem 1.1rem; text-align: left; border-bottom: 1px solid var(--border); vertical-align: top; }
+    .compliance-table tbody tr:last-child td { border-bottom: none; }
+    .compliance-table th { background: var(--card-bg); color: var(--accent); font-weight: 600; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    .compliance-table td code { background: rgba(255,255,255,0.05); padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.85em; color: var(--blue); }
+    .compliance-table .badge-done,
+    .compliance-table .badge-planned,
+    .compliance-table .badge-future {
+      display: inline-block; padding: 0.2rem 0.6rem; border-radius: 999px;
+      font-size: 0.75rem; font-weight: 600; white-space: nowrap;
+    }
+    .compliance-table .badge-done { background: rgba(74,222,128,0.12); color: var(--accent); border: 1px solid rgba(74,222,128,0.3); }
+    .compliance-table .badge-planned { background: rgba(96,165,250,0.12); color: var(--blue); border: 1px solid rgba(96,165,250,0.3); }
+    .compliance-table .badge-future { background: rgba(148,163,184,0.1); color: var(--muted); border: 1px solid rgba(148,163,184,0.25); }
+    .compliance-disclaimer { border-left: 3px solid var(--yellow); padding: 1rem 1.25rem; margin-top: 1.5rem; background: rgba(251,191,36,0.05); border-radius: 4px; color: var(--muted); }
+    .compliance-disclaimer p { margin: 0; line-height: 1.6; }
+    .compliance-disclaimer strong { color: var(--text); }
+
     /* Tablet — section-subtitle tightening */
     @media (max-width: 768px) {
       .section-subtitle { font-size: 1.25rem; margin-top: 2.5rem; }
       .perf-row { font-size: 0.85rem; }
+      .compliance-table { font-size: 0.85rem; }
+      .compliance-table th, .compliance-table td { padding: 0.6rem 0.7rem; }
     }
   </style>
 </head>
@@ -1575,6 +1598,7 @@
     <a href="#templates" data-i18n="nav.patterns">Patterns</a>
     <a href="#compare" data-i18n="nav.compare">Compare</a>
     <a href="#tech" data-i18n="nav.arch">Architecture</a>
+    <a href="#compliance" data-i18n="nav.compliance">Compliance</a>
     <a href="#faq" data-i18n="nav.faq">FAQ</a>
     <a href="#roadmap" data-i18n="nav.roadmap">Roadmap</a>
     <a href="https://github.com/swoofer/mcp-coordinator" target="_blank" rel="noopener noreferrer">GitHub</a>
@@ -1595,7 +1619,7 @@
 <section id="hero">
   <div class="container">
     <div class="hero-eyebrow">
-      <span data-i18n="hero.eyebrow">Open Source &middot; MIT &middot; v0.2.x</span>
+      <span data-i18n="hero.eyebrow">Open Source &middot; MIT &middot; v0.7.0</span>
     </div>
     <h1 data-i18n="hero.h1">Zero conflicts. Every agent aligned.</h1>
     <p class="hero-subtitle" data-i18n="hero.subtitle">5 agents, 1 codebase, 0 merge conflicts. The MCP server that keeps parallel Claude Code, Cursor, and Cline agents aligned.</p>
@@ -2229,7 +2253,7 @@
         <div class="agent-status"><span class="dot dot-green" aria-hidden="true"></span> Beta &mdash; idle</div>
         <div class="agent-status"><span class="dot dot-yellow" aria-hidden="true"></span> Gamma &mdash; waiting</div>
         <div class="agent-status"><span class="dot dot-red" aria-hidden="true"></span> Delta &mdash; offline</div>
-        <div class="agent-status" style="margin-left: auto; color: var(--muted); font-size: 0.8rem;" data-i18n="start.dash.meta">mcp-coordinator v0.2.1 &middot; quota 62%</div>
+        <div class="agent-status" style="margin-left: auto; color: var(--muted); font-size: 0.8rem;" data-i18n="start.dash.meta">mcp-coordinator v0.7.0 &middot; quota 62%</div>
       </div>
       <div class="dash-timeline">
         <div><span class="tl-time">09:41:02</span> <span class="tl-blue">Alpha</span> announced: "Add updated_at to User" &rarr; types.ts, user.service.ts</div>
@@ -2304,12 +2328,79 @@
         <span class="perf-sep">&middot;</span>
         <span class="perf-item"><strong data-i18n="results.perf.label.consensus">Full consensus</strong> <span data-i18n="results.perf.value.consensus">30-45s</span></span>
         <span class="perf-sep">&middot;</span>
-        <span class="perf-item"><strong data-i18n="results.perf.label.tests">Test suite</strong> <span data-i18n="results.perf.value.tests">392 unit tests across 46 files</span></span>
+        <span class="perf-item"><strong data-i18n="results.perf.label.tests">Test suite</strong> <span data-i18n="results.perf.value.tests">546 unit tests across 65 files</span></span>
       </div>
       <p class="perf-metrics-link">
         <a href="https://github.com/swoofer/mcp-coordinator/tree/main/tests" rel="noopener noreferrer" data-i18n="results.perf.link">Browse the test suite on GitHub →</a>
       </p>
     </div>
+  </div>
+</section>
+
+<section id="compliance">
+  <div class="container">
+    <div class="text-center">
+      <h2 class="section-title" data-i18n="compliance.title">Enterprise &amp; Compliance</h2>
+      <p class="section-sub" data-i18n="compliance.intro">Built for compliance from the foundation up. Since v0.7, mcp-coordinator ships the architectural hooks that audit and regulated-industry deployments need.</p>
+    </div>
+
+    <div class="compliance-table-wrap fade-in">
+      <table class="compliance-table">
+        <thead>
+          <tr>
+            <th data-i18n="compliance.th.capability">Capability</th>
+            <th data-i18n="compliance.th.status">Status</th>
+            <th data-i18n="compliance.th.aligned">Aligned with</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td data-i18n="compliance.row.tenant.cap">Multi-tenant <code>org_id</code> isolation across 14 tables</td>
+            <td><span class="badge-done" data-i18n="compliance.row.tenant.status">Shipped v0.7</span></td>
+            <td data-i18n="compliance.row.tenant.aligned">SOC 2 CC6.1 &middot; GDPR Art. 32</td>
+          </tr>
+          <tr>
+            <td data-i18n="compliance.row.audit.cap">Audit log table (append-only data layer)</td>
+            <td><span class="badge-done" data-i18n="compliance.row.audit.status">Shipped v0.7</span></td>
+            <td data-i18n="compliance.row.audit.aligned">SOC 2 CC7.2 &middot; CC7.3</td>
+          </tr>
+          <tr>
+            <td data-i18n="compliance.row.jwt.cap">JWT &mdash; HS256 pin &middot; RFC 6750 &middot; zero-downtime rotation</td>
+            <td><span class="badge-done" data-i18n="compliance.row.jwt.status">Shipped v0.7</span></td>
+            <td data-i18n="compliance.row.jwt.aligned">SOC 2 CC6.1</td>
+          </tr>
+          <tr>
+            <td data-i18n="compliance.row.enc.cap"><code>EncryptionProvider</code> interface (passthrough default)</td>
+            <td><span class="badge-done" data-i18n="compliance.row.enc.status">Shipped v0.7</span></td>
+            <td data-i18n="compliance.row.enc.aligned">Hook for v0.7.5</td>
+          </tr>
+          <tr>
+            <td data-i18n="compliance.row.sqlcipher.cap">SQLCipher whole-DB encryption at rest</td>
+            <td><span class="badge-planned" data-i18n="compliance.row.sqlcipher.status">Spec'd v0.7.5</span></td>
+            <td data-i18n="compliance.row.sqlcipher.aligned">SOC 2 CC6.1</td>
+          </tr>
+          <tr>
+            <td data-i18n="compliance.row.byok.cap">Per-org DEK + BYOK (AWS KMS / GCP KMS / Vault)</td>
+            <td><span class="badge-future" data-i18n="compliance.row.byok.status">Sketch v0.8</span></td>
+            <td data-i18n="compliance.row.byok.aligned">Regulated industries</td>
+          </tr>
+          <tr>
+            <td data-i18n="compliance.row.gdpr.cap">GDPR <code>/export</code> &amp; <code>/delete</code> endpoints</td>
+            <td><span class="badge-future" data-i18n="compliance.row.gdpr.status">Sketch v0.8</span></td>
+            <td data-i18n="compliance.row.gdpr.aligned">GDPR Art. 15 &middot; 17 &middot; 20</td>
+          </tr>
+          <tr>
+            <td data-i18n="compliance.row.retention.cap">Retention policies + audit log surface UI</td>
+            <td><span class="badge-future" data-i18n="compliance.row.retention.status">Sketch v0.8</span></td>
+            <td data-i18n="compliance.row.retention.aligned">SOC 2 &middot; GDPR minimization</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <blockquote class="compliance-disclaimer fade-in">
+      <p data-i18n="compliance.disclaimer">mcp-coordinator is <strong>not SOC 2 certified</strong> &mdash; certification is auditor work, not code. We ship the architectural hooks (multi-tenant isolation, audit log, encryption interface) so teams pursuing audits get a head start, but the certification itself is your team's process.</p>
+    </blockquote>
   </div>
 </section>
 
@@ -2329,7 +2420,7 @@
 
       <details class="faq-item">
         <summary class="faq-q" data-i18n="faq.q2">Is it production-ready?</summary>
-        <div class="faq-a" data-i18n="faq.a2">Stable for solo and team use; v1.0 freezes the public API. 392 unit tests across 6 scoring layers and 4 conflict scenarios, MIT-licensed, <code>doctor</code> command, structured Pino logs.</div>
+        <div class="faq-a" data-i18n="faq.a2">Stable for solo and team use; v1.0 freezes the public API. 546 unit tests across 65 files cover 6 scoring layers, cross-org isolation, and 4 conflict scenarios. MIT-licensed, <code>doctor</code> command, structured Pino logs.</div>
       </details>
 
       <details class="faq-item">
@@ -2535,11 +2626,35 @@
         <div class="timeline-dot dot-done" aria-hidden="true"></div>
         <div class="timeline-badge badge-done" data-i18n="roadmap.badge.done">Shipped</div>
         <h4 data-i18n="roadmap.v05.title">v0.5 — In-flight awareness &amp; git co-change</h4>
-        <p data-i18n="roadmap.v05.desc">Hook-based PreToolUse + PostToolUse: the coordinator sees agents <em>start</em> editing, not just finish. Git co-change scoring: files that share commit history (config + consumer, fixture + test) get impact score 60 if &gt;50% co-change, 40 if &gt;20%. 392-test suite across 46 files.</p>
+        <p data-i18n="roadmap.v05.desc">Hook-based PreToolUse + PostToolUse: the coordinator sees agents <em>start</em> editing, not just finish. Git co-change scoring: files that share commit history (config + consumer, fixture + test) get impact score 60 if &gt;50% co-change, 40 if &gt;20%.</p>
         <p class="timeline-meta">
           <span data-i18n="roadmap.v05.date">Shipped May 2026</span>
           <span aria-hidden="true">·</span>
           <a href="https://github.com/swoofer/mcp-coordinator/releases/tag/v0.5.0" target="_blank" rel="noopener noreferrer" data-i18n="roadmap.v05.link" aria-label="v0.5.0 release on GitHub">v0.5.0 release</a>
+        </p>
+      </div>
+
+      <div class="timeline-item">
+        <div class="timeline-dot dot-done" aria-hidden="true"></div>
+        <div class="timeline-badge badge-done" data-i18n="roadmap.badge.done">Shipped</div>
+        <h4 data-i18n="roadmap.v06.title">v0.6 — Semantic conflict detection &amp; 15-language symbol parsing</h4>
+        <p data-i18n="roadmap.v06.desc">Tree-sitter symbol extraction extended to 15 languages (added Bash, C#, C, C++, Ruby, PHP, Kotlin, Swift). Layer 4 git co-change scoring detects historical co-edit patterns. <code>/api/working-files/{start,stop}</code> lets agents signal in-progress edits for real-time conflict detection.</p>
+        <p class="timeline-meta">
+          <span data-i18n="roadmap.v06.date">Shipped May 2026</span>
+          <span aria-hidden="true">·</span>
+          <a href="https://github.com/swoofer/mcp-coordinator/releases/tag/v0.6.0" target="_blank" rel="noopener noreferrer" data-i18n="roadmap.v06.link" aria-label="v0.6.0 release on GitHub">v0.6.0 release</a>
+        </p>
+      </div>
+
+      <div class="timeline-item">
+        <div class="timeline-dot dot-done" aria-hidden="true"></div>
+        <div class="timeline-badge badge-done" data-i18n="roadmap.badge.done">Shipped</div>
+        <h4 data-i18n="roadmap.v07.title">v0.7 — Multi-tenant security foundation</h4>
+        <p data-i18n="roadmap.v07.desc">Organization scoping (<code>org_id</code>) baked into 14 tables and every MCP/HTTP/MQTT/SSE call. JWT hardened with HS256 pin, RFC 6750 <code>WWW-Authenticate</code> headers, and zero-downtime secret rotation via <code>COORDINATOR_JWT_PREV_SECRET</code>. <code>audit_log</code> table, <code>EncryptionProvider</code> interface, and <code>IdPProvider</code> interface ship as hooks for v0.7.5 (SQLCipher) and v0.8 (BYOK, GDPR endpoints).</p>
+        <p class="timeline-meta">
+          <span data-i18n="roadmap.v07.date">Shipped May 2026</span>
+          <span aria-hidden="true">·</span>
+          <a href="https://github.com/swoofer/mcp-coordinator/releases/tag/v0.7.0" target="_blank" rel="noopener noreferrer" data-i18n="roadmap.v07.link" aria-label="v0.7.0 release on GitHub">v0.7.0 release</a>
         </p>
       </div>
 
@@ -2592,7 +2707,7 @@
     <a href="https://github.com/sponsors/swoofer" target="_blank" rel="noopener noreferrer">Sponsor</a>
     <a href="https://buymeacoffee.com/swoofer" target="_blank" rel="noopener noreferrer">Buy Me A Coffee</a>
   </div>
-  <p data-i18n="footer.text">MIT License &nbsp;·&nbsp; Built with <a href="https://claude.ai/code" target="_blank" rel="noopener noreferrer">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v0.5.0</p>
+  <p data-i18n="footer.text">MIT License &nbsp;·&nbsp; Built with <a href="https://claude.ai/code" target="_blank" rel="noopener noreferrer">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v0.7.0</p>
 </footer>
 
 <script>
@@ -2693,7 +2808,7 @@
       "nav.install": "Install",
       "nav.roadmap": "Roadmap",
       "nav.getstarted": "Get Started",
-      "hero.eyebrow": "Open Source &middot; MIT &middot; v0.5.0",
+      "hero.eyebrow": "Open Source &middot; MIT &middot; v0.7.0",
       "hero.h1": "Zero conflicts. Every agent aligned.",
       "hero.subtitle": "5 agents, 1 codebase, 0 merge conflicts. The MCP server that keeps parallel Claude Code, Cursor, and Cline agents aligned.",
       "hero.stat.latency": "&lt;50ms push latency",
@@ -2861,7 +2976,7 @@
       "start.step4.desc": "The <code class=\"ic\">doctor</code> command checks config, server, MCP responses, and MQTT connections, then opens the dashboard at <code class=\"ic\">localhost:3100/dashboard</code>.",
       "start.note": "<code class=\"ic\">git worktree add ../feature-x main</code> and run each agent in its own worktree &mdash; mcp-coordinator handles \"who's editing types.ts\"; worktrees handle \"no two agents fighting the same inode.\"",
       "start.dash.title": "What you'll see in 60 seconds",
-      "start.dash.meta": "mcp-coordinator v0.5.0 &middot; quota 62%",
+      "start.dash.meta": "mcp-coordinator v0.7.0 &middot; quota 62%",
       "start.dash.aria": "Sample dashboard view: four agents tracked live, with a conflict resolved in 38 seconds",
       "start.cta.star": "Star on GitHub",
       "start.cta.issue": "Open an issue",
@@ -2887,7 +3002,7 @@
       "results.perf.label.consensus": "Full consensus",
       "results.perf.value.consensus": "30-45s",
       "results.perf.label.tests": "Test suite",
-      "results.perf.value.tests": "392 unit tests across 46 files",
+      "results.perf.value.tests": "546 unit tests across 65 files",
       "results.perf.link": "Browse the test suite on GitHub →",
       "results.subtitle.link": "See tests/ on GitHub →",
       "faq.title": "FAQ",
@@ -2895,7 +3010,7 @@
       "faq.q1": "Does this replace git worktrees?",
       "faq.a1": "No. Worktrees solve filesystem isolation; mcp-coordinator solves intent coordination. Use both.",
       "faq.q2": "Is it production-ready?",
-      "faq.a2": "Stable for solo and team use; v1.0 freezes the public API. 392 unit tests across 6 scoring layers and 4 conflict scenarios, MIT-licensed, <code>doctor</code> command, structured Pino logs.",
+      "faq.a2": "Stable for solo and team use; v1.0 freezes the public API. 546 unit tests across 65 files cover 6 scoring layers, cross-org isolation, and 4 conflict scenarios. MIT-licensed, <code>doctor</code> command, structured Pino logs.",
       "faq.q3": "What does it cost?",
       "faq.a3": "MIT-licensed and free. Self-hosted on your machine, your LAN, or your cloud.",
       "faq.q4": "Which MCP clients work?",
@@ -2954,7 +3069,7 @@
       "roadmap.harbor.desc": "Native integration with Anthropic's forthcoming server-side push channel (internally tracked as <code>tengu_harbor</code>). Listener code already lives alongside the MQTT bridge. The moment it ships, mcp-coordinator plugs in.",
       "roadmap.harbor.date": "Date TBD · upstream-gated",
       "roadmap.harbor.link": "Follow on GitHub",
-      "footer.text": "MIT License &nbsp;·&nbsp; Built with <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v0.5.0",
+      "footer.text": "MIT License &nbsp;·&nbsp; Built with <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v0.7.0",
       // === Deprecated keys preserved for backwards-compat (old taxonomy) ===
       "why.title": "Why MCP Coordinator?",
       "why.subtitle": "Run five agents on the same repo without merge conflicts, duplicated work, or silent regressions.",
@@ -3073,6 +3188,46 @@
       "install.step4.title": "Verify and open",
       "install.step4.desc": "Doctor runs a health check.",
       "install.note": "Sessions still need <a href=\"#worktrees\" class=\"il\">git worktrees</a> for filesystem isolation.",
+      // === v0.7 additions: nav, roadmap v0.6/v0.7, Enterprise & Compliance section ===
+      "nav.compliance": "Compliance",
+      "roadmap.v06.title": "v0.6 — Semantic conflict detection &amp; 15-language symbol parsing",
+      "roadmap.v06.desc": "Tree-sitter symbol extraction extended to 15 languages (added Bash, C#, C, C++, Ruby, PHP, Kotlin, Swift). Layer 4 git co-change scoring detects historical co-edit patterns. <code>/api/working-files/{start,stop}</code> lets agents signal in-progress edits for real-time conflict detection.",
+      "roadmap.v06.date": "Shipped May 2026",
+      "roadmap.v06.link": "v0.6.0 release",
+      "roadmap.v07.title": "v0.7 — Multi-tenant security foundation",
+      "roadmap.v07.desc": "Organization scoping (<code>org_id</code>) baked into 14 tables and every MCP/HTTP/MQTT/SSE call. JWT hardened with HS256 pin, RFC 6750 <code>WWW-Authenticate</code> headers, and zero-downtime secret rotation via <code>COORDINATOR_JWT_PREV_SECRET</code>. <code>audit_log</code> table, <code>EncryptionProvider</code> interface, and <code>IdPProvider</code> interface ship as hooks for v0.7.5 (SQLCipher) and v0.8 (BYOK, GDPR endpoints).",
+      "roadmap.v07.date": "Shipped May 2026",
+      "roadmap.v07.link": "v0.7.0 release",
+      "compliance.title": "Enterprise &amp; Compliance",
+      "compliance.intro": "Built for compliance from the foundation up. Since v0.7, mcp-coordinator ships the architectural hooks that audit and regulated-industry deployments need.",
+      "compliance.th.capability": "Capability",
+      "compliance.th.status": "Status",
+      "compliance.th.aligned": "Aligned with",
+      "compliance.row.tenant.cap": "Multi-tenant <code>org_id</code> isolation across 14 tables",
+      "compliance.row.tenant.status": "Shipped v0.7",
+      "compliance.row.tenant.aligned": "SOC 2 CC6.1 &middot; GDPR Art. 32",
+      "compliance.row.audit.cap": "Audit log table (append-only data layer)",
+      "compliance.row.audit.status": "Shipped v0.7",
+      "compliance.row.audit.aligned": "SOC 2 CC7.2 &middot; CC7.3",
+      "compliance.row.jwt.cap": "JWT &mdash; HS256 pin &middot; RFC 6750 &middot; zero-downtime rotation",
+      "compliance.row.jwt.status": "Shipped v0.7",
+      "compliance.row.jwt.aligned": "SOC 2 CC6.1",
+      "compliance.row.enc.cap": "<code>EncryptionProvider</code> interface (passthrough default)",
+      "compliance.row.enc.status": "Shipped v0.7",
+      "compliance.row.enc.aligned": "Hook for v0.7.5",
+      "compliance.row.sqlcipher.cap": "SQLCipher whole-DB encryption at rest",
+      "compliance.row.sqlcipher.status": "Spec'd v0.7.5",
+      "compliance.row.sqlcipher.aligned": "SOC 2 CC6.1",
+      "compliance.row.byok.cap": "Per-org DEK + BYOK (AWS KMS / GCP KMS / Vault)",
+      "compliance.row.byok.status": "Sketch v0.8",
+      "compliance.row.byok.aligned": "Regulated industries",
+      "compliance.row.gdpr.cap": "GDPR <code>/export</code> &amp; <code>/delete</code> endpoints",
+      "compliance.row.gdpr.status": "Sketch v0.8",
+      "compliance.row.gdpr.aligned": "GDPR Art. 15 &middot; 17 &middot; 20",
+      "compliance.row.retention.cap": "Retention policies + audit log surface UI",
+      "compliance.row.retention.status": "Sketch v0.8",
+      "compliance.row.retention.aligned": "SOC 2 &middot; GDPR minimization",
+      "compliance.disclaimer": "mcp-coordinator is <strong>not SOC 2 certified</strong> &mdash; certification is auditor work, not code. We ship the architectural hooks (multi-tenant isolation, audit log, encryption interface) so teams pursuing audits get a head start, but the certification itself is your team's process.",
     },
     fr: {
       "nav.how": "Comment",
@@ -3084,7 +3239,8 @@
       "nav.install": "Installer",
       "nav.roadmap": "Feuille de route",
       "nav.getstarted": "Commencer",
-      "hero.eyebrow": "Open Source · MIT · v0.2.1",
+      "nav.compliance": "Conformité",
+      "hero.eyebrow": "Open Source &middot; MIT &middot; v0.7.0",
       "hero.h1": "Zéro conflit. Tous les agents alignés.",
       "hero.subtitle": "Serveur MCP clé en main qui permet à des agents Claude Code, Cursor ou Cline en parallèle d'annoncer leur travail, détecter les conflits et atteindre un consensus — avant de toucher à votre code.",
       "hero.stat.latency": "Latence push &lt;50 ms",
@@ -3237,7 +3393,7 @@
       "start.step1.desc": "Un seul paquet npm. Aucun broker séparé, aucune base de données à provisionner.",
       "start.step2.label": "Étape 2",
       "start.step2.title": "Configuration initiale",
-      "start.step2.desc": "Crée le dossier de config, écrit un <code class=\"ic\">config.json</code> par défaut et imprime le snippet <code class=\"ic\">.mcp.json</code> pour votre client MCP (Claude Code, Cursor, Cline). Ajoutez <code class=\"ic\">--write-mcp-config &lt;path&gt;</code> pour fusionner le snippet directement dans le <code class=\"ic\">.mcp.json</code> d'un projet.",
+      "start.step2.desc": "Crée le dossier de config, écrit un <code class=\"ic\">config.json</code> par défaut et imprime le snippet <code class=\"ic\">.mcp.json</code> pour votre client MCP (Claude Code, Cursor, Cline). Ajoutez <code class=\"ic\">--write-mcp-config <path></code> pour fusionner le snippet directement dans le <code class=\"ic\">.mcp.json</code> d'un projet.",
       "start.step3.label": "Étape 3",
       "start.step3.title": "Démarrer le serveur",
       "start.step3.desc": "Démarre le serveur MCP, le broker MQTT embarqué et le dashboard sur <code class=\"ic\">localhost:3100</code>. <code class=\"ic\">--daemon</code> met le processus en arrière-plan et écrit les logs dans le dossier de config.",
@@ -3246,7 +3402,7 @@
       "start.step4.desc": "La commande <code class=\"ic\">doctor</code> vérifie la config, le serveur, les réponses MCP et les connexions MQTT, puis ouvre le dashboard sur <code class=\"ic\">localhost:3100/dashboard</code>.",
       "start.note": "<code class=\"ic\">git worktree add ../feature-x main</code> et lancez chaque agent dans son propre worktree &mdash; mcp-coordinator gère \"qui édite types.ts\" ; les worktrees gèrent \"deux agents qui ne se battent pas sur la même inode.\"",
       "start.dash.title": "Ce que vous verrez en 60 secondes",
-      "start.dash.meta": "mcp-coordinator v0.5.0 &middot; quota 62%",
+      "start.dash.meta": "mcp-coordinator v0.7.0 &middot; quota 62%",
       "start.dash.aria": "Vue exemple du dashboard : quatre agents suivis en direct, avec un conflit résolu en 38 secondes",
       "start.cta.star": "Mettre une étoile sur GitHub",
       "start.cta.issue": "Ouvrir une issue",
@@ -3272,7 +3428,7 @@
       "results.perf.label.consensus": "Consensus complet",
       "results.perf.value.consensus": "30-45s",
       "results.perf.label.tests": "Suite de tests",
-      "results.perf.value.tests": "216 tests unitaires sur 18 fichiers",
+      "results.perf.value.tests": "546 tests unitaires sur 65 fichiers",
       "results.perf.link": "Parcourir la suite de tests sur GitHub →",
       "results.subtitle.link": "Voir tests/ sur GitHub →",
       "faq.title": "FAQ",
@@ -3280,7 +3436,7 @@
       "faq.q1": "Est-ce que ça remplace les git worktrees ?",
       "faq.a1": "Non. Les worktrees règlent l'isolation du système de fichiers ; mcp-coordinator règle la coordination de l'intention. Utilisez les deux.",
       "faq.q2": "Est-ce prêt pour la production ?",
-      "faq.a2": "Stable pour l'usage solo et en équipe ; v1.0 fige l'API publique. 216 tests unitaires sur 4 scénarios de conflit, licence MIT, commande <code>doctor</code>, logs Pino structurés.",
+      "faq.a2": "Stable pour l'usage solo et en équipe ; v1.0 fige l'API publique. 546 tests unitaires sur 65 fichiers couvrent 6 couches de scoring, l'isolation cross-org et 4 scénarios de conflit. Licence MIT, commande <code>doctor</code>, logs Pino structurés.",
       "faq.q3": "Combien ça coûte ?",
       "faq.a3": "Licence MIT et gratuit. Auto-hébergé sur votre machine, votre LAN ou votre cloud.",
       "faq.q4": "Quels clients MCP fonctionnent ?",
@@ -3312,9 +3468,29 @@
       "roadmap.v02.date": "Livré en mai 2026",
       "roadmap.v02.link": "Release v0.2.0",
       "roadmap.v03.title": "v0.3 — Détection sémantique de conflits",
-      "roadmap.v03.desc": "Analyse au niveau AST par-dessus le scoring par nom de fichier. Détecte les changements de contrat API, les incompatibilités d'interface et les breaking changes avant qu'un thread ne s'ouvre.",
-      "roadmap.v03.date": "Cible T3 2026",
-      "roadmap.v03.link": "Suivre sur GitHub",
+      "roadmap.v03.desc": "Analyse AST via tree-sitter sur 15 langages. Scoring conscient des symboles : même fichier, fonctions différentes = raison annotée, pas un blocage silencieux.",
+      "roadmap.v03.date": "Livré en mai 2026",
+      "roadmap.v03.link": "Release v0.3.0",
+      "roadmap.v04.title": "v0.4 — Refonte du dashboard &amp; opérabilité",
+      "roadmap.v04.desc": "Refonte complète de la landing page et du dashboard. Panneau des signaux de conflit avec décompte de déclenchements par couche. Extension de /readyz avec blocs de santé tree_sitter et git_cochange. 5 nouvelles métriques Prometheus.",
+      "roadmap.v04.date": "Livré en mai 2026",
+      "roadmap.v04.link": "Release v0.4.0",
+      "roadmap.v05.title": "v0.5 — Conscience en vol &amp; co-changement git",
+      "roadmap.v05.desc": "PreToolUse/PostToolUse basés sur des hooks pour une conscience d'édition en temps réel. Scoring de co-changement git pour les fichiers historiquement couplés. 546 tests sur 65 fichiers.",
+      "roadmap.v05.date": "Livré en mai 2026",
+      "roadmap.v05.link": "Release v0.5.0",
+      "roadmap.llm.title": "LLM Reasoner — arbitrage en zone grise (opt-in)",
+      "roadmap.llm.desc": "Couche opt-in gatée pour les conflits ambigus. Livraison après 1 mois de télémétrie v0.5.0 validant le ROI.",
+      "roadmap.llm.date": "En conception · conditionné à la télémétrie v0.5.0",
+      "roadmap.llm.link": "Suivre sur GitHub",
+      "roadmap.v06.title": "v0.6 — Détection sémantique de conflits &amp; parsing de symboles sur 15 langages",
+      "roadmap.v06.desc": "Extraction de symboles tree-sitter étendue à 15 langages (ajout de Bash, C#, C, C++, Ruby, PHP, Kotlin, Swift). Scoring de co-changement git en couche 4 pour détecter les patterns de co-édition historiques. <code>/api/working-files/{start,stop}</code> permet aux agents de signaler les éditions en cours pour la détection de conflits en temps réel.",
+      "roadmap.v06.date": "Livré en mai 2026",
+      "roadmap.v06.link": "Release v0.6.0",
+      "roadmap.v07.title": "v0.7 — Fondation de sécurité multi-tenant",
+      "roadmap.v07.desc": "Cloisonnement par organisation (<code>org_id</code>) intégré dans 14 tables et chaque appel MCP/HTTP/MQTT/SSE. JWT durci avec pin HS256, en-têtes RFC 6750 <code>WWW-Authenticate</code> et rotation de secret sans interruption via <code>COORDINATOR_JWT_PREV_SECRET</code>. La table <code>audit_log</code>, l'interface <code>EncryptionProvider</code> et l'interface <code>IdPProvider</code> sont livrées comme crochets pour v0.7.5 (SQLCipher) et v0.8 (BYOK, endpoints GDPR).",
+      "roadmap.v07.date": "Livré en mai 2026",
+      "roadmap.v07.link": "Release v0.7.0",
       "roadmap.v10.title": "v1.0 — API stable + coordination cross-repo",
       "roadmap.v10.desc": "API publique gelée, endpoints REST versionnés, guides de migration. Coordination sur plusieurs repositories depuis un broker unique.",
       "roadmap.v10.date": "Date à définir",
@@ -3323,7 +3499,37 @@
       "roadmap.harbor.desc": "Intégration native avec le futur canal de push server-side d'Anthropic (suivi en interne sous le nom <code class=\"ic\">tengu_harbor</code>). Le code listener vit déjà à côté du bridge MQTT — dès que ça sort, mcp-coordinator se branche.",
       "roadmap.harbor.date": "Date à définir · dépend de l'amont",
       "roadmap.harbor.link": "Suivre sur GitHub",
-      "footer.text": "Licence MIT &nbsp;·&nbsp; Construit avec <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v0.2.x",
+      "compliance.title": "Entreprise &amp; Conformité",
+      "compliance.intro": "Conçu pour la conformité depuis la fondation. Depuis v0.7, mcp-coordinator livre les crochets architecturaux dont les déploiements d'audit et d'industries régulées ont besoin.",
+      "compliance.th.capability": "Capacité",
+      "compliance.th.status": "Statut",
+      "compliance.th.aligned": "Aligné avec",
+      "compliance.row.tenant.cap": "Isolation multi-tenant <code>org_id</code> sur 14 tables",
+      "compliance.row.tenant.status": "Livré v0.7",
+      "compliance.row.tenant.aligned": "SOC 2 CC6.1 &middot; GDPR Art. 32",
+      "compliance.row.audit.cap": "Table d'audit log (couche de données append-only)",
+      "compliance.row.audit.status": "Livré v0.7",
+      "compliance.row.audit.aligned": "SOC 2 CC7.2 &middot; CC7.3",
+      "compliance.row.jwt.cap": "JWT &mdash; pin HS256 &middot; RFC 6750 &middot; rotation sans interruption",
+      "compliance.row.jwt.status": "Livré v0.7",
+      "compliance.row.jwt.aligned": "SOC 2 CC6.1",
+      "compliance.row.enc.cap": "Interface <code>EncryptionProvider</code> (passthrough par défaut)",
+      "compliance.row.enc.status": "Livré v0.7",
+      "compliance.row.enc.aligned": "Crochet pour v0.7.5",
+      "compliance.row.sqlcipher.cap": "Chiffrement SQLCipher de toute la base au repos",
+      "compliance.row.sqlcipher.status": "Spécifié v0.7.5",
+      "compliance.row.sqlcipher.aligned": "SOC 2 CC6.1",
+      "compliance.row.byok.cap": "DEK par organisation + BYOK (AWS KMS / GCP KMS / Vault)",
+      "compliance.row.byok.status": "Esquisse v0.8",
+      "compliance.row.byok.aligned": "Industries régulées",
+      "compliance.row.gdpr.cap": "Endpoints GDPR <code>/export</code> &amp; <code>/delete</code>",
+      "compliance.row.gdpr.status": "Esquisse v0.8",
+      "compliance.row.gdpr.aligned": "GDPR Art. 15 &middot; 17 &middot; 20",
+      "compliance.row.retention.cap": "Politiques de rétention + interface de surface de l'audit log",
+      "compliance.row.retention.status": "Esquisse v0.8",
+      "compliance.row.retention.aligned": "SOC 2 &middot; Minimisation RGPD",
+      "compliance.disclaimer": "mcp-coordinator n'est <strong>pas certifié SOC 2</strong> &mdash; la certification est un travail d'auditeur, pas de code. Nous livrons les crochets architecturaux (isolation multi-tenant, audit log, interface de chiffrement) pour que les équipes en quête d'audit aient une longueur d'avance, mais la certification elle-même reste le processus de votre équipe.",
+      "footer.text": "Licence MIT &nbsp;·&nbsp; Construit avec <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v0.7.0",
       "why.title": "Pourquoi MCP Coordinator ?",
       "why.subtitle": "Faites tourner cinq agents sur le même repo, sans conflit de merge, sans travail dupliqué, sans régression silencieuse.",
       "why.block1.title": "Plusieurs agents, un seul processus aligné",
@@ -3399,13 +3605,13 @@
       "worktrees.card4.desc": "La CI attrape le conflit après que les deux agents ont déjà brûlé leurs tokens à écrire du code incompatible. Le coordinator l'attrape avant qu'une seule ligne ne soit écrite. La CI est le filet de sécurité ; ceci est le harnais.",
       "scoring.title": "Scoring d'impact en un clin d'œil",
       "scoring.subtitle": "Chaque intention annoncée est notée de 0 à 100 face à tous les travaux actifs. Le score décide de la réponse : bloquer, surveiller ou laisser passer.",
-      "scoring.row1.label": "<strong&gt;Même fichier annoncé</strong> — les deux agents ciblent exactement le même fichier source",
+      "scoring.row1.label": "<strong>Même fichier annoncé</strong> — les deux agents ciblent exactement le même fichier source",
       "scoring.row1.tag": "Bloquant — consultation requise",
-      "scoring.row2.label": "<strong&gt;Chevauchement de dépendance</strong> — la sortie d'un agent est consommée par le module de l'autre",
+      "scoring.row2.label": "<strong>Chevauchement de dépendance</strong> — la sortie d'un agent est consommée par le module de l'autre",
       "scoring.row2.tag": "Zone grise — revue",
-      "scoring.row3.label": "<strong&gt;Chevauchement de module</strong> — les agents travaillent dans le même bounded context ou la même feature",
+      "scoring.row3.label": "<strong>Chevauchement de module</strong> — les agents travaillent dans le même bounded context ou la même feature",
       "scoring.row3.tag": "Zone grise — surveillance",
-      "scoring.row4.label": "<strong&gt;Aucun lien</strong> — tâches entièrement indépendantes, aucun fichier ni module partagé",
+      "scoring.row4.label": "<strong>Aucun lien</strong> — tâches entièrement indépendantes, aucun fichier ni module partagé",
       "scoring.row4.tag": "Pass — continuez sans risque",
       "scoring.footnote": "Le moteur de scoring évalue 6 couches (file, dependency-out, dependency-in, recent-edit, dep-recent-edit, module-prefix). La plus sévère l'emporte. <a href=\"https://github.com/swoofer/mcp-coordinator#impact-scoring\" class=\"il\" rel=\"noopener noreferrer\">Détails complets sur GitHub →</a>",
       "arch.title": "Architecture",
@@ -3433,7 +3639,7 @@
       "install.step1.desc": "Un seul paquet npm. Aucun broker ni base de données séparé à mettre en place.",
       "install.step2.label": "Étape 2",
       "install.step2.title": "Configuration initiale",
-      "install.step2.desc": "Crée le dossier de config, écrit un <code class=\"ic\">config.json</code> par défaut et imprime le snippet <code class=\"ic\">.mcp.json</code> pour votre client MCP (Claude Code, Cursor, Cline, …). Ajoutez <code class=\"ic\">--write-mcp-config &lt;path&gt;</code> pour insérer le snippet directement dans le <code class=\"ic\">.mcp.json</code> d'un projet (avec merge si nécessaire).",
+      "install.step2.desc": "Crée le dossier de config, écrit un <code class=\"ic\">config.json</code> par défaut et imprime le snippet <code class=\"ic\">.mcp.json</code> pour votre client MCP (Claude Code, Cursor, Cline, …). Ajoutez <code class=\"ic\">--write-mcp-config <path></code> pour insérer le snippet directement dans le <code class=\"ic\">.mcp.json</code> d'un projet (avec merge si nécessaire).",
       "install.step3.label": "Étape 3",
       "install.step3.title": "Démarrer le serveur",
       "install.step3.desc": "Démarre le serveur MCP, le broker MQTT embarqué et le dashboard sur <code class=\"ic\">localhost:3100</code>. <code class=\"ic\">--daemon</code> met le processus en arrière-plan et écrit les logs dans le dossier de config.",
@@ -3452,7 +3658,7 @@
       "nav.install": "Instalar",
       "nav.roadmap": "Hoja de ruta",
       "nav.getstarted": "Empezar",
-      "hero.eyebrow": "Código abierto · MIT · v0.2.1",
+      "hero.eyebrow": "Código abierto &middot; MIT &middot; v0.7.0",
       "hero.h1": "Cero conflictos. Cada agente alineado.",
       "hero.subtitle": "Servidor MCP plug-and-play que permite a agentes paralelos de Claude Code, Cursor o Cline anunciar su trabajo, detectar conflictos y alcanzar consenso — antes de tocar su código.",
       "hero.stat.latency": "&lt;50ms de latencia push",
@@ -3614,7 +3820,7 @@
       "start.step4.desc": "El comando <code class=\"ic\">doctor</code> chequea config, servidor, respuestas MCP y conexiones MQTT, luego abre el dashboard en <code class=\"ic\">localhost:3100/dashboard</code>.",
       "start.note": "<code class=\"ic\">git worktree add ../feature-x main</code> y ejecuta cada agente en su propio worktree &mdash; mcp-coordinator maneja \"quién está editando types.ts\"; los worktrees manejan \"que dos agentes no peleen por el mismo inode.\"",
       "start.dash.title": "Lo que verás en 60 segundos",
-      "start.dash.meta": "mcp-coordinator v0.2.1 &middot; cuota 62%",
+      "start.dash.meta": "mcp-coordinator v0.7.0 &middot; cuota 62%",
       "start.dash.aria": "Vista de dashboard de muestra: cuatro agentes rastreados en vivo, con un conflicto resuelto en 38 segundos",
       "start.cta.star": "Dale una estrella en GitHub",
       "start.cta.issue": "Abrir un issue",
@@ -3640,7 +3846,7 @@
       "results.perf.label.consensus": "Consenso completo",
       "results.perf.value.consensus": "30-45s",
       "results.perf.label.tests": "Suite de tests",
-      "results.perf.value.tests": "216 tests unitarios en 18 archivos",
+      "results.perf.value.tests": "546 tests unitarios en 65 archivos",
       "results.perf.link": "Explorar la suite de tests en GitHub →",
       "results.subtitle.link": "Ver tests/ en GitHub →",
       "faq.title": "FAQ",
@@ -3648,7 +3854,7 @@
       "faq.q1": "¿Esto reemplaza a git worktrees?",
       "faq.a1": "No. Los worktrees resuelven el aislamiento del sistema de archivos; mcp-coordinator resuelve la coordinación de intención. Usa ambos.",
       "faq.q2": "¿Está listo para producción?",
-      "faq.a2": "Estable para uso individual y de equipo; v1.0 congela la API pública. 216 tests unitarios en 4 escenarios de conflicto, licencia MIT, comando <code>doctor</code>, logs estructurados de Pino.",
+      "faq.a2": "Estable para uso individual y de equipo; v1.0 congela la API pública. 546 tests unitarios en 65 archivos cubren 6 capas de scoring, aislamiento entre organizaciones y 4 escenarios de conflicto. Licencia MIT, comando <code>doctor</code>, logs estructurados Pino.",
       "faq.q3": "¿Cuánto cuesta?",
       "faq.a3": "Licencia MIT y gratis. Self-hosted en tu máquina, tu LAN o tu cloud.",
       "faq.q4": "¿Qué MCP clients funcionan?",
@@ -3680,9 +3886,9 @@
       "roadmap.v02.date": "Entregado en mayo de 2026",
       "roadmap.v02.link": "release v0.2.0",
       "roadmap.v03.title": "v0.3 — Detección semántica de conflictos",
-      "roadmap.v03.desc": "Análisis a nivel AST encima del scoring por nombre de archivo. Detectar cambios de contrato API, incompatibilidades de interfaz y breaking changes antes incluso de que se abra un thread.",
-      "roadmap.v03.date": "Objetivo Q3 2026",
-      "roadmap.v03.link": "Seguir en GitHub",
+      "roadmap.v03.desc": "Análisis AST con tree-sitter en 15 lenguajes. Scoring consciente de símbolos: mismo archivo, funciones distintas = razón anotada, no un bloqueo silencioso.",
+      "roadmap.v03.date": "Lanzado en mayo de 2026",
+      "roadmap.v03.link": "Lanzamiento v0.3.0",
       "roadmap.v10.title": "v1.0 — API estable + coordinación cross-repo",
       "roadmap.v10.desc": "API pública congelada, endpoints REST versionados, guías de migración. Coordinación entre múltiples repositorios desde un solo broker.",
       "roadmap.v10.date": "Fecha por definir",
@@ -3691,7 +3897,7 @@
       "roadmap.harbor.desc": "Integración nativa con el próximo canal push del lado del servidor de Anthropic (rastreado internamente como <code class=\"ic\">tengu_harbor</code>). El código del listener ya convive junto al bridge MQTT — en cuanto se publique, mcp-coordinator se enchufa.",
       "roadmap.harbor.date": "Fecha por definir · sujeto a upstream",
       "roadmap.harbor.link": "Seguir en GitHub",
-      "footer.text": "Licencia MIT &nbsp;·&nbsp; Construido con <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v0.2.x",
+      "footer.text": "Licencia MIT &nbsp;·&nbsp; Construido con <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v0.7.0",
       "why.title": "¿Por qué MCP Coordinator?",
       "why.subtitle": "Ejecute cinco agentes en el mismo repositorio sin conflictos de merge, trabajo duplicado ni regresiones silenciosas.",
       "why.block1.title": "Varios agentes, un solo proceso alineado",
@@ -3809,6 +4015,57 @@
       "install.step4.title": "Verificar y abrir",
       "install.step4.desc": "Doctor ejecuta una comprobación de salud — config válida, servidor activo, MCP responde, MQTT acepta conexiones — y luego abre el dashboard en <code class=\"ic\">localhost:3100/dashboard</code>.",
       "install.note": "Las sesiones siguen necesitando <a href=\"#worktrees\" class=\"il\">git worktrees</a> para aislar el sistema de archivos. El coordinator gestiona la intención, no los archivos.",
+      "nav.compliance": "Cumplimiento",
+      "roadmap.v04.title": "v0.4 — Rediseño del dashboard y operabilidad",
+      "roadmap.v04.desc": "Rediseño completo de la landing page y del dashboard. Panel de señales de conflicto con conteos de disparo por capa. /readyz extendido con bloques de salud para tree_sitter y git_cochange. 5 nuevas métricas Prometheus.",
+      "roadmap.v04.date": "Lanzado en mayo de 2026",
+      "roadmap.v04.link": "Lanzamiento v0.4.0",
+      "roadmap.v05.title": "v0.5 — Conciencia en vuelo y co-cambio git",
+      "roadmap.v05.desc": "PreToolUse/PostToolUse basados en hooks para conciencia de edición en tiempo real. Scoring por co-cambio git para archivos acoplados históricamente.",
+      "roadmap.v05.date": "Lanzado en mayo de 2026",
+      "roadmap.v05.link": "Lanzamiento v0.5.0",
+      "roadmap.llm.title": "LLM Reasoner — arbitraje de zona gris (opt-in)",
+      "roadmap.llm.desc": "Capa opt-in con gating para conflictos ambiguos. Se entrega tras 1 mes de telemetría v0.5.0 que valide el ROI.",
+      "roadmap.llm.date": "En diseño · sujeto a la telemetría v0.5.0",
+      "roadmap.llm.link": "Seguir en GitHub",
+      "roadmap.v06.title": "v0.6 — Detección semántica de conflictos y parsing de símbolos en 15 lenguajes",
+      "roadmap.v06.desc": "Extracción de símbolos con tree-sitter extendida a 15 lenguajes (añadidos Bash, C#, C, C++, Ruby, PHP, Kotlin, Swift). El scoring por co-cambio git de la capa 4 detecta patrones históricos de co-edición. <code>/api/working-files/{start,stop}</code> permite a los agentes señalar ediciones en curso para detección de conflictos en tiempo real.",
+      "roadmap.v06.date": "Lanzado en mayo de 2026",
+      "roadmap.v06.link": "Lanzamiento v0.6.0",
+      "roadmap.v07.title": "v0.7 — Base de seguridad multi-tenant",
+      "roadmap.v07.desc": "Alcance por organización (<code>org_id</code>) integrado en 14 tablas y en cada llamada MCP/HTTP/MQTT/SSE. JWT endurecido con pin HS256, cabeceras <code>WWW-Authenticate</code> según RFC 6750 y rotación de secretos sin tiempo de inactividad vía <code>COORDINATOR_JWT_PREV_SECRET</code>. La tabla <code>audit_log</code>, la interfaz <code>EncryptionProvider</code> y la interfaz <code>IdPProvider</code> se entregan como ganchos para v0.7.5 (SQLCipher) y v0.8 (BYOK, endpoints GDPR).",
+      "roadmap.v07.date": "Lanzado en mayo de 2026",
+      "roadmap.v07.link": "Lanzamiento v0.7.0",
+      "compliance.title": "Empresa y cumplimiento",
+      "compliance.intro": "Construido para el cumplimiento desde la base. Desde v0.7, mcp-coordinator entrega los ganchos arquitectónicos que necesitan las auditorías y los despliegues en industrias reguladas.",
+      "compliance.th.capability": "Capacidad",
+      "compliance.th.status": "Estado",
+      "compliance.th.aligned": "Alineado con",
+      "compliance.row.tenant.cap": "Aislamiento multi-tenant <code>org_id</code> en 14 tablas",
+      "compliance.row.tenant.status": "Lanzado v0.7",
+      "compliance.row.tenant.aligned": "SOC 2 CC6.1 &middot; GDPR Art. 32",
+      "compliance.row.audit.cap": "Tabla audit_log (capa de datos append-only)",
+      "compliance.row.audit.status": "Lanzado v0.7",
+      "compliance.row.audit.aligned": "SOC 2 CC7.2 &middot; CC7.3",
+      "compliance.row.jwt.cap": "JWT &mdash; pin HS256 &middot; RFC 6750 &middot; rotación sin tiempo de inactividad",
+      "compliance.row.jwt.status": "Lanzado v0.7",
+      "compliance.row.jwt.aligned": "SOC 2 CC6.1",
+      "compliance.row.enc.cap": "Interfaz <code>EncryptionProvider</code> (passthrough por defecto)",
+      "compliance.row.enc.status": "Lanzado v0.7",
+      "compliance.row.enc.aligned": "Gancho para v0.7.5",
+      "compliance.row.sqlcipher.cap": "Cifrado de toda la BD en reposo con SQLCipher",
+      "compliance.row.sqlcipher.status": "Especificado v0.7.5",
+      "compliance.row.sqlcipher.aligned": "SOC 2 CC6.1",
+      "compliance.row.byok.cap": "DEK por organización + BYOK (AWS KMS / GCP KMS / Vault)",
+      "compliance.row.byok.status": "Boceto v0.8",
+      "compliance.row.byok.aligned": "Industrias reguladas",
+      "compliance.row.gdpr.cap": "Endpoints GDPR <code>/export</code> y <code>/delete</code>",
+      "compliance.row.gdpr.status": "Boceto v0.8",
+      "compliance.row.gdpr.aligned": "GDPR Art. 15 &middot; 17 &middot; 20",
+      "compliance.row.retention.cap": "Políticas de retención + UI de superficie del audit log",
+      "compliance.row.retention.status": "Boceto v0.8",
+      "compliance.row.retention.aligned": "SOC 2 &middot; Minimización GDPR",
+      "compliance.disclaimer": "mcp-coordinator <strong>no está certificado SOC 2</strong> &mdash; la certificación es trabajo de auditores, no de código. Entregamos los ganchos arquitectónicos (aislamiento multi-tenant, audit log, interfaz de cifrado) para que los equipos que buscan auditorías tengan ventaja, pero la certificación en sí es el proceso de tu equipo.",
     },
     de: {
       "nav.how": "Funktionsweise",
@@ -3820,7 +4077,7 @@
       "nav.install": "Installation",
       "nav.roadmap": "Roadmap",
       "nav.getstarted": "Loslegen",
-      "hero.eyebrow": "Open Source · MIT · v0.2.1",
+      "hero.eyebrow": "Open Source &middot; MIT &middot; v0.7.0",
       "hero.h1": "Null Konflikte. Jeder Agent abgestimmt.",
       "hero.subtitle": "Drop-in MCP-Server, mit dem parallele Claude-Code-, Cursor- oder Cline-Agenten ihre Arbeit ankündigen, Konflikte erkennen und zu einem Konsens kommen — bevor sie eine einzige Zeile Ihres Codes anfassen.",
       "hero.stat.latency": "&lt;50 ms Push-Latenz",
@@ -3982,7 +4239,7 @@
       "start.step4.desc": "Der <code class=\"ic\">doctor</code>-Befehl prüft Konfig, Server, MCP-Antworten und MQTT-Verbindungen, dann öffnet er das Dashboard auf <code class=\"ic\">localhost:3100/dashboard</code>.",
       "start.note": "<code class=\"ic\">git worktree add ../feature-x main</code> und führe jeden Agenten in seinem eigenen Worktree aus &mdash; mcp-coordinator regelt \"wer bearbeitet types.ts\"; Worktrees regeln \"keine zwei Agenten kämpfen um dieselbe Inode.\"",
       "start.dash.title": "Was du in 60 Sekunden siehst",
-      "start.dash.meta": "mcp-coordinator v0.2.1 &middot; Quota 62%",
+      "start.dash.meta": "mcp-coordinator v0.7.0 &middot; Quota 62%",
       "start.dash.aria": "Beispiel-Dashboard-Ansicht: vier Agenten live verfolgt, mit einem in 38 Sekunden gelösten Konflikt",
       "start.cta.star": "Auf GitHub starren",
       "start.cta.issue": "Issue eröffnen",
@@ -4008,7 +4265,7 @@
       "results.perf.label.consensus": "Voller Konsens",
       "results.perf.value.consensus": "30-45s",
       "results.perf.label.tests": "Test-Suite",
-      "results.perf.value.tests": "216 Unit-Tests in 18 Dateien",
+      "results.perf.value.tests": "546 Unit-Tests in 65 Dateien",
       "results.perf.link": "Test-Suite auf GitHub durchsuchen →",
       "results.subtitle.link": "tests/ auf GitHub ansehen →",
       "faq.title": "FAQ",
@@ -4016,7 +4273,7 @@
       "faq.q1": "Ersetzt das git worktrees?",
       "faq.a1": "Nein. Worktrees lösen Dateisystem-Isolation; mcp-coordinator löst Intent-Koordination. Nutze beides.",
       "faq.q2": "Ist es produktionsreif?",
-      "faq.a2": "Stabil für Solo- und Team-Einsatz; v1.0 friert die öffentliche API ein. 216 Unit-Tests über 4 Konfliktszenarien, MIT-lizenziert, <code>doctor</code>-Befehl, strukturierte Pino-Logs.",
+      "faq.a2": "Stabil für Solo- und Team-Einsatz; v1.0 friert die öffentliche API ein. 546 Unit-Tests in 65 Dateien decken 6 Scoring-Layer, organisationsübergreifende Isolation und 4 Konfliktszenarien ab. MIT-lizenziert, <code>doctor</code>-Befehl, strukturierte Pino-Logs.",
       "faq.q3": "Was kostet es?",
       "faq.a3": "MIT-lizenziert und kostenlos. Self-hosted auf deiner Maschine, deinem LAN oder deiner Cloud.",
       "faq.q4": "Welche MCP-Clients funktionieren?",
@@ -4048,9 +4305,9 @@
       "roadmap.v02.date": "Ausgeliefert Mai 2026",
       "roadmap.v02.link": "v0.2.0-Release",
       "roadmap.v03.title": "v0.3 — Semantische Konflikterkennung",
-      "roadmap.v03.desc": "AST-basierte Analyse zusätzlich zum Dateinamen-Scoring. API-Vertragsänderungen, Interface-Inkompatibilitäten und Breaking Changes erkennen, bevor überhaupt ein Thread öffnet.",
-      "roadmap.v03.date": "Ziel Q3 2026",
-      "roadmap.v03.link": "Auf GitHub folgen",
+      "roadmap.v03.desc": "AST-Analyse via tree-sitter über 15 Sprachen. Symbol-bewusstes Scoring: gleiche Datei, unterschiedliche Funktionen = annotierter Grund, keine stille Blockade.",
+      "roadmap.v03.date": "Veröffentlicht im Mai 2026",
+      "roadmap.v03.link": "v0.3.0 Release",
       "roadmap.v10.title": "v1.0 — Stabile API + Cross-Repo-Koordination",
       "roadmap.v10.desc": "Eingefrorene öffentliche API, versionierte REST-Endpoints, Migrationsleitfäden. Koordination über mehrere Repositories hinweg von einem einzigen Broker aus.",
       "roadmap.v10.date": "Datum offen",
@@ -4059,7 +4316,7 @@
       "roadmap.harbor.desc": "Native Integration mit dem kommenden Server-Side-Push-Kanal von Anthropic (intern als <code class=\"ic\">tengu_harbor</code> geführt). Listener-Code liegt bereits neben der MQTT-Bridge — sobald er ausgeliefert wird, klinkt sich mcp-coordinator ein.",
       "roadmap.harbor.date": "Datum offen · upstream-abhängig",
       "roadmap.harbor.link": "Auf GitHub folgen",
-      "footer.text": "MIT-Lizenz &nbsp;·&nbsp; Gebaut mit <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v0.2.x",
+      "footer.text": "MIT-Lizenz &nbsp;·&nbsp; Gebaut mit <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v0.7.0",
       "why.title": "Warum MCP Coordinator?",
       "why.subtitle": "Fünf Agenten auf demselben Repo betreiben — ohne Merge-Konflikte, doppelte Arbeit oder stille Regressionen.",
       "why.block1.title": "Mehrere Agenten, ein abgestimmter Prozess",
@@ -4177,6 +4434,57 @@
       "install.step4.title": "Prüfen und öffnen",
       "install.step4.desc": "Doctor führt einen Health Check aus — Konfig gültig, Server läuft, MCP antwortet, MQTT akzeptiert Verbindungen — und öffnet anschließend das Dashboard auf <code class=\"ic\">localhost:3100/dashboard</code>.",
       "install.note": "Sessions benötigen weiterhin <a href=\"#worktrees\" class=\"il\">git worktrees</a> für die Dateisystem-Isolation. Der Coordinator kümmert sich um Intent, nicht um Dateien.",
+      "nav.compliance": "Compliance",
+      "roadmap.v04.title": "v0.4 — Dashboard-Redesign &amp; Operability",
+      "roadmap.v04.desc": "Vollständiges Redesign von Landingpage und Dashboard. Conflict-Signals-Panel mit Per-Layer-Trefferzahlen. Erweitertes /readyz mit tree_sitter- und git_cochange-Health-Blöcken. 5 neue Prometheus-Metriken.",
+      "roadmap.v04.date": "Veröffentlicht im Mai 2026",
+      "roadmap.v04.link": "v0.4.0 Release",
+      "roadmap.v05.title": "v0.5 — In-Flight-Awareness &amp; Git-Co-Change",
+      "roadmap.v05.desc": "Hook-basierte PreToolUse/PostToolUse für Echtzeit-Edit-Awareness. Git-Co-Change-Scoring für historisch gekoppelte Dateien.",
+      "roadmap.v05.date": "Veröffentlicht im Mai 2026",
+      "roadmap.v05.link": "v0.5.0 Release",
+      "roadmap.llm.title": "LLM Reasoner — Graubereich-Arbitrierung (opt-in)",
+      "roadmap.llm.desc": "Gegatete Opt-in-Schicht für mehrdeutige Konflikte. Wird ausgeliefert, nachdem ein Monat v0.5.0-Telemetrie den ROI validiert hat.",
+      "roadmap.llm.date": "In Design · gegated auf v0.5.0-Telemetrie",
+      "roadmap.llm.link": "Auf GitHub folgen",
+      "roadmap.v06.title": "v0.6 — Semantische Konflikterkennung &amp; 15-Sprachen-Symbol-Parsing",
+      "roadmap.v06.desc": "tree-sitter-Symbolextraktion erweitert auf 15 Sprachen (Bash, C#, C, C++, Ruby, PHP, Kotlin, Swift ergänzt). Layer-4 Git-Co-Change-Scoring erkennt historische Co-Edit-Muster. <code>/api/working-files/{start,stop}</code> erlaubt Agenten, laufende Edits für Echtzeit-Konflikterkennung zu signalisieren.",
+      "roadmap.v06.date": "Veröffentlicht im Mai 2026",
+      "roadmap.v06.link": "v0.6.0 Release",
+      "roadmap.v07.title": "v0.7 — Multi-Tenant-Sicherheitsfundament",
+      "roadmap.v07.desc": "Organisations-Scoping (<code>org_id</code>) eingebacken in 14 Tabellen und jeden MCP/HTTP/MQTT/SSE-Aufruf. JWT gehärtet mit HS256-Pin, RFC 6750 <code>WWW-Authenticate</code>-Headern und Zero-Downtime-Secret-Rotation via <code>COORDINATOR_JWT_PREV_SECRET</code>. <code>audit_log</code>-Tabelle, <code>EncryptionProvider</code>-Interface und <code>IdPProvider</code>-Interface als Hooks für v0.7.5 (SQLCipher) und v0.8 (BYOK, GDPR-Endpoints).",
+      "roadmap.v07.date": "Veröffentlicht im Mai 2026",
+      "roadmap.v07.link": "v0.7.0 Release",
+      "compliance.title": "Enterprise &amp; Compliance",
+      "compliance.intro": "Von Grund auf für Compliance gebaut. Seit v0.7 liefert mcp-coordinator die architektonischen Hooks, die Audit- und regulierte Branchen-Deployments benötigen.",
+      "compliance.th.capability": "Fähigkeit",
+      "compliance.th.status": "Status",
+      "compliance.th.aligned": "Ausgerichtet auf",
+      "compliance.row.tenant.cap": "Multi-Tenant <code>org_id</code>-Isolation über 14 Tabellen",
+      "compliance.row.tenant.status": "Veröffentlicht v0.7",
+      "compliance.row.tenant.aligned": "SOC 2 CC6.1 &middot; GDPR Art. 32",
+      "compliance.row.audit.cap": "Audit-Log-Tabelle (Append-only-Datenschicht)",
+      "compliance.row.audit.status": "Veröffentlicht v0.7",
+      "compliance.row.audit.aligned": "SOC 2 CC7.2 &middot; CC7.3",
+      "compliance.row.jwt.cap": "JWT &mdash; HS256-Pin &middot; RFC 6750 &middot; Zero-Downtime-Rotation",
+      "compliance.row.jwt.status": "Veröffentlicht v0.7",
+      "compliance.row.jwt.aligned": "SOC 2 CC6.1",
+      "compliance.row.enc.cap": "<code>EncryptionProvider</code>-Interface (Passthrough als Standard)",
+      "compliance.row.enc.status": "Veröffentlicht v0.7",
+      "compliance.row.enc.aligned": "Hook für v0.7.5",
+      "compliance.row.sqlcipher.cap": "SQLCipher Whole-DB-Verschlüsselung at rest",
+      "compliance.row.sqlcipher.status": "Spezifiziert v0.7.5",
+      "compliance.row.sqlcipher.aligned": "SOC 2 CC6.1",
+      "compliance.row.byok.cap": "Pro-Org-DEK + BYOK (AWS KMS / GCP KMS / Vault)",
+      "compliance.row.byok.status": "Entwurf v0.8",
+      "compliance.row.byok.aligned": "Regulierte Branchen",
+      "compliance.row.gdpr.cap": "GDPR <code>/export</code>- &amp; <code>/delete</code>-Endpoints",
+      "compliance.row.gdpr.status": "Entwurf v0.8",
+      "compliance.row.gdpr.aligned": "GDPR Art. 15 &middot; 17 &middot; 20",
+      "compliance.row.retention.cap": "Retention-Policies + Audit-Log-Oberflächen-UI",
+      "compliance.row.retention.status": "Entwurf v0.8",
+      "compliance.row.retention.aligned": "SOC 2 &middot; GDPR-Minimierung",
+      "compliance.disclaimer": "mcp-coordinator ist <strong>nicht SOC 2 zertifiziert</strong> &mdash; Zertifizierung ist Auditor-Arbeit, kein Code. Wir liefern die architektonischen Hooks (Multi-Tenant-Isolation, Audit-Log, Verschlüsselungs-Interface), damit Teams, die eine Zertifizierung anstreben, einen Vorsprung haben. Die Zertifizierung selbst bleibt der Prozess deines Teams.",
     },
     zh: {
       "nav.how": "原理",
@@ -4188,7 +4496,7 @@
       "nav.install": "安装",
       "nav.roadmap": "路线图",
       "nav.getstarted": "开始使用",
-      "hero.eyebrow": "开源 · MIT · v0.2.1",
+      "hero.eyebrow": "开源 &middot; MIT &middot; v0.7.0",
       "hero.h1": "零冲突。每个 agent 对齐。",
       "hero.subtitle": "即插即用的 MCP 服务器,让并行运行的 Claude Code、Cursor 或 Cline agent 在动手改代码之前先宣告工作、检测冲突、达成共识。",
       "hero.stat.latency": "&lt;50ms 推送延迟",
@@ -4350,7 +4658,7 @@
       "start.step4.desc": "<code class=\"ic\">doctor</code> 命令检查 config、服务器、MCP 响应和 MQTT 连接,然后在 <code class=\"ic\">localhost:3100/dashboard</code> 打开 dashboard。",
       "start.note": "<code class=\"ic\">git worktree add ../feature-x main</code>,让每个 agent 在自己的 worktree 里运行&mdash;&mdash;mcp-coordinator 处理\"谁在编辑 types.ts\";worktree 处理\"两个 agent 别抢同一个 inode\"。",
       "start.dash.title": "60 秒后你会看到的画面",
-      "start.dash.meta": "mcp-coordinator v0.2.1 &middot; 配额 62%",
+      "start.dash.meta": "mcp-coordinator v0.7.0 &middot; 配额 62%",
       "start.dash.aria": "示例 dashboard 视图:实时跟踪 4 个 agent,一次冲突在 38 秒内得到解决",
       "start.cta.star": "在 GitHub 上 Star",
       "start.cta.issue": "提一个 issue",
@@ -4376,7 +4684,7 @@
       "results.perf.label.consensus": "完整共识",
       "results.perf.value.consensus": "30-45 秒",
       "results.perf.label.tests": "测试套件",
-      "results.perf.value.tests": "18 个文件,共 216 个单元测试",
+      "results.perf.value.tests": "65 个文件,共 546 个单元测试",
       "results.perf.link": "在 GitHub 上浏览测试套件 →",
       "results.subtitle.link": "在 GitHub 上查看 tests/ →",
       "faq.title": "常见问题",
@@ -4384,7 +4692,7 @@
       "faq.q1": "它会取代 git worktree 吗?",
       "faq.a1": "不会。Worktree 解决文件系统隔离;mcp-coordinator 解决意图协调。两者都用。",
       "faq.q2": "可以投入生产吗?",
-      "faq.a2": "对个人和团队使用稳定;v1.0 将冻结公共 API。18 个文件、216 个单元测试,覆盖 4 种冲突场景,MIT 许可证,带 <code>doctor</code> 命令,Pino 结构化日志。",
+      "faq.a2": "适合个人和团队使用,稳定;v1.0 将冻结公共 API。65 个文件、546 个单元测试覆盖 6 个评分层、跨组织隔离和 4 种冲突场景。MIT 许可证,带 <code>doctor</code> 命令,结构化 Pino 日志。",
       "faq.q3": "费用多少?",
       "faq.a3": "MIT 许可证,免费。在你的机器、你的局域网或你的云上自托管。",
       "faq.q4": "支持哪些 MCP 客户端?",
@@ -4416,9 +4724,9 @@
       "roadmap.v02.date": "2026 年 5 月发布",
       "roadmap.v02.link": "v0.2.0 发布",
       "roadmap.v03.title": "v0.3——语义冲突检测",
-      "roadmap.v03.desc": "在文件名评分之上叠加 AST 级分析。在 thread 还没打开之前,就检测 API 契约变化、接口不兼容和破坏性更改。",
-      "roadmap.v03.date": "目标 2026 年 Q3",
-      "roadmap.v03.link": "在 GitHub 上关注",
+      "roadmap.v03.desc": "通过 tree-sitter 在 15 种语言上进行 AST 级分析。符号感知评分:同一文件、不同函数 = 标注原因,而非静默阻塞。",
+      "roadmap.v03.date": "2026 年 5 月发布",
+      "roadmap.v03.link": "v0.3.0 发布版本",
       "roadmap.v10.title": "v1.0——稳定 API + 跨 repo 协调",
       "roadmap.v10.desc": "冻结的公共 API、版本化的 REST 端点、迁移指南。从单一 broker 协调多个仓库。",
       "roadmap.v10.date": "日期待定",
@@ -4427,7 +4735,7 @@
       "roadmap.harbor.desc": "原生集成 Anthropic 即将推出的服务端 push 通道(内部代号 <code class=\"ic\">tengu_harbor</code>)。监听器代码已和 MQTT 桥接器并存——一旦上线,mcp-coordinator 即插即用。",
       "roadmap.harbor.date": "日期待定 · 受上游限制",
       "roadmap.harbor.link": "在 GitHub 上关注",
-      "footer.text": "MIT 许可证 &nbsp;·&nbsp; 用 <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> 构建 &nbsp;·&nbsp; MCP Coordinator v0.2.x",
+      "footer.text": "MIT 许可证 &nbsp;·&nbsp; 用 <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> 构建 &nbsp;·&nbsp; MCP Coordinator v0.7.0",
       "why.title": "为什么选择 MCP Coordinator?",
       "why.subtitle": "在同一 repo 上跑五个 agent,不出现合并冲突、不重复劳动、不遗留隐性回归。",
       "why.block1.title": "多个 agent,一个对齐的流程",
@@ -4545,6 +4853,57 @@
       "install.step4.title": "验证并打开",
       "install.step4.desc": "doctor 跑一轮健康检查——config 有效、服务器在线、MCP 响应、MQTT 接受连接——然后在 <code class=\"ic\">localhost:3100/dashboard</code> 打开 dashboard。",
       "install.note": "会话仍然需要 <a href=\"#worktrees\" class=\"il\">git worktree</a> 来做文件系统隔离。coordinator 处理意图,不处理文件。",
+      "nav.compliance": "合规",
+      "roadmap.v04.title": "v0.4——Dashboard 重设计与可运维性",
+      "roadmap.v04.desc": "整个落地页和 dashboard 全面重设计。冲突信号面板按层显示触发计数。扩展的 /readyz 增加 tree_sitter 和 git_cochange 健康块。5 个新的 Prometheus 指标。",
+      "roadmap.v04.date": "2026 年 5 月发布",
+      "roadmap.v04.link": "v0.4.0 发布",
+      "roadmap.v05.title": "v0.5——进行中感知与 git 协同变更",
+      "roadmap.v05.desc": "基于钩子的 PreToolUse/PostToolUse 实现实时编辑感知。对历史耦合文件的 git 协同变更评分。",
+      "roadmap.v05.date": "2026 年 5 月发布",
+      "roadmap.v05.link": "v0.5.0 发布",
+      "roadmap.llm.title": "LLM Reasoner——灰色地带仲裁(选择性启用)",
+      "roadmap.llm.desc": "针对模糊冲突的门控选择性启用层。在 v0.5.0 上线 1 个月、遥测验证 ROI 之后发布。",
+      "roadmap.llm.date": "设计中 · 依赖 v0.5.0 遥测",
+      "roadmap.llm.link": "在 GitHub 上关注",
+      "roadmap.v06.title": "v0.6——语义冲突检测与 15 种语言符号解析",
+      "roadmap.v06.desc": "Tree-sitter 符号提取扩展到 15 种语言(新增 Bash、C#、C、C++、Ruby、PHP、Kotlin、Swift)。第 4 层 git 协同变更评分识别历史协同编辑模式。<code>/api/working-files/{start,stop}</code> 让 agent 标记进行中的编辑,以实现实时冲突检测。",
+      "roadmap.v06.date": "2026 年 5 月发布",
+      "roadmap.v06.link": "v0.6.0 发布",
+      "roadmap.v07.title": "v0.7——多租户安全基础",
+      "roadmap.v07.desc": "组织作用域(<code>org_id</code>)烘焙进 14 张表,以及每一次 MCP/HTTP/MQTT/SSE 调用。JWT 经过加固:HS256 锁定、RFC 6750 <code>WWW-Authenticate</code> 头,以及通过 <code>COORDINATOR_JWT_PREV_SECRET</code> 的零停机密钥轮换。<code>audit_log</code> 表、<code>EncryptionProvider</code> 接口和 <code>IdPProvider</code> 接口作为 v0.7.5(SQLCipher)和 v0.8(BYOK、GDPR 端点)的钩子上线。",
+      "roadmap.v07.date": "2026 年 5 月发布",
+      "roadmap.v07.link": "v0.7.0 发布",
+      "compliance.title": "企业与合规",
+      "compliance.intro": "从基础开始为合规而构建。自 v0.7 起,mcp-coordinator 提供审计和受监管行业部署所需的架构钩子。",
+      "compliance.th.capability": "能力",
+      "compliance.th.status": "状态",
+      "compliance.th.aligned": "对齐于",
+      "compliance.row.tenant.cap": "多租户 <code>org_id</code> 隔离覆盖 14 张表",
+      "compliance.row.tenant.status": "v0.7 已发布",
+      "compliance.row.tenant.aligned": "SOC 2 CC6.1 &middot; GDPR 第 32 条",
+      "compliance.row.audit.cap": "audit log 表(只追加的数据层)",
+      "compliance.row.audit.status": "v0.7 已发布",
+      "compliance.row.audit.aligned": "SOC 2 CC7.2 &middot; CC7.3",
+      "compliance.row.jwt.cap": "JWT &mdash; HS256 锁定 &middot; RFC 6750 &middot; 零停机轮换",
+      "compliance.row.jwt.status": "v0.7 已发布",
+      "compliance.row.jwt.aligned": "SOC 2 CC6.1",
+      "compliance.row.enc.cap": "<code>EncryptionProvider</code> 接口(默认直通)",
+      "compliance.row.enc.status": "v0.7 已发布",
+      "compliance.row.enc.aligned": "v0.7.5 的钩子",
+      "compliance.row.sqlcipher.cap": "SQLCipher 整库静态加密",
+      "compliance.row.sqlcipher.status": "v0.7.5 已规划",
+      "compliance.row.sqlcipher.aligned": "SOC 2 CC6.1",
+      "compliance.row.byok.cap": "按组织 DEK + BYOK(AWS KMS / GCP KMS / Vault)",
+      "compliance.row.byok.status": "v0.8 草图",
+      "compliance.row.byok.aligned": "受监管行业",
+      "compliance.row.gdpr.cap": "GDPR <code>/export</code> 与 <code>/delete</code> 端点",
+      "compliance.row.gdpr.status": "v0.8 草图",
+      "compliance.row.gdpr.aligned": "GDPR 第 15 &middot; 17 &middot; 20 条",
+      "compliance.row.retention.cap": "保留策略 + audit log 展示界面",
+      "compliance.row.retention.status": "v0.8 草图",
+      "compliance.row.retention.aligned": "SOC 2 &middot; GDPR 最小化",
+      "compliance.disclaimer": "mcp-coordinator <strong>未通过 SOC 2 认证</strong> &mdash; 认证是审计师的工作,而非代码本身。我们提供架构钩子(多租户隔离、audit log、加密接口),让追求审计的团队领先一步,但认证本身仍是您团队的流程。",
     },
     ja: {
       "nav.how": "仕組み",
@@ -4556,7 +4915,7 @@
       "nav.install": "インストール",
       "nav.roadmap": "ロードマップ",
       "nav.getstarted": "始める",
-      "hero.eyebrow": "オープンソース · MIT · v0.2.1",
+      "hero.eyebrow": "オープンソース &middot; MIT &middot; v0.7.0",
       "hero.h1": "競合ゼロ。すべてのエージェントが揃う。",
       "hero.subtitle": "並列で動く Claude Code、Cursor、Cline のエージェントが、コードに触れる前に作業を宣言し、競合を検出し、合意に至るためのドロップイン MCP サーバーです。",
       "hero.stat.latency": "プッシュ遅延 &lt;50ms",
@@ -4718,7 +5077,7 @@
       "start.step4.desc": "<code class=\"ic\">doctor</code> コマンドが config、サーバー、MCP 応答、MQTT 接続をチェックし、その後 <code class=\"ic\">localhost:3100/dashboard</code> でダッシュボードを開きます。",
       "start.note": "<code class=\"ic\">git worktree add ../feature-x main</code> を実行し、各エージェントを自身のワークツリーで動かしてください&mdash;mcp-coordinator は「誰が types.ts を編集しているか」を扱い、ワークツリーは「2 体のエージェントが同じ inode を取り合わない」を扱います。",
       "start.dash.title": "60 秒で見えるもの",
-      "start.dash.meta": "mcp-coordinator v0.2.1 &middot; クォータ 62%",
+      "start.dash.meta": "mcp-coordinator v0.7.0 &middot; クォータ 62%",
       "start.dash.aria": "サンプルダッシュボードビュー: 4 体のエージェントをライブで追跡、競合は 38 秒で解決",
       "start.cta.star": "GitHub でスター",
       "start.cta.issue": "Issue を起票",
@@ -4744,7 +5103,7 @@
       "results.perf.label.consensus": "完全合意",
       "results.perf.value.consensus": "30-45 秒",
       "results.perf.label.tests": "テストスイート",
-      "results.perf.value.tests": "18 ファイルにわたる 216 ユニットテスト",
+      "results.perf.value.tests": "65 ファイルにわたる 546 ユニットテスト",
       "results.perf.link": "GitHub でテストスイートを閲覧 →",
       "results.subtitle.link": "GitHub の tests/ をご覧ください →",
       "faq.title": "FAQ",
@@ -4752,7 +5111,7 @@
       "faq.q1": "git ワークツリーを置き換えますか?",
       "faq.a1": "いいえ。ワークツリーはファイルシステムの分離を解決し、mcp-coordinator は意図の連携を解決します。両方を併用してください。",
       "faq.q2": "本番運用に耐えますか?",
-      "faq.a2": "ソロ・チーム利用で安定しています。v1.0 で公開 API が凍結されます。4 つの競合シナリオにわたる 216 ユニットテスト、MIT ライセンス、<code>doctor</code> コマンド、構造化された Pino ログ。",
+      "faq.a2": "ソロ・チーム利用で安定しています。v1.0 で公開 API が凍結されます。65 ファイル、546 のユニットテストが 6 つのスコアリングレイヤー、クロス組織分離、4 つの競合シナリオをカバーします。MIT ライセンス、<code>doctor</code> コマンド、構造化された Pino ログ。",
       "faq.q3": "費用はどれくらいですか?",
       "faq.a3": "MIT ライセンスで無料です。自分のマシン、LAN、またはクラウドにセルフホストできます。",
       "faq.q4": "どの MCP クライアントが動作しますか?",
@@ -4784,9 +5143,9 @@
       "roadmap.v02.date": "2026 年 5 月 出荷済み",
       "roadmap.v02.link": "v0.2.0 リリース",
       "roadmap.v03.title": "v0.3 —— セマンティック競合検出",
-      "roadmap.v03.desc": "ファイル名スコアリングの上に乗る AST レベルの分析。スレッドが開く前に、API 契約変更、インターフェース非互換、破壊的変更を検出します。",
-      "roadmap.v03.date": "2026 年 Q3 目標",
-      "roadmap.v03.link": "GitHub でフォロー",
+      "roadmap.v03.desc": "tree-sitter による 15 言語の AST 解析。シンボル認識スコアリング:同一ファイル、異なる関数 = 注釈付き理由、サイレントブロックではない。",
+      "roadmap.v03.date": "2026 年 5 月リリース",
+      "roadmap.v03.link": "v0.3.0 リリース",
       "roadmap.v10.title": "v1.0 —— 安定 API + クロスリポジトリ連携",
       "roadmap.v10.desc": "公開 API の凍結、バージョン管理された REST エンドポイント、マイグレーションガイド。単一のブローカーから複数リポジトリにまたがる連携を提供します。",
       "roadmap.v10.date": "日付未定",
@@ -4795,7 +5154,7 @@
       "roadmap.harbor.desc": "Anthropic が予定するサーバーサイドプッシュチャネル (社内では <code class=\"ic\">tengu_harbor</code> として追跡) とのネイティブ統合。リスナーコードはすでに MQTT ブリッジの隣に存在します——出荷された瞬間に mcp-coordinator は接続できます。",
       "roadmap.harbor.date": "日付未定 · 上流依存",
       "roadmap.harbor.link": "GitHub でフォロー",
-      "footer.text": "MIT License &nbsp;·&nbsp; <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> で構築 &nbsp;·&nbsp; MCP Coordinator v0.2.x",
+      "footer.text": "MIT License &nbsp;·&nbsp; <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> で構築 &nbsp;·&nbsp; MCP Coordinator v0.7.0",
       "why.title": "なぜ MCP Coordinator か?",
       "why.subtitle": "5 体のエージェントを同じリポジトリで走らせても、マージ競合・重複作業・サイレントリグレッションは発生しません。",
       "why.block1.title": "複数のエージェント、ひとつの揃ったプロセス",
@@ -4913,6 +5272,57 @@
       "install.step4.title": "確認して開く",
       "install.step4.desc": "doctor がヘルスチェックを実行します——config 妥当、サーバー稼働、MCP 応答、MQTT 接続受付——その後、<code class=\"ic\">localhost:3100/dashboard</code> でダッシュボードを開きます。",
       "install.note": "セッションごとのファイルシステム分離には、引き続き <a href=\"#worktrees\" class=\"il\">git ワークツリー</a> が必要です。コーディネーターは意図を扱い、ファイルは扱いません。",
+      "nav.compliance": "コンプライアンス",
+      "roadmap.v04.title": "v0.4 —— ダッシュボード再設計と運用性",
+      "roadmap.v04.desc": "ランディングページとダッシュボードの全面再設計。レイヤー別の発火件数を表示する Conflict signals パネル。tree_sitter と git_cochange のヘルスブロックを含む拡張版 /readyz。5 つの新しい Prometheus メトリクス。",
+      "roadmap.v04.date": "2026 年 5 月リリース",
+      "roadmap.v04.link": "v0.4.0 リリース",
+      "roadmap.v05.title": "v0.5 —— インフライト認識と git co-change",
+      "roadmap.v05.desc": "リアルタイムな編集認識のためのフックベース PreToolUse/PostToolUse。歴史的に結合したファイル向けの git co-change スコアリング。",
+      "roadmap.v05.date": "2026 年 5 月リリース",
+      "roadmap.v05.link": "v0.5.0 リリース",
+      "roadmap.llm.title": "LLM Reasoner —— グレーゾーン裁定 (オプトイン)",
+      "roadmap.llm.desc": "曖昧な競合のためのゲート付きオプトインレイヤー。v0.5.0 のテレメトリで ROI が検証された後、1 か月後にリリースされます。",
+      "roadmap.llm.date": "設計中 · v0.5.0 のテレメトリ次第",
+      "roadmap.llm.link": "GitHub でフォロー",
+      "roadmap.v06.title": "v0.6 —— セマンティック競合検出と 15 言語のシンボル解析",
+      "roadmap.v06.desc": "tree-sitter のシンボル抽出を 15 言語に拡張 (Bash、C#、C、C++、Ruby、PHP、Kotlin、Swift を追加)。レイヤー 4 の git co-change スコアリングが歴史的な共同編集パターンを検出します。<code>/api/working-files/{start,stop}</code> によりエージェントは進行中の編集をシグナリングでき、リアルタイムな競合検出が可能になります。",
+      "roadmap.v06.date": "2026 年 5 月リリース",
+      "roadmap.v06.link": "v0.6.0 リリース",
+      "roadmap.v07.title": "v0.7 —— マルチテナントセキュリティ基盤",
+      "roadmap.v07.desc": "14 のテーブルとすべての MCP/HTTP/MQTT/SSE 呼び出しに組み込まれた組織スコープ (<code>org_id</code>)。HS256 ピン、RFC 6750 <code>WWW-Authenticate</code> ヘッダー、<code>COORDINATOR_JWT_PREV_SECRET</code> によるゼロダウンタイムのシークレットローテーションで強化された JWT。<code>audit_log</code> テーブル、<code>EncryptionProvider</code> インターフェース、<code>IdPProvider</code> インターフェースが v0.7.5 (SQLCipher) と v0.8 (BYOK、GDPR エンドポイント) のフックとして出荷されます。",
+      "roadmap.v07.date": "2026 年 5 月リリース",
+      "roadmap.v07.link": "v0.7.0 リリース",
+      "compliance.title": "エンタープライズとコンプライアンス",
+      "compliance.intro": "基盤からコンプライアンスを念頭に設計されています。v0.7 以降、mcp-coordinator は監査や規制業界デプロイに必要なアーキテクチャ的フックを提供します。",
+      "compliance.th.capability": "機能",
+      "compliance.th.status": "ステータス",
+      "compliance.th.aligned": "整合性",
+      "compliance.row.tenant.cap": "14 のテーブルにまたがるマルチテナント <code>org_id</code> 分離",
+      "compliance.row.tenant.status": "v0.7 リリース済み",
+      "compliance.row.tenant.aligned": "SOC 2 CC6.1 &middot; GDPR 第 32 条",
+      "compliance.row.audit.cap": "audit log テーブル (追記専用データレイヤー)",
+      "compliance.row.audit.status": "v0.7 リリース済み",
+      "compliance.row.audit.aligned": "SOC 2 CC7.2 &middot; CC7.3",
+      "compliance.row.jwt.cap": "JWT &mdash; HS256 ピン &middot; RFC 6750 &middot; ゼロダウンタイムローテーション",
+      "compliance.row.jwt.status": "v0.7 リリース済み",
+      "compliance.row.jwt.aligned": "SOC 2 CC6.1",
+      "compliance.row.enc.cap": "<code>EncryptionProvider</code> インターフェース (デフォルトはパススルー)",
+      "compliance.row.enc.status": "v0.7 リリース済み",
+      "compliance.row.enc.aligned": "v0.7.5 のフック",
+      "compliance.row.sqlcipher.cap": "SQLCipher による DB 全体の保存時暗号化",
+      "compliance.row.sqlcipher.status": "v0.7.5 仕様策定済み",
+      "compliance.row.sqlcipher.aligned": "SOC 2 CC6.1",
+      "compliance.row.byok.cap": "組織ごとの DEK + BYOK (AWS KMS / GCP KMS / Vault)",
+      "compliance.row.byok.status": "v0.8 スケッチ",
+      "compliance.row.byok.aligned": "規制業界",
+      "compliance.row.gdpr.cap": "GDPR <code>/export</code> および <code>/delete</code> エンドポイント",
+      "compliance.row.gdpr.status": "v0.8 スケッチ",
+      "compliance.row.gdpr.aligned": "GDPR 第 15 条 &middot; 第 17 条 &middot; 第 20 条",
+      "compliance.row.retention.cap": "保持ポリシー + audit log の表示 UI",
+      "compliance.row.retention.status": "v0.8 スケッチ",
+      "compliance.row.retention.aligned": "SOC 2 &middot; GDPR 最小化",
+      "compliance.disclaimer": "mcp-coordinator は <strong>SOC 2 認証を取得していません</strong> &mdash; 認証はコードではなく監査人の仕事です。マルチテナント分離、audit log、暗号化インターフェースなどのアーキテクチャ的フックを提供することで、監査を目指すチームに先行する優位性を提供しますが、認証自体はあなたのチームのプロセスです。"
     }
   };
 
