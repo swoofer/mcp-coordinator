@@ -278,6 +278,35 @@ async function handleSse(req: IncomingMessage, res: ServerResponse): Promise<voi
   });
 }
 
+/**
+ * MCP per-request auth gate (Task 23).
+ *
+ * Called on EVERY POST /mcp — both new-session and existing-session branches.
+ * Returns claims on success, or writes 401 + returns null so the caller can
+ * immediately `return` without further processing.
+ *
+ * When AUTH_ENABLED=false (open-coordinator mode) returns synthetic legacy
+ * claims so that tool handlers (Task 23.5+) always have a claims object keyed
+ * by org='default'. Does NOT stash claims on `req` — RequestHandlerExtra in
+ * the MCP SDK does not expose IncomingMessage to tool handlers. Task 23.5
+ * will populate a sessionClaims Map<sessionId, AuthClaims> instead.
+ */
+async function authenticateMcpRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<AuthClaims | null> {
+  if (!AUTH_ENABLED) {
+    // Open-coordinator mode: synthetic legacy claims.
+    return { sub: "legacy", user_id: "legacy", org: "default", role: "admin", jti: "legacy" };
+  }
+  const authResult = await authenticateRequest(req, { authEnabled: AUTH_ENABLED });
+  if (!authResult.ok) {
+    jsonAuthError(res, authResult);
+    return null;
+  }
+  return authResult.claims;
+}
+
 export interface ServerOptions {
   port?: number;
   dataDir?: string;
@@ -425,20 +454,16 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
         const sessionId = req.headers["mcp-session-id"] as string | undefined;
 
         if (sessionId && sessions.has(sessionId)) {
-          // Existing session â€” already authenticated, route directly
+          // Existing-session branch — AUTH-GATED ON EVERY REQUEST per spec §J.
+          // NOTE: Task 23.5 inserts `sessionClaims.set(sessionId, claims)` here.
+          const claims = await authenticateMcpRequest(req, res);
+          if (!claims) return; // 401 already written
           await sessions.get(sessionId)!.handleRequest(req, res);
         } else if (req.method === "POST" && !sessionId) {
-          // New session â€” auth guard required
-          let authenticatedAgent: string | undefined;
-          if (AUTH_ENABLED) {
-            const authResult = await authenticateRequest(req, { authEnabled: AUTH_ENABLED });
-            if (!authResult.ok) {
-              authLog.warn({ reason: authResult.error, url, ip: req.socket.remoteAddress }, "Auth rejected");
-              jsonAuthError(res, authResult);
-              return;
-            }
-            authenticatedAgent = authResult.claims.sub;
-          }
+          // New-session branch — also gated.
+          const claims = await authenticateMcpRequest(req, res);
+          if (!claims) return; // 401 already written
+          const authenticatedAgent = claims.sub;
 
           // Create transport + server
           const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => randomUUID() });
