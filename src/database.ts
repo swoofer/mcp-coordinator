@@ -197,6 +197,47 @@ const SCHEMA = `
     );
     CREATE INDEX IF NOT EXISTS idx_users_org ON users(org_id);
 
+    CREATE TABLE IF NOT EXISTS refresh_tokens (
+      id              TEXT PRIMARY KEY,
+      org_id          TEXT NOT NULL REFERENCES orgs(id),
+      user_id         TEXT NOT NULL REFERENCES users(id),
+      jti             TEXT NOT NULL UNIQUE,
+      device_label    TEXT,
+      expires_at      TEXT NOT NULL,
+      revoked_at      TEXT,
+      last_used_at    TEXT,
+      created_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_refresh_user ON refresh_tokens(user_id, revoked_at);
+    CREATE INDEX IF NOT EXISTS idx_refresh_org_user ON refresh_tokens(org_id, user_id, revoked_at);
+
+    CREATE TABLE IF NOT EXISTS device_auth_requests (
+      device_code      TEXT PRIMARY KEY,
+      user_code        TEXT NOT NULL UNIQUE,
+      nonce            TEXT NOT NULL UNIQUE,
+      approved_user_id TEXT REFERENCES users(id),
+      org_id           TEXT,
+      expires_at       TEXT NOT NULL,
+      created_at       TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_device_user_code ON device_auth_requests(user_code);
+    CREATE INDEX IF NOT EXISTS idx_device_nonce ON device_auth_requests(nonce);
+
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id         TEXT,
+      org_id          TEXT,
+      action          TEXT NOT NULL,
+      target          TEXT,
+      ip              TEXT,
+      user_agent      TEXT,
+      metadata        TEXT,
+      created_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_audit_org_time ON audit_log(org_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action, created_at);
+
     INSERT OR IGNORE INTO orgs (id, name) VALUES ('default', 'Default Organization');
 `;
 
