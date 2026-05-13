@@ -42,7 +42,7 @@ describe("P3 Fix 1 — bounded listeners (refuse-with-no-op)", () => {
 
     // Fill to the cap with cheap stub listeners.
     for (let i = 0; i < MAX_SSE_CLIENTS; i++) {
-      emitter.addListener(() => {});
+      emitter.addListener("default", () => {});
     }
     expect(emitter.listenerCount()).toBe(MAX_SSE_CLIENTS);
     expect(emitter.getRejectedCount()).toBe(0);
@@ -52,7 +52,7 @@ describe("P3 Fix 1 — bounded listeners (refuse-with-no-op)", () => {
     //   - the listener is NOT registered (count stays at cap)
     //   - rejectedCount increments
     //   - calling the returned function is safe (no-op)
-    const unsub = emitter.addListener(() => {
+    const unsub = emitter.addListener("default", () => {
       throw new Error("should never run — refused listener");
     });
 
@@ -79,7 +79,7 @@ describe("P3 Fix 3 — async fan-out (slow listener doesn't block)", () => {
     // Mount a deliberately slow listener. Note: this BLOCKS the event loop
     // when it runs (synchronous busy-wait), but because we wrap each
     // listener in setImmediate, it runs *after* emit() returns.
-    emitter.addListener(() => {
+    emitter.addListener("default", () => {
       slowListenerStarted.push(Date.now());
       const start = Date.now();
       while (Date.now() - start < 150) {
@@ -88,7 +88,7 @@ describe("P3 Fix 3 — async fan-out (slow listener doesn't block)", () => {
     });
 
     const t0 = Date.now();
-    emitter.emit("agent_online", { agent_id: "a1" });
+    emitter.emit("agent_online", { agent_id: "a1" }, { org_id: "default" });
     const elapsed = Date.now() - t0;
 
     // The whole point: emit() returned without waiting on the slow listener.
@@ -102,14 +102,14 @@ describe("P3 Fix 3 — async fan-out (slow listener doesn't block)", () => {
     const emitter = new SseEmitter();
     const sibling: string[] = [];
 
-    emitter.addListener(() => {
+    emitter.addListener("default", () => {
       throw new Error("boom — should be swallowed by emitter");
     });
-    emitter.addListener((event) => {
+    emitter.addListener("default", (event) => {
       sibling.push(event.type);
     });
 
-    emitter.emit("agent_online", { agent_id: "a1" });
+    emitter.emit("agent_online", { agent_id: "a1" }, { org_id: "default" });
     await flush();
 
     expect(sibling).toContain("agent_online");

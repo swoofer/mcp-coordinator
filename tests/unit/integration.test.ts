@@ -331,17 +331,17 @@ describe("Integration: SSE Events", () => {
 
   it("emits events for full lifecycle", async () => {
     const emitted: { type: string; payload: any }[] = [];
-    sseEmitter.addListener((event) => {
+    sseEmitter.addListener("default", (event) => {
       emitted.push({ type: event.type, payload: JSON.parse(event.payload) });
     });
 
     // Emit events as the flow would
-    sseEmitter.emit("agent_online", { agent_id: "a1", name: "Agent A", modules: ["src/auth"] });
-    sseEmitter.emit("thread_opened", { thread_id: "t1", subject: "test", agent_id: "a1" });
-    sseEmitter.emit("impact_scored", { thread_id: "t1", agent_id: "a2", score: 100, category: "concerned" });
-    sseEmitter.emit("message_posted", { thread_id: "t1", agent_id: "a2", type: "context", content: "info" });
-    sseEmitter.emit("resolution_proposed", { thread_id: "t1", agent_id: "a1", summary: "plan" });
-    sseEmitter.emit("thread_resolved", { thread_id: "t1", resolution: "plan" });
+    sseEmitter.emit("agent_online", { agent_id: "a1", name: "Agent A", modules: ["src/auth"] }, { org_id: "default" });
+    sseEmitter.emit("thread_opened", { thread_id: "t1", subject: "test", agent_id: "a1" }, { org_id: "default" });
+    sseEmitter.emit("impact_scored", { thread_id: "t1", agent_id: "a2", score: 100, category: "concerned" }, { org_id: "default" });
+    sseEmitter.emit("message_posted", { thread_id: "t1", agent_id: "a2", type: "context", content: "info" }, { org_id: "default" });
+    sseEmitter.emit("resolution_proposed", { thread_id: "t1", agent_id: "a1", summary: "plan" }, { org_id: "default" });
+    sseEmitter.emit("thread_resolved", { thread_id: "t1", resolution: "plan" }, { org_id: "default" });
 
     await flushSse();
     expect(emitted).toHaveLength(6);
@@ -351,17 +351,17 @@ describe("Integration: SSE Events", () => {
     ]);
 
     // Verify events are persisted
-    const stored = sseEmitter.getEventsSince(0);
+    const stored = sseEmitter.getEventsSince("default", 0);
     expect(stored).toHaveLength(6);
   });
 
   it("getEventsSince filters correctly", () => {
-    sseEmitter.emit("agent_online", { agent_id: "a1" });
-    sseEmitter.emit("agent_online", { agent_id: "a2" });
+    sseEmitter.emit("agent_online", { agent_id: "a1" }, { org_id: "default" });
+    sseEmitter.emit("agent_online", { agent_id: "a2" }, { org_id: "default" });
 
-    const all = sseEmitter.getEventsSince(0);
+    const all = sseEmitter.getEventsSince("default", 0);
     const firstId = all[0].id!;
-    const afterFirst = sseEmitter.getEventsSince(firstId);
+    const afterFirst = sseEmitter.getEventsSince("default", firstId);
     expect(afterFirst).toHaveLength(1);
     expect(JSON.parse(afterFirst[0].payload).agent_id).toBe("a2");
   });

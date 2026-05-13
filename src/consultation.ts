@@ -11,6 +11,7 @@ import type {
 
 export interface ResolutionEvent {
   thread_id: string;
+  org_id: string;
   resolution_type: ResolutionType;
   resolution_summary: string | null;
   created_at: string;
@@ -83,6 +84,7 @@ export class Consultation {
     if (this.onResolveCallback) {
       this.onResolveCallback({
         thread_id: threadId,
+        org_id: thread.org_id,
         resolution_type: type,
         resolution_summary: thread.resolution_summary,
         created_at: thread.created_at,

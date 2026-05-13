@@ -63,7 +63,7 @@ describe("S2 fix - runCommonAnnounceFlow extracts shared orchestration", () => {
     services.registry.register("default", "a2", "Agent B", ["src/auth"]);
     services.registry.register("default", "a3", "Agent C", ["src/web"]);
     const events: { type: string; payload: string }[] = [];
-    services.sseEmitter.addListener((e) => events.push({ type: e.type, payload: e.payload }));
+    services.sseEmitter.addListener("default", (e) => events.push({ type: e.type, payload: e.payload }));
 
     const thread = services.consultation.announceWork("default", {
       agent_id: "a1", subject: "scored", target_modules: ["src/auth"], target_files: [],
@@ -104,7 +104,7 @@ describe("S2 fix - runCommonAnnounceFlow extracts shared orchestration", () => {
   it("emits plan-quality downgrade event when plan is vague", async () => {
     services.registry.register("default", "a1", "Agent A", ["src/auth"]);
     const events: { type: string; payload: string }[] = [];
-    services.sseEmitter.addListener((e) => events.push({ type: e.type, payload: e.payload }));
+    services.sseEmitter.addListener("default", (e) => events.push({ type: e.type, payload: e.payload }));
 
     const thread = services.consultation.announceWork("default", {
       agent_id: "a1", subject: "vague", plan: "do thing", target_modules: ["src/auth"], target_files: [],

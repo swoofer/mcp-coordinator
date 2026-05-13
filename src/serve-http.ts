@@ -219,17 +219,21 @@ function handleSse(req: IncomingMessage, res: ServerResponse): void {
   services.metrics.incSseClients();
   services.metrics.recordHttpRequest("/api/events", 200);
 
+  // TODO(Task 21.5): authenticate the SSE GET request and extract orgId from claims.
+  // For now, using "default" for single-tenant Phase 1 compatibility.
+  const orgId = "default";
+
   // Use Last-Event-ID for resumption, otherwise send last 50
   const lastEventId = parseInt(req.headers["last-event-id"] as string || "0", 10);
   const events = lastEventId > 0
-    ? services.sseEmitter.getEventsSince(lastEventId)
-    : services.sseEmitter.getEventsSince(0).slice(-50);
+    ? services.sseEmitter.getEventsSince(orgId, lastEventId)
+    : services.sseEmitter.getEventsSince(orgId, 0).slice(-50);
   for (const event of events) {
     writeSseEvent(res, event);
   }
 
   // Listen for new events
-  const unsubscribe = services.sseEmitter.addListener((event: CoordinatorEvent) => {
+  const unsubscribe = services.sseEmitter.addListener(orgId, (event: CoordinatorEvent) => {
     writeSseEvent(res, event);
   });
 
@@ -513,7 +517,8 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
     // consultation logic that might inspect working_files state for this agent
     // sees the pre-cleanup view.
     services.workingFiles.clearForAgent(agentId);
-    services.sseEmitter.emit("agent_offline", { agent_id: agentId });
+    // TODO(Task 22): MQTT offline path has no org_id context; using "default" for single-tenant Phase 1.
+    services.sseEmitter.emit("agent_offline", { agent_id: agentId }, { org_id: "default" });
   });
 
   // Wait for the HTTP server to be actually listening before resolving the

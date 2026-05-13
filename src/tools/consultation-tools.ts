@@ -60,13 +60,14 @@ export function registerConsultationTools(
       org_id: "default", agent_id, subject, plan, target_modules, target_files, depends_on_files, exports_affected, keep_open, target_symbols,
     });
 
+    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default'.
     sseEmitter.emit("thread_opened", {
       thread_id: thread.id, initiator: agent_id, subject, target_modules, conflicts,
       expected_respondents: respondents,
       mode: planQuality.mode,
       plan: plan || null,
       plan_quality: planQuality,
-    });
+    }, { org_id: "default" });
     mqttBridge.publishConsultation(thread.id, agent_id, subject, target_modules);
 
     const contextForInitiator = respondents.map((rid: string) =>
@@ -96,11 +97,12 @@ export function registerConsultationTools(
       thread_id, agent_id, agent_name, type, content, context_snapshot, in_reply_to,
     });
     const thread = consultation.getThread("default", thread_id);
+    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default'.
     sseEmitter.emit("message_posted", {
       thread_id, agent_id, agent_name: agent_name || agent_id,
       type, content, round: thread?.round || 1,
       token_estimate: msg.token_estimate || 0,
-    });
+    }, { org_id: "default" });
     mqttBridge.publishMessage(thread_id, agent_id, type, content);
     return { content: [{ type: "text", text: JSON.stringify(msg) }] };
   });
@@ -114,7 +116,8 @@ export function registerConsultationTools(
     mcpLog.info({ tool: "propose_resolution", thread_id, agent_id }, "Tool called");
     // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
     consultation.proposeResolution("default", thread_id, agent_id, summary);
-    sseEmitter.emit("resolution_proposed", { thread_id, agent_id, summary });
+    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default'.
+    sseEmitter.emit("resolution_proposed", { thread_id, agent_id, summary }, { org_id: "default" });
     mqttBridge.publishResolution(thread_id, "resolving", summary);
     const thread = consultation.getThread("default", thread_id);
     return { content: [{ type: "text", text: JSON.stringify(thread) }] };
@@ -163,7 +166,8 @@ export function registerConsultationTools(
     mcpLog.info({ tool: "cancel_thread", thread_id, agent_id }, "Tool called");
     // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
     consultation.cancelThread("default", thread_id, agent_id, reason ?? undefined);
-    sseEmitter.emit("thread_cancelled", { thread_id, reason });
+    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default'.
+    sseEmitter.emit("thread_cancelled", { thread_id, reason }, { org_id: "default" });
     return { content: [{ type: "text", text: "cancelled" }] };
   });
 
@@ -205,7 +209,8 @@ export function registerConsultationTools(
   }, async ({ session_id, agent_id, file_path, summary }) => {
     // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
     const result = consultation.logActionSummary("default", { session_id, agent_id, file_path, summary });
-    sseEmitter.emit("action_summary", { agent_id, file_path, summary });
+    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default'.
+    sseEmitter.emit("action_summary", { agent_id, file_path, summary }, { org_id: "default" });
     return { content: [{ type: "text", text: JSON.stringify(result) }] };
   });
 }

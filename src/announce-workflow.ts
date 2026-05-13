@@ -112,7 +112,7 @@ export function runCommonAnnounceFlow(
       score: s.score,
       reasons: s.reasons,
       category: scoredCategory(s),
-    });
+    }, { org_id: params.org_id });
   }
 
   // 4. Create introspection records and emit introspection_requested for gray_zone agents.
@@ -124,7 +124,7 @@ export function runCommonAnnounceFlow(
       agent_name: s.agent_name,
       score: s.score,
       reasons: s.reasons,
-    });
+    }, { org_id: params.org_id });
   }
 
   // 5. Plan quality downgrade event — both transports emit this when a plan
@@ -140,7 +140,7 @@ export function runCommonAnnounceFlow(
       score: planQuality.score,
       reasons: [planDowngradeReason(planQuality)],
       category: "plan_quality",
-    } as Parameters<typeof sseEmitter.emit>[1]);
+    } as Parameters<typeof sseEmitter.emit>[1], { org_id: params.org_id });
   }
 
   const updated = consultation.getThread(params.org_id, threadId)!;

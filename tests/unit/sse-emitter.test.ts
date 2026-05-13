@@ -1,4 +1,4 @@
-﻿// tests/sse-emitter.test.ts
+// tests/sse-emitter.test.ts
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
 import { SseEmitter } from "../../src/sse-emitter.js";
@@ -30,66 +30,66 @@ afterAll(() => {
 
 describe("SseEmitter", () => {
   it("emits and retrieves events", () => {
-    emitter.emit("thread_opened", { thread_id: "t1", subject: "Test" });
-    emitter.emit("message_posted", { thread_id: "t1", agent_id: "a1" });
-    const events = emitter.getEventsSince(0);
+    emitter.emit("thread_opened", { thread_id: "t1", subject: "Test" }, { org_id: "default" });
+    emitter.emit("message_posted", { thread_id: "t1", agent_id: "a1" }, { org_id: "default" });
+    const events = emitter.getEventsSince("default", 0);
     expect(events).toHaveLength(2);
     expect(events[0].type).toBe("thread_opened");
     expect(events[1].type).toBe("message_posted");
   });
 
   it("filters events by since id", () => {
-    emitter.emit("agent_online", { agent_id: "a1" });
-    emitter.emit("agent_online", { agent_id: "a2" });
-    const all = emitter.getEventsSince(0);
+    emitter.emit("agent_online", { agent_id: "a1" }, { org_id: "default" });
+    emitter.emit("agent_online", { agent_id: "a2" }, { org_id: "default" });
+    const all = emitter.getEventsSince("default", 0);
     const firstId = all[0].id!;
-    const after = emitter.getEventsSince(firstId);
+    const after = emitter.getEventsSince("default", firstId);
     expect(after).toHaveLength(1);
     expect(JSON.parse(after[0].payload).agent_id).toBe("a2");
   });
 
   it("notifies registered listeners", async () => {
     const received: string[] = [];
-    emitter.addListener((event) => received.push(event.type));
-    emitter.emit("file_edited", { file: "test.ts" });
+    emitter.addListener("default", (event) => received.push(event.type));
+    emitter.emit("file_edited", { file: "test.ts" }, { org_id: "default" });
     await flush();
     expect(received).toContain("file_edited");
   });
 
-  it("removeAllListeners â€” no listener is called after removal", async () => {
+  it("removeAllListeners - no listener is called after removal", async () => {
     const received: string[] = [];
-    emitter.addListener((event) => received.push(event.type));
+    emitter.addListener("default", (event) => received.push(event.type));
     emitter.removeAllListeners();
-    emitter.emit("agent_online", { agent_id: "a1" });
+    emitter.emit("agent_online", { agent_id: "a1" }, { org_id: "default" });
     await flush();
     expect(received).toHaveLength(0);
   });
 
-  it("unsubscribe function â€” listener is not called after unsubscribing", async () => {
+  it("unsubscribe function - listener is not called after unsubscribing", async () => {
     const received: string[] = [];
-    const unsubscribe = emitter.addListener((event) => received.push(event.type));
+    const unsubscribe = emitter.addListener("default", (event) => received.push(event.type));
     unsubscribe();
-    emitter.emit("thread_opened", { thread_id: "t1", subject: "Test" });
+    emitter.emit("thread_opened", { thread_id: "t1", subject: "Test" }, { org_id: "default" });
     await flush();
     expect(received).toHaveLength(0);
   });
 
-  it("multiple listeners â€” both receive events, removing one leaves the other active", async () => {
+  it("multiple listeners - both receive events, removing one leaves the other active", async () => {
     const receivedA: string[] = [];
     const receivedB: string[] = [];
-    const unsubscribeA = emitter.addListener((event) => receivedA.push(event.type));
-    emitter.addListener((event) => receivedB.push(event.type));
+    const unsubscribeA = emitter.addListener("default", (event) => receivedA.push(event.type));
+    emitter.addListener("default", (event) => receivedB.push(event.type));
 
-    emitter.emit("agent_online", { agent_id: "a1" });
+    emitter.emit("agent_online", { agent_id: "a1" }, { org_id: "default" });
     await flush();
     expect(receivedA).toHaveLength(1);
     expect(receivedB).toHaveLength(1);
 
     unsubscribeA();
-    emitter.emit("agent_online", { agent_id: "a2" });
+    emitter.emit("agent_online", { agent_id: "a2" }, { org_id: "default" });
     await flush();
-    expect(receivedA).toHaveLength(1); // still 1 â€” unsubscribed listener did not fire
-    expect(receivedB).toHaveLength(2); // still active â€” fired again
+    expect(receivedA).toHaveLength(1); // still 1 - unsubscribed listener did not fire
+    expect(receivedB).toHaveLength(2); // still active - fired again
   });
 
   it("event payload preserves complex data integrity through JSON round-trip", () => {
@@ -98,8 +98,8 @@ describe("SseEmitter", () => {
       agent_id: "a1",
       metadata: { priority: 42, tags: ["auth", "refactor"], nested: { flag: true } },
     };
-    emitter.emit("thread_opened", complexPayload);
-    const events = emitter.getEventsSince(0);
+    emitter.emit("thread_opened", complexPayload, { org_id: "default" });
+    const events = emitter.getEventsSince("default", 0);
     expect(events).toHaveLength(1);
     const parsed = JSON.parse(events[0].payload);
     expect(parsed.thread_id).toBe("t-complex");
@@ -109,5 +109,3 @@ describe("SseEmitter", () => {
     expect(parsed.metadata.nested.flag).toBe(true);
   });
 });
-
-

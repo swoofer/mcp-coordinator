@@ -22,7 +22,8 @@ export function registerAgentTools(
     mcpLog.info({ tool: "register_agent", agent_id, name, module_count: modules.length }, "Tool called");
     // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
     const agent = registry.register("default", agent_id, name, modules);
-    sseEmitter.emit("agent_online", { agent_id, name, modules });
+    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default'.
+    sseEmitter.emit("agent_online", { agent_id, name, modules }, { org_id: "default" });
     mqttBridge.registerAgent(agent_id, name);
     return { content: [{ type: "text", text: JSON.stringify(agent) }] };
   });
@@ -48,10 +49,11 @@ export function registerAgentTools(
     });
     // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
     const activity = activityTracker.getActivity("default", agent_id);
+    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default'.
     sseEmitter.emit("agent_activity", {
       agent_id, activity_status: activity.activity_status,
       current_file: activity.current_file, current_thread: activity.current_thread,
-    });
+    }, { org_id: "default" });
     return { content: [{ type: "text", text: JSON.stringify(activity) }] };
   });
 

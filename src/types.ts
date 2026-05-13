@@ -28,6 +28,7 @@ export type ResolutionType = "consensus" | "auto_resolved" | "timeout" | "closed
 
 export interface Thread {
   id: string;
+  org_id: string;
   initiator_id: string;
   subject: string;
   plan: string | null;

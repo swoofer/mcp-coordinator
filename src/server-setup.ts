@@ -97,12 +97,14 @@ export function createServices(config: CoordinatorConfig): CoordinatorServices {
   const quotaCache = new QuotaCache({
     logger: logger.child({ component: "quota" }),
     onRefresh: (info) => {
+      // TODO(Task 22): quota_update has no org context at the quota-cache callback level;
+      // using "default" (single-tenant Phase 1). Multi-org Phase 5 will require per-org quota.
       sseEmitter.emit("quota_update", {
         five_hour: info.fiveHour,
         seven_day: info.sevenDay,
         seven_day_sonnet: info.sevenDaySonnet,
         fetched_at: info.fetchedAt,
-      });
+      }, { org_id: "default" });
       mqttBridge.publishQuotaUpdate(info);
     },
   });
@@ -110,7 +112,9 @@ export function createServices(config: CoordinatorConfig): CoordinatorServices {
   // SSE events for agent_online/agent_offline since they're already emitted by
   // the REST handler on /api/register and the offline hook. Avoids plumbing a
   // dedicated observer through AgentRegistry.
-  sseEmitter.addListener((event) => {
+  // TODO(Task 22): quota observer uses "default" org — single-tenant Phase 1 only.
+  // Multi-org Phase 5 will require per-org quota listeners.
+  sseEmitter.addListener("default", (event) => {
     if (event.type === "agent_online") quotaCache.onAgentActive();
     else if (event.type === "agent_offline") quotaCache.onAgentInactive();
   });
@@ -118,6 +122,8 @@ export function createServices(config: CoordinatorConfig): CoordinatorServices {
   // Centralized resolution â†’ SSE + MQTT + metrics
   consultation.onResolve((event) => {
     metrics.recordThreadResolved(event.resolution_type);
+    // Approach (a): event.org_id is threaded from emitResolution via getThreadCrossOrg,
+    // so the correct org is always available here without an extra DB lookup.
     sseEmitter.emit("thread_resolved", {
       thread_id: event.thread_id,
       resolution_type: event.resolution_type,
@@ -127,7 +133,7 @@ export function createServices(config: CoordinatorConfig): CoordinatorServices {
       created_at: event.created_at,
       resolved_at: event.resolved_at,
       had_messages: event.had_messages,
-    });
+    }, { org_id: event.org_id });
     if (event.resolution_type !== "auto_resolved") {
       mqttBridge.publishResolution(event.thread_id, "resolved", event.resolution_summary || "");
     }

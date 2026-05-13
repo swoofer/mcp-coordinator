@@ -59,7 +59,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
   if (url === "/api/register") {
     const { agent_id, name, modules } = body as { agent_id: string; name: string; modules: string[] };
     const agent = registry.register(ctx.claims.org, agent_id, name, modules || []);
-    sseEmitter.emit("agent_online", { agent_id, name, modules });
+    sseEmitter.emit("agent_online", { agent_id, name, modules }, { org_id: ctx.claims.org });
     json(res, agent);
 
   } else if (url === "/api/session-start") {
@@ -78,7 +78,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
     registry.setOffline(ctx.claims.org, agent_id);
     activityTracker.reportOffline(ctx.claims.org, agent_id);
     consultation.handleAgentDeparture(agent_id);
-    sseEmitter.emit("agent_offline", { agent_id });
+    sseEmitter.emit("agent_offline", { agent_id }, { org_id: ctx.claims.org });
     json(res, { ok: true });
 
   } else if (url === "/api/check-conflict") {
@@ -96,7 +96,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
     };
     fileTracker.log({ org_id: ctx.claims.org, session_id, agent_id, agent_name, tool_name, file_path: file });
     activityTracker.reportFileActivity(ctx.claims.org, agent_id, file);
-    sseEmitter.emit("file_edited", { agent_id, agent_name: agent_name || agent_id, file, tool_name });
+    sseEmitter.emit("file_edited", { agent_id, agent_name: agent_name || agent_id, file, tool_name }, { org_id: ctx.claims.org });
     json(res, { ok: true });
 
   } else if (url === "/api/announce") {
@@ -127,7 +127,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
       mode: planQuality.mode,
       plan: plan || null,
       plan_quality: planQuality,
-    });
+    }, { org_id: ctx.claims.org });
     json(res, { thread_id: thread.id, status: updated.status, impact: categorized });
 
   } else if (url === "/api/post-to-thread") {
@@ -152,14 +152,14 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
       thread_id, agent_id, agent_name: agent_name || agent_id,
       type, content, round: thread?.round || 1,
       token_estimate: msg.token_estimate || 0,
-    });
+    }, { org_id: ctx.claims.org });
     json(res, msg);
 
   } else if (url === "/api/token-usage") {
     // Agent → coordinator telemetry, emitted once per LLM turn so the dashboard
     // and reports can pinpoint where tokens are being burned.
     const payload = body as Record<string, unknown>;
-    sseEmitter.emit("token_usage", payload);
+    sseEmitter.emit("token_usage", payload, { org_id: ctx.claims.org });
     json(res, { ok: true });
 
   } else if (url === "/api/unclaim-task") {
@@ -205,7 +205,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
 
     if (result.changes === 1) {
       mqttBridge.publishTaskClaimed(thread_id, agent_id);
-      sseEmitter.emit("task_claimed", { thread_id, agent_id });
+      sseEmitter.emit("task_claimed", { thread_id, agent_id }, { org_id: ctx.claims.org });
       json(res, { success: true });
     } else {
       const thread = consultation.getThread(ctx.claims.org, thread_id);
@@ -225,7 +225,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
     consultation.proposeResolution(ctx.claims.org, thread_id, agent_id, summary);
     sseEmitter.emit("resolution_proposed", {
       thread_id, agent_id, agent_name: agentInfo?.name || agent_id, summary,
-    });
+    }, { org_id: ctx.claims.org });
     json(res, consultation.getThread(ctx.claims.org, thread_id));
     mqttBridge.publishTaskCompleted(thread_id, agent_id, summary);
 
@@ -329,7 +329,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
       introspection_id, thread_id: intro?.thread_id,
       agent_id: intro?.agent_id, agent_name: agentInfo?.name || intro?.agent_id,
       concerned, reason,
-    });
+    }, { org_id: ctx.claims.org });
     json(res, intro);
 
   } else if (url?.startsWith("/api/pending-introspections")) {
@@ -341,7 +341,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
   } else if (url === "/api/run-config") {
     if (req.method === "POST") {
       setRunConfig(body as Record<string, unknown>);
-      sseEmitter.emit("run_config" as Parameters<typeof sseEmitter.emit>[0], getRunConfig() as Record<string, unknown>);
+      sseEmitter.emit("run_config" as Parameters<typeof sseEmitter.emit>[0], getRunConfig() as Record<string, unknown>, { org_id: ctx.claims.org });
       json(res, { ok: true });
     } else {
       json(res, getRunConfig() || { active: false });
