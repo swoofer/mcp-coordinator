@@ -303,7 +303,7 @@ describe("Integration: Conflict Detection + Dependencies", () => {
     registry.register("default", "agent-a", "Agent A", ["src/auth"]);
     registry.register("default", "agent-b", "Agent B", ["src/shared"]);
 
-    depMap.setMap({
+    depMap.setMap("default", {
       "src/shared": { module_id: "src/shared", depends_on: [], exports: ["User"], owners: [] },
       "src/auth": { module_id: "src/auth", depends_on: ["src/shared"], exports: [], owners: [] },
     });
@@ -435,7 +435,7 @@ describe("Integration: /api/reset parity (Chasseur Bravo)", () => {
 
   it("reset should clear dependency_map table", () => {
     const db = getDb();
-    depMap.setMap({
+    depMap.setMap("default", {
       "src/auth": { module_id: "src/auth", depends_on: ["src/shared"], exports: ["AuthMiddleware"], owners: [] },
     });
 

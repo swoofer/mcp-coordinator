@@ -65,7 +65,7 @@ export class ConflictDetector {
 
       // 3. Dependency chain
       for (const targetModule of params.target_modules) {
-        const info = this.depMap.getModuleInfo(targetModule);
+        const info = this.depMap.getModuleInfo(params.org_id, targetModule);
         if (!info) continue;
         for (const dep of info.depends_on) {
           if (threadModules.includes(dep)) {
@@ -80,7 +80,7 @@ export class ConflictDetector {
           }
         }
         // Reverse: someone depends on what we're modifying
-        const radius = this.depMap.getBlastRadius(targetModule);
+        const radius = this.depMap.getBlastRadius(params.org_id, targetModule);
         this.log.debug({
           module_id: targetModule,
           direct_dependents: radius.direct_dependents,

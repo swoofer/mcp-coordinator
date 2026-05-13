@@ -47,11 +47,11 @@ export class DependencyMapper {
     return Array.from(all);
   }
 
-  // Legacy methods (for backward compatibility during migration)
+  // Bulk-shaped helpers (org-scoped)
 
-  getMap(): DependencyMap {
+  getMap(orgId: string): DependencyMap {
     const db = getDb();
-    const rows = db.prepare("SELECT * FROM dependency_map").all() as {
+    const rows = db.prepare("SELECT * FROM dependency_map WHERE org_id = ?").all(orgId) as {
       org_id: string; module_id: string; depends_on: string; exports: string; owners: string;
     }[];
     const map: DependencyMap = {};
@@ -66,7 +66,7 @@ export class DependencyMapper {
     return map;
   }
 
-  setMap(map: DependencyMap): void {
+  setMap(orgId: string, map: DependencyMap): void {
     const db = getDb();
     const stmt = db.prepare(
       `INSERT INTO dependency_map (org_id, module_id, depends_on, exports, owners)
@@ -76,14 +76,14 @@ export class DependencyMapper {
     );
     withTransaction(db, () => {
       for (const [id, info] of Object.entries(map)) {
-        stmt.run("default", id, JSON.stringify(info.depends_on), JSON.stringify(info.exports), JSON.stringify(info.owners));
+        stmt.run(orgId, id, JSON.stringify(info.depends_on), JSON.stringify(info.exports), JSON.stringify(info.owners));
       }
     });
   }
 
-  getModuleInfo(moduleId: string): ModuleInfo | null {
+  getModuleInfo(orgId: string, moduleId: string): ModuleInfo | null {
     const db = getDb();
-    const row = db.prepare("SELECT * FROM dependency_map WHERE module_id = ?").get(moduleId) as {
+    const row = db.prepare("SELECT * FROM dependency_map WHERE org_id = ? AND module_id = ?").get(orgId, moduleId) as {
       module_id: string; depends_on: string; exports: string; owners: string;
     } | undefined;
     if (!row) return null;
@@ -95,8 +95,8 @@ export class DependencyMapper {
     };
   }
 
-  getBlastRadius(moduleId: string): BlastRadius {
-    const map = this.getMap();
+  getBlastRadius(orgId: string, moduleId: string): BlastRadius {
+    const map = this.getMap(orgId);
     const direct: string[] = [];
     const indirect: string[] = [];
     const visited = new Set<string>();

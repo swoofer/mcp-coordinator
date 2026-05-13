@@ -79,7 +79,7 @@ describe("ConflictDetector", () => {
   });
 
   it("detects dependency chain conflict", () => {
-    depMap.setMap({
+    depMap.setMap("default", {
       "src/shared": { module_id: "src/shared", depends_on: [], exports: ["User"], owners: [] },
       "src/auth": { module_id: "src/auth", depends_on: ["src/shared"], exports: [], owners: [] },
     });
@@ -166,7 +166,7 @@ describe("ConflictDetector", () => {
   });
 
   it("reverse dependency chain â€” a2 works on a module that depends on what a1 is modifying", () => {
-    depMap.setMap({
+    depMap.setMap("default", {
       "src/shared": { module_id: "src/shared", depends_on: [], exports: ["User"], owners: [] },
       "src/auth": { module_id: "src/auth", depends_on: ["src/shared"], exports: [], owners: [] },
     });
@@ -239,7 +239,7 @@ describe("ConflictDetector", () => {
 
   it("blast radius with indirect_dependents detects transitive dependency conflict", () => {
     // src/core â†’ src/shared â†’ src/auth (transitive: src/auth indirectly depends on src/core)
-    depMap.setMap({
+    depMap.setMap("default", {
       "src/core": { module_id: "src/core", depends_on: [], exports: ["CoreUtil"], owners: [] },
       "src/shared": { module_id: "src/shared", depends_on: ["src/core"], exports: ["User"], owners: [] },
       "src/auth": { module_id: "src/auth", depends_on: ["src/shared"], exports: [], owners: [] },
