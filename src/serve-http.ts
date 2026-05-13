@@ -376,6 +376,9 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
 
   // Multi-session: one transport+server per MCP client session
   const sessions = new Map<string, StreamableHTTPServerTransport>();
+  // Task 23.5: per-session claims map. Populated when a session is opened or
+  // re-verified (mid-session JWT rotation); evicted when the transport closes.
+  const sessionClaims = new Map<string, AuthClaims>();
 
   const httpServer = createServer(async (req, res) => {
     const url = req.url || "";
@@ -455,9 +458,11 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
 
         if (sessionId && sessions.has(sessionId)) {
           // Existing-session branch — AUTH-GATED ON EVERY REQUEST per spec §J.
-          // NOTE: Task 23.5 inserts `sessionClaims.set(sessionId, claims)` here.
           const claims = await authenticateMcpRequest(req, res);
           if (!claims) return; // 401 already written
+          // Task 23.5: update stored claims to support mid-session JWT rotation.
+          // The latest verified claims always win.
+          sessionClaims.set(sessionId, claims);
           await sessions.get(sessionId)!.handleRequest(req, res);
         } else if (req.method === "POST" && !sessionId) {
           // New-session branch — also gated.
@@ -467,20 +472,26 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
 
           // Create transport + server
           const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => randomUUID() });
-          const mcpServer = createMcpServer(services);
+          // Task 23.5: pass a getter so tool handlers can look up per-session claims.
+          const mcpServer = createMcpServer(services, (sid) => sessionClaims.get(sid) ?? null);
           await mcpServer.connect(transport);
 
           transport.onclose = () => {
             const sid = transport.sessionId;
-            if (sid) sessions.delete(sid);
+            if (sid) {
+              sessions.delete(sid);
+              sessionClaims.delete(sid); // Task 23.5: evict claims on session close
+            }
             mcpLog.info({ session_id: sid, remaining: sessions.size }, "MCP session closed");
           };
 
           await transport.handleRequest(req, res);
 
-          if (transport.sessionId) {
-            sessions.set(transport.sessionId, transport);
-            mcpLog.info({ session_id: transport.sessionId, total: sessions.size, agent_id: authenticatedAgent }, "MCP session opened");
+          const sid = transport.sessionId;
+          if (sid) {
+            sessions.set(sid, transport);
+            sessionClaims.set(sid, claims); // Task 23.5: stash claims after sessionId is assigned
+            mcpLog.info({ session_id: sid, total: sessions.size, agent_id: authenticatedAgent }, "MCP session opened");
           }
         } else {
           json(res, { error: "Session not found. Send a request without mcp-session-id to start a new session." }, 404);

@@ -2,26 +2,34 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { CoordinatorServices } from "../server-setup.js";
 import type { Logger } from "../logger.js";
+import type { AuthClaims } from "../auth.js";
 
 /**
  * S1: status + coordination helper MCP tools (2 tools).
  * coordinator_status, wait_for_peers.
+ *
+ * Note (Task 23.5): both tools are org-scoped — coordinator_status reports
+ * agents/threads/files for the caller's org, and wait_for_peers polls the
+ * same org's registry. Neither surfaces system-global (cross-org) data, so
+ * both require valid claims and use claims.org throughout.
  */
 export function registerStatusTools(
   server: McpServer,
   services: CoordinatorServices,
   mcpLog: Logger,
+  getSessionClaims: (sessionId: string) => AuthClaims | null,
 ): void {
   const { registry, consultation, fileTracker, mqttBridge } = services;
 
-  server.tool("coordinator_status", "Full system status", {}, async () => {
-    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
-    const online = registry.listOnline("default");
-    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
-    const openThreads = consultation.listThreads("default", { status: "open" });
-    const resolvingThreads = consultation.listThreads("default", { status: "resolving" });
-    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
-    const hotFiles = fileTracker.getHotFiles("default", 30);
+  server.tool("coordinator_status", "Full system status", {}, async (_args, extra) => {
+    const sessionId = extra.sessionId;
+    if (!sessionId) throw new Error("MCP tool requires a session");
+    const claims = getSessionClaims(sessionId);
+    if (!claims) throw new Error("Session has no captured claims (auth bug)");
+    const online = registry.listOnline(claims.org);
+    const openThreads = consultation.listThreads(claims.org, { status: "open" });
+    const resolvingThreads = consultation.listThreads(claims.org, { status: "resolving" });
+    const hotFiles = fileTracker.getHotFiles(claims.org, 30);
     const status = {
       agents_online: online.length,
       agents: online.map((a) => ({ id: a.id, name: a.name, modules: JSON.parse(a.modules) })),
@@ -38,7 +46,11 @@ export function registerStatusTools(
     agent_id: z.string(),
     min_peers: z.number().optional(),
     timeout_seconds: z.number().optional(),
-  }, async ({ agent_id, min_peers, timeout_seconds }) => {
+  }, async ({ agent_id, min_peers, timeout_seconds }, extra) => {
+    const sessionId = extra.sessionId;
+    if (!sessionId) throw new Error("MCP tool requires a session");
+    const claims = getSessionClaims(sessionId);
+    if (!claims) throw new Error("Session has no captured claims (auth bug)");
     const targetPeers = min_peers ?? 1;
     const timeoutMs = (timeout_seconds ?? 30) * 1000;
     const pollIntervalMs = 1000;
@@ -46,8 +58,7 @@ export function registerStatusTools(
     mcpLog.info({ tool: "wait_for_peers", agent_id, min_peers: targetPeers, timeout_seconds: timeoutMs / 1000 }, "Tool called");
 
     while (Date.now() - startedAt < timeoutMs) {
-      // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
-      const peers = registry.listOnline("default").filter((a) => a.id !== agent_id);
+      const peers = registry.listOnline(claims.org).filter((a) => a.id !== agent_id);
       if (peers.length >= targetPeers) {
         return {
           content: [{
@@ -63,8 +74,7 @@ export function registerStatusTools(
       await new Promise((r) => setTimeout(r, pollIntervalMs));
     }
 
-    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
-    const finalPeers = registry.listOnline("default").filter((a) => a.id !== agent_id);
+    const finalPeers = registry.listOnline(claims.org).filter((a) => a.id !== agent_id);
     return {
       content: [{
         type: "text",

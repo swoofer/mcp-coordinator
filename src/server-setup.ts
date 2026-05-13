@@ -1,13 +1,12 @@
 ﻿import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
-import { initDatabase, getDb } from "./database.js";
-import { runCommonAnnounceFlow } from "./announce-workflow.js";
+import { initDatabase } from "./database.js";
 import { registerConsultationTools } from "./tools/consultation-tools.js";
 import { registerAgentTools } from "./tools/agents-tools.js";
 import { registerFilesTools } from "./tools/files-tools.js";
 import { registerDependenciesTools } from "./tools/dependencies-tools.js";
 import { registerStatusTools } from "./tools/status-tools.js";
 import { registerMqttTools } from "./tools/mqtt-tools.js";
+import type { AuthClaims } from "./auth.js";
 import { AgentRegistry } from "./agent-registry.js";
 import { Consultation } from "./consultation.js";
 import { ConflictDetector } from "./conflict-detector.js";
@@ -150,8 +149,20 @@ export function createServices(config: CoordinatorConfig): CoordinatorServices {
   };
 }
 
-/** Create a new McpServer bound to the shared services (one per MCP session). */
-export function createMcpServer(services: CoordinatorServices): McpServer {
+/** Create a new McpServer bound to the shared services (one per MCP session).
+ *
+ * @param getSessionClaims - Looks up per-session claims by sessionId. In STDIO
+ *   mode there are no sessions so this defaults to a no-op that always returns
+ *   null, which causes tool handlers to throw "Session has no captured claims"
+ *   (expected — STDIO mode is single-tenant and unauthenticated; tool callers
+ *   in that mode should rely on the AUTH_ENABLED=false synthetic-claims path
+ *   added to authenticateMcpRequest, which is not invoked for STDIO).
+ *   Pass a real getter in serve-http.ts's streamable-HTTP path.
+ */
+export function createMcpServer(
+  services: CoordinatorServices,
+  getSessionClaims: (sessionId: string) => AuthClaims | null = () => null,
+): McpServer {
   const { registry, activityTracker, consultation, conflictDetector, depMap, fileTracker, impactScorer, introspection, contextProvider, sseEmitter, mqttBridge } = services;
   const mcpLog = services.logger.child({ component: "mcp" });
 
@@ -161,14 +172,16 @@ export function createMcpServer(services: CoordinatorServices): McpServer {
   });
 
   // S1: all 23 MCP tools registered via per-domain modules under src/tools/.
-  // Each register*Tools function takes (server, services, mcpLog) and wires
-  // its tool group; nothing else lives here. See src/tools/*.ts for behavior.
-  registerAgentTools(server, services, mcpLog);
-  registerConsultationTools(server, services, mcpLog);
-  registerFilesTools(server, services, mcpLog);
-  registerDependenciesTools(server, services, mcpLog);
-  registerStatusTools(server, services, mcpLog);
-  registerMqttTools(server, services, mcpLog);
+  // Each register*Tools function takes (server, services, mcpLog, getSessionClaims)
+  // and wires its tool group. See src/tools/*.ts for behavior.
+  // Task 23.5: getSessionClaims is threaded into each tool registration so
+  // handlers can scope DB queries to claims.org instead of the literal "default".
+  registerAgentTools(server, services, mcpLog, getSessionClaims);
+  registerConsultationTools(server, services, mcpLog, getSessionClaims);
+  registerFilesTools(server, services, mcpLog, getSessionClaims);
+  registerDependenciesTools(server, services, mcpLog, getSessionClaims);
+  registerStatusTools(server, services, mcpLog, getSessionClaims);
+  registerMqttTools(server, services, mcpLog, getSessionClaims);
 
   return server;
 }
