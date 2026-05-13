@@ -14,14 +14,12 @@ beforeAll(() => {
   initDatabase(DIR);
   initAuth(SECRET);
 });
+// CRITICAL: also resets auth module state so signingKey/prevKey don't
+// contaminate later test files under vitest's fileParallelism: false.
+// See "Module-state hygiene" in Conventions.
 afterAll(() => {
   closeDb();
   fs.rmSync(DIR, { recursive: true, force: true });
-});
-
-// CRITICAL: reset auth state so module state doesn't contaminate later test files
-// under vitest's fileParallelism: false. See "Module-state hygiene" in Conventions.
-afterAll(() => {
   initAuth(SECRET);
 });
 
@@ -93,9 +91,11 @@ describe("RestContext claims threading", () => {
     expect(ctx.claims.org).toBe("org-acme");
   });
 
-  it("handleRest executes /api/status without error with claims present", async () => {
-    // /api/status is a lightweight GET handler that reads from services.
-    // We verify that the handler runs (returns a response) when claims are in ctx.
+  it("handleRest accepts ctx with claims field without error (smoke)", async () => {
+    // Smoke test only: /api/status doesn't read ctx.claims today, so this
+    // proves the field is accepted at runtime but does NOT prove threading
+    // reaches a handler that reads it. That guarantee arrives in Tasks 15-19
+    // (org-scoped handlers) and the Task 20 cross-tenant isolation test.
     const ctx: RestContext = {
       services: {
         registry: { listOnline: () => [] } as never,
