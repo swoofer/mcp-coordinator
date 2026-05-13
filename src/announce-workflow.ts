@@ -118,7 +118,7 @@ export function runCommonAnnounceFlow(
 
   // 4. Create introspection records and emit introspection_requested for gray_zone agents.
   for (const s of categorized.gray_zone) {
-    introspection.create({ thread_id: threadId, agent_id: s.agent_id, score: s.score, reasons: s.reasons });
+    introspection.create(params.org_id, { thread_id: threadId, agent_id: s.agent_id, score: s.score, reasons: s.reasons });
     sseEmitter.emit("introspection_requested", {
       thread_id: threadId,
       agent_id: s.agent_id,

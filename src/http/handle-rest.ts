@@ -308,7 +308,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
     const { introspection_id, concerned, reason } = body as {
       introspection_id: string; concerned: boolean; reason: string;
     };
-    const intro = introspection.respond(introspection_id, concerned, reason);
+    const intro = introspection.respond(ctx.claims.org, introspection_id, reason);
 
     // If concerned, add to thread's expected_respondents
     if (concerned && intro) {
@@ -335,7 +335,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
   } else if (url?.startsWith("/api/pending-introspections")) {
     const urlObj = new URL(url, "http://localhost");
     const agent_id = urlObj.searchParams.get("agent_id") || "";
-    const pending = introspection.getPending(agent_id);
+    const pending = introspection.getPending(ctx.claims.org, agent_id);
     json(res, pending);
 
   } else if (url === "/api/run-config") {

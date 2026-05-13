@@ -219,7 +219,7 @@ describe("Integration: Impact Scoring + Introspection", () => {
       target_files: [],
     });
 
-    const intro = introspection.create({
+    const intro = introspection.create("default", {
       thread_id: thread.id,
       agent_id: "agent-b",
       score: 30,
@@ -228,12 +228,11 @@ describe("Integration: Impact Scoring + Introspection", () => {
     expect(intro.status).toBe("pending");
 
     // Liaison responds: not concerned
-    const responded = introspection.respond(intro.id, false, "I don't use User interface");
-    expect(responded.status).toBe("not_concerned");
-    expect(responded.concerned).toBe(0);
+    const responded = introspection.respond("default", intro.id, "I don't use User interface");
+    expect(responded?.status).toBe("responded");
 
     // Verify agent NOT added to expected_respondents
-    const pending = introspection.getPending("agent-b");
+    const pending = introspection.getPending("default", "agent-b");
     expect(pending).toHaveLength(0);
   });
 
@@ -248,7 +247,7 @@ describe("Integration: Impact Scoring + Introspection", () => {
       target_files: [],
     });
 
-    const intro = introspection.create({
+    const intro = introspection.create("default", {
       thread_id: thread.id,
       agent_id: "agent-b",
       score: 30,
@@ -256,9 +255,8 @@ describe("Integration: Impact Scoring + Introspection", () => {
     });
 
     // Liaison responds: concerned
-    const responded = introspection.respond(intro.id, true, "I import User in my service");
-    expect(responded.status).toBe("concerned");
-    expect(responded.concerned).toBe(1);
+    const responded = introspection.respond("default", intro.id, "I import User in my service");
+    expect(responded?.status).toBe("responded");
 
     // Manually add to expected_respondents (as serve-http.ts would)
     const db = getDb();
