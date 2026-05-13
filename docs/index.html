@@ -87,6 +87,7 @@
     img, svg, video, canvas { max-width: 100%; height: auto; }
     pre, code { word-break: break-word; overflow-wrap: anywhere; }
     .card p, .timeline-item p { overflow-wrap: anywhere; }
+    .version-badge { font-size: 0.75rem; font-weight: 400; color: var(--accent); margin-left: 0.4rem; }
     figure { margin: 0; }
 
     a { color: var(--accent); text-decoration: none; }
@@ -1792,15 +1793,15 @@
     <!-- v0.5 capabilities highlight -->
     <div class="cards fade-in" style="margin-top: 2.5rem;">
       <div class="card">
-        <h3 data-i18n="mechanism.v05.inflight.title">In-flight awareness <span style="font-size:0.75rem; font-weight:400; color:var(--accent); margin-left:0.4rem;">v0.5</span></h3>
+        <h3><span data-i18n="mechanism.v05.inflight.title">In-flight awareness</span><span class="version-badge">v0.5</span></h3>
         <p data-i18n="mechanism.v05.inflight.body">Hook-based PreToolUse + PostToolUse hooks let the coordinator see agents <strong>start</strong> editing files — not just when they finish. Conflicts surface before bytes are written, not after.</p>
       </div>
       <div class="card">
-        <h3 data-i18n="mechanism.v05.symbol.title">Symbol-aware scoring <span style="font-size:0.75rem; font-weight:400; color:var(--accent); margin-left:0.4rem;">v0.3+</span></h3>
+        <h3><span data-i18n="mechanism.v05.symbol.title">Symbol-aware scoring</span><span class="version-badge">v0.3+</span></h3>
         <p data-i18n="mechanism.v05.symbol.body">tree-sitter parses 15 languages (TS/TSX/JS/JSX/Python/Go/Rust/Java/C#/C/C++/Ruby/PHP/Kotlin/Swift/Bash). Two agents editing the same file but different functions get an annotated reason — not a silent block.</p>
       </div>
       <div class="card">
-        <h3 data-i18n="mechanism.v05.cochange.title">Git co-change scoring <span style="font-size:0.75rem; font-weight:400; color:var(--accent); margin-left:0.4rem;">v0.5</span></h3>
+        <h3><span data-i18n="mechanism.v05.cochange.title">Git co-change scoring</span><span class="version-badge">v0.5</span></h3>
         <p data-i18n="mechanism.v05.cochange.body">Files that move together in git history (config + consumer, fixture + test) are scored as related: impact 60 if &gt;50% co-change, 40 if &gt;20%. Catches regressions invisible to filename matching.</p>
       </div>
     </div>
@@ -3648,6 +3649,12 @@
       "install.step4.title": "Vérifier et ouvrir",
       "install.step4.desc": "Doctor lance un health check — config valide, serveur démarré, MCP qui répond, MQTT qui accepte les connexions — puis ouvre le dashboard sur <code class=\"ic\">localhost:3100/dashboard</code>.",
       "install.note": "Les sessions ont toujours besoin de <a href=\"#worktrees\" class=\"il\">git worktrees</a> pour l'isolation du système de fichiers. Le coordinator gère l'intention, pas les fichiers.",
+      "mechanism.v05.inflight.title": "Conscience en vol",
+      "mechanism.v05.inflight.body": "Les hooks PreToolUse + PostToolUse permettent au coordinator de voir les agents <strong>commencer</strong> à éditer les fichiers — pas seulement quand ils terminent. Les conflits émergent avant que les bytes ne soient écrits, pas après.",
+      "mechanism.v05.symbol.title": "Scoring conscient des symboles",
+      "mechanism.v05.symbol.body": "tree-sitter parse 15 langages (TS/TSX/JS/JSX/Python/Go/Rust/Java/C#/C/C++/Ruby/PHP/Kotlin/Swift/Bash). Deux agents qui éditent le même fichier mais des fonctions différentes obtiennent une raison annotée — pas un blocage silencieux.",
+      "mechanism.v05.cochange.title": "Scoring de co-changement git",
+      "mechanism.v05.cochange.body": "Les fichiers qui bougent ensemble dans l'historique git (config + consommateur, fixture + test) sont scorés comme liés : impact 60 si co-changement &gt;50%, 40 si &gt;20%. Détecte des régressions invisibles au matching par nom de fichier.",
     },
     es: {
       "nav.how": "Cómo",
@@ -4067,6 +4074,12 @@
       "compliance.row.retention.status": "Boceto v0.8",
       "compliance.row.retention.aligned": "SOC 2 &middot; Minimización GDPR",
       "compliance.disclaimer": "mcp-coordinator <strong>no está certificado SOC 2</strong> &mdash; la certificación es trabajo de auditores, no de código. Entregamos los ganchos arquitectónicos (aislamiento multi-tenant, audit log, interfaz de cifrado) para que los equipos que buscan auditorías tengan ventaja, pero la certificación en sí es el proceso de tu equipo.",
+      "mechanism.v05.inflight.title": "Conciencia en vuelo",
+      "mechanism.v05.inflight.body": "Los hooks PreToolUse + PostToolUse permiten al coordinator ver a los agentes <strong>empezar</strong> a editar archivos — no solo cuando terminan. Los conflictos emergen antes de que se escriban los bytes, no después.",
+      "mechanism.v05.symbol.title": "Scoring consciente de símbolos",
+      "mechanism.v05.symbol.body": "tree-sitter analiza 15 lenguajes (TS/TSX/JS/JSX/Python/Go/Rust/Java/C#/C/C++/Ruby/PHP/Kotlin/Swift/Bash). Dos agentes que editan el mismo archivo pero funciones distintas reciben una razón anotada — no un bloqueo silencioso.",
+      "mechanism.v05.cochange.title": "Scoring por co-cambio git",
+      "mechanism.v05.cochange.body": "Los archivos que se mueven juntos en el historial git (config + consumidor, fixture + test) se puntúan como relacionados: impacto 60 si co-cambio &gt;50%, 40 si &gt;20%. Detecta regresiones invisibles para el matching por nombre de archivo.",
     },
     de: {
       "nav.how": "Funktionsweise",
@@ -4486,6 +4499,12 @@
       "compliance.row.retention.status": "Entwurf v0.8",
       "compliance.row.retention.aligned": "SOC 2 &middot; GDPR-Minimierung",
       "compliance.disclaimer": "mcp-coordinator ist <strong>nicht SOC 2 zertifiziert</strong> &mdash; Zertifizierung ist Auditor-Arbeit, kein Code. Wir liefern die architektonischen Hooks (Multi-Tenant-Isolation, Audit-Log, Verschlüsselungs-Interface), damit Teams, die eine Zertifizierung anstreben, einen Vorsprung haben. Die Zertifizierung selbst bleibt der Prozess deines Teams.",
+      "mechanism.v05.inflight.title": "In-Flight-Awareness",
+      "mechanism.v05.inflight.body": "Hook-basierte PreToolUse- und PostToolUse-Hooks lassen den Coordinator sehen, wann Agenten Dateien <strong>beginnen</strong> zu bearbeiten — nicht erst, wenn sie fertig sind. Konflikte zeigen sich, bevor Bytes geschrieben werden, nicht danach.",
+      "mechanism.v05.symbol.title": "Symbol-bewusstes Scoring",
+      "mechanism.v05.symbol.body": "tree-sitter parst 15 Sprachen (TS/TSX/JS/JSX/Python/Go/Rust/Java/C#/C/C++/Ruby/PHP/Kotlin/Swift/Bash). Zwei Agenten, die dieselbe Datei aber unterschiedliche Funktionen bearbeiten, erhalten einen annotierten Grund — keine stille Blockade.",
+      "mechanism.v05.cochange.title": "Git-Co-Change-Scoring",
+      "mechanism.v05.cochange.body": "Dateien, die sich in der Git-Historie zusammen bewegen (config + Consumer, Fixture + Test), werden als verwandt gescort: Impact 60 bei &gt;50 % Co-Change, 40 bei &gt;20 %. Erfasst Regressionen, die für Dateinamen-Matching unsichtbar bleiben.",
     },
     zh: {
       "nav.how": "原理",
@@ -4905,6 +4924,12 @@
       "compliance.row.retention.status": "v0.8 草图",
       "compliance.row.retention.aligned": "SOC 2 &middot; GDPR 最小化",
       "compliance.disclaimer": "mcp-coordinator <strong>未通过 SOC 2 认证</strong> &mdash; 认证是审计师的工作,而非代码本身。我们提供架构钩子(多租户隔离、audit log、加密接口),让追求审计的团队领先一步,但认证本身仍是您团队的流程。",
+      "mechanism.v05.inflight.title": "进行中感知",
+      "mechanism.v05.inflight.body": "基于钩子的 PreToolUse + PostToolUse 让 coordinator 看到 agent <strong>开始</strong>编辑文件——而不仅仅是完成时。冲突在字节写出之前浮现,而非之后。",
+      "mechanism.v05.symbol.title": "符号感知评分",
+      "mechanism.v05.symbol.body": "tree-sitter 解析 15 种语言(TS/TSX/JS/JSX/Python/Go/Rust/Java/C#/C/C++/Ruby/PHP/Kotlin/Swift/Bash)。两个 agent 编辑同一文件但不同函数时,会得到带标注的原因——而非静默阻塞。",
+      "mechanism.v05.cochange.title": "Git 协同变更评分",
+      "mechanism.v05.cochange.body": "在 git 历史中同进同出的文件(config + 消费者、fixture + 测试)被评为相关:协同变更率 &gt;50% 时影响 60,&gt;20% 时影响 40。能捕获文件名匹配看不到的回归。",
     },
     ja: {
       "nav.how": "仕組み",
@@ -5323,7 +5348,13 @@
       "compliance.row.retention.cap": "保持ポリシー + audit log の表示 UI",
       "compliance.row.retention.status": "v0.8 スケッチ",
       "compliance.row.retention.aligned": "SOC 2 &middot; GDPR 最小化",
-      "compliance.disclaimer": "mcp-coordinator は <strong>SOC 2 認証を取得していません</strong> &mdash; 認証はコードではなく監査人の仕事です。マルチテナント分離、audit log、暗号化インターフェースなどのアーキテクチャ的フックを提供することで、監査を目指すチームに先行する優位性を提供しますが、認証自体はあなたのチームのプロセスです。"
+      "compliance.disclaimer": "mcp-coordinator は <strong>SOC 2 認証を取得していません</strong> &mdash; 認証はコードではなく監査人の仕事です。マルチテナント分離、audit log、暗号化インターフェースなどのアーキテクチャ的フックを提供することで、監査を目指すチームに先行する優位性を提供しますが、認証自体はあなたのチームのプロセスです。",
+      "mechanism.v05.inflight.title": "進行中の認識",
+      "mechanism.v05.inflight.body": "フックベースの PreToolUse + PostToolUse により、コーディネーターはエージェントがファイルを<strong>編集し始めた</strong>瞬間を把握できます。終了時だけではありません。バイトが書き込まれる前に競合が表面化します。",
+      "mechanism.v05.symbol.title": "シンボル認識スコアリング",
+      "mechanism.v05.symbol.body": "tree-sitter が 15 言語 (TS/TSX/JS/JSX/Python/Go/Rust/Java/C#/C/C++/Ruby/PHP/Kotlin/Swift/Bash) をパースします。同じファイルの異なる関数を編集する 2 つのエージェントには、注釈付きの理由が返されます — サイレントブロックではありません。",
+      "mechanism.v05.cochange.title": "Git co-change スコアリング",
+      "mechanism.v05.cochange.body": "Git 履歴で一緒に動くファイル (config + コンシューマー、fixture + テスト) は関連していると判定されます: co-change &gt;50% でインパクト 60、&gt;20% で 40。ファイル名マッチングでは見えないリグレッションを捕捉します。"
     }
   };
 
