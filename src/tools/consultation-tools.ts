@@ -74,7 +74,7 @@ export function registerConsultationTools(
     mqttBridge.publishConsultation(thread.id, agent_id, subject, target_modules);
 
     const contextForInitiator = respondents.map((rid: string) =>
-      contextProvider.getRelevantContext(rid, { thread_id: updated.id, subject, target_modules, target_files })
+      contextProvider.getRelevantContext(claims.org, rid, { thread_id: updated.id, subject, target_modules, target_files })
     ).filter((ctx: AgentContext) => ctx.modules.length > 0);
 
     return {

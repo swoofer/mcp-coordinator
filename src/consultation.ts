@@ -339,11 +339,22 @@ export class Consultation {
    */
   handleAgentDeparture(agentId: string): void {
     const db = getDb();
-    // Unclaim any tasks claimed by the departing agent
+    // Unclaim any tasks claimed by the departing agent.
+    //
+    // INTENTIONALLY cross-org: this method is invoked from the MQTT-bridge
+    // disconnect handler, which has no org context (Phase 1: MQTT topics carry
+    // no org_id yet — see Task 22 follow-up). If two orgs ever happen to
+    // register agents under the same agent_id string, an MQTT disconnect for
+    // that string will release claims in BOTH orgs. Phase 2 multi-org rollout
+    // must thread org from the MQTT topic before this becomes load-bearing.
     db.prepare("UPDATE threads SET claimed_by = NULL, claimed_at = NULL WHERE claimed_by = ? AND status = 'open'")
       .run(agentId);
 
-    // Remove departed agent from expected_respondents of all open/resolving threads
+    // Remove departed agent from expected_respondents of all open/resolving threads.
+    // We iterate cross-org (no WHERE org_id filter on the SELECT) for the same
+    // reason — agentId is the only key we have from the MQTT bridge — but every
+    // point-update below is scoped by the row's own org_id (read from the SELECT)
+    // as defense in depth against bare id collisions.
     const threads = db
       .prepare("SELECT id, org_id, expected_respondents FROM threads WHERE status IN ('open', 'resolving')")
       .all() as { id: string; org_id: string; expected_respondents: string | null }[];
@@ -351,24 +362,25 @@ export class Consultation {
     for (const thread of threads) {
       const respondents: string[] = JSON.parse(thread.expected_respondents || "[]");
       const updated = respondents.filter((r) => r !== agentId);
-      db.prepare("UPDATE threads SET expected_respondents = ? WHERE id = ?").run(
+      db.prepare("UPDATE threads SET expected_respondents = ? WHERE id = ? AND org_id = ?").run(
         JSON.stringify(updated),
-        thread.id
+        thread.id,
+        thread.org_id
       );
 
       // If resolving and all remaining approved, resolve
       const t = this.getThreadCrossOrg(thread.id)!;
       if (t.status === "resolving" && this.allRespondentsApproved(thread.org_id, thread.id)) {
         db.prepare(
-          "UPDATE threads SET status = 'resolved', resolved_at = ? WHERE id = ?"
-        ).run(new Date().toISOString(), thread.id);
+          "UPDATE threads SET status = 'resolved', resolved_at = ? WHERE id = ? AND org_id = ?"
+        ).run(new Date().toISOString(), thread.id, thread.org_id);
         this.emitResolution(thread.id, "agent_departure");
       }
       // If open and no respondents left, auto-resolve
       if (t.status === "open" && updated.length === 0) {
         db.prepare(
-          "UPDATE threads SET status = 'resolved', resolved_at = ? WHERE id = ?"
-        ).run(new Date().toISOString(), thread.id);
+          "UPDATE threads SET status = 'resolved', resolved_at = ? WHERE id = ? AND org_id = ?"
+        ).run(new Date().toISOString(), thread.id, thread.org_id);
         this.emitResolution(thread.id, "agent_departure");
       }
     }

@@ -135,8 +135,7 @@ export function runCommonAnnounceFlow(
     sseEmitter.emit("impact_scored" as "impact_scored", {
       thread_id: threadId,
       agent_id: params.agent_id,
-      // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
-      agent_name: registry.get("default", params.agent_id)?.name || params.agent_id,
+      agent_name: registry.get(params.org_id, params.agent_id)?.name || params.agent_id,
       score: planQuality.score,
       reasons: [planDowngradeReason(planQuality)],
       category: "plan_quality",

@@ -379,7 +379,7 @@ describe("Integration: Context Provider", () => {
       file_path: "src/shared/utils.ts", summary: "Added permission helper",
     });
 
-    const ctx = contextProvider.getRelevantContext("agent-a", {
+    const ctx = contextProvider.getRelevantContext("default", "agent-a", {
       thread_id: "t1", subject: "Refactor shared",
       target_modules: ["src/shared"], target_files: [],
     });
@@ -392,7 +392,7 @@ describe("Integration: Context Provider", () => {
   it("returns empty context for non-overlapping agent", () => {
     registry.register("default", "agent-a", "Agent A", ["src/users"]);
 
-    const ctx = contextProvider.getRelevantContext("agent-a", {
+    const ctx = contextProvider.getRelevantContext("default", "agent-a", {
       thread_id: "t1", subject: "Refactor auth",
       target_modules: ["src/auth"], target_files: [],
     });
