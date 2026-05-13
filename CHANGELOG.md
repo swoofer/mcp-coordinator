@@ -1,5 +1,68 @@
 # Changelog
 
+## [0.7.0](https://github.com/swoofer/mcp-coordinator/compare/v0.6.1...v0.7.0) (2026-05-13)
+
+
+### Features
+
+* **auth:** add IdPProvider interface + empty registry (Phase 2 hangs OAuth) ([f8b6548](https://github.com/swoofer/mcp-coordinator/commit/f8b65487a86208a62388645b51b41f7561488c68))
+* **auth:** emit WWW-Authenticate header on 401 per RFC 6750 ([46c45ab](https://github.com/swoofer/mcp-coordinator/commit/46c45ab53e27beb7293c23482ad61fc58e085fd5))
+* **auth:** extend AuthClaims with user_id, org, jti and add member role ([6a2bd70](https://github.com/swoofer/mcp-coordinator/commit/6a2bd70ba07cd088fd63e4b1681d23051ba9d525))
+* **auth:** four-scenario backward-compat for AUTH_ENABLED toggle ([577cae0](https://github.com/swoofer/mcp-coordinator/commit/577cae0bebb51b1798b12014c469f7397ddfdd10))
+* **auth:** support COORDINATOR_JWT_PREV_SECRET for zero-downtime rotation ([4c3387f](https://github.com/swoofer/mcp-coordinator/commit/4c3387fc8b1e51128b2cfc13ee40c55f6d854177))
+* **db:** add orgs table + seed default org ([9b634b7](https://github.com/swoofer/mcp-coordinator/commit/9b634b7451161d02470aadf8ccaa31428ad297a8))
+* **db:** add refresh_tokens, device_auth_requests, audit_log tables ([1d21384](https://github.com/swoofer/mcp-coordinator/commit/1d2138420666e9b4a493793aceaac0f2f8f7b891))
+* **db:** add users table + UNIQUE(idp_provider,idp_user_id) + org index ([93d34e7](https://github.com/swoofer/mcp-coordinator/commit/93d34e7c802a1332d923d64ffb6a5021d55c0c14))
+* **db:** ALTER 14 tables for org_id + events(org_id,id) index + PRAGMA bump ([a992411](https://github.com/swoofer/mcp-coordinator/commit/a992411f19f6dfdc86fb0bb3a4d296c3de5e6062))
+* **db:** chmod coordinator.db to 0600 on init (POSIX) ([949575a](https://github.com/swoofer/mcp-coordinator/commit/949575a5b2afefc1898e483ca2e54b76834a4250))
+* **db:** migrate cross-org-collision tables to composite PK (org_id, ...) ([e709296](https://github.com/swoofer/mcp-coordinator/commit/e709296ffacdb9454551821b0a0117d88d786c29))
+* **health:** /healthz reports auth_enabled and jwt_secret_set with warnings ([fc2e1da](https://github.com/swoofer/mcp-coordinator/commit/fc2e1da29c95044208c341d54aaa5054f432ee5c))
+* **http:** thread AuthClaims through RestContext into REST handlers ([bf38050](https://github.com/swoofer/mcp-coordinator/commit/bf38050eae2cc580aabf5c68c743495822ce563e))
+* **mcp:** per-session claims map; tool handlers scope by claims.org via getter ([6141b78](https://github.com/swoofer/mcp-coordinator/commit/6141b78758fb1086cb96ddeb57196a920e594a00))
+* **mcp:** verify JWT on every MCP request (new + existing sessions) ([2b94bc8](https://github.com/swoofer/mcp-coordinator/commit/2b94bc8f8629918da1e42344d7bbe3ad0b8cbd45))
+* **mqtt:** scope subscribe/publish/LWT to coordinator/&lt;org_id&gt;/ prefix ([d48752c](https://github.com/swoofer/mcp-coordinator/commit/d48752c808b1f0eb9d3bdff3306d9c0c212a9ea8))
+* **security:** add auditLog helper for audit_log table ([0947397](https://github.com/swoofer/mcp-coordinator/commit/09473974e2c656cce915f1bc1101db52a7042585))
+* **security:** add EncryptionProvider interface + Passthrough default ([56ad863](https://github.com/swoofer/mcp-coordinator/commit/56ad863194a31b0fda0e0be693f850bdcb83c492))
+* **sse:** authenticate /api/events handler and scope listener by claims.org ([5a47d5b](https://github.com/swoofer/mcp-coordinator/commit/5a47d5b74c62fbe6841c8b561994d5e16a21d04b))
+* **sse:** scope listeners + events by org_id ([7555cf7](https://github.com/swoofer/mcp-coordinator/commit/7555cf7d9eb8972cc92069f36bb9049dd038dd3f))
+* v0.7.0 Phase 1 auth foundation (multi-tenant, JWT hardening, org scoping) ([e36c3bb](https://github.com/swoofer/mcp-coordinator/commit/e36c3bb19f098b1706c3f73dc6ff866607f25d21))
+
+
+### Bug Fixes
+
+* **agent-activity:** scope getActivity/listAll by org_id (plan line 3378) ([49d239c](https://github.com/swoofer/mcp-coordinator/commit/49d239c27b5a7130d25352153d740f43d7675c21))
+* **auth:** add WWW-Authenticate to /api/auth/refresh 401 responses ([d642410](https://github.com/swoofer/mcp-coordinator/commit/d642410cfe258d65bed20b683142b9c06e269d4d))
+* **auth:** make refreshToken options required (no silent bypass) ([29a51da](https://github.com/swoofer/mcp-coordinator/commit/29a51daf837a3fac7144117c730ff858fd6d5829))
+* **auth:** pin HS256 in refreshToken grace-period jwtVerify (defense-in-depth) ([6e609fe](https://github.com/swoofer/mcp-coordinator/commit/6e609fe6fa0f7139cdb00999b5fadecaec2ecff4))
+* **db:** restore agent_activity_status FK to agents(id) lost in 5.5 migration ([adbad6d](https://github.com/swoofer/mcp-coordinator/commit/adbad6d31bbd094042aa64bd552323cbc82fa8a1))
+* **dependency-map:** scope getMap/setMap/getModuleInfo/getBlastRadius by org_id ([bc32a5a](https://github.com/swoofer/mcp-coordinator/commit/bc32a5ac5885bd70a7a7ecd83b67df077a8dac20))
+* **health:** restore /health status alive + uptime_seconds (regression) ([299c10f](https://github.com/swoofer/mcp-coordinator/commit/299c10f330c08050c712b321221a6a8c60f184f7))
+* **mqtt:** move consultations + broadcast subscribes inside on(connect) ([648bc22](https://github.com/swoofer/mcp-coordinator/commit/648bc224899faae14dc3f2f922471001d723d6bd))
+* **security:** close 3 cross-org leaks discovered by 32-agent audit ([af48d7c](https://github.com/swoofer/mcp-coordinator/commit/af48d7c26e6f522e15404c0b746e5a0b0e4dd091))
+* **security:** make ConflictDetector.detect.org_id required + retag MCP TODOs to Task 23.5 ([a2f8211](https://github.com/swoofer/mcp-coordinator/commit/a2f821146752c8d2d7ffa6ea5f2cf81de917514e))
+* **security:** scope raw UPDATE threads by org_id (cross-tenant leak) ([2a7cefa](https://github.com/swoofer/mcp-coordinator/commit/2a7cefa5fa51f5d2e4542097d135bba2d8590304))
+* **test:** use ThreadMessage.content (not .subject) in cross-org leak test ([7a3397a](https://github.com/swoofer/mcp-coordinator/commit/7a3397a97d444a69ca8f4c93193458a37ed9beaa))
+
+
+### Documentation
+
+* **plan:** v0.7.0 Phase 1 auth foundation implementation plan (4-round review) ([#21](https://github.com/swoofer/mcp-coordinator/issues/21)) ([a8e6fa1](https://github.com/swoofer/mcp-coordinator/commit/a8e6fa1289c2ee8c241278899d4e55a0758d537b))
+* **v0.7:** amend specs with 55 findings from 40-agent review ([#18](https://github.com/swoofer/mcp-coordinator/issues/18)) ([24e441a](https://github.com/swoofer/mcp-coordinator/commit/24e441a84cb33989dd0a6d1f01edf151a6a093e9))
+* **v0.7:** document Phase 1 breaking changes + migration guide ([d8e0e7f](https://github.com/swoofer/mcp-coordinator/commit/d8e0e7f6e1e93d26057fe84a296290e2e9857c62))
+
+
+### Code Refactoring
+
+* **agent-activity:** scope status writes/reads by org_id ([66349ae](https://github.com/swoofer/mcp-coordinator/commit/66349aef75d7d59729eb77f003cc09c72c26856b))
+* **agent-registry:** scope all queries by org_id ([701167e](https://github.com/swoofer/mcp-coordinator/commit/701167ee3b043f977b4465c0338bc790c0a533f1))
+* **consultation:** scope thread/message/introspection queries by org_id ([44dccc5](https://github.com/swoofer/mcp-coordinator/commit/44dccc5ce4d6e482e1c0a6ab6ac080df391adcc2))
+* **dependency-map:** scope set/get/listOwners by org_id ([0c95104](https://github.com/swoofer/mcp-coordinator/commit/0c95104a72643a2540e4896de021f547989a4217))
+* **file-tracker:** scope all queries by org_id ([6c5e2f5](https://github.com/swoofer/mcp-coordinator/commit/6c5e2f54138923b1e7db62ee52dbfb4df97e893c))
+* **git-cochange:** scope build/query by org_id ([2db5172](https://github.com/swoofer/mcp-coordinator/commit/2db51721f8204867b3ba399a02369061fa1a907a))
+* **impact-scorer:** scope direct SQL blocks by org_id (3 sites) ([c4de948](https://github.com/swoofer/mcp-coordinator/commit/c4de948fb954c9a0c72cb0a66f54ea481f934169))
+* **introspection:** scope create/respond/list/getPending by org_id ([94dae4d](https://github.com/swoofer/mcp-coordinator/commit/94dae4df62b3ac31cfe66d12003874c397491de5))
+* **working-files:** scope claim/list/release by org_id ([d76e45d](https://github.com/swoofer/mcp-coordinator/commit/d76e45d095f89aec29be882c6fdfcf19dcedd128))
+
 ## [0.7.0] - 2026-05-13
 
 ### Breaking changes
