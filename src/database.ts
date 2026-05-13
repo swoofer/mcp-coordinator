@@ -174,6 +174,16 @@ const SCHEMA = `
     );
     CREATE INDEX IF NOT EXISTS idx_firings_layer  ON layer_firings(layer, fired_at);
     CREATE INDEX IF NOT EXISTS idx_firings_thread ON layer_firings(thread_id);
+
+    CREATE TABLE IF NOT EXISTS orgs (
+      id            TEXT PRIMARY KEY,
+      name          TEXT NOT NULL,
+      idp_provider  TEXT,
+      idp_org_id    TEXT,
+      created_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    INSERT OR IGNORE INTO orgs (id, name) VALUES ('default', 'Default Organization');
 `;
 
 function createBetterSqlite3(dataDir: string): DatabaseAdapter {
