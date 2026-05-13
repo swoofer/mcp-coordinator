@@ -77,7 +77,7 @@ export class ImpactScorer {
       : new Map<string, Set<string>>();
 
     const inFlightToAgents = this.workingFiles
-      ? this.workingFiles.getIndex(filesToIndex, params.agent_id)
+      ? this.workingFiles.getIndex(params.org_id, filesToIndex, params.agent_id)
       : new Map<string, Set<string>>();
 
     // Pre-load symbols_touched for the target_files × online_agents matrix once,

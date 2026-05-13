@@ -31,7 +31,7 @@ describe("ImpactScorer Layer 1 union with working_files", () => {
   afterAll(() => { closeDb(); rmSync(TEST_DIR, { recursive: true, force: true }); });
 
   it("scores 100 when another agent has working_files on the same path", () => {
-    workingFiles.start("bob", "src/foo.ts", 30);
+    workingFiles.start("default", "bob", "src/foo.ts", 30);
     const scores = scorer.score({
       org_id: "default",
       agent_id: "alice",

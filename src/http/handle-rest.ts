@@ -464,7 +464,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
       return;
     }
     const ttl = parseInt(process.env.COORDINATOR_WORKING_FILES_TTL_MIN || "30", 10);
-    services.workingFiles.start(body.agent_id as string, filePath, ttl);
+    services.workingFiles.start(ctx.claims.org, body.agent_id as string, filePath, ttl);
     json(res, { ok: true });
 
   } else if (url === "/api/working-files/stop" && req.method === "POST") {
@@ -480,7 +480,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
       json(res, { error: `invalid file_path: ${(err as Error).message}` }, 400);
       return;
     }
-    services.workingFiles.stop(body.agent_id as string, filePath);
+    services.workingFiles.stop(ctx.claims.org, body.agent_id as string, filePath);
     json(res, { ok: true });
 
   } else if (url?.startsWith("/api/scoring-stats") && req.method === "GET") {
