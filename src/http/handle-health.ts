@@ -125,12 +125,34 @@ export function handleReadyz(
   );
 }
 
+export interface HealthOptions {
+  authEnabled?: boolean;
+  jwtSecretSet?: boolean;
+}
+
 /**
- * Backwards-compatible alias. The original /health route returned a fixed
- * {status:"ok",version} payload with no dep checks; semantically that is a
- * liveness probe, so we delegate. Anything that polled /health for "is the
- * process up" continues to work without changes.
+ * Backwards-compatible alias extended with auth config status reporting.
+ * The original /health route returned a fixed {status:"ok",version} payload;
+ * we preserve that shape and ADD auth_enabled, jwt_secret_set, and warnings
+ * so operators can verify auth config without inspecting logs.
  */
-export function handleHealth(req: IncomingMessage, res: ServerResponse): void {
-  return handleLivez(req, res);
+export async function handleHealth(
+  _req: IncomingMessage,
+  res: ServerResponse,
+  options: HealthOptions = {},
+): Promise<void> {
+  const authEnabled = options.authEnabled ?? false;
+  const jwtSecretSet = options.jwtSecretSet ?? false;
+  const warnings: string[] = [];
+  if (authEnabled && !jwtSecretSet) {
+    warnings.push("AUTH_ENABLED=true but COORDINATOR_JWT_SECRET is unset — sessions invalidate on restart");
+  }
+  const body = {
+    status: "ok",
+    version: VERSION,
+    auth_enabled: authEnabled,
+    jwt_secret_set: jwtSecretSet,
+    warnings,
+  };
+  json(res, body);
 }

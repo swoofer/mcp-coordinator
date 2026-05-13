@@ -48,6 +48,12 @@ const MQTT_TCP_PORT = parseInt(process.env.COORDINATOR_MQTT_TCP_PORT || "1883");
 const MQTT_WS_PATH = process.env.COORDINATOR_MQTT_WS_PATH || "/mqtt";
 const AUTH_ENABLED = process.env.COORDINATOR_AUTH_ENABLED === "true";
 const JWT_SECRET = process.env.COORDINATOR_JWT_SECRET || "";
+// Capture whether the env var was EXPLICITLY set at startup. Do not derive this
+// from the runtime signing key — `initAuth()` may have generated a random
+// per-boot secret, in which case the key's length is > 0 but the operator did
+// not provide one. `/healthz` must report the operator's intent, not the
+// random fallback.
+const JWT_SECRET_EXPLICITLY_SET = !!process.env.COORDINATOR_JWT_SECRET;
 const JWT_EXPIRY = process.env.COORDINATOR_JWT_EXPIRY || "24h";
 const JWT_PREV_SECRET = process.env.COORDINATOR_JWT_PREV_SECRET || "";
 const REGISTRATION_SECRET = process.env.COORDINATOR_REGISTRATION_SECRET || "";
@@ -440,7 +446,10 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
         handleReadyz(req, res, services);
         services.metrics.recordHttpRequest("/readyz", res.statusCode || 0);
       } else if (url === "/health") {
-        handleHealth(req, res);
+        await handleHealth(req, res, {
+          authEnabled: AUTH_ENABLED,
+          jwtSecretSet: JWT_SECRET_EXPLICITLY_SET,
+        });
         services.metrics.recordHttpRequest("/health", 200);
       } else if (url === "/metrics" && req.method === "GET") {
         await serveMetrics(req, res, services, services.metrics);
