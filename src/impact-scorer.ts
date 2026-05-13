@@ -47,9 +47,8 @@ export class ImpactScorer {
   ) {}
 
   score(params: AnnounceParams): ImpactScore[] {
-    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
     const onlineAgents = this.registry
-      .listOnline("default")
+      .listOnline(params.org_id)
       .filter((a) => a.id !== params.agent_id);
 
     if (onlineAgents.length === 0) return [];
@@ -84,28 +83,7 @@ export class ImpactScorer {
     // keyed by (file_path, agent_id). Avoids N*M DB roundtrips inside the score loop.
     let symbolsByFileAgent: Map<string, string[]> | null = null;
     if (params.target_symbols && params.target_symbols.length > 0 && params.target_files.length > 0) {
-      const db = getDb();
-      const placeholders = params.target_files.map(() => "?").join(",");
-      const rows = db.prepare(
-        `SELECT agent_id, file_path, symbols_touched
-         FROM file_activity
-         WHERE file_path IN (${placeholders})
-           AND symbols_touched IS NOT NULL
-           AND id IN (
-             SELECT MAX(id) FROM file_activity
-             WHERE file_path IN (${placeholders})
-               AND symbols_touched IS NOT NULL
-             GROUP BY agent_id, file_path
-           )`
-      ).all(...params.target_files, ...params.target_files) as Array<{ agent_id: string; file_path: string; symbols_touched: string }>;
-
-      symbolsByFileAgent = new Map();
-      for (const r of rows) {
-        try {
-          const arr = JSON.parse(r.symbols_touched) as string[];
-          symbolsByFileAgent.set(`${r.file_path}|${r.agent_id}`, arr);
-        } catch { /* malformed JSON: ignore */ }
-      }
+      symbolsByFileAgent = this._collectSymbolsTouched(params.org_id, params.target_files);
     }
 
     // O2: bound the resolved-thread query to a recency window. Without this,
@@ -229,30 +207,11 @@ export class ImpactScorer {
       // Layer 4: git co-change. For each target_file F, find rows in git_cochange where
       // (LEAST(F,partner), GREATEST(F,partner)) match. If the OTHER agent recently
       // touched the partner file, apply the co-change score.
-      const db = getDb();
       for (const targetFile of params.target_files) {
-        const rows = db.prepare(
-          `SELECT file_a, file_b, count, total_commits FROM git_cochange
-           WHERE file_a = ? OR file_b = ?`
-        ).all(targetFile, targetFile) as Array<{ file_a: string; file_b: string; count: number; total_commits: number }>;
-        for (const r of rows) {
-          const partner = r.file_a === targetFile ? r.file_b : r.file_a;
-          const ratio = r.count / Math.max(r.total_commits, 1);
-          let layer4Score = 0;
-          if (ratio > 0.5) layer4Score = 60;
-          else if (ratio > 0.2) layer4Score = 40;
-          if (layer4Score === 0) continue;
-          // Did the OTHER agent touch the partner file recently?
-          const partnerActivity = db.prepare(
-            `SELECT 1 FROM file_activity
-             WHERE file_path = ? AND agent_id = ?
-               AND created_at > datetime('now', '-60 minutes')
-             LIMIT 1`
-          ).get(partner, agent.id);
-          if (partnerActivity) {
-            maxScore = Math.max(maxScore, layer4Score);
-            reasons.push(`co-change: ${targetFile} ↔ ${partner} (ratio ${ratio.toFixed(2)})`);
-          }
+        const layer4Results = this._layer4Score(params.org_id, targetFile, agent.id);
+        for (const result of layer4Results) {
+          maxScore = Math.max(maxScore, result.score);
+          reasons.push(result.reason);
         }
       }
 
@@ -275,15 +234,72 @@ export class ImpactScorer {
     };
   }
 
-  private getRecentSymbolsForFile(filePath: string, agentId: string): string[] | null {
+  private getRecentSymbolsForFile(orgId: string, filePath: string, agentId: string): string[] | null {
     const db = getDb();
     const row = db.prepare(
       `SELECT symbols_touched FROM file_activity
-       WHERE agent_id = ? AND file_path = ? AND symbols_touched IS NOT NULL
+       WHERE org_id = ? AND agent_id = ? AND file_path = ? AND symbols_touched IS NOT NULL
        ORDER BY id DESC LIMIT 1`
-    ).get(agentId, filePath) as { symbols_touched: string | null } | undefined;
+    ).get(orgId, agentId, filePath) as { symbols_touched: string | null } | undefined;
     if (!row || !row.symbols_touched) return null;
     try { return JSON.parse(row.symbols_touched) as string[]; } catch { return null; }
+  }
+
+  private _collectSymbolsTouched(orgId: string, files: string[]): Map<string, string[]> {
+    const db = getDb();
+    const placeholders = files.map(() => "?").join(",");
+    const rows = db.prepare(
+      `SELECT agent_id, file_path, symbols_touched
+       FROM file_activity
+       WHERE org_id = ?
+         AND file_path IN (${placeholders})
+         AND symbols_touched IS NOT NULL
+         AND id IN (
+           SELECT MAX(id) FROM file_activity
+           WHERE org_id = ?
+             AND file_path IN (${placeholders})
+             AND symbols_touched IS NOT NULL
+           GROUP BY agent_id, file_path
+         )`
+    ).all(orgId, ...files, orgId, ...files) as Array<{ agent_id: string; file_path: string; symbols_touched: string }>;
+
+    const result = new Map<string, string[]>();
+    for (const r of rows) {
+      try {
+        const arr = JSON.parse(r.symbols_touched) as string[];
+        result.set(`${r.file_path}|${r.agent_id}`, arr);
+      } catch { /* malformed JSON: ignore */ }
+    }
+    return result;
+  }
+
+  private _layer4Score(orgId: string, targetFile: string, agentId: string): Array<{ score: number; reason: string }> {
+    const db = getDb();
+    const rows = db.prepare(
+      `SELECT file_a, file_b, count, total_commits FROM git_cochange
+       WHERE org_id = ? AND (file_a = ? OR file_b = ?)`
+    ).all(orgId, targetFile, targetFile) as Array<{ file_a: string; file_b: string; count: number; total_commits: number }>;
+
+    const results: Array<{ score: number; reason: string }> = [];
+    for (const r of rows) {
+      const partner = r.file_a === targetFile ? r.file_b : r.file_a;
+      const ratio = r.count / Math.max(r.total_commits, 1);
+      let layer4Score = 0;
+      if (ratio > 0.5) layer4Score = 60;
+      else if (ratio > 0.2) layer4Score = 40;
+      if (layer4Score === 0) continue;
+      // Did the OTHER agent touch the partner file recently?
+      const partnerActivity = db.prepare(
+        `SELECT 1 FROM file_activity
+         WHERE org_id = ? AND file_path = ? AND agent_id = ?
+           AND created_at > datetime('now', '-60 minutes')
+         LIMIT 1`
+      ).get(orgId, partner, agentId);
+      if (partnerActivity) {
+        results.push({ score: layer4Score, reason: `co-change: ${targetFile} ↔ ${partner} (ratio ${ratio.toFixed(2)})` });
+      }
+    }
+    return results;
   }
 }
 

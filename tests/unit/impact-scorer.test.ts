@@ -1,4 +1,4 @@
-﻿import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+﻿import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
 import { AgentRegistry } from "../../src/agent-registry.js";
 import { FileTracker } from "../../src/file-tracker.js";
@@ -457,5 +457,89 @@ describe("ImpactScorer", () => {
   });
 });
 
+// ── Task 19d: org_id propagation + direct SQL scoping ──
 
+describe("impact-scorer org_id propagation + direct SQL scoping", () => {
+  beforeEach(() => {
+    const db = getDb();
+    db.exec("DELETE FROM file_activity");
+    db.exec("DELETE FROM git_cochange");
+    db.exec("DELETE FROM agents");
+    vi.restoreAllMocks();
+  });
 
+  it("calls fileTracker.getFileToAgentsIndex with the correct orgId", () => {
+    // Register two agents in org-acme so listOnline(org-acme) returns them.
+    // Before the fix, registry.listOnline("default") returns 0 agents → early return,
+    // getFileToAgentsIndex never called. After fixing to params.org_id the index is built.
+    registry.register("org-acme", "a1", "Agent A", ["src/auth"]);
+    registry.register("org-acme", "a2", "Agent B", ["src/users"]);
+    const spy = vi.spyOn(tracker, "getFileToAgentsIndex");
+    scorer.score({
+      org_id: "org-acme",
+      agent_id: "a1",
+      target_modules: ["src/auth"],
+      target_files: ["a.ts"],
+      depends_on_files: [],
+    });
+    expect(spy).toHaveBeenCalledWith("org-acme", expect.any(Array), "a1", expect.any(Number));
+  });
+
+  it("_collectSymbolsTouched only reads file_activity rows for the caller's org", () => {
+    const db = getDb();
+    // org-a agent with symbols "foo"
+    db.prepare(
+      "INSERT INTO file_activity (org_id, session_id, agent_id, tool_name, file_path, symbols_touched) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run("org-a", "s1", "a1-peer", "Edit", "x.ts", '["foo"]');
+    // org-b agent with symbols "bar"
+    db.prepare(
+      "INSERT INTO file_activity (org_id, session_id, agent_id, tool_name, file_path, symbols_touched) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run("org-b", "s2", "b1", "Edit", "x.ts", '["bar"]');
+
+    // Register a peer in org-a so scoring has someone to score
+    registry.register("org-a", "a1-peer", "Peer A", ["src/x"]);
+
+    const scores = scorer.score({
+      org_id: "org-a",
+      agent_id: "a-caller",
+      target_modules: ["src/x"],
+      target_files: ["x.ts"],
+      target_symbols: ["foo"],
+    });
+    const serialized = JSON.stringify(scores);
+    // org-b's "bar" symbol must not appear
+    expect(serialized).not.toContain("bar");
+  });
+
+  it("_layer4Score only reads git_cochange rows for the caller's org", () => {
+    const db = getDb();
+    // org-a: x.ts ↔ y.ts co-change ratio 10/100 = 0.1 (below 0.2 threshold → score 0, should not contribute)
+    db.prepare(
+      "INSERT INTO git_cochange (org_id, file_a, file_b, count, total_commits, computed_at) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run("org-a", "x.ts", "y.ts", 10, 100, "2026-01-01");
+    // org-b: x.ts ↔ y.ts co-change ratio 99/100 = 0.99 (above 0.5 → score 60)
+    db.prepare(
+      "INSERT INTO git_cochange (org_id, file_a, file_b, count, total_commits, computed_at) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run("org-b", "x.ts", "y.ts", 99, 100, "2026-01-01");
+
+    // Register a peer in org-a and log partner file activity for them in org-a
+    registry.register("org-a", "peer-a", "Peer A", ["src/x"]);
+    db.prepare(
+      "INSERT INTO file_activity (org_id, session_id, agent_id, tool_name, file_path) VALUES (?, ?, ?, ?, ?)"
+    ).run("org-a", "s1", "peer-a", "Edit", "y.ts");
+
+    const scores = scorer.score({
+      org_id: "org-a",
+      agent_id: "caller-a",
+      target_modules: ["src/x"],
+      target_files: ["x.ts"],
+    });
+    // org-b's ratio 99/100 should NOT cause a layer-4 score of 60 on org-a's scorer
+    // org-a's ratio 10/100=0.1 is below threshold (< 0.2), so layer4 score = 0 for this pair
+    const peerScore = scores.find(s => s.agent_id === "peer-a");
+    // Layer 4 from org-b's data must not inflate the score — org-a data gives 0 layer-4
+    // The peer may get a score from Layer 1 (file_activity) but NOT a layer-4 reason from org-b
+    const layer4Reasons = peerScore?.reasons.filter(r => r.includes("co-change")) ?? [];
+    expect(layer4Reasons).toHaveLength(0);
+  });
+});
