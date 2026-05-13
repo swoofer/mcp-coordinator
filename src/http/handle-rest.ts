@@ -175,13 +175,13 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
     // Only the claiming agent can unclaim to prevent cross-agent interference.
     const POISON_THRESHOLD = 2;
     const result = db.prepare(
-      "UPDATE threads SET claimed_by = NULL, claimed_at = NULL, unclaim_count = COALESCE(unclaim_count, 0) + 1 WHERE id = ? AND claimed_by = ? AND status = 'open'"
-    ).run(thread_id, agent_id);
+      "UPDATE threads SET claimed_by = NULL, claimed_at = NULL, unclaim_count = COALESCE(unclaim_count, 0) + 1 WHERE id = ? AND org_id = ? AND claimed_by = ? AND status = 'open'"
+    ).run(thread_id, ctx.claims.org, agent_id);
     let poisoned = false;
     if (result.changes === 1) {
-      const row = db.prepare("SELECT unclaim_count FROM threads WHERE id = ?").get(thread_id) as { unclaim_count?: number } | undefined;
+      const row = db.prepare("SELECT unclaim_count FROM threads WHERE id = ? AND org_id = ?").get(thread_id, ctx.claims.org) as { unclaim_count?: number } | undefined;
       if (row && (row.unclaim_count ?? 0) >= POISON_THRESHOLD) {
-        db.prepare("UPDATE threads SET status = 'poisoned' WHERE id = ? AND status = 'open'").run(thread_id);
+        db.prepare("UPDATE threads SET status = 'poisoned' WHERE id = ? AND org_id = ? AND status = 'open'").run(thread_id, ctx.claims.org);
         poisoned = true;
         httpLog.warn({ thread_id, unclaim_count: row.unclaim_count }, "thread poisoned after repeated unclaims");
       }
@@ -200,8 +200,8 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
     // Directed-dispatch constraint: if assigned_to is set, only that specific
     // agent can claim; NULL keeps the original open-pool semantics.
     const result = db.prepare(
-      "UPDATE threads SET claimed_by = ?, claimed_at = ? WHERE id = ? AND claimed_by IS NULL AND status = 'open' AND (assigned_to IS NULL OR assigned_to = ?)"
-    ).run(agent_id, new Date().toISOString(), thread_id, agent_id);
+      "UPDATE threads SET claimed_by = ?, claimed_at = ? WHERE id = ? AND org_id = ? AND claimed_by IS NULL AND status = 'open' AND (assigned_to IS NULL OR assigned_to = ?)"
+    ).run(agent_id, new Date().toISOString(), thread_id, ctx.claims.org, agent_id);
 
     if (result.changes === 1) {
       mqttBridge.publishTaskClaimed(thread_id, agent_id);
@@ -318,8 +318,8 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
         const respondents: string[] = JSON.parse(thread.expected_respondents || "[]");
         if (!respondents.includes(intro.agent_id)) {
           respondents.push(intro.agent_id);
-          db.prepare("UPDATE threads SET expected_respondents = ? WHERE id = ?")
-            .run(JSON.stringify(respondents), thread.id);
+          db.prepare("UPDATE threads SET expected_respondents = ? WHERE id = ? AND org_id = ?")
+            .run(JSON.stringify(respondents), thread.id, ctx.claims.org);
         }
       }
     }

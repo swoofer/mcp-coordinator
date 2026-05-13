@@ -91,16 +91,15 @@ export function runCommonAnnounceFlow(
   // announce can match via Layer 0. Thread will timeout naturally if no one joins.
   const db = getDb();
   const concernedIds = categorized.concerned.map((s) => s.agent_id);
-  db.prepare("UPDATE threads SET expected_respondents = ? WHERE id = ?")
-    .run(JSON.stringify(concernedIds), threadId);
+  db.prepare("UPDATE threads SET expected_respondents = ? WHERE id = ? AND org_id = ?")
+    .run(JSON.stringify(concernedIds), threadId, params.org_id);
 
-  // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
-  const otherOnlineCount = registry.listOnline("default").filter((a) => a.id !== params.agent_id).length;
+  const otherOnlineCount = registry.listOnline(params.org_id).filter((a) => a.id !== params.agent_id).length;
   const shouldAutoResolve = concernedIds.length === 0 && otherOnlineCount === 0;
   const currentThread = consultation.getThread(params.org_id, threadId)!;
   if (shouldAutoResolve && currentThread.status === "open" && !params.keep_open) {
-    db.prepare("UPDATE threads SET status = 'resolved', resolved_at = ? WHERE id = ?")
-      .run(new Date().toISOString(), threadId);
+    db.prepare("UPDATE threads SET status = 'resolved', resolved_at = ? WHERE id = ? AND org_id = ?")
+      .run(new Date().toISOString(), threadId, params.org_id);
     consultation.emitResolution(threadId, "auto_resolved");
   }
 
