@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.7.0] — Unreleased
+
+### Breaking changes
+
+- **JWT shape extended**: tokens now require `user_id` and `org` claims. v0.6 tokens (without these) are rejected when `AUTH_ENABLED=true`. Set `AUTH_ENABLED=false` for backward-compat mode.
+- **`COORDINATOR_JWT_SECRET` is now strongly recommended in production**: when unset, the coordinator generates a random secret per boot — this invalidates ALL existing sessions on every restart. The behavior is unchanged from prior releases but documented explicitly for the first time. Set `COORDINATOR_JWT_SECRET` to a stable value (32+ chars) in any deployment where session persistence across restarts matters.
+- **Database schema bumped to user_version=7**: new tables (`orgs`, `users`, `refresh_tokens`, `device_auth_requests`, `audit_log`) and `org_id` column added to 14 existing tables. Migration is automatic and idempotent on boot. **Downgrade to v0.6 binary is refused** by `PRAGMA user_version` check.
+- **Composite primary keys migrated** for 7 tables: `agents`, `agent_activity_status`, `dependency_map`, `git_cochange`, `git_cochange_meta`, `revoked_agents`, `working_files`. Each now has `(org_id, ...)` as its PK instead of the v0.6 single-column key. Migration is performed via SQLite's create-new + copy + drop + rename pattern (no `ALTER PRIMARY KEY`) with `PRAGMA foreign_keys = OFF` around the transaction. **Rollback to v0.6 requires restoring from backup** — the schema change is one-way.
+- **DB file mode tightened to 0600** on POSIX. Co-users can no longer read `coordinator.db` directly.
+- **MQTT topic namespace changed** from `coordinator/agents/...` (and similar) to `coordinator/<org_id>/agents/...`. External MQTT consumers (dashboards, monitoring) must update subscription patterns. For Phase 1 single-org deployments, replace `coordinator/` with `coordinator/default/` everywhere. Wildcard subscribers: `coordinator/+/status` becomes `coordinator/+/+/status`. The internal bridge is updated automatically.
+- **MCP transport: per-request JWT verification on every MCP request** (was: session-open only). Pre-v0.7 agents whose JWT expired mid-session could continue issuing tool calls indefinitely under the session-open bypass. v0.7 closes that hole. Agents must rotate their JWT within the TTL window or tool calls will fail mid-session with 401.
+- **SSE endpoint `/api/events` now requires authentication** when `AUTH_ENABLED=true`. Browser clients using `EventSource` must send the token via query string: `new EventSource('/api/events?token=' + token)`. Server-side clients can use the standard `Authorization: Bearer` header.
+- **`/api/auth/refresh` rejects v0.6 tokens when `AUTH_ENABLED=true`**: closes a bypass where a v0.6 token could be silently rotated to a v0.7-shape token via the refresh endpoint, sidestepping the AUTH_ENABLED=true reject-v0.6 invariant. Operators upgrading must either re-authenticate or use `/api/auth/refresh` while AUTH_ENABLED is still false (see Migration step 4 below).
+
+### Added
+
+- New env: `COORDINATOR_JWT_PREV_SECRET` for zero-downtime JWT secret rotation (set both `COORDINATOR_JWT_SECRET` and `COORDINATOR_JWT_PREV_SECRET`, restart, wait one JWT TTL, then remove `_PREV_`).
+- `IdPProvider` interface + empty registry (Phase 2 will populate with GitHub OAuth).
+- `EncryptionProvider` interface + `PassthroughEncryption` default (Phase v0.7.5 will replace with SQLCipher).
+- `auditLog()` helper + `audit_log` table (Phase 2+ will emit events).
+- All REST + SSE + MQTT operations scoped by `org_id` end-to-end. Default org is `'default'` until Phase 2 introduces real multi-tenancy via OAuth login.
+- RFC 6750 `WWW-Authenticate` header on 401 responses.
+- JWT algorithm pinning: `alg=none` and non-HS256 tokens rejected.
+- `/healthz` now reports `auth_enabled` and `jwt_secret_set` flags for operability.
+
+### Migration
+
+1. Stop coordinator.
+2. **Backup `coordinator.db`** (the migration is one-way per session — restore is needed if rolling back to v0.6).
+3. **Set `COORDINATOR_JWT_SECRET`** to a stable 32+ char value if not already set (otherwise every restart invalidates all sessions).
+4. Deploy v0.7.0 binary.
+5. Start coordinator. Migration runs on first boot (idempotent). The PRAGMA user_version bump happens AFTER all ALTERs succeed — a mid-migration crash leaves the DB at user_version=6 and the next boot retries cleanly.
+6. Existing clients keep working under `AUTH_ENABLED=false` (synthetic legacy claims).
+7. **Rotate v0.6 tokens BEFORE flipping `AUTH_ENABLED=true`**: each agent must either (a) call `/api/auth/refresh` while `AUTH_ENABLED=false` is still set (v0.7.0 lifts the 501 gate for this endpoint specifically so v0.6 clients can rotate to v0.7-shape tokens), OR (b) call `/api/auth/register` to obtain a fresh v0.7 token. Once `AUTH_ENABLED=true`, `/api/auth/refresh` rejects v0.6 tokens with an explicit error.
+8. Flip `AUTH_ENABLED=true` and restart. Agents that completed step 7 continue working; agents that didn't will get 401s and must re-register.
+
 ## [0.6.1](https://github.com/swoofer/mcp-coordinator/compare/v0.6.0...v0.6.1) (2026-05-12)
 
 

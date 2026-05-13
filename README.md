@@ -818,6 +818,30 @@ curl -X POST http://localhost:3100/api/auth/revoke \
 
 `GET /health`, `POST /api/auth/register`, `POST /api/auth/refresh`, `GET /api/events` (SSE).
 
+### Migration to v0.7.0
+
+v0.7.0 reworks auth foundation: schema gains `org_id` everywhere, JWTs gain `user_id`/`org` claims, MQTT topics gain an org prefix.
+
+**Steps for an existing v0.6.x deployment**:
+
+1. Backup `coordinator.db`.
+2. Set `COORDINATOR_JWT_SECRET` explicitly (32+ chars). Without it the coordinator generates a random secret per boot — every restart invalidates all sessions.
+3. Deploy v0.7.0. Migration runs on first boot (~30-60s of locked writes on a large DB while `ALTER TABLE` runs).
+4. Existing clients keep working unchanged under `AUTH_ENABLED=false` (the default).
+5. External MQTT subscribers: update topic patterns from `coordinator/agents/...` to `coordinator/default/agents/...`.
+
+**Rolling JWT secrets without downtime**:
+
+```bash
+# In prod env config:
+export COORDINATOR_JWT_SECRET=new-secret-here
+export COORDINATOR_JWT_PREV_SECRET=old-secret-here
+# Restart coordinator. Wait for one JWT TTL (24h default).
+# Then remove COORDINATOR_JWT_PREV_SECRET and restart again.
+```
+
+**Rolling back to v0.6**: requires restoring from backup. The v0.6 binary refuses to boot a v0.7 DB (PRAGMA user_version guard).
+
 ---
 
 ## Test Results
