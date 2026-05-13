@@ -120,10 +120,10 @@ export async function verifyTokenStrict(token: string): Promise<{ claims: AuthCl
 
 export async function refreshToken(
   token: string,
-  options?: AuthenticateOptions,
+  options: AuthenticateOptions,
   gracePeriod?: string,
 ): Promise<string> {
-  const authEnabled = options?.authEnabled ?? false;
+  const authEnabled = options.authEnabled;
   const grace = gracePeriod ?? "1h";
 
   let claims: AuthClaims;
