@@ -503,7 +503,10 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
     agentId: "coordinator-internal",
   });
   services.mqttBridge.onOffline((agentId) => {
-    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
+    // TODO(Task 22): MQTT topics carry no org_id today, so setOffline("default", id) silently
+    // no-ops for any agent registered under a non-default org. Acceptable in single-tenant Phase 1
+    // (everything is "default"); becomes a correctness bug the moment multi-org goes live. Task 22
+    // (MQTT topic scoping + Aedes ACL hook) will thread the real org from the topic prefix.
     services.registry.setOffline("default", agentId);
     services.consultation.handleAgentDeparture(agentId);
     // Clear in-flight working_files AFTER consultation cleanup so any future

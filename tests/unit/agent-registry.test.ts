@@ -105,6 +105,51 @@ describe("agent-registry org_id scoping", () => {
     // Positive assertion — org-b's agent must still be online
     expect(registry.get("org-b", "agent-b-1")?.status).toBe("online");
   });
+
+  it("listAll scopes by org (does not include other orgs' agents)", () => {
+    registry.register("org-a", "agent-1", "A1", []);
+    registry.register("org-b", "agent-2", "B1", []);
+    const a = registry.listAll("org-a");
+    expect(a).toHaveLength(1);
+    expect(a[0].id).toBe("agent-1");
+  });
+
+  it("setOnline scopes by org (does not flip another org's row)", () => {
+    // Distinct agent IDs across orgs because Task 5.5's FK-preservation UNIQUE
+    // INDEX on agents(id) blocks same-id-different-org. Scoping is still proven
+    // by setOnline targeting one org while leaving the other untouched.
+    registry.register("org-a", "agent-a-1", "A1", []);
+    registry.register("org-b", "agent-b-1", "B1", []);
+    registry.setOffline("org-a", "agent-a-1");
+    registry.setOffline("org-b", "agent-b-1");
+    registry.setOnline("org-a", "agent-a-1");
+    expect(registry.get("org-a", "agent-a-1")?.status).toBe("online");
+    expect(registry.get("org-b", "agent-b-1")?.status).toBe("offline");
+    // Negative cross-scope: setOnline against the wrong org for an agent that
+    // exists in the other org must no-op (not flip that other-org row).
+    registry.setOnline("org-a", "agent-b-1");
+    expect(registry.get("org-b", "agent-b-1")?.status).toBe("offline");
+  });
+
+  it("heartbeat scopes by org (only the calling org's last_seen_at advances)", async () => {
+    registry.register("org-a", "agent-a-1", "A1", []);
+    registry.register("org-b", "agent-b-1", "B1", []);
+    const beforeB = registry.get("org-b", "agent-b-1")?.last_seen_at;
+    // Wait long enough for SQLite's CURRENT_TIMESTAMP (1s resolution) to tick
+    await new Promise((r) => setTimeout(r, 1100));
+    registry.heartbeat("org-a", "agent-a-1");
+    const afterA = registry.get("org-a", "agent-a-1")?.last_seen_at;
+    const afterB = registry.get("org-b", "agent-b-1")?.last_seen_at;
+    // org-a's last_seen_at advanced; org-b's is unchanged
+    expect(afterA).not.toBe(beforeB);
+    expect(afterB).toBe(beforeB);
+    // Negative cross-scope: heartbeat against wrong org must not advance the
+    // other-org row.
+    await new Promise((r) => setTimeout(r, 1100));
+    registry.heartbeat("org-a", "agent-b-1");
+    const afterB2 = registry.get("org-b", "agent-b-1")?.last_seen_at;
+    expect(afterB2).toBe(beforeB);
+  });
 });
 
 
