@@ -1,6 +1,7 @@
 ﻿import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
 import fs from "fs";
+import path from "path";
 
 const TEST_DIR = "data-test-db";
 
@@ -36,6 +37,29 @@ describe("Database", () => {
     vi.resetModules();
     const { getDb: freshGetDb } = await import("../../src/database.js");
     expect(() => freshGetDb()).toThrow("Database not initialized");
+  });
+});
+
+describe("downgrade refusal", () => {
+  const DIR = "data-test-downgrade";
+
+  beforeAll(async () => {
+    fs.mkdirSync(DIR, { recursive: true });
+    // Use dynamic import to stay ESM-compatible
+    const { default: Database } = await import("better-sqlite3");
+    const dbPath = path.join(DIR, "coordinator.db");
+    const raw = new Database(dbPath);
+    raw.exec("PRAGMA user_version = 99");
+    raw.close();
+  });
+
+  afterAll(() => {
+    // Idempotent cleanup — runs regardless of test outcome
+    try { fs.rmSync(DIR, { recursive: true, force: true }); } catch { /* already gone */ }
+  });
+
+  it("refuses to boot if user_version is from a newer binary", () => {
+    expect(() => initDatabase(DIR)).toThrow(/newer version/);
   });
 });
 
