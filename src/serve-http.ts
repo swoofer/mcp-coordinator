@@ -25,6 +25,7 @@ import type { CoordinatorEvent } from "./types.js";
 import { getVersion } from "../cli/version.js";
 const VERSION = getVersion();
 import { startEmbeddedMqttBroker, type MqttAuthResult } from "./mqtt-broker.js";
+import { withRequestId, resolveRequestId } from "./auth/request-id.js";
 
 const SERVER_FILE_DIR = path.dirname(__filename);
 
@@ -393,6 +394,9 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
   const sessionClaims = new Map<string, AuthClaims>();
 
   const httpServer = createServer(async (req, res) => {
+    const requestId = resolveRequestId(req.headers["x-request-id"]);
+    res.setHeader("X-Request-Id", requestId);
+    return withRequestId(requestId, async () => {
     const url = req.url || "";
 
     // CORS preflight
@@ -535,6 +539,7 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
       httpLog.error({ err }, "HTTP request error");
       json(res, { error: (err as Error).message }, 500);
     }
+    });
   });
 
   // Start the embedded MQTT broker (TCP + WebSocket on HTTP upgrade).
