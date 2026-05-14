@@ -8,6 +8,7 @@ import type { AuthHandlerContext } from "../../src/auth/context.js";
 import { FakeClock } from "../helpers/clock.js";
 import { RateLimiter } from "../../src/auth/rate-limit.js";
 import { buildJwtKeyRegistry } from "../../src/auth/jwt-keys.js";
+import { MembershipCache } from "../../src/auth/membership-cache.js";
 import type { IdPProvider } from "../../src/auth/providers/types.js";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
 import { findAuditRows } from "../helpers/audit.js";
@@ -117,6 +118,7 @@ function makeCtx(overrides: Partial<AuthHandlerContext> = {}): AuthHandlerContex
     publicUrl: "http://localhost:3000",
     stateBindingKey: STATE_BINDING_KEY,
     signingKeys: buildJwtKeyRegistry(Buffer.alloc(32, 0x01)),
+    membershipCache: new MembershipCache(clock),
     ...overrides,
   };
 }

@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Clock } from "./clock.js";
 import type { JwtKeyRegistry } from "./jwt-keys.js";
+import type { MembershipCache } from "./membership-cache.js";
 import type { IdPProvider } from "./providers/types.js";
 import type { RateLimiter } from "./rate-limit.js";
 
@@ -32,4 +33,8 @@ export interface AuthHandlerContext {
    *  mintTokenPair to sign access + refresh JWTs in the OAuth finalize
    *  path shared by T16c (browser callback) and T18 (CLI grant). */
   signingKeys: JwtKeyRegistry;
+  /** T04 IdP membership cache. Used by T16b (callback) and T18 (CLI
+   *  grant) to look up listMemberships per (user_id, provider) with a
+   *  60s positive TTL + 10min stale-on-error window. */
+  membershipCache: MembershipCache;
 }

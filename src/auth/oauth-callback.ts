@@ -5,6 +5,10 @@ import type { ExchangeCodeResult } from "./providers/types.js";
 import { IdPTokenRevoked, IdPTransientError } from "./providers/errors.js";
 import { consumeOAuthState, inspectOAuthState } from "./oauth-state.js";
 import { parseCookies } from "./cookies.js";
+import { hashIdentifier, isLocked, recordFailedLogin } from "./login-lockout.js";
+import { resolveOrgFromMemberships } from "./allowlist.js";
+import { provisionUser, type ProvisionedUser, type ProvisionResult } from "./oauth-finalize.js";
+import { getOrgSetting } from "./org-settings.js";
 import { audit } from "../security/audit.js";
 import { appError, bearerAuthHeader } from "../http/response-contract.js";
 
@@ -167,14 +171,222 @@ export async function handleOAuthCallback(
   await finalizeBrowserOAuth(res, ctx, exchangeResult, ip, userAgent);
 }
 
+/**
+ * Sentinel raised inside the provisioning transaction when AUTO_PROVISION
+ * is "false" and the user has no existing row. Aborts the TX so the
+ * find-or-create + bootstrap-admin path never runs, and lets the caller
+ * emit the Tier 2 audit + 403 response after rollback (V4 FIX 23: only
+ * audit after the security action commits — here it's the lack of one).
+ */
+class ProvisioningDeniedError extends Error {
+  constructor(public readonly code: string) {
+    super(code);
+    this.name = "ProvisioningDeniedError";
+  }
+}
+
+/**
+ * T16b: callback provisioning transaction body.
+ *
+ * Flow (V2 §A.8 + V4 FIX 16/23):
+ *   1. Login lockout pre-check (V3 §B-NEW-8) — identifier_hash =
+ *      SHA-256("login-lockout-v1\0" + idp_user_id-or-ip). Pre-locked →
+ *      429 + Retry-After + Tier 1 audit auth.login.locked. The audit
+ *      fires at observation time (the request that hits the lockout)
+ *      rather than at the recording call — recordFailedLogin's
+ *      locked=true branch is unreachable within a single request because
+ *      isLocked's peek short-circuits before a drained bucket can be
+ *      observed again.
+ *   2. listMemberships via T04 cache (60s positive TTL, 10min
+ *      stale-on-error). IdPTokenRevoked → 401 + WWW-Authenticate +
+ *      Tier 1 audit. IdPTransientError → 503.
+ *   3. resolveOrgFromMemberships (T09). No match → recordFailedLogin +
+ *      403 + Tier 1 audit auth.login.denied.not_in_org.
+ *   4. AUTO_PROVISION via T44 getOrgSetting (default "true"). "false"
+ *      + new user → 403 USER_NOT_PROVISIONED + Tier 2 audit
+ *      auth.login.failure(reason=user_not_provisioned).
+ *   5. BEGIN IMMEDIATE TX: provisionUser (T16helpers). User-exists
+ *      check is inside the TX so AUTO_PROVISION=false races with a
+ *      concurrent provisioning attempt cleanly.
+ *   6. COMMIT, then emit Tier 2 auth.user.created (new users) and
+ *      Tier 1 auth.admin.bootstrapped (bootstrap path). Post-TX so
+ *      audits never fire when the TX rolled back (V4 FIX 23).
+ *   7. Hand off to finalizeBrowserOAuthMint placeholder (T16c).
+ */
 async function finalizeBrowserOAuth(
   res: ServerResponse,
+  ctx: AuthHandlerContext,
+  exchange: ExchangeCodeResult,
+  ip: string | null,
+  userAgent: string | null,
+): Promise<void> {
+  // GitHub uses idp_user_id as the stable login identifier; fall back to
+  // ip if neither is meaningful (T44 V2 §A.8 wording: "idp_user_login or ip").
+  const lockoutIdentifier = exchange.user.idp_user_id || ip || "unknown";
+  const identifierHash = hashIdentifier(lockoutIdentifier);
+
+  // 1. Login lockout pre-check (non-consuming peek). V2 §A.8: auth.login.locked
+  //    Tier 1 audit emits on every request that hits the lockout (T12 itself
+  //    doesn't emit — T16b owns the emission). This is the audit observation
+  //    point for the lockout state; recordFailedLogin's locked=true is a dead
+  //    branch in practice because peek blocks before the bucket can drain past
+  //    threshold within a single request cycle.
+  const lockState = isLocked(ctx.rateLimiter, identifierHash);
+  if (lockState.locked) {
+    audit("auth.login.locked", {
+      tier: 1,
+      metadata: { identifier_hash: identifierHash },
+    });
+    res.writeHead(429, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Retry-After": String(lockState.retry_after_seconds ?? 900),
+    });
+    res.end(JSON.stringify(appError("LOGIN_LOCKED", "Too many failed login attempts")));
+    return;
+  }
+
+  // 2. listMemberships via T04 cache.
+  let memberships: string[];
+  try {
+    memberships = await ctx.membershipCache.getMemberships(
+      exchange.user.idp_user_id,
+      ctx.githubProvider,
+      exchange.accessToken,
+    );
+  } catch (err) {
+    if (err instanceof IdPTokenRevoked) {
+      audit("auth.idp.token_revoked", {
+        tier: 1,
+        metadata: { phase: "callback_memberships" },
+      });
+      res.writeHead(401, {
+        "Content-Type": "application/json; charset=utf-8",
+        "WWW-Authenticate": bearerAuthHeader("invalid_token", "IdP token revoked"),
+      });
+      res.end(JSON.stringify(appError("IDP_TOKEN_REVOKED", "Identity provider rejected the token")));
+      return;
+    }
+    if (err instanceof IdPTransientError) {
+      res.writeHead(503, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify(appError("IDP_UNAVAILABLE", "Identity provider temporarily unavailable")));
+      return;
+    }
+    throw err;
+  }
+
+  // 3. Allowlist resolution (T09 — alphabetical tie-break, V4 FIX 22).
+  //    On miss: record a failed login (consumes a token; the (threshold+1)th
+  //    attempt is what trips the lockout, observed by the NEXT request's
+  //    isLocked peek). Emit Tier 1 audit auth.login.denied.not_in_org.
+  const allowlistMatch = resolveOrgFromMemberships(ctx.db, memberships);
+  if (!allowlistMatch) {
+    recordFailedLogin(ctx.rateLimiter, identifierHash);
+    audit("auth.login.denied.not_in_org", {
+      tier: 1,
+      metadata: {
+        idp_user_id: exchange.user.idp_user_id,
+        identifier_hash: identifierHash,
+        memberships_count: memberships.length,
+      },
+    });
+    res.writeHead(403, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify(appError("NOT_IN_ALLOWLIST", "User is not in any allowlisted org")));
+    return;
+  }
+
+  // 4. AUTO_PROVISION mode via T44 (orgId=null: pre-provisioning lookup, falls
+  //    back to env then default "true").
+  const autoProvision = getOrgSetting(ctx.db, null, "auto_provision", "true");
+
+  // 5-6. BEGIN IMMEDIATE TX. The user-existence check for AUTO_PROVISION=false
+  //      lives INSIDE the TX so it's atomic with the INSERT — a concurrent
+  //      callback can't sneak in between SELECT and INSERT.
+  let provisionResult: ProvisionResult;
+  try {
+    const tx = ctx.db.transaction((): ProvisionResult => {
+      if (autoProvision === "false") {
+        const existing = ctx.db
+          .prepare(
+            "SELECT id FROM users WHERE idp_provider = ? AND idp_user_id = ?",
+          )
+          .get("github", exchange.user.idp_user_id);
+        if (!existing) {
+          throw new ProvisioningDeniedError("USER_NOT_PROVISIONED");
+        }
+      }
+      return provisionUser(
+        ctx.db,
+        ctx.clock,
+        exchange.user,
+        exchange.accessToken,
+        {
+          org_id: allowlistMatch.org_id,
+          org_name: allowlistMatch.org_name,
+        },
+      );
+    });
+    provisionResult = tx.immediate();
+  } catch (err) {
+    if (err instanceof ProvisioningDeniedError) {
+      audit("auth.login.failure", {
+        tier: 2,
+        metadata: {
+          reason: "user_not_provisioned",
+          idp_user_id: exchange.user.idp_user_id,
+        },
+      });
+      res.writeHead(403, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify(appError(
+        "USER_NOT_PROVISIONED",
+        "User must be provisioned by an admin before signing in",
+      )));
+      return;
+    }
+    throw err;
+  }
+
+  // Post-TX audits (V4 FIX 23: commit-then-audit — never emit for a
+  // rolled-back TX). Order: user.created first (Tier 2), then
+  // admin.bootstrapped (Tier 1) when applicable.
+  if (provisionResult.isNew) {
+    audit("auth.user.created", {
+      tier: 2,
+      metadata: {
+        user_id: provisionResult.user.user_id,
+        org_id: provisionResult.user.primary_org_id,
+        bootstrap_admin: provisionResult.bootstrapAdmin,
+      },
+    });
+  }
+  if (provisionResult.bootstrapAdmin) {
+    audit("auth.admin.bootstrapped", {
+      tier: 1,
+      metadata: {
+        user_id: provisionResult.user.user_id,
+        org_id: provisionResult.user.primary_org_id,
+      },
+    });
+  }
+
+  // 7. Hand off to T16c (JWT mint + cookies + 302).
+  await finalizeBrowserOAuthMint(res, ctx, provisionResult.user, ip, userAgent);
+}
+
+async function finalizeBrowserOAuthMint(
+  res: ServerResponse,
   _ctx: AuthHandlerContext,
-  _exchange: ExchangeCodeResult,
+  _user: ProvisionedUser,
   _ip: string | null,
   _userAgent: string | null,
 ): Promise<void> {
-  // T16b/c implements provisioning + mint + cookies + redirect.
+  // T16c: JWT mint + cookies + redirect.
   res.writeHead(501, { "Content-Type": "application/json; charset=utf-8" });
-  res.end(JSON.stringify(appError("NOT_IMPLEMENTED", "finalizeBrowserOAuth awaits T16b/c")));
+  res.end(JSON.stringify(appError("NOT_IMPLEMENTED", "finalizeBrowserOAuthMint awaits T16c")));
 }
+
+/**
+ * Exported only for tests that exercise the T16b provisioning flow
+ * directly without driving through the upstream state/CAS/exchange
+ * stages. Production callers MUST use {@link handleOAuthCallback}.
+ */
+export { finalizeBrowserOAuth as __finalizeBrowserOAuth };

@@ -7,6 +7,7 @@ import type { AuthHandlerContext } from "../../src/auth/context.js";
 import { FakeClock } from "../helpers/clock.js";
 import { RateLimiter } from "../../src/auth/rate-limit.js";
 import { buildJwtKeyRegistry } from "../../src/auth/jwt-keys.js";
+import { MembershipCache } from "../../src/auth/membership-cache.js";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
 import type { IdPProvider, ExchangeCodeResult } from "../../src/auth/providers/types.js";
 import { IdPTokenRevoked, IdPTransientError } from "../../src/auth/providers/errors.js";
@@ -134,6 +135,9 @@ function stubProvider(config: StubProviderConfig = {}): TrackedProvider {
       provider.lastExchange = { code, redirectUri, codeVerifier };
       return impl(code, redirectUri, codeVerifier);
     },
+    // T16b consumes this through the MembershipCache. T16a's tests pre-seed
+    // an allowlist row for "acme" so the happy path reaches T16c's 501 stub.
+    listMemberships: async () => ["acme"],
   };
   return provider;
 }
@@ -150,6 +154,7 @@ function makeCtx(overrides: Partial<AuthHandlerContext> = {}): AuthHandlerContex
     publicUrl: "http://localhost:3000",
     stateBindingKey: STATE_BINDING_KEY,
     signingKeys: buildJwtKeyRegistry(Buffer.alloc(32, 0x01)),
+    membershipCache: new MembershipCache(clock),
     ...overrides,
   };
 }
@@ -189,8 +194,18 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+  // FK order: child rows first, then parents. user_orgs / refresh_tokens
+  // reference users; users + oauth_state reference orgs.
   getDb().exec("DELETE FROM audit_log");
   getDb().exec("DELETE FROM oauth_state");
+  getDb().exec("DELETE FROM refresh_tokens");
+  getDb().exec("DELETE FROM user_orgs");
+  getDb().exec("DELETE FROM users");
+  getDb().exec("DELETE FROM orgs");
+  // Seed an allowlist row matching the stub provider's listMemberships output.
+  getDb()
+    .prepare("INSERT INTO orgs (id, name, allowlist_github_org) VALUES (?, ?, ?)")
+    .run("org-1", "Acme", "acme");
   clock = new FakeClock();
   ctx = makeCtx();
 });
