@@ -25,6 +25,7 @@ export default defineConfig({
         "src/auth/oauth-finalize.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/auth/oauth-token.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/auth/logout.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
+        "src/auth/userinfo.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/auth/membership-cache.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/auth/allowlist.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/auth/providers/github.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },

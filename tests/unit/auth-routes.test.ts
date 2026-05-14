@@ -191,8 +191,11 @@ describe("dispatchAuthRoutes — happy-path stubs return 501", () => {
     // but are now real T23 handlers — verified in logout.test.ts + the
     // dispatcher-routing assertion below (401 UNAUTHORIZED on the synthetic
     // mockReq because authenticateRequest sees no Authorization/cookie).
+    // NOTE: GET /api/auth/me was a stub in T14.5 but is now a real T24
+    // handler — verified in userinfo.test.ts + the dispatcher-routing
+    // assertion below (401 UNAUTHORIZED on the synthetic mockReq because
+    // authenticateRequest sees no Authorization/cookie).
     { method: "POST", url: "/auth/device/approve", stub: "handleDeviceApprove" },
-    { method: "GET", url: "/api/auth/me", stub: "handleUserinfo" },
     // NOTE: /auth/device, /auth/device/confirm, /auth/success were stubs
     // in T14.5 but are now real T21 handlers — verified in
     // device-pages.test.ts, plus the dispatcher-routing check below.
@@ -253,6 +256,18 @@ describe("dispatchAuthRoutes — T23 logout/logout-all/revoke dispatched (not 50
     const res = mockResponse();
     const handled = await dispatchAuthRoutes(
       mockReqWithHeaders("POST", "/api/auth/revoke"),
+      res as unknown as ServerResponse,
+      ctx,
+    );
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(401);
+    expect((res.body as Record<string, unknown>).code).toBe("UNAUTHORIZED");
+  });
+
+  it("GET /api/auth/me routes to handleUserinfo (401, not 501)", async () => {
+    const res = mockResponse();
+    const handled = await dispatchAuthRoutes(
+      mockReqWithHeaders("GET", "/api/auth/me"),
       res as unknown as ServerResponse,
       ctx,
     );
