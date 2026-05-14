@@ -51,10 +51,13 @@ describe("v0.6 → v0.7 migration", () => {
   // No "boots without error" `it` — initDatabase already ran in beforeAll.
   // A boot failure would surface as a beforeAll error and fail all tests in this file.
 
-  it("user_version bumped to 7", () => {
+  it("user_version bumped to 8 (v0.6 → v0.7 → v0.8 cascade)", () => {
     const db = getDb();
     const v = db.prepare("PRAGMA user_version").get() as { user_version: number };
-    expect(v.user_version).toBe(7);
+    // Phase 2 (v0.8) runs after the v0.7 block, so a fresh v0.6 → current
+    // boot ends at version 8. The intermediate v0.7 state is exercised
+    // by all other assertions in this file (composite PKs, org_id columns).
+    expect(v.user_version).toBe(8);
   });
 
   it("existing agents row preserved", () => {

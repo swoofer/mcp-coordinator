@@ -1,0 +1,17 @@
+[RTK:PASSTHROUGH] vitest parser: All parsing tiers failed
+{"level":30,"time":1778439944804,"pid":39172,"hostname":"Multimedia","component":"mqtt-broker","port":29165,"transport":"tcp","msg":"Embedded MQTT broker listening"}
+{"level":30,"time":1778439944805,"pid":39172,"hostname":"Multimedia","component":"mqtt-broker","path":"/mqtt","transport":"ws","msg":"Embedded MQTT broker listening on HTTP upgrade"}
+{"level":30,"time":1778439944868,"pid":39172,"hostname":"Multimedia","component":"mqtt","url":"mqtt://127.0.0.1:29165","msg":"MQTT connected"}
+{"level":30,"time":1778439944870,"pid":39172,"hostname":"Multimedia","port":29164,"mcp":"POST http://localhost:29164/mcp","rest":"POST http://localhost:29164/api/*","sse":"GET http://localhost:29164/api/events","mqtt_tcp":"mqtt://127.0.0.1:29165","mqtt_ws":"ws://localhost:29164/mqtt","msg":"Coordinator v3 started"}
+{"level":30,"time":1778439946390,"pid":39172,"hostname":"Multimedia","component":"http","method":"POST","url":"/api/file-activity","agent_id":"a1","msg":"REST request"}
+{"level":30,"time":1778439946401,"pid":39172,"hostname":"Multimedia","component":"http","method":"POST","url":"/api/file-activity","agent_id":"a2","msg":"REST request"}
+{"level":30,"time":1778439946402,"pid":39172,"hostname":"Multimedia","msg":"Coordinator shutting down..."}
+{"level":30,"time":1778439946403,"pid":39172,"hostname":"Multimedia","component":"mqtt","msg":"MQTT disconnected"}
+{"level":30,"time":1778439946412,"pid":39172,"hostname":"Multimedia","msg":"Coordinator shutdown complete"}
+{"level":30,"time":1778439947342,"pid":34104,"hostname":"Multimedia","component":"mqtt-broker","port":29173,"transport":"tcp","msg":"Embedded MQTT broker listening"}
+{"level":30,"time":1778439947344,"pid":34104,"hostname":"Multimedia","component":"mqtt-broker","path":"/mqtt","transport":"ws","msg":"Embedded MQTT broker listening on HTTP upgrade"}
+{"level":30,"time":1778439947414,"pid":34104,"hostname":"Multimedia","component":"mqtt","url":"mqtt://127.0.0.1:29173","msg":"MQTT connected"}
+{"level":30,"time":177843994741
+
+[RTK:PASSTHROUGH] Output truncated (129851 chars → 2000 chars)
+[full output: ~/AppData\Local\rtk\tee\1778439960_vitest_run.log]

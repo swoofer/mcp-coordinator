@@ -41,8 +41,8 @@ describe("v0.6 schema", () => {
     expect(cols.map(c => c.name)).toContain("content_hash");
   });
 
-  it("user_version is 7", () => {
+  it("user_version is 8", () => {
     const v = getDb().prepare("PRAGMA user_version").get() as { user_version: number };
-    expect(v.user_version).toBe(7);
+    expect(v.user_version).toBe(8);
   });
 });

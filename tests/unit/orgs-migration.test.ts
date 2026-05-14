@@ -33,22 +33,26 @@ describe("orgs table", () => {
     expect(row.name).toBe("Default Organization");
   });
 
-  it("has the expected columns", () => {
+  it("has the expected columns (Phase 1 + v0.8 allowlist_github_org)", () => {
     const db = getDb();
     const cols = db.prepare("PRAGMA table_info(orgs)").all() as { name: string }[];
     const names = cols.map((c) => c.name).sort();
-    expect(names).toEqual(["created_at", "id", "idp_org_id", "idp_provider", "name"]);
+    // v0.8 adds allowlist_github_org for B-NEW-4 Phase 5 SaaS readiness
+    expect(names).toEqual([
+      "allowlist_github_org", "created_at", "id", "idp_org_id", "idp_provider", "name",
+    ]);
   });
 });
 
 describe("users table", () => {
-  it("exists with expected columns", () => {
+  it("exists with expected columns (v0.8: primary_org_id + token_epoch + idp_access_token)", () => {
     const db = getDb();
     const cols = db.prepare("PRAGMA table_info(users)").all() as { name: string; notnull: number }[];
     const names = cols.map((c) => c.name).sort();
+    // v0.8: org_id → primary_org_id (renamed); + token_epoch (NR12 + Q8), idp_access_token (V4 FIX 4)
     expect(names).toEqual([
-      "created_at", "email", "id", "idp_provider", "idp_user_id",
-      "last_login_at", "name", "org_id", "role",
+      "created_at", "email", "id", "idp_access_token", "idp_provider", "idp_user_id",
+      "last_login_at", "name", "primary_org_id", "role", "token_epoch",
     ]);
   });
 
@@ -56,17 +60,19 @@ describe("users table", () => {
     const db = getDb();
     db.prepare("INSERT INTO orgs (id, name) VALUES ('o1', 'Org 1')").run();
     db.prepare(
-      "INSERT INTO users (id, org_id, email, idp_provider, idp_user_id) VALUES (?, ?, ?, ?, ?)"
+      "INSERT INTO users (id, primary_org_id, email, idp_provider, idp_user_id) VALUES (?, ?, ?, ?, ?)"
     ).run("u1", "o1", "a@x", "github", "12345");
     expect(() =>
       db.prepare(
-        "INSERT INTO users (id, org_id, email, idp_provider, idp_user_id) VALUES (?, ?, ?, ?, ?)"
+        "INSERT INTO users (id, primary_org_id, email, idp_provider, idp_user_id) VALUES (?, ?, ?, ?, ?)"
       ).run("u2", "o1", "b@x", "github", "12345")
     ).toThrow(/UNIQUE/);
   });
 
-  it("has idx_users_org index", () => {
+  it("idx_users_org survives RENAME COLUMN (auto-points to primary_org_id)", () => {
     const db = getDb();
+    // Phase 1 created idx_users_org ON users(org_id). v0.8 RENAME COLUMN keeps
+    // the index name but auto-points it at the new column name (SQLite ≥3.25).
     const row = db.prepare(
       "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_users_org'"
     ).get();
@@ -75,35 +81,43 @@ describe("users table", () => {
 });
 
 describe("refresh_tokens table", () => {
-  it("exists with expected columns", () => {
+  it("exists with expected columns (Phase 1 + v0.8 family lineage + reuse detection)", () => {
     const db = getDb();
     const cols = db.prepare("PRAGMA table_info(refresh_tokens)").all() as { name: string }[];
     const names = cols.map((c) => c.name).sort();
+    // v0.8 adds: family_id, parent_jti, revoked_reason, replay_count, consumer_fingerprint
     expect(names).toEqual([
-      "created_at", "device_label", "expires_at", "id", "jti",
-      "last_used_at", "org_id", "revoked_at", "user_id",
+      "consumer_fingerprint", "created_at", "device_label", "expires_at", "family_id",
+      "id", "jti", "last_used_at", "org_id", "parent_jti",
+      "replay_count", "revoked_at", "revoked_reason", "user_id",
     ]);
   });
 
-  it("has both indexes", () => {
+  it("has Phase 1 + v0.8 indexes (incl partial UNIQUE on parent_jti)", () => {
     const db = getDb();
     const indexes = db.prepare(
       "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='refresh_tokens'"
     ).all() as { name: string }[];
-    const names = indexes.map((i) => i.name).sort();
-    expect(names).toContain("idx_refresh_user");
-    expect(names).toContain("idx_refresh_org_user");
+    const names = indexes.map((i) => i.name);
+    expect(names).toContain("idx_refresh_user");        // Phase 1
+    expect(names).toContain("idx_refresh_org_user");    // Phase 1
+    expect(names).toContain("idx_refresh_family");      // v0.8
+    expect(names).toContain("idx_refresh_parent");      // v0.8 partial UNIQUE
+    expect(names).toContain("idx_refresh_user_active"); // v0.8
+    expect(names).toContain("idx_refresh_expires");     // v0.8
   });
 });
 
 describe("device_auth_requests table", () => {
-  it("exists with expected columns including nonce", () => {
+  it("exists with expected columns (Phase 1 + v0.8 requester forensics + brute-force defense)", () => {
     const db = getDb();
     const cols = db.prepare("PRAGMA table_info(device_auth_requests)").all() as { name: string }[];
     const names = cols.map((c) => c.name).sort();
+    // v0.8 adds: requester_ip, requester_user_agent, requester_country, failed_approval_attempts
     expect(names).toEqual([
       "approved_user_id", "created_at", "device_code", "expires_at",
-      "nonce", "org_id", "user_code",
+      "failed_approval_attempts", "nonce", "org_id", "requester_country",
+      "requester_ip", "requester_user_agent", "user_code",
     ]);
   });
 
@@ -133,15 +147,29 @@ describe("device_auth_requests table", () => {
 });
 
 describe("audit_log table", () => {
-  it("exists with expected columns", () => {
+  it("exists with expected columns (v0.8 renames + request_id + outcome)", () => {
     const db = getDb();
     const cols = db.prepare("PRAGMA table_info(audit_log)").all() as { name: string; notnull: number }[];
     const byName = Object.fromEntries(cols.map((c) => [c.name, c]));
     expect(byName.id).toBeDefined();
     expect(byName.action).toBeDefined();
     expect(byName.action.notnull).toBe(1);
-    expect(byName.org_id.notnull).toBe(0); // nullable per spec amendment
-    expect(byName.user_id.notnull).toBe(0);
+    // v0.8 renames: user_id → actor_user_id, org_id → actor_org_id,
+    // ip → actor_ip, user_agent → actor_user_agent, metadata → metadata_json
+    expect(byName.actor_org_id.notnull).toBe(0);
+    expect(byName.actor_user_id.notnull).toBe(0);
+    expect(byName.actor_ip).toBeDefined();
+    expect(byName.actor_user_agent).toBeDefined();
+    expect(byName.metadata_json).toBeDefined();
+    // v0.8 adds:
+    expect(byName.request_id).toBeDefined();
+    expect(byName.outcome).toBeDefined();
+    // Old names removed by RENAME:
+    expect(byName.user_id).toBeUndefined();
+    expect(byName.org_id).toBeUndefined();
+    expect(byName.ip).toBeUndefined();
+    expect(byName.user_agent).toBeUndefined();
+    expect(byName.metadata).toBeUndefined();
   });
 
   it("has time-ordered indexes for org/user/action", () => {
@@ -181,10 +209,10 @@ describe("ALTER existing tables for org_id", () => {
 });
 
 describe("user_version after migration", () => {
-  it("is 7 after a fresh init", () => {
+  it("is 8 after a fresh init (v0.8 = Phase 2 schema)", () => {
     const db = getDb();
     const row = db.prepare("PRAGMA user_version").get() as { user_version: number };
-    expect(row.user_version).toBe(7);
+    expect(row.user_version).toBe(8);
   });
 });
 

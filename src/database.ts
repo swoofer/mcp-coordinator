@@ -7,7 +7,7 @@ const require = createRequire(import.meta.url);
 
 let db: DatabaseAdapter;
 
-const CURRENT_USER_VERSION = 7;
+const CURRENT_USER_VERSION = 8;
 
 const SCHEMA = `
     CREATE TABLE IF NOT EXISTS agents (
@@ -498,10 +498,159 @@ export function initDatabase(dataDir: string): void {
     [],
   );
 
-  // v0.7: bump version marker LAST — after every CREATE TABLE and ALTER above succeeded.
-  // A crash before this line leaves user_version=6 and the next boot retries the migration
+  // v0.7: bump version marker BEFORE v0.8 migrations.
+  // A crash before this line leaves user_version=6 and the next boot retries the v0.7 migration
   // (idempotent). Bumping earlier would make a partial migration look complete.
   db.exec("PRAGMA user_version = 7");
+
+  // ============================================================================
+  // v0.8 (Phase 2): OAuth + Device Flow + Audit Wiring schema migrations
+  // ============================================================================
+  // Refs:
+  //   Spec:    docs/superpowers/specs/2026-05-13-auth-phase2-oauth-device-design.md §4
+  //   V4 fix:  docs/superpowers/specs/2026-05-13-auth-phase2-oauth-device-design-V4-patches.md
+  //            (FIX 1 = audit_log renames, FIX 2 = PRAGMA foreign_keys toggle,
+  //             FIX 3 = ON DELETE policy on user_orgs, FIX 4 = idp_access_token col,
+  //             FIX 6 = parent_jti UNIQUE partial index, FIX 21 = failed_approval_attempts)
+  //   Plan:    docs/superpowers/plans/2026-05-13-auth-phase2-oauth-device-plan-v2-patches.md §A.1
+  //
+  // All ALTERs are idempotent (try/catch already-exists or RENAME-no-such-column).
+  // CREATE TABLE / CREATE INDEX use IF NOT EXISTS.
+  // FK enforcement OFF during column renames (SQLite requirement for ALTER RENAME COLUMN
+  // when other tables reference the table being altered).
+  db.exec("PRAGMA foreign_keys = OFF");
+  try {
+    // --- audit_log column renames (V4 FIX 1) ----------------------------------
+    try { db.exec("ALTER TABLE audit_log RENAME COLUMN user_id TO actor_user_id"); } catch { /* already renamed */ }
+    try { db.exec("ALTER TABLE audit_log RENAME COLUMN org_id TO actor_org_id"); } catch { /* already renamed */ }
+    try { db.exec("ALTER TABLE audit_log RENAME COLUMN ip TO actor_ip"); } catch { /* already renamed */ }
+    try { db.exec("ALTER TABLE audit_log RENAME COLUMN user_agent TO actor_user_agent"); } catch { /* already renamed */ }
+    try { db.exec("ALTER TABLE audit_log RENAME COLUMN metadata TO metadata_json"); } catch { /* already renamed */ }
+
+    // --- audit_log: new columns + retention sweeper index ---------------------
+    try { db.exec("ALTER TABLE audit_log ADD COLUMN request_id TEXT"); } catch { /* already exists */ }
+    try { db.exec("ALTER TABLE audit_log ADD COLUMN outcome TEXT"); } catch { /* already exists */ }
+    try { db.exec("CREATE INDEX IF NOT EXISTS idx_audit_request_id ON audit_log(request_id)"); } catch { /* already exists */ }
+    try { db.exec("CREATE INDEX IF NOT EXISTS idx_audit_outcome_time ON audit_log(outcome, created_at)"); } catch { /* already exists */ }
+
+    // --- audit_log: backfill Phase 1 rows with outcome='legacy_unknown' --------
+    // Idempotent: only fills NULLs. Inserts a single migration audit row on first run.
+    try {
+      const updateResult = (db as unknown as {
+        prepare: (sql: string) => { run: () => { changes: number } };
+      }).prepare("UPDATE audit_log SET outcome = 'legacy_unknown' WHERE outcome IS NULL").run();
+      if (updateResult.changes > 0) {
+        // First-run only: emit migration provenance event
+        (db as unknown as {
+          prepare: (sql: string) => { run: (...args: unknown[]) => unknown };
+        }).prepare(
+          "INSERT INTO audit_log (action, outcome, metadata_json, created_at) " +
+          "VALUES ('migration.audit_backfill', 'success', ?, CURRENT_TIMESTAMP)"
+        ).run(JSON.stringify({ rows_marked_legacy: updateResult.changes, from_version: 7, to_version: 8 }));
+      }
+    } catch { /* defensive: any failure means migration already happened */ }
+
+    // --- users: rename org_id → primary_org_id + new columns ------------------
+    // NOTE: SQLite ALTER TABLE RENAME COLUMN automatically updates indexes that
+    // reference the renamed column (since 3.25). idx_users_org (Phase 1) continues
+    // to work as an index on primary_org_id under its old name — DO NOT drop +
+    // recreate, because SCHEMA on subsequent boots tries to recreate idx_users_org
+    // referencing the now-non-existent org_id column and would fail.
+    try { db.exec("ALTER TABLE users RENAME COLUMN org_id TO primary_org_id"); } catch { /* already renamed */ }
+    try { db.exec("ALTER TABLE users ADD COLUMN token_epoch INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
+    // idp_access_token: stores GitHub access token for refresh-time membership re-check.
+    // Plaintext in v0.8; encrypted at-rest in v0.7.5 (SQLCipher whole-DB). NEVER in JWT/cookie/logs.
+    try { db.exec("ALTER TABLE users ADD COLUMN idp_access_token TEXT"); } catch { /* already exists */ }
+
+    // --- orgs: allowlist_github_org column (B-NEW-4 Phase 5 readiness) --------
+    try { db.exec("ALTER TABLE orgs ADD COLUMN allowlist_github_org TEXT"); } catch { /* already exists */ }
+    try { db.exec("CREATE INDEX IF NOT EXISTS idx_orgs_allowlist ON orgs(allowlist_github_org)"); } catch { /* already exists */ }
+
+    // --- user_orgs join table (Q1 V2 N:M-ready, 1:1 invariant app-layer) ------
+    db.exec(`CREATE TABLE IF NOT EXISTS user_orgs (
+      user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      org_id     TEXT NOT NULL REFERENCES orgs(id)  ON DELETE RESTRICT,
+      role       TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('member','admin','service')),
+      joined_at  TEXT NOT NULL,
+      PRIMARY KEY (user_id, org_id)
+    )`);
+    db.exec("CREATE INDEX IF NOT EXISTS idx_user_orgs_org ON user_orgs(org_id)");
+    // Backfill one row per existing user from users.primary_org_id.
+    // Idempotent via WHERE NOT EXISTS (re-runs do nothing on already-backfilled DBs).
+    db.exec(
+      "INSERT INTO user_orgs (user_id, org_id, role, joined_at) " +
+      "SELECT id, primary_org_id, role, COALESCE(created_at, CURRENT_TIMESTAMP) " +
+      "FROM users " +
+      "WHERE NOT EXISTS (SELECT 1 FROM user_orgs WHERE user_orgs.user_id = users.id)"
+    );
+
+    // --- oauth_state table (Q4 PKCE state storage; 10-min TTL + atomic CAS) ---
+    db.exec(`CREATE TABLE IF NOT EXISTS oauth_state (
+      state           TEXT PRIMARY KEY,
+      code_verifier   TEXT NOT NULL,
+      redirect_uri    TEXT NOT NULL,
+      provider        TEXT NOT NULL,
+      org_id          TEXT REFERENCES orgs(id),
+      created_at      INTEGER NOT NULL,
+      expires_at      INTEGER NOT NULL,
+      consumed_at     INTEGER
+    )`);
+    db.exec("CREATE INDEX IF NOT EXISTS idx_oauth_state_expires ON oauth_state(expires_at)");
+
+    // --- refresh_tokens: family lineage + reuse detection (Q7 V4 FIX 6) -------
+    try { db.exec("ALTER TABLE refresh_tokens ADD COLUMN family_id TEXT"); } catch { /* already exists */ }
+    try { db.exec("ALTER TABLE refresh_tokens ADD COLUMN parent_jti TEXT"); } catch { /* already exists */ }
+    // CHECK constraint on revoked_reason enforced at app layer + CI lint
+    // (SQLite cannot ADD CHECK via ALTER post-creation). Allowed values:
+    //   rotated|reuse_detected|suspicious_replay|logout|logout_all|admin|
+    //   key_rotation|idle_expired|restore_invalidation
+    try { db.exec("ALTER TABLE refresh_tokens ADD COLUMN revoked_reason TEXT"); } catch { /* already exists */ }
+    try { db.exec("ALTER TABLE refresh_tokens ADD COLUMN replay_count INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
+    try { db.exec("ALTER TABLE refresh_tokens ADD COLUMN consumer_fingerprint TEXT"); } catch { /* already exists */ }
+    // Backfill family_id for Phase 1 rows: each becomes its own family root.
+    // randomblob(16) hex = 32 chars (~128 bits), unique per row.
+    db.exec("UPDATE refresh_tokens SET family_id = lower(hex(randomblob(16))) WHERE family_id IS NULL");
+    // Indexes per V4 FIX 6 (partial UNIQUE on parent_jti — multiple NULL parents allowed for roots,
+    // but each non-NULL parent_jti has exactly one successor row).
+    try { db.exec("CREATE INDEX IF NOT EXISTS idx_refresh_family ON refresh_tokens(family_id, revoked_at)"); } catch { /* already exists */ }
+    try { db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_refresh_parent ON refresh_tokens(parent_jti) WHERE parent_jti IS NOT NULL"); } catch { /* already exists */ }
+    try { db.exec("CREATE INDEX IF NOT EXISTS idx_refresh_user_active ON refresh_tokens(user_id, revoked_at)"); } catch { /* already exists */ }
+    try { db.exec("CREATE INDEX IF NOT EXISTS idx_refresh_expires ON refresh_tokens(expires_at)"); } catch { /* already exists */ }
+
+    // --- device_auth_requests: requester forensics + brute-force defense ------
+    try { db.exec("ALTER TABLE device_auth_requests ADD COLUMN requester_ip TEXT"); } catch { /* already exists */ }
+    try { db.exec("ALTER TABLE device_auth_requests ADD COLUMN requester_user_agent TEXT"); } catch { /* already exists */ }
+    try { db.exec("ALTER TABLE device_auth_requests ADD COLUMN requester_country TEXT"); } catch { /* already exists */ }
+    try { db.exec("ALTER TABLE device_auth_requests ADD COLUMN failed_approval_attempts INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
+    try { db.exec("CREATE INDEX IF NOT EXISTS idx_device_expires ON device_auth_requests(expires_at)"); } catch { /* already exists */ }
+
+    // --- system_state table (NR12 restore detection + recovery markers) -------
+    db.exec(`CREATE TABLE IF NOT EXISTS system_state (
+      key        TEXT PRIMARY KEY,
+      value      TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    )`);
+
+    // --- Compat view for direct-DB readers during 0.7→0.8 transition (V4 FIX) -
+    // Maps renamed users.primary_org_id back to users.org_id for one minor release.
+    // Will be removed in v0.9.0 per CHANGELOG.
+    try {
+      db.exec(
+        "CREATE VIEW IF NOT EXISTS users_legacy_v0_7 AS " +
+        "SELECT id, primary_org_id AS org_id, email, name, idp_provider, idp_user_id, " +
+        "role, created_at, last_login_at, token_epoch " +
+        "FROM users"
+      );
+    } catch { /* idempotent; view recreation is no-op */ }
+
+    // v0.8: bump version marker LAST — after every CREATE/ALTER/UPDATE above succeeded.
+    db.exec("PRAGMA user_version = 8");
+  } finally {
+    // ALWAYS re-enable FKs, even on error. SQLite migrations leave the connection
+    // in PRAGMA foreign_keys = OFF state otherwise, silently disabling all FK
+    // enforcement for the rest of this process's lifetime.
+    db.exec("PRAGMA foreign_keys = ON");
+  }
 }
 
 export function getDb(): DatabaseAdapter {
