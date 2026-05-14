@@ -171,7 +171,11 @@ describe("dispatchAuthRoutes — happy-path stubs return 501", () => {
     // NOTE: GET /auth/login was a stub in T14.5 but is now a real T15
     // handler — verified in oauth-login.test.ts + the dispatcher-routing
     // assertion below (302 instead of 501).
-    { method: "GET", url: "/api/auth/oauth/callback", stub: "handleOAuthCallback" },
+    // NOTE: GET /api/auth/oauth/callback was a stub in T14.5 but is now a real
+    // T16a handler (state validation + exchange) — verified in
+    // oauth-callback-state.test.ts + the dispatcher-routing assertion below
+    // (the synthetic mockReq has no state/code params → real handler returns
+    // 400 INVALID_REQUEST, still proving routing reached the new handler).
     { method: "POST", url: "/api/auth/oauth/token", stub: "handleOAuthToken" },
     // NOTE: POST /api/auth/oauth/device_authorization was a stub in T14.5
     // but is now a real T17 handler — verified in
@@ -219,6 +223,23 @@ describe("dispatchAuthRoutes — T15 /auth/login dispatched (not 501 stub)", () 
     expect(handled).toBe(true);
     expect(res.statusCode).toBe(302);
     expect(typeof res.headers.Location).toBe("string");
+  });
+});
+
+describe("dispatchAuthRoutes — T16a /api/auth/oauth/callback dispatched (not 501 stub)", () => {
+  it("GET /api/auth/oauth/callback routes to handleOAuthCallback (400 INVALID_REQUEST, not 501)", async () => {
+    // mockReq has no query params → the real T16a handler returns
+    // 400 INVALID_REQUEST (missing state/code). Proves the route is wired.
+    const res = mockResponse();
+    const handled = await dispatchAuthRoutes(
+      mockReq("GET", "/api/auth/oauth/callback"),
+      res as unknown as ServerResponse,
+      ctx,
+    );
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(400);
+    const body = res.body as Record<string, unknown>;
+    expect(body.code).toBe("INVALID_REQUEST");
   });
 });
 
