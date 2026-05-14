@@ -150,6 +150,8 @@ describe("dispatchAuthRoutes — 405 method-not-allowed on known paths", () => {
     expect(res.headers.Allow).toBe("GET");
     const body = res.body as Record<string, unknown>;
     expect(body.code).toBe("METHOD_NOT_ALLOWED");
+    // Tests run outside withRequestId — request_id must be null.
+    expect(body.request_id).toBeNull();
   });
 
   it("GET /api/auth/oauth/token returns 405 + Allow: POST", async () => {
@@ -164,6 +166,7 @@ describe("dispatchAuthRoutes — 405 method-not-allowed on known paths", () => {
     expect(res.headers.Allow).toBe("POST");
     const body = res.body as Record<string, unknown>;
     expect(body.code).toBe("METHOD_NOT_ALLOWED");
+    expect(body.request_id).toBeNull();
   });
 
   it("PUT /api/auth/me returns 405 + Allow: GET (covers /api/auth/me Allow branch)", async () => {
@@ -176,6 +179,9 @@ describe("dispatchAuthRoutes — 405 method-not-allowed on known paths", () => {
     expect(handled).toBe(true);
     expect(res.statusCode).toBe(405);
     expect(res.headers.Allow).toBe("GET");
+    const body = res.body as Record<string, unknown>;
+    expect(body.code).toBe("METHOD_NOT_ALLOWED");
+    expect(body.request_id).toBeNull();
   });
 
   it("GET /api/auth/oauth/callback wrong-method (DELETE) returns 405 + Allow: GET", async () => {
@@ -188,6 +194,9 @@ describe("dispatchAuthRoutes — 405 method-not-allowed on known paths", () => {
     expect(handled).toBe(true);
     expect(res.statusCode).toBe(405);
     expect(res.headers.Allow).toBe("GET");
+    const body = res.body as Record<string, unknown>;
+    expect(body.code).toBe("METHOD_NOT_ALLOWED");
+    expect(body.request_id).toBeNull();
   });
 });
 

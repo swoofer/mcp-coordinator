@@ -6,6 +6,7 @@ import { handleOAuthToken } from "../auth/oauth-token.js";
 import { handleDeviceAuthorization, handleDeviceApprove } from "../auth/device-flow.js";
 import { handleLogout, handleLogoutAll, handleRevoke } from "../auth/logout.js";
 import { handleUserinfo } from "../auth/userinfo.js";
+import { appError } from "./response-contract.js";
 
 /**
  * Phase 2 auth-route dispatcher. Returns true if the URL matched an
@@ -79,9 +80,7 @@ export async function dispatchAuthRoutes(
       "Content-Type": "application/json; charset=utf-8",
       Allow: methodForPath(url),
     });
-    res.end(
-      JSON.stringify({ code: "METHOD_NOT_ALLOWED", message: `${method} not allowed on ${url}` }),
-    );
+    res.end(JSON.stringify(appError("METHOD_NOT_ALLOWED", `${method} not allowed on ${url}`)));
     return true;
   }
 
