@@ -399,14 +399,23 @@ export async function refreshTokenGrant(
   req: IncomingMessage,
   res: ServerResponse,
   ctx: AuthHandlerContext,
+  preParsedBody?: Record<string, string>,
 ): Promise<void> {
-  // 1. Parse form body
+  // 1. Parse form body. T18 dispatcher already consumed the request stream
+  //    when dispatching on grant_type; it passes the parsed body via
+  //    preParsedBody so we don't try to re-read a finished stream. Direct
+  //    callers (tests, future internal flows) leave preParsedBody undefined
+  //    and we read the body ourselves.
   let body: Record<string, string>;
-  try {
-    body = await parseFormBody(req);
-  } catch {
-    writeOAuthError(res, "invalid_request", "Could not parse body");
-    return;
+  if (preParsedBody !== undefined) {
+    body = preParsedBody;
+  } else {
+    try {
+      body = await parseFormBody(req);
+    } catch {
+      writeOAuthError(res, "invalid_request", "Could not parse body");
+      return;
+    }
   }
   const refreshToken = body.refresh_token;
   if (!refreshToken) {

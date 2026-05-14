@@ -178,7 +178,10 @@ describe("dispatchAuthRoutes — happy-path stubs return 501", () => {
     // oauth-callback-state.test.ts + the dispatcher-routing assertion below
     // (the synthetic mockReq has no state/code params → real handler returns
     // 400 INVALID_REQUEST, still proving routing reached the new handler).
-    { method: "POST", url: "/api/auth/oauth/token", stub: "handleOAuthToken" },
+    // NOTE: POST /api/auth/oauth/token was a stub in T14.5 but is now a real
+    // T18 handler — verified in oauth-token-dispatch.test.ts + the
+    // dispatcher-routing assertion below (synthetic mockReq has no body
+    // stream → real handler returns 400 invalid_request).
     // NOTE: POST /api/auth/oauth/device_authorization was a stub in T14.5
     // but is now a real T17 handler — verified in
     // oauth-device-authorization.test.ts + the dispatcher-routing assertion
@@ -242,6 +245,25 @@ describe("dispatchAuthRoutes — T16a /api/auth/oauth/callback dispatched (not 5
     expect(res.statusCode).toBe(400);
     const body = res.body as Record<string, unknown>;
     expect(body.code).toBe("INVALID_REQUEST");
+  });
+});
+
+describe("dispatchAuthRoutes — T18 /api/auth/oauth/token dispatched (not 501 stub)", () => {
+  it("POST /api/auth/oauth/token routes to handleOAuthToken (not 501)", async () => {
+    // mockReq is a plain object — parseFormBody's req.on() throws and the
+    // dispatcher's .catch falls back to an empty body, which trips the
+    // missing-grant_type branch → 400 invalid_request. Proves the route
+    // reached the real T18 handler (not the 501 stub).
+    const res = mockResponse();
+    const handled = await dispatchAuthRoutes(
+      mockReq("POST", "/api/auth/oauth/token"),
+      res as unknown as ServerResponse,
+      ctx,
+    );
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(400);
+    const body = res.body as Record<string, unknown>;
+    expect(body.error).toBe("invalid_request");
   });
 });
 
