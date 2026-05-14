@@ -13,7 +13,7 @@ export default defineConfig({
       // per spec §15.6 + V4 + V2 patches §C.3. Per-file thresholds are
       // commented out until the files land — uncomment as each task ships:
       thresholds: {
-        // "src/auth/refresh-rotation.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
+        "src/auth/refresh-rotation.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/auth/csrf.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/auth/token-epoch.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/auth/oauth-state.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
