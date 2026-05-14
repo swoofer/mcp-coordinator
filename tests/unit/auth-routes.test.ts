@@ -171,11 +171,11 @@ describe("dispatchAuthRoutes — happy-path stubs return 501", () => {
     // assertion below (302 instead of 501).
     { method: "GET", url: "/api/auth/oauth/callback", stub: "handleOAuthCallback" },
     { method: "POST", url: "/api/auth/oauth/token", stub: "handleOAuthToken" },
-    {
-      method: "POST",
-      url: "/api/auth/oauth/device_authorization",
-      stub: "handleDeviceAuthorization",
-    },
+    // NOTE: POST /api/auth/oauth/device_authorization was a stub in T14.5
+    // but is now a real T17 handler — verified in
+    // oauth-device-authorization.test.ts + the dispatcher-routing assertion
+    // below (400 INVALID_REQUEST on the synthetic mockReq because the real
+    // handler tries to read a body stream that's a plain object).
     { method: "POST", url: "/auth/device/approve", stub: "handleDeviceApprove" },
     { method: "POST", url: "/api/auth/logout", stub: "handleLogout" },
     { method: "POST", url: "/api/auth/logout-all", stub: "handleLogoutAll" },
@@ -217,6 +217,26 @@ describe("dispatchAuthRoutes — T15 /auth/login dispatched (not 501 stub)", () 
     expect(handled).toBe(true);
     expect(res.statusCode).toBe(302);
     expect(typeof res.headers.Location).toBe("string");
+  });
+});
+
+describe("dispatchAuthRoutes — T17 /api/auth/oauth/device_authorization dispatched (not 501 stub)", () => {
+  it("POST /api/auth/oauth/device_authorization routes to handleDeviceAuthorization (not 501)", async () => {
+    // The test's mockReq is a plain {method,url} object — it has no
+    // req.on('data') stream surface, so the real handler's parseFormBody
+    // rejects and the handler returns 400 INVALID_REQUEST. That's still
+    // sufficient proof that dispatchAuthRoutes routes the URL to the new
+    // T17 handler (not the 501 stub).
+    const res = mockResponse();
+    const handled = await dispatchAuthRoutes(
+      mockReq("POST", "/api/auth/oauth/device_authorization"),
+      res as unknown as ServerResponse,
+      ctx,
+    );
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(400);
+    const body = res.body as Record<string, unknown>;
+    expect(body.code).toBe("INVALID_REQUEST");
   });
 });
 

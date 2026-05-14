@@ -18,6 +18,7 @@ export default defineConfig({
         "src/auth/token-epoch.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/auth/oauth-state.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/auth/oauth-login.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
+        "src/auth/device-flow.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/auth/jwt-mint.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/auth/membership-cache.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/auth/allowlist.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
