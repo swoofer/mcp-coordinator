@@ -277,6 +277,7 @@ describe("http/metrics: handleMetrics access control", () => {
     expect(JSON.parse(res.body)).toEqual({
       code: "FORBIDDEN",
       message: "Access denied",
+      request_id: null,
     });
   });
 

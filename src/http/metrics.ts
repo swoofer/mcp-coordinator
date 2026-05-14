@@ -16,6 +16,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import crypto from "node:crypto";
 import { registry } from "../observability/metrics.js";
+import { appError } from "./response-contract.js";
 
 export interface MetricsHandlerOptions {
   /** When true (default), only allow requests from loopback addresses. */
@@ -76,7 +77,7 @@ export async function handleMetrics(
     res.writeHead(403, {
       "Content-Type": "application/json; charset=utf-8",
     });
-    res.end(JSON.stringify({ code: "FORBIDDEN", message: "Access denied" }));
+    res.end(JSON.stringify(appError("FORBIDDEN", "Access denied")));
     return;
   }
 
