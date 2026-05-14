@@ -7,6 +7,7 @@ import { silentLogger, type Logger } from "./logger.js";
 import { parseCookies } from "./auth/cookies.js";
 import { isAcceptedKid, type JwtKeyRegistry } from "./auth/jwt-keys.js";
 import { readTokenEpoch } from "./auth/token-epoch.js";
+import { verifyServiceTokenJti } from "./auth/service-tokens.js";
 import { audit } from "./security/audit.js";
 import { bearerAuthHeader } from "./http/response-contract.js";
 
@@ -315,6 +316,32 @@ async function verifyPhase2SessionCookie(
       };
     }
 
+    // T25 / V4 §5.5: service-account override. Service tokens carry
+    // service_account=true; every request DB-validates the jti so admin
+    // force-revoke wins immediately (overrides §9.5 trust-signature).
+    if (claims.service_account === true) {
+      if (typeof claims.jti !== "string") {
+        audit("auth.invalid_token", {
+          tier: 2,
+          metadata: { reason: "service_token_missing_jti" },
+        });
+        return {
+          ok: false, status: 401, error: "Invalid service token",
+          wwwAuthenticate: bearerAuthHeader("invalid_token", "Invalid service token"),
+        };
+      }
+      if (!verifyServiceTokenJti(ctx.db, claims.jti)) {
+        audit("auth.invalid_token", {
+          tier: 2,
+          metadata: { reason: "service_token_revoked" },
+        });
+        return {
+          ok: false, status: 401, error: "Service token revoked",
+          wwwAuthenticate: bearerAuthHeader("invalid_token", "Service token revoked"),
+        };
+      }
+    }
+
     // Default role per LEAST PRIVILEGE if the JWT omits it. Phase 2 access
     // JWTs always set `role`, but the validator must be defensive.
     const rawRole = claims.role;
@@ -418,6 +445,28 @@ export async function authenticateRequest(req: IncomingMessage, options: Authent
   try {
     ({ claims, wasLegacy } = await verifyTokenStrict(token));
   } catch (err) {
+    // T25: Phase 2 JWTs (incl. service tokens minted via mintAccessJWT) are
+    // signed with the Phase 2 signingKeys registry, NOT the Phase 1 HS256
+    // secret. When Phase 2 deps are wired and Bearer verify fails, try the
+    // Phase 2 cookie verifier — which also runs the service-account DB
+    // override per V4 §5.5.
+    if (phase2Ctx) {
+      const ph2 = await verifyPhase2SessionCookie(token, phase2Ctx);
+      if (ph2.ok) {
+        if (isRevoked(ph2.claims.sub)) {
+          return { ok: false, status: 403, error: "Agent has been revoked" };
+        }
+        const url = req.url || "";
+        const pathOnly = url.split(/[?#]/)[0];
+        if (
+          ADMIN_ONLY_ROUTES.some((r) => pathOnly === r) &&
+          ph2.claims.role !== "admin"
+        ) {
+          return { ok: false, status: 403, error: "Admin access required" };
+        }
+        return ph2;
+      }
+    }
     log.error({ err }, "JWT verification error");
     const isExpired = err instanceof errors.JWTExpired;
     return {

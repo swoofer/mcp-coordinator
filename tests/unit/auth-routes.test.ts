@@ -250,6 +250,33 @@ describe("dispatchAuthRoutes — T23 logout/logout-all/revoke dispatched (not 50
     expect(res.statusCode).toBe(401);
     expect((res.body as Record<string, unknown>).code).toBe("UNAUTHORIZED");
   });
+
+  it("POST /api/admin/service-tokens routes to handleIssueServiceToken (401 unauth)", async () => {
+    const res = mockResponse();
+    const handled = await dispatchAuthRoutes(
+      mockReqWithHeaders("POST", "/api/admin/service-tokens"),
+      res as unknown as ServerResponse,
+      ctx,
+    );
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(401);
+    expect((res.body as Record<string, unknown>).code).toBe("UNAUTHORIZED");
+  });
+
+  it("GET /api/admin/service-tokens returns 405 + Allow: POST", async () => {
+    const res = mockResponse();
+    const handled = await dispatchAuthRoutes(
+      mockReqWithHeaders("GET", "/api/admin/service-tokens"),
+      res as unknown as ServerResponse,
+      ctx,
+    );
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(405);
+    expect(res.headers.Allow).toBe("POST");
+    expect((res.body as Record<string, unknown>).code).toBe(
+      "METHOD_NOT_ALLOWED",
+    );
+  });
 });
 
 describe("dispatchAuthRoutes — T15 /auth/login dispatched (not 501 stub)", () => {

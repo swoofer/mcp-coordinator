@@ -6,6 +6,7 @@ import { handleOAuthToken } from "../auth/oauth-token.js";
 import { handleDeviceAuthorization, handleDeviceApprove } from "../auth/device-flow.js";
 import { handleLogout, handleLogoutAll, handleRevoke } from "../auth/logout.js";
 import { handleUserinfo } from "../auth/userinfo.js";
+import { handleIssueServiceToken } from "../admin/handle-service-tokens.js";
 import { handleDevicePage } from "../auth/pages/device.html.js";
 import { handleDeviceConfirmPage } from "../auth/pages/device-confirm.html.js";
 import { handleSuccessPage } from "../auth/pages/success.html.js";
@@ -90,6 +91,10 @@ export async function dispatchAuthRoutes(
     await handleUserinfo(req, res, ctx);
     return true;
   }
+  if (url === "/api/admin/service-tokens" && method === "POST") {
+    await handleIssueServiceToken(req, res, ctx);
+    return true;
+  }
 
   // Known auth path but wrong method → 405. Match the URL ignoring method.
   if (KNOWN_AUTH_PATHS.has(url)) {
@@ -117,6 +122,7 @@ const KNOWN_AUTH_PATHS = new Set([
   "/api/auth/logout-all",
   "/api/auth/revoke",
   "/api/auth/me",
+  "/api/admin/service-tokens",
 ]);
 
 function methodForPath(url: string): string {

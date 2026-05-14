@@ -115,6 +115,10 @@ beforeAll(() => {
 
 beforeEach(() => {
   getDb().exec("DELETE FROM audit_log");
+  // T25: scenario-5 test now inserts refresh_tokens rows for the
+  // service-account branch; clear them first to avoid FK violations on
+  // DELETE FROM users.
+  getDb().exec("DELETE FROM refresh_tokens");
   getDb().exec("DELETE FROM users");
   getDb().exec("DELETE FROM orgs");
   getDb().exec("DELETE FROM revoked_agents");
@@ -365,6 +369,24 @@ describe("Scenario 5 — claim shape variations", () => {
   it("service_account=true is preserved on returned claims", async () => {
     seedOrg();
     seedUser();
+    // T25: service-account JWTs are DB-validated via verifyServiceTokenJti.
+    // Seed a matching refresh_tokens row so the override passes.
+    getDb()
+      .prepare(
+        `INSERT INTO refresh_tokens
+           (id, user_id, org_id, jti, family_id, parent_jti, consumer_fingerprint,
+            expires_at, last_used_at)
+         VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?)`,
+      )
+      .run(
+        "row-svc-1",
+        "u-alice",
+        "org-acme",
+        "session-jti-1",
+        "service:00000000-0000-0000-0000-000000000001",
+        String(Math.floor(Date.now() / 1000) + 3600),
+        String(Math.floor(Date.now() / 1000)),
+      );
     const token = await mintSessionJWT({ role: "service", serviceAccount: true });
     const result = await authenticateRequest(
       mockReq({ cookie: sessionCookie(token) }),
