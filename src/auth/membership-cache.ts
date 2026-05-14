@@ -13,9 +13,9 @@ export interface MembershipCacheEntry {
 }
 
 export interface MembershipCacheMetrics {
-  hits: number;
-  misses: number;
-  staleServed: number;
+  readonly hits: number;
+  readonly misses: number;
+  readonly staleServed: number;
 }
 
 export interface StaleServedEvent {
@@ -45,7 +45,13 @@ const CACHE_CAPACITY = 10_000;
  */
 export class MembershipCache {
   private cache: LRUCache<string, MembershipCacheEntry>;
-  readonly metrics: MembershipCacheMetrics = { hits: 0, misses: 0, staleServed: 0 };
+  // Internal mutable counters. Exposed publicly via `metrics` typed as the
+  // readonly MembershipCacheMetrics interface so external consumers cannot
+  // corrupt audit-relevant fields (e.g. `cache.metrics.hits = 0`).
+  private _metrics = { hits: 0, misses: 0, staleServed: 0 };
+  get metrics(): MembershipCacheMetrics {
+    return this._metrics;
+  }
 
   constructor(
     private clock: Clock,
@@ -74,7 +80,7 @@ export class MembershipCache {
     const now = this.clock.now();
 
     if (cached && (now - cached.ts) < POSITIVE_TTL_S) {
-      this.metrics.hits++;
+      this._metrics.hits++;
       return cached.memberships;
     }
 
@@ -86,13 +92,16 @@ export class MembershipCache {
       const raw = await provider.listMemberships(accessToken);
       const memberships = raw.map((s) => s.toLowerCase());
       this.cache.set(key, { memberships, ts: now });
-      this.metrics.misses++;
+      this._metrics.misses++;
       return memberships;
     } catch (err) {
       if (err instanceof IdPTransientError && cached) {
         const age = now - cached.ts;
+        // Authoritative stale-window check. LRU TTL uses wall-clock Date.now()
+        // and is NOT driven by the injected Clock; this application-side guard
+        // is the sole enforcement mechanism for the 10-minute stale boundary.
         if (age < STALE_MAX_S) {
-          this.metrics.staleServed++;
+          this._metrics.staleServed++;
           this.onStaleServed?.({ userId, provider: provider.name, ageSeconds: age });
           return cached.memberships;
         }

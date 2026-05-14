@@ -134,11 +134,16 @@ describe("MembershipCache.getMemberships", () => {
     expect(cache.size()).toBe(0);
   });
 
-  it("IdPTransientError after 10min of cached entry: re-throws (cache evicted)", async () => {
+  it("IdPTransientError after STALE_MAX_S: re-throws via application-side age check", async () => {
+    // Note: LRU TTL uses wall-clock Date.now() and is NOT driven by the
+    // injected FakeClock — so the LRU entry is technically still present
+    // here. The application-side `age < STALE_MAX_S` guard in
+    // membership-cache.ts is what causes the re-throw. This guard is the
+    // authoritative stale-window enforcement; do not remove it trusting LRU.
     const cache = new MembershipCache(clock);
     const provider = makeFakeProvider("github", { ok: ["acme"] });
     await cache.getMemberships("user-1", provider, "tok");
-    clock.advance(601); // past 10min absolute LRU TTL — entry evicted
+    clock.advance(601); // past 10min stale window (601 >= STALE_MAX_S=600)
     provider.setBehavior({ throwTransient: true });
     await expect(cache.getMemberships("user-1", provider, "tok"))
       .rejects.toBeInstanceOf(IdPTransientError);
