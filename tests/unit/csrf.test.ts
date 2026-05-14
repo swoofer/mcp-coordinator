@@ -62,7 +62,6 @@ describe("verifyCsrfToken", () => {
         (a, b) => {
           const aStr = Buffer.from(a).toString("base64url");
           const bStr = Buffer.from(b).toString("base64url");
-          if (aStr === bStr) return true; // fc may rarely generate equal arrays; skip
           return verifyCsrfToken(aStr, bStr) === false;
         },
       ),
