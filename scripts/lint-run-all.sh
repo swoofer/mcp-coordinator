@@ -11,6 +11,7 @@ LINTS=(
   "lint-no-current-timestamp.sh"
   "lint-no-audit-mutation.sh"
   "lint-html-escape.sh"
+  "lint-no-direct-env-in-auth.sh"
 )
 
 overall_status=0

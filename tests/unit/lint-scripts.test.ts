@@ -168,6 +168,50 @@ describe("lint scripts (Phase 2 guard rails)", () => {
     });
   });
 
+  describe("lint-no-direct-env-in-auth.sh", () => {
+    it("catches synthetic process.env.COORDINATOR_ violation", () => {
+      writeFixture(
+        "src/auth/handler.ts",
+        "const s = process.env.COORDINATOR_JWT_SECRET;\n",
+      );
+      const { status, stderr } = runLint(
+        "lint-no-direct-env-in-auth.sh",
+        [path.join(sandbox, "src", "auth")],
+      );
+      expect(status).toBe(1);
+      expect(stderr).toMatch(/process\.env\.COORDINATOR_/);
+    });
+
+    it("passes on a clean sandbox (no env reads)", () => {
+      writeFixture(
+        "src/auth/handler.ts",
+        "const s = getOrgSetting(db, orgId, 'jwt_secret', '');\n",
+      );
+      const { status } = runLint(
+        "lint-no-direct-env-in-auth.sh",
+        [path.join(sandbox, "src", "auth")],
+      );
+      expect(status).toBe(0);
+    });
+
+    it("allowlists src/auth/org-settings.ts (the shim may read env)", () => {
+      writeFixture(
+        "src/auth/org-settings.ts",
+        "const s = process.env.COORDINATOR_JWT_SECRET;\n",
+      );
+      const { status } = runLint(
+        "lint-no-direct-env-in-auth.sh",
+        [path.join(sandbox, "src", "auth")],
+      );
+      expect(status).toBe(0);
+    });
+
+    it("passes against the real repo at HEAD", () => {
+      const { status } = runLint("lint-no-direct-env-in-auth.sh");
+      expect(status).toBe(0);
+    });
+  });
+
   describe("lint-run-all.sh", () => {
     it("exits 0 against the real repo at HEAD", () => {
       const { status } = runLint("lint-run-all.sh");
