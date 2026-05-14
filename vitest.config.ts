@@ -20,6 +20,7 @@ export default defineConfig({
         // "src/auth/jwt-mint.ts":          { branches: 100 },
         // "src/auth/membership-cache.ts":  { branches: 100 },
         // "src/auth/service-tokens.ts":    { branches: 100 },
+        "src/auth/cookies.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
       },
     },
   },
