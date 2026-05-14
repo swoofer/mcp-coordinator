@@ -315,13 +315,13 @@ describe("handleUserinfo", () => {
     // that handleUserinfo's defensive 404 guards against.
     seedOrg("org-real", "Real");
     seedUser("u-orphan", "member", "org-real", "orphan@x.com", "Orphan");
-    getDb().pragma("foreign_keys = OFF");
+    getDb().exec("PRAGMA foreign_keys = OFF");
     try {
       getDb()
         .prepare("UPDATE users SET primary_org_id = ? WHERE id = ?")
         .run("org-vanished", "u-orphan");
     } finally {
-      getDb().pragma("foreign_keys = ON");
+      getDb().exec("PRAGMA foreign_keys = ON");
     }
     const token = await mintSessionJWT({ sub: "u-orphan" });
     const req = mockRequest({ cookie: sessionCookie(token) });
