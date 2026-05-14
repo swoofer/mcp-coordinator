@@ -133,13 +133,32 @@ describe("lint scripts (Phase 2 guard rails)", () => {
       expect(status).toBe(0);
     });
 
-    it("passes when the line uses render() (auto-escaping renderer)", () => {
+    it("passes when the line uses render() with no inline interpolation", () => {
+      // render(template, vars) without ${...} on the line exits at the
+      // `[[ "$stripped" =~ \$\{ ]] || continue` guard — no bypass needed.
       writeFixture(
         "pages/login.ts",
-        "export function loginPage(name: string) {\n  return render(loginTemplate, { user: `${name}` });\n}\n",
+        "export function loginPage(name: string) {\n  return render(loginTemplate, { user: name });\n}\n",
       );
       const { status } = runLint("lint-html-escape.sh", [path.join(sandbox, "pages")]);
       expect(status).toBe(0);
+    });
+
+    it("catches unescaped interpolation on a line that also contains render(", () => {
+      // Regression: a prior line-level `render(` bypass let through inline
+      // template literals like `render(\`<div>${x}</div>\`, {})` that DO
+      // need escapeHtml() wrapping. The per-expression check must apply
+      // regardless of whether `render(` appears on the line.
+      const pagesDir = path.join(sandbox, "src", "auth", "pages");
+      mkdirSync(pagesDir, { recursive: true });
+      writeFileSync(
+        path.join(pagesDir, "bad.ts"),
+        "export const x = render(`<div>${userInput}</div>`, {});\n",
+        "utf-8",
+      );
+      const { status, stderr } = runLint("lint-html-escape.sh", [path.join(sandbox, "src", "auth", "pages")]);
+      expect(status).toBe(1);
+      expect(stderr).toMatch(/\$\{/);
     });
 
     it("exits 0 cleanly when src/auth/pages does not yet exist", () => {

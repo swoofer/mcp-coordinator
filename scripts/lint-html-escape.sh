@@ -36,12 +36,6 @@ while IFS= read -r line; do
   stripped="${content%%//*}"
   [[ "$stripped" =~ \$\{ ]] || continue
 
-  # Allow lines that explicitly route through render(...) -- the
-  # auto-escaping template renderer.
-  if [[ "$stripped" =~ render\( ]]; then
-    continue
-  fi
-
   # Extract each ${...} expression and check each one calls escapeHtml(.
   expressions=$(printf '%s' "$stripped" | grep -oE '\$\{[^}]+\}' || true)
   bad=0
