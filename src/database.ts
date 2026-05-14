@@ -622,6 +622,11 @@ export function initDatabase(dataDir: string): void {
     try { db.exec("ALTER TABLE device_auth_requests ADD COLUMN requester_user_agent TEXT"); } catch { /* already exists */ }
     try { db.exec("ALTER TABLE device_auth_requests ADD COLUMN requester_country TEXT"); } catch { /* already exists */ }
     try { db.exec("ALTER TABLE device_auth_requests ADD COLUMN failed_approval_attempts INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
+    // V4 FIX 21: denial tracking. denied_at (unix seconds) set on rejection or
+    // brute-force lockout; denied_reason ∈ {user_denied, too_many_failed_approvals,
+    // brute_force_lockout}. Both nullable; existing rows get NULL.
+    try { db.exec("ALTER TABLE device_auth_requests ADD COLUMN denied_at INTEGER"); } catch { /* already exists */ }
+    try { db.exec("ALTER TABLE device_auth_requests ADD COLUMN denied_reason TEXT"); } catch { /* already exists */ }
     try { db.exec("CREATE INDEX IF NOT EXISTS idx_device_expires ON device_auth_requests(expires_at)"); } catch { /* already exists */ }
 
     // --- system_state table (NR12 restore detection + recovery markers) -------

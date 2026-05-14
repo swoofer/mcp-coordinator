@@ -218,6 +218,22 @@ describe("v0.7 → v0.8 migration", () => {
     expect(failedAttempts?.dflt_value).toBe("0");
   });
 
+  it("device_auth_requests gains denied_at + denied_reason (V4 FIX 21)", () => {
+    const db = getDb();
+    const cols = db.prepare("PRAGMA table_info(device_auth_requests)").all() as
+      { name: string; type: string; notnull: number; dflt_value: string | null }[];
+    const names = cols.map((c) => c.name);
+    expect(names).toContain("denied_at");
+    expect(names).toContain("denied_reason");
+    // Both nullable per spec — existing rows get NULL on ADD COLUMN
+    const deniedAt = cols.find((c) => c.name === "denied_at");
+    expect(deniedAt?.type).toBe("INTEGER");
+    expect(deniedAt?.notnull).toBe(0);
+    const deniedReason = cols.find((c) => c.name === "denied_reason");
+    expect(deniedReason?.type).toBe("TEXT");
+    expect(deniedReason?.notnull).toBe(0);
+  });
+
   it("system_state table created for NR12 restore detection", () => {
     const db = getDb();
     const cols = db.prepare("PRAGMA table_info(system_state)").all() as { name: string; pk: number }[];
