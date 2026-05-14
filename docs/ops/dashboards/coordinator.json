@@ -1,0 +1,676 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "mcp-coordinator Phase 2 auth, IdP, audit, and sweeper observability. Sources the dedicated /metrics/auth Prometheus registry declared in src/observability/metrics.ts.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "title": "Row 1 — Auth Activity",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "panels": []
+    },
+    {
+      "title": "Login attempts rate (by outcome)",
+      "type": "timeseries",
+      "id": 1,
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "${prometheus_datasource}" },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(coordinator_auth_login_attempts_total[5m]))",
+          "legendFormat": "{{outcome}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "drawStyle": "line", "lineInterpolation": "linear", "stacking": { "mode": "normal", "group": "A" }, "fillOpacity": 25 }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "desc" },
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }
+      }
+    },
+    {
+      "title": "Login failures (by reason)",
+      "type": "timeseries",
+      "id": 2,
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "${prometheus_datasource}" },
+      "targets": [
+        {
+          "expr": "sum by (reason) (rate(coordinator_auth_login_failure_total[5m]))",
+          "legendFormat": "{{reason}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "drawStyle": "line", "fillOpacity": 10 }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }
+      }
+    },
+    {
+      "title": "Login lockouts triggered (per hour)",
+      "type": "stat",
+      "id": 3,
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "${prometheus_datasource}" },
+      "targets": [
+        {
+          "expr": "rate(coordinator_login_lockout_triggered_total[1h]) * 3600",
+          "legendFormat": "lockouts/hr",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 5 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      }
+    },
+    {
+      "title": "Active users (1h login-success proxy)",
+      "type": "stat",
+      "id": 4,
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "${prometheus_datasource}" },
+      "targets": [
+        {
+          "expr": "sum(increase(coordinator_auth_login_success_total[1h]))",
+          "legendFormat": "successful logins last 1h",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      }
+    },
+    {
+      "title": "Row 2 — Refresh Health",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
+      "id": 101,
+      "panels": []
+    },
+    {
+      "title": "Refresh rotations rate",
+      "type": "timeseries",
+      "id": 5,
+      "gridPos": { "h": 8, "w": 5, "x": 0, "y": 10 },
+      "datasource": { "type": "prometheus", "uid": "${prometheus_datasource}" },
+      "targets": [
+        {
+          "expr": "sum by (org_id) (rate(coordinator_auth_refresh_rotated_total[5m]))",
+          "legendFormat": "org={{org_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ops" },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }
+      }
+    },
+    {
+      "title": "Refresh chain revocations (by reason)",
+      "type": "timeseries",
+      "id": 6,
+      "gridPos": { "h": 8, "w": 5, "x": 5, "y": 10 },
+      "datasource": { "type": "prometheus", "uid": "${prometheus_datasource}" },
+      "targets": [
+        {
+          "expr": "sum by (reason) (rate(coordinator_auth_refresh_chain_revoked_total[5m]))",
+          "legendFormat": "{{reason}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "drawStyle": "line", "fillOpacity": 25 },
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }
+      }
+    },
+    {
+      "title": "Suspicious replays rate",
+      "type": "timeseries",
+      "id": 7,
+      "gridPos": { "h": 8, "w": 5, "x": 10, "y": 10 },
+      "datasource": { "type": "prometheus", "uid": "${prometheus_datasource}" },
+      "targets": [
+        {
+          "expr": "rate(coordinator_auth_refresh_suspicious_replay_total[5m])",
+          "legendFormat": "suspicious replays",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ops" },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "single" },
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false }
+      }
+    },
+    {
+      "title": "Token revocations (by reason)",
+      "type": "timeseries",
+      "id": 8,
+      "gridPos": { "h": 8, "w": 5, "x": 15, "y": 10 },
+      "datasource": { "type": "prometheus", "uid": "${prometheus_datasource}" },
+      "targets": [
+        {
+          "expr": "sum by (reason) (rate(coordinator_auth_token_revoked_total[5m]))",
+          "legendFormat": "{{reason}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ops" },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }
+      }
+    },
+    {
+      "title": "Auth request duration p99 (by endpoint)",
+      "type": "timeseries",
+      "id": 9,
+      "gridPos": { "h": 8, "w": 4, "x": 20, "y": 10 },
+      "datasource": { "type": "prometheus", "uid": "${prometheus_datasource}" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum by (endpoint, le) (rate(coordinator_auth_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{endpoint}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 5 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }
+      }
+    },
+    {
+      "title": "Row 3 — IdP Connectivity",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 },
+      "id": 102,
+      "panels": []
+    },
+    {
+      "title": "IdP API calls (by endpoint, outcome)",
+      "type": "timeseries",
+      "id": 10,
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 19 },
+      "datasource": { "type": "prometheus", "uid": "${prometheus_datasource}" },
+      "targets": [
+        {
+          "expr": "sum by (endpoint, outcome) (rate(coordinator_idp_api_calls_total[5m]))",
+          "legendFormat": "{{endpoint}} / {{outcome}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ops" },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }
+      }
+    },
+    {
+      "title": "IdP cache hit rate",
+      "type": "gauge",
+      "id": 11,
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 19 },
+      "datasource": { "type": "prometheus", "uid": "${prometheus_datasource}" },
+      "targets": [
+        {
+          "expr": "coordinator_idp_cache_hits_total / clamp_min(coordinator_idp_cache_hits_total + coordinator_idp_cache_misses_total, 1)",
+          "legendFormat": "hit ratio",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 0.7 },
+              { "color": "green", "value": 0.9 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      }
+    },
+    {
+      "title": "IdP stale-served rate",
+      "type": "timeseries",
+      "id": 12,
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 19 },
+      "datasource": { "type": "prometheus", "uid": "${prometheus_datasource}" },
+      "targets": [
+        {
+          "expr": "rate(coordinator_idp_stale_served_total[5m])",
+          "legendFormat": "stale-served/s",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ops" },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "single" },
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false }
+      }
+    },
+    {
+      "title": "IdP rate-limit remaining (GitHub X-RateLimit)",
+      "type": "stat",
+      "id": 13,
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 19 },
+      "datasource": { "type": "prometheus", "uid": "${prometheus_datasource}" },
+      "targets": [
+        {
+          "expr": "coordinator_idp_rate_limit_remaining",
+          "legendFormat": "remaining",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 500 },
+              { "color": "green", "value": 1000 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      }
+    },
+    {
+      "title": "Row 4 — Audit & Sweep",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 },
+      "id": 103,
+      "panels": []
+    },
+    {
+      "title": "Audit queue depth",
+      "type": "timeseries",
+      "id": 14,
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 28 },
+      "datasource": { "type": "prometheus", "uid": "${prometheus_datasource}" },
+      "targets": [
+        {
+          "expr": "coordinator_audit_queue_depth",
+          "legendFormat": "queue depth",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5000 },
+              { "color": "red", "value": 8000 }
+            ]
+          },
+          "custom": { "drawStyle": "line", "fillOpacity": 15, "thresholdsStyle": { "mode": "line+area" } }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "single" },
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false }
+      }
+    },
+    {
+      "title": "Audit drops total",
+      "type": "stat",
+      "id": 15,
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 28 },
+      "datasource": { "type": "prometheus", "uid": "${prometheus_datasource}" },
+      "targets": [
+        {
+          "expr": "coordinator_audit_drops_total",
+          "legendFormat": "drops total",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      }
+    },
+    {
+      "title": "Audit-after-critical-op failures (V4 FIX 23)",
+      "type": "stat",
+      "id": 16,
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 32 },
+      "datasource": { "type": "prometheus", "uid": "${prometheus_datasource}" },
+      "targets": [
+        {
+          "expr": "coordinator_audit_after_critical_op_failures_total",
+          "legendFormat": "telemetry-of-loss",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      }
+    },
+    {
+      "title": "Sweeper rows deleted/hour (by table)",
+      "type": "timeseries",
+      "id": 17,
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 28 },
+      "datasource": { "type": "prometheus", "uid": "${prometheus_datasource}" },
+      "targets": [
+        {
+          "expr": "sum by (table) (rate(coordinator_sweeper_rows_deleted_total[1h])) * 3600",
+          "legendFormat": "{{table}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }
+      }
+    },
+    {
+      "title": "Sweeper circuit open",
+      "type": "stat",
+      "id": 18,
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 36 },
+      "datasource": { "type": "prometheus", "uid": "${prometheus_datasource}" },
+      "targets": [
+        {
+          "expr": "coordinator_sweeper_circuit_open",
+          "legendFormat": "circuit open",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "closed", "color": "green" }, "1": { "text": "OPEN", "color": "red" } } }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      }
+    },
+    {
+      "title": "Sweeper consecutive failures",
+      "type": "stat",
+      "id": 19,
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 36 },
+      "datasource": { "type": "prometheus", "uid": "${prometheus_datasource}" },
+      "targets": [
+        {
+          "expr": "coordinator_sweeper_consecutive_failures",
+          "legendFormat": "consecutive failures",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 2 },
+              { "color": "red", "value": 5 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      }
+    },
+    {
+      "title": "Sweeper time since last run",
+      "type": "stat",
+      "id": 20,
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 36 },
+      "datasource": { "type": "prometheus", "uid": "${prometheus_datasource}" },
+      "targets": [
+        {
+          "expr": "time() - coordinator_sweeper_last_run_timestamp",
+          "legendFormat": "seconds since last run",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 120 },
+              { "color": "red", "value": 180 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      }
+    },
+    {
+      "title": "Rate-limit blocks (by endpoint, identifier_type)",
+      "type": "timeseries",
+      "id": 21,
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 36 },
+      "datasource": { "type": "prometheus", "uid": "${prometheus_datasource}" },
+      "targets": [
+        {
+          "expr": "sum by (endpoint, identifier_type) (rate(coordinator_rate_limit_blocked_total[5m]))",
+          "legendFormat": "{{endpoint}} / {{identifier_type}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ops" },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false }
+      }
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["mcp-coordinator", "auth", "phase2"],
+  "templating": {
+    "list": [
+      {
+        "name": "prometheus_datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "selected": true, "text": "Prometheus", "value": "Prometheus" },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Prometheus datasource",
+        "multi": false,
+        "options": [],
+        "refresh": 1,
+        "skipUrlSync": false
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "",
+  "title": "mcp-coordinator (Phase 2 Auth)",
+  "uid": "mcp-coordinator-phase2",
+  "version": 1,
+  "weekStart": ""
+}
