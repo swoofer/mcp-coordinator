@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
-import { initAuth, createToken, verifyToken, refreshToken, authenticateRequest, isRevoked, revokeAgent } from "../../src/auth.js";
+import { initAuth, createToken, verifyToken, refreshToken, authenticateRequest, isRevoked, revokeAgent, resetPhase2Auth } from "../../src/auth.js";
 import type { IncomingMessage } from "http";
 import fs from "fs";
 
@@ -14,6 +14,9 @@ beforeAll(() => {
 beforeEach(() => {
   const db = getDb();
   db.exec("DELETE FROM revoked_agents");
+  // Ensure Phase 2 cookie path (Scenario 5) doesn't bleed in from other
+  // test files that wired initPhase2Auth — auth.ts holds module-level state.
+  resetPhase2Auth();
 });
 
 afterAll(() => {
