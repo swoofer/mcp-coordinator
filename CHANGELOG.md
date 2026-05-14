@@ -1,5 +1,142 @@
 # Changelog
 
+## [0.8.0](https://github.com/swoofer/mcp-coordinator/compare/v0.7.0...v0.8.0) (2026-05-14)
+
+Phase 2 of the auth roadmap: OAuth 2.1 + RFC 8628 device flow + cookie sessions + service tokens + audit pipeline + sweeper. Feature-flagged behind `COORDINATOR_OAUTH_ENABLED=true` (default false). Phase 1 deployments are byte-identical when the flag is unset.
+
+37 of 52 plan tasks shipped (Phase A foundation + B helpers + C endpoints + D integration). Phase E (extended test suites + SDK + docs) deferred. Spec, decisions, and plan docs live under `docs/superpowers/specs/` and `docs/superpowers/plans/` for traceability; every commit message cites the spec § or FIX number it implements.
+
+### ⚠ BREAKING CHANGES
+
+* **auth/providers:** `IdPProvider.exchangeCode` return type changed from `Promise<IdpUserInfo>` to `Promise<ExchangeCodeResult>` (`{ user, accessToken }`). External provider implementations need updating. Phase 1 shipped with an empty registry, so no in-tree consumers break. (V4 FIX 25)
+* **db:** `audit_log` columns renamed: `user_id → actor_user_id`, `org_id → actor_org_id`, `ip → actor_ip`, `user_agent → actor_user_agent`, `metadata → metadata_json`. Phase 1 `auditLog()` helper continues to work via in-helper translation; direct SQL consumers need updating. (V4 FIX 1)
+* **db:** `users.org_id` renamed to `users.primary_org_id`. The `users_legacy_v0_7` compat view exposes the old name as `org_id` for read-only consumers; `lint-no-users-org-id.sh` enforces the migration in app code.
+
+### Features
+
+#### OAuth 2.1 + Device Flow (RFC 6749 + RFC 8628)
+
+* **auth/oauth:** `GET /auth/login` — initiates OAuth flow with PKCE S256 + HMAC-bound state cookie per V4 FIX 19 ([T15](https://github.com/swoofer/mcp-coordinator/commit/062e312))
+* **auth/oauth:** `GET /api/auth/oauth/callback` — state CAS + mix-up defense + IdP exchange + provisioning TX + JWT mint + cookie emission + 302 to `/auth/success` ([T16a](https://github.com/swoofer/mcp-coordinator/commit/6b23c46) + [T16b](https://github.com/swoofer/mcp-coordinator/commit/7e9132b) + [T16c](https://github.com/swoofer/mcp-coordinator/commit/b1cce31))
+* **auth/oauth:** `POST /api/auth/oauth/token` — unified grant dispatcher (authorization_code + refresh_token + device_code) with RFC 6749 §5.2 envelope ([T18](https://github.com/swoofer/mcp-coordinator/commit/eebfbe2))
+* **auth/oauth:** `POST /api/auth/oauth/device_authorization` — RFC 8628 §3.1 device init with collision retry + per-IP rate limit ([T17](https://github.com/swoofer/mcp-coordinator/commit/6056585))
+* **auth/oauth:** GET pages `/auth/device`, `/auth/device/confirm`, `/auth/success` with CSP-locked HTML + per-user_code CSRF ([T21](https://github.com/swoofer/mcp-coordinator/commit/a3f58ce))
+* **auth/oauth:** `POST /auth/device/approve` with CSRF + V4 FIX 21 brute-force lockout ([T20](https://github.com/swoofer/mcp-coordinator/commit/93b3d87))
+* **auth/oauth:** `/.well-known/oauth-authorization-server` RFC 8414 discovery doc ([T14](https://github.com/swoofer/mcp-coordinator/commit/ef64850))
+* **auth/providers:** concrete `GitHubProvider` implementing IdPProvider — buildAuthUrl + exchangeCode + listMemberships + requestDeviceCode + pollDeviceToken; AbortController 5s timeout + 1 retry on 5xx ([T05](https://github.com/swoofer/mcp-coordinator/commit/6b1d5f7))
+
+#### Refresh-token rotation (V3 §B-NEW-2 stolen-token detection)
+
+* **auth/refresh:** rotation happy path with HS256-pinned kid-allowlisted JWT verify + atomic UPDATE WHERE revoked_at IS NULL (V4 FIX 5) ([T19a](https://github.com/swoofer/mcp-coordinator/commit/827556f))
+* **auth/refresh:** reuse detection with 10s grace window + fingerprint binding + replay_count threshold 3 + family revoke (V3 §B-NEW-2) ([T19b](https://github.com/swoofer/mcp-coordinator/commit/620a3c6))
+* **auth/refresh:** idle timeout + IdP membership refresh + allowlist re-check (V4 FIX 7) + IdPTokenRevoked → 401 + service-token rejection ([T19c](https://github.com/swoofer/mcp-coordinator/commit/ddda48f))
+
+#### Service tokens (V4 §5.5)
+
+* **auth/service-tokens:** issuance with 90d hardcoded TTL ceiling + ≥10-char reason + admin-only POST endpoint + CLI verb `mcp-coordinator service-token issue` ([T25](https://github.com/swoofer/mcp-coordinator/commit/c518449))
+* **auth/service-tokens:** DB-lookup verification override for `service_account=true` JWTs (overrides §9.5 trust-signature; admin force-revoke wins immediately)
+
+#### Cookie sessions (Scenario 5)
+
+* **auth:** `authenticateRequest` extended with Scenario 5 — `__Host-coordinator_session` cookie auth via jose v6, HS256-pinned + kid-allowlisted + token_epoch check ([T27](https://github.com/swoofer/mcp-coordinator/commit/68f2d04))
+* **auth:** `POST /api/auth/logout` (local), `/logout-all` (token_epoch bump invalidates all sessions instantly), `/revoke` (RFC 7009 §2.2 anti-enumeration) ([T23](https://github.com/swoofer/mcp-coordinator/commit/068ee3e))
+* **auth:** `GET /api/auth/me` userinfo helper with 600/min rate limit ([T24](https://github.com/swoofer/mcp-coordinator/commit/dce5141))
+
+#### Audit infrastructure (V3 NR13 two-tier durability)
+
+* **security/audit:** `audit(action, options)` with optional `tier: 1 | 2` (default 2). Tier 1 = synchronous direct INSERT; Tier 2 = bounded queue (10K cap, 50-row / 100ms batch). 35 audit events catalogued per spec §11.2 ([T11a](https://github.com/swoofer/mcp-coordinator/commit/78b6798) + [T11b](https://github.com/swoofer/mcp-coordinator/commit/c9036b9))
+* **auth/audit-context:** `withAuditContext(actor, request, fn)` AsyncLocalStorage propagation — audit() auto-reads actor + request without explicit threading ([T11a](https://github.com/swoofer/mcp-coordinator/commit/78b6798))
+* **auth/request-id:** `withRequestId` ALS for cross-async-chain request_id propagation; inbound `X-Request-Id` honored when matching `/^[A-Za-z0-9._:-]{1,128}$/` ([T10](https://github.com/swoofer/mcp-coordinator/commit/2608a18))
+
+#### Crypto foundation
+
+* **auth/crypto:** HKDF-SHA256 domain-separated key derivation; mintAccessJWT + mintRefreshJWT (jose v6, HS256 pinned, kid header); PKCE S256 per RFC 7636 §4.2; entropy validation rejecting all-same-byte + dictionary words + low-Shannon secrets ([T08b](https://github.com/swoofer/mcp-coordinator/commit/c4b5609))
+* **auth/csrf:** random double-submit token + length pre-check + `crypto.timingSafeEqual`; HMAC binding cut per V4 CUT 2 (SameSite=Strict + `__Host-` + CSP carry the defense) ([T08](https://github.com/swoofer/mcp-coordinator/commit/57741a1))
+* **auth/cookies:** `__Host-` prefix helpers with Secure + Path=/ + no Domain enforcement; array Set-Cookie append for Node http ([T07](https://github.com/swoofer/mcp-coordinator/commit/67da436))
+
+#### Operational
+
+* **sweeper:** background sweeper deleting expired/revoked rows across 6 tables (oauth_state, device_auth_requests, refresh_tokens × 2 retention buckets, audit_log Tier 1/Tier 2). 60s cadence, adaptive chained passes (max 3), circuit breaker after 5 consecutive errors ([T28](https://github.com/swoofer/mcp-coordinator/commit/f1e5523))
+* **boot:** `bootPhase2(opts)` validates env, derives keys via HKDF, performs NR12 restore detection (refuses to start if audit_log timestamps lag wall-clock >5min unless `COORDINATOR_ALLOW_RESTORE=true` → token_epoch global bump), composes ServerContext, starts sweeper, wires SIGTERM drain. Phase 1 deployments bypass entirely when `COORDINATOR_OAUTH_ENABLED` is unset. ([T29](https://github.com/swoofer/mcp-coordinator/commit/85f116d))
+* **auth/rate-limit:** in-memory token-bucket per (endpoint, identifier) per V4 NR11 table; login-lockout with purpose-keyed SHA-256 identifier hashing ([T12](https://github.com/swoofer/mcp-coordinator/commit/4eea591))
+* **auth/membership-cache:** LRU 10K with 60s positive TTL + 10min stale-on-error for IdP transient failures (V3 §B-NEW-5) ([T04](https://github.com/swoofer/mcp-coordinator/commit/8ac74f9))
+* **auth/oauth-state:** PKCE state table CRUD with atomic CAS via UPDATE ... RETURNING (V3 §B-NEW-12 #15) ([T06](https://github.com/swoofer/mcp-coordinator/commit/0b14635))
+* **auth/token-epoch:** direct DB read per request (no cache per V4 CUT 1); monotonic `MAX(now, current+1)` bump for NTP-rollback safety per V4 FIX 20 ([T03](https://github.com/swoofer/mcp-coordinator/commit/08b779f))
+* **auth/allowlist:** `resolveOrgFromMemberships(db, lowercase_memberships)` with deterministic alphabetical tie-break per V4 FIX 22 ([T09](https://github.com/swoofer/mcp-coordinator/commit/58f7134))
+
+#### Observability + HTTP infrastructure
+
+* **observability/metrics:** Phase 2 prom-client registry — 29 metrics across auth activity, refresh chain, device flow, service tokens, IdP, audit queue, sweeper, rate limit, request duration histogram. `/metrics/auth` endpoint with localhost-only default + optional Bearer ([T37](https://github.com/swoofer/mcp-coordinator/commit/3e46720))
+* **observability/logger:** Pino with 16 redact paths from V4 §11.3 ([T36](https://github.com/swoofer/mcp-coordinator/commit/263354a))
+* **http/response-contract:** `bearerAuthHeader` per RFC 6750 §3, `oauthError` per RFC 6749 §5.2, `appError` envelope with auto-injected `request_id` from T10 ALS ([T36](https://github.com/swoofer/mcp-coordinator/commit/263354a))
+* **http/health:** `/healthz` liveness + `/health/ready` readiness — 503 when sweeper circuit-open OR audit queue depth > 80% OR DB unreachable OR draining ([T36](https://github.com/swoofer/mcp-coordinator/commit/263354a))
+
+#### Schema migration
+
+* **db:** v7 → v8 migration with column renames per V4 FIX 1, `users.primary_org_id` rename, `user_orgs` join table for Phase 5 readiness, `oauth_state` table, refresh_tokens fingerprint + family_id + replay_count + parent_jti, device_auth_requests forensics columns + `denied_at`/`denied_reason`/`last_polled_at`/`interval`/`approved_at`/`failed_approval_attempts`, `system_state` table, `users_legacy_v0_7` compat view (3742a68 + 9dd6043 + 93b3d87 follow-ups)
+
+### Bug Fixes (security)
+
+* **auth/providers/github:** validate `Link: rel="next"` URL origin matches `apiBaseUrl` before following — prevents cross-origin SSRF leaking the GitHub OAuth Bearer token to attacker-controlled hosts ([T05 followup](https://github.com/swoofer/mcp-coordinator/commit/467db43))
+* **auth/oauth-callback:** hash `idp_user_id` in audit metadata via new purpose-keyed `hashIdpUserId(s)` instead of storing PII raw (consistent with the codebase's identifier_hash discipline) ([T16b followup](https://github.com/swoofer/mcp-coordinator/commit/f3ce4bb))
+* **auth/jwt-mint:** pin BOTH `iat` and `exp` numerically when `iatOverride` is set — jose's `setExpirationTime("Xs")` resolves against wall time, breaking deterministic re-mint within the 10s grace window otherwise ([T19b](https://github.com/swoofer/mcp-coordinator/commit/620a3c6))
+
+### Tests
+
+* 1444 individual tests pass (1300 new in this release + 144 from Phase 1). 6 pre-existing Windows EBUSY file-handle teardown flakes ignored per project convention.
+* **Per-file 100% branch coverage enforced** via vitest thresholds on every security-critical module (csrf, token-epoch, oauth-state, jwt-mint, membership-cache, refresh-rotation, service-tokens, plus most Phase 2 helpers).
+* **Phase 1 backcompat suite** under `tests/backcompat/` — 31 cases proving the upgrade path is non-destructive and Phase 2 wiring is opt-in only ([T43](https://github.com/swoofer/mcp-coordinator/commit/1b5f92b))
+* **Cross-tenant isolation suite** under `tests/integration/` — 22 cases proving org-scoped data cannot leak across tenant boundaries via any Phase 2 endpoint ([T31](https://github.com/swoofer/mcp-coordinator/commit/7ac9ba6))
+* **CI lint scripts** under `scripts/` — 5 grep-based bash lints catching: `users.org_id` references, `CURRENT_TIMESTAMP` in Phase 2 columns, `UPDATE/DELETE audit_log` outside sweeper, unescaped `${...}` in HTML pages, direct `process.env.COORDINATOR_*` reads in auth/cli/admin (everything must go through T44 `getOrgSetting`) ([T01b](https://github.com/swoofer/mcp-coordinator/commit/d1c9a79) + [T44](https://github.com/swoofer/mcp-coordinator/commit/e05cade))
+
+### Deprecated
+
+* `auditLog(ev)` (Phase 1 helper) — superseded by `audit(action, options)` with explicit tier routing. The Phase 1 helper continues to work for backward compat; new callers use `audit()`.
+
+### Configuration
+
+New environment variables (required when `COORDINATOR_OAUTH_ENABLED=true`):
+
+* `COORDINATOR_OAUTH_ENABLED` — `true` to activate Phase 2 (default `false`)
+* `COORDINATOR_JWT_SECRET` — ≥32 bytes; entropy-validated at boot
+* `COORDINATOR_GITHUB_CLIENT_ID` / `COORDINATOR_GITHUB_CLIENT_SECRET`
+* `COORDINATOR_GITHUB_ORG` — seeds the bootstrap `orgs.allowlist_github_org` row
+* `COORDINATOR_PUBLIC_URL` — must be `http://` or `https://`; `http://` non-localhost requires `COORDINATOR_INSECURE_COOKIES=true` override
+
+Optional environment variables (all routed through T44 `getOrgSetting` so Phase 5 can override per-org via the `orgs` table):
+
+* `COORDINATOR_JWT_ACCESS_TTL` (default `15m`, max `60m`)
+* `COORDINATOR_JWT_REFRESH_TTL` (default `30d`, max `90d`)
+* `COORDINATOR_SESSION_IDLE_TIMEOUT` (unset = no idle check; `15m` recommended for regulated)
+* `COORDINATOR_AUTO_PROVISION` (`true`|`false`, default `true`)
+* `COORDINATOR_LOGIN_LOCKOUT_THRESHOLD` (default 5), `_WINDOW` (default 15m), `_DURATION` (default 15m)
+* `COORDINATOR_REFRESH_RETENTION_DAYS` (default 180)
+* `COORDINATOR_AUDIT_RETENTION_DAYS` (default 365) — Tier 1
+* `COORDINATOR_AUDIT_TIER2_RETENTION_DAYS` (default 90)
+* `COORDINATOR_ALLOW_RESTORE` (boot-only override after a DB restore; unset after boot per NR12)
+* `COORDINATOR_INSECURE_COOKIES` (`true` required for `http://` non-localhost; not for production)
+* `COORDINATOR_METRICS_BEARER` (optional Bearer token for `/metrics/auth` from non-loopback IPs)
+
+### Migration notes (v0.7.0 → v0.8.0)
+
+1. **Phase 1 deployments** (most existing installs): no action required. Leave `COORDINATOR_OAUTH_ENABLED` unset. The schema migration runs automatically on first start; existing data is preserved with column renames + backfills (token_epoch=0, family_id=random, outcome='legacy_unknown'). Phase 1 behavior is byte-identical.
+2. **Enabling Phase 2**: set the 5 required env vars above, set `COORDINATOR_OAUTH_ENABLED=true`, restart. The bootstrap flow assigns admin role to the first user who signs in via OAuth (atomic — concurrent first-time logins resolve to exactly one admin).
+3. **Custom IdPProvider implementations**: update `exchangeCode` return type from `Promise<IdpUserInfo>` to `Promise<ExchangeCodeResult>` (`{ user, accessToken }`).
+4. **Direct audit_log SQL consumers**: update column names per V4 FIX 1.
+5. **Direct users.org_id SQL consumers**: read from `users_legacy_v0_7` view, OR update to `users.primary_org_id`.
+
+### Deferred (planned for v0.8.x or v0.9.0)
+
+* Reference SDK (`@mcp-coordinator/sdk-js`) — T40
+* `mcp-coordinator init` interactive wizard — T41
+* `mcp-coordinator doctor` Phase 2 probes — T42
+* Playwright E2E suite — T39
+* OpenAPI spec generated from zod schemas — T34
+* Grafana dashboard JSON + Prometheus alert YAML — T37b
+* Security/compliance/operations runbook docs — T35a/b/c
+* `service-token list` and `revoke` CLI subcommands (currently stubbed with SQL workarounds)
+* Perf bench + chaos suite — T33
+
 ## [0.7.0](https://github.com/swoofer/mcp-coordinator/compare/v0.6.1...v0.7.0) (2026-05-13)
 
 
