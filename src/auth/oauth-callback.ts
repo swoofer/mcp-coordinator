@@ -9,6 +9,7 @@ import { hashIdentifier, isLocked, recordFailedLogin } from "./login-lockout.js"
 import { resolveOrgFromMemberships } from "./allowlist.js";
 import { provisionUser, type ProvisionedUser, type ProvisionResult } from "./oauth-finalize.js";
 import { getOrgSetting } from "./org-settings.js";
+import { hashIdpUserId } from "./audit-helpers.js";
 import { audit } from "../security/audit.js";
 import { appError, bearerAuthHeader } from "../http/response-contract.js";
 
@@ -284,7 +285,7 @@ async function finalizeBrowserOAuth(
     audit("auth.login.denied.not_in_org", {
       tier: 1,
       metadata: {
-        idp_user_id: exchange.user.idp_user_id,
+        idp_user_id_hash: hashIdpUserId(exchange.user.idp_user_id),
         identifier_hash: identifierHash,
         memberships_count: memberships.length,
       },
@@ -295,8 +296,11 @@ async function finalizeBrowserOAuth(
   }
 
   // 4. AUTO_PROVISION mode via T44 (orgId=null: pre-provisioning lookup, falls
-  //    back to env then default "true").
-  const autoProvision = getOrgSetting(ctx.db, null, "auto_provision", "true");
+  //    back to env then default "true"). Normalize to lowercase so operators
+  //    setting COORDINATOR_AUTO_PROVISION=False/FALSE all route correctly.
+  const autoProvision = String(
+    getOrgSetting(ctx.db, null, "auto_provision", "true"),
+  ).toLowerCase();
 
   // 5-6. BEGIN IMMEDIATE TX. The user-existence check for AUTO_PROVISION=false
   //      lives INSIDE the TX so it's atomic with the INSERT — a concurrent
@@ -332,7 +336,7 @@ async function finalizeBrowserOAuth(
         tier: 2,
         metadata: {
           reason: "user_not_provisioned",
-          idp_user_id: exchange.user.idp_user_id,
+          idp_user_id_hash: hashIdpUserId(exchange.user.idp_user_id),
         },
       });
       res.writeHead(403, { "Content-Type": "application/json; charset=utf-8" });

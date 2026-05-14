@@ -19,6 +19,7 @@ export default defineConfig({
         "src/auth/oauth-state.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/auth/oauth-login.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/auth/oauth-callback.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
+        "src/auth/audit-helpers.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/auth/device-flow.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/auth/jwt-mint.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/auth/oauth-finalize.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },

@@ -13,6 +13,7 @@ import {
   recordFailedLogin,
   DEFAULT_LOCKOUT_THRESHOLD,
 } from "../../src/auth/login-lockout.js";
+import { hashIdpUserId } from "../../src/auth/audit-helpers.js";
 import { IdPTokenRevoked, IdPTransientError } from "../../src/auth/providers/errors.js";
 import type {
   IdPProvider,
@@ -326,7 +327,7 @@ describe("finalizeBrowserOAuth — allowlist", () => {
     const rows = findAuditRows("auth.login.denied.not_in_org");
     expect(rows).toHaveLength(1);
     const meta = JSON.parse(rows[0].metadata_json as string);
-    expect(meta.idp_user_id).toBe(USER_ALICE.idp_user_id);
+    expect(meta.idp_user_id_hash).toBe(hashIdpUserId(USER_ALICE.idp_user_id));
     expect(meta.memberships_count).toBe(1);
     expect(typeof meta.identifier_hash).toBe("string");
   });
@@ -420,9 +421,29 @@ describe("finalizeBrowserOAuth — AUTO_PROVISION mode", () => {
     expect(rows).toHaveLength(1);
     const meta = JSON.parse(rows[0].metadata_json as string);
     expect(meta.reason).toBe("user_not_provisioned");
-    expect(meta.idp_user_id).toBe(USER_ALICE.idp_user_id);
+    expect(meta.idp_user_id_hash).toBe(hashIdpUserId(USER_ALICE.idp_user_id));
     // Crucially: no auth.user.created emitted.
     expect(findAuditRows("auth.user.created")).toHaveLength(0);
+  });
+
+  it("AUTO_PROVISION='False' (capital F) + new user → still 403 (case-insensitive parsing)", async () => {
+    seedAcmeOrg();
+    process.env.COORDINATOR_AUTO_PROVISION = "False";
+    const provider = stubProvider({ memberships: ["acme"] });
+    const res = mockResponse();
+    await __finalizeBrowserOAuth(
+      res as unknown as ServerResponse,
+      makeCtx({ githubProvider: provider }),
+      makeExchange(),
+      "10.0.0.1",
+      "ua/1.0",
+    );
+    expect(res.statusCode).toBe(403);
+    expect(JSON.parse(res.body!).code).toBe("USER_NOT_PROVISIONED");
+    const row = getDb()
+      .prepare("SELECT id FROM users WHERE idp_user_id = ?")
+      .get(USER_ALICE.idp_user_id);
+    expect(row).toBeUndefined();
   });
 
   it("AUTO_PROVISION='false' + existing user → provisioning succeeds (existing path)", async () => {
