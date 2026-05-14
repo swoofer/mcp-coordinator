@@ -24,7 +24,7 @@ export type DevicePollResult =
   | { status: "slow_down"; new_interval: number }
   | { status: "expired_token" }
   | { status: "access_denied" }
-  | { status: "granted"; user: IdpUserInfo; accessToken: string };
+  | ({ status: "granted" } & ExchangeCodeResult);
 
 export interface IdPProvider {
   readonly name: string;
