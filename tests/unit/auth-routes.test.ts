@@ -187,10 +187,11 @@ describe("dispatchAuthRoutes — happy-path stubs return 501", () => {
     // oauth-device-authorization.test.ts + the dispatcher-routing assertion
     // below (400 INVALID_REQUEST on the synthetic mockReq because the real
     // handler tries to read a body stream that's a plain object).
+    // NOTE: POST /api/auth/logout, /logout-all, /revoke were stubs in T14.5
+    // but are now real T23 handlers — verified in logout.test.ts + the
+    // dispatcher-routing assertion below (401 UNAUTHORIZED on the synthetic
+    // mockReq because authenticateRequest sees no Authorization/cookie).
     { method: "POST", url: "/auth/device/approve", stub: "handleDeviceApprove" },
-    { method: "POST", url: "/api/auth/logout", stub: "handleLogout" },
-    { method: "POST", url: "/api/auth/logout-all", stub: "handleLogoutAll" },
-    { method: "POST", url: "/api/auth/revoke", stub: "handleRevoke" },
     { method: "GET", url: "/api/auth/me", stub: "handleUserinfo" },
     // NOTE: /auth/device, /auth/device/confirm, /auth/success were stubs
     // in T14.5 but are now real T21 handlers — verified in
@@ -215,6 +216,50 @@ describe("dispatchAuthRoutes — happy-path stubs return 501", () => {
       expect(body.request_id).toBeNull();
     });
   }
+});
+
+describe("dispatchAuthRoutes — T23 logout/logout-all/revoke dispatched (not 501 stubs)", () => {
+  // mockReq enriched with headers — T23 handlers call authenticateRequest,
+  // which reads req.headers.authorization. Plain {method,url} would crash.
+  function mockReqWithHeaders(method: string, url: string): IncomingMessage {
+    return { method, url, headers: {} } as unknown as IncomingMessage;
+  }
+
+  it("POST /api/auth/logout routes to handleLogout (401, not 501)", async () => {
+    const res = mockResponse();
+    const handled = await dispatchAuthRoutes(
+      mockReqWithHeaders("POST", "/api/auth/logout"),
+      res as unknown as ServerResponse,
+      ctx,
+    );
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(401);
+    expect((res.body as Record<string, unknown>).code).toBe("UNAUTHORIZED");
+  });
+
+  it("POST /api/auth/logout-all routes to handleLogoutAll (401, not 501)", async () => {
+    const res = mockResponse();
+    const handled = await dispatchAuthRoutes(
+      mockReqWithHeaders("POST", "/api/auth/logout-all"),
+      res as unknown as ServerResponse,
+      ctx,
+    );
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(401);
+    expect((res.body as Record<string, unknown>).code).toBe("UNAUTHORIZED");
+  });
+
+  it("POST /api/auth/revoke routes to handleRevoke (401, not 501)", async () => {
+    const res = mockResponse();
+    const handled = await dispatchAuthRoutes(
+      mockReqWithHeaders("POST", "/api/auth/revoke"),
+      res as unknown as ServerResponse,
+      ctx,
+    );
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(401);
+    expect((res.body as Record<string, unknown>).code).toBe("UNAUTHORIZED");
+  });
 });
 
 describe("dispatchAuthRoutes — T15 /auth/login dispatched (not 501 stub)", () => {
