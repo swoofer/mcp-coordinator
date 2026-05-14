@@ -234,6 +234,24 @@ describe("v0.7 → v0.8 migration", () => {
     expect(deniedReason?.notnull).toBe(0);
   });
 
+  it("device_auth_requests gains last_polled_at + interval (T18 poll grant)", () => {
+    const db = getDb();
+    const cols = db.prepare("PRAGMA table_info(device_auth_requests)").all() as
+      { name: string; type: string; notnull: number; dflt_value: string | null }[];
+    const names = cols.map((c) => c.name);
+    expect(names).toContain("last_polled_at");
+    expect(names).toContain("interval");
+    // last_polled_at: nullable INTEGER (unix seconds), set on each /token poll
+    const lastPolledAt = cols.find((c) => c.name === "last_polled_at");
+    expect(lastPolledAt?.type).toBe("INTEGER");
+    expect(lastPolledAt?.notnull).toBe(0);
+    // interval: NOT NULL INTEGER DEFAULT 5 (RFC 8628 §3.5)
+    const interval = cols.find((c) => c.name === "interval");
+    expect(interval?.type).toBe("INTEGER");
+    expect(interval?.notnull).toBe(1);
+    expect(interval?.dflt_value).toBe("5");
+  });
+
   it("system_state table created for NR12 restore detection", () => {
     const db = getDb();
     const cols = db.prepare("PRAGMA table_info(system_state)").all() as { name: string; pk: number }[];

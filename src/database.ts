@@ -627,6 +627,15 @@ export function initDatabase(dataDir: string): void {
     // brute_force_lockout}. Both nullable; existing rows get NULL.
     try { db.exec("ALTER TABLE device_auth_requests ADD COLUMN denied_at INTEGER"); } catch { /* already exists */ }
     try { db.exec("ALTER TABLE device_auth_requests ADD COLUMN denied_reason TEXT"); } catch { /* already exists */ }
+    // T18 device-flow token endpoint (grant_type=device_code poll):
+    //   last_polled_at INTEGER — last poll timestamp (unix seconds); enables V4 FIX 18
+    //     atomic CAS for per-device slow_down enforcement. Nullable: existing rows + new
+    //     pre-poll rows get NULL until the first /token poll.
+    //   interval INTEGER NOT NULL DEFAULT 5 — current poll cadence per RFC 8628 §3.5
+    //     (default 5s matches T17's verification_uri response). Server may bump on
+    //     slow_down responses.
+    try { db.exec("ALTER TABLE device_auth_requests ADD COLUMN last_polled_at INTEGER"); } catch { /* already exists */ }
+    try { db.exec("ALTER TABLE device_auth_requests ADD COLUMN interval INTEGER NOT NULL DEFAULT 5"); } catch { /* already exists */ }
     try { db.exec("CREATE INDEX IF NOT EXISTS idx_device_expires ON device_auth_requests(expires_at)"); } catch { /* already exists */ }
 
     // --- system_state table (NR12 restore detection + recovery markers) -------
