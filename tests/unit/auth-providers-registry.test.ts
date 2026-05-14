@@ -15,7 +15,7 @@ describe("provider registry", () => {
     const fake: IdPProvider = {
       name: "fake",
       buildAuthUrl: () => "https://x",
-      exchangeCode: async () => ({ idp_user_id: "1", email: "a@x" }),
+      exchangeCode: async () => ({ user: { idp_user_id: "1", email: "a@x" }, accessToken: "tok" }),
     };
     registerProvider(fake);
     expect(getProvider("fake")).toBe(fake);
