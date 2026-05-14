@@ -7,6 +7,7 @@ import { handleSuccessPage } from "../../src/auth/pages/success.html.js";
 import type { AuthHandlerContext } from "../../src/auth/context.js";
 import { FakeClock } from "../helpers/clock.js";
 import { RateLimiter } from "../../src/auth/rate-limit.js";
+import { buildJwtKeyRegistry } from "../../src/auth/jwt-keys.js";
 
 /**
  * T21 — three unauthenticated HTML pages for the device-authorization flow:
@@ -137,6 +138,7 @@ beforeEach(() => {
     rateLimiter: new RateLimiter(clock),
     publicUrl: "http://localhost:3000",
     stateBindingKey: Buffer.alloc(32, 0x01),
+    signingKeys: buildJwtKeyRegistry(Buffer.alloc(32, 0x01)),
   };
 });
 

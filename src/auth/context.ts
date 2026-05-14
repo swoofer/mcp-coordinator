@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import type { Clock } from "./clock.js";
+import type { JwtKeyRegistry } from "./jwt-keys.js";
 import type { IdPProvider } from "./providers/types.js";
 import type { RateLimiter } from "./rate-limit.js";
 
@@ -11,8 +12,9 @@ import type { RateLimiter } from "./rate-limit.js";
  * metrics registry (T37), logger (T36), etc.
  *
  * T15 adds the Phase C OAuth-init dependencies (githubProvider,
- * rateLimiter, publicUrl, stateBindingKey). T29 boot composes; tests
- * stub.
+ * rateLimiter, publicUrl, stateBindingKey). T16helpers adds signingKeys
+ * (JWT key registry) used by mintTokenPair in the shared finalize path.
+ * T29 boot composes; tests stub.
  */
 export interface AuthHandlerContext {
   db: Database.Database;
@@ -26,4 +28,8 @@ export interface AuthHandlerContext {
   /** HKDF-derived state-binding key (T08b deriveStateBindingKey).
    *  Used for HMAC cookie binding per V4 FIX 19. */
   stateBindingKey: Buffer;
+  /** JWT key registry (T08b buildJwtKeyRegistry). Used by T16helpers
+   *  mintTokenPair to sign access + refresh JWTs in the OAuth finalize
+   *  path shared by T16c (browser callback) and T18 (CLI grant). */
+  signingKeys: JwtKeyRegistry;
 }

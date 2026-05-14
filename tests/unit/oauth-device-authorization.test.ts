@@ -7,6 +7,7 @@ import { handleDeviceAuthorization, handleDeviceApprove } from "../../src/auth/d
 import type { AuthHandlerContext } from "../../src/auth/context.js";
 import { FakeClock } from "../helpers/clock.js";
 import { RateLimiter } from "../../src/auth/rate-limit.js";
+import { buildJwtKeyRegistry } from "../../src/auth/jwt-keys.js";
 import type { IdPProvider } from "../../src/auth/providers/types.js";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
 import { findAuditRows } from "../helpers/audit.js";
@@ -115,6 +116,7 @@ function makeCtx(overrides: Partial<AuthHandlerContext> = {}): AuthHandlerContex
     rateLimiter: new RateLimiter(clock),
     publicUrl: "http://localhost:3000",
     stateBindingKey: STATE_BINDING_KEY,
+    signingKeys: buildJwtKeyRegistry(Buffer.alloc(32, 0x01)),
     ...overrides,
   };
 }
