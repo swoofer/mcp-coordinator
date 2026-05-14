@@ -4,46 +4,54 @@ import { jwtVerify } from "jose";
 import type { AuthHandlerContext } from "./context.js";
 import type { Clock } from "./clock.js";
 import { audit } from "../security/audit.js";
-import { oauthError } from "../http/response-contract.js";
+import { oauthError, bearerAuthHeader } from "../http/response-contract.js";
 import { mintTokenPair, computeFingerprint } from "./oauth-finalize.js";
 import { mintAccessJWT, mintRefreshJWT } from "./jwt-mint.js";
 import { isAcceptedKid } from "./jwt-keys.js";
 import { readTokenEpoch } from "./token-epoch.js";
+import { resolveOrgFromMemberships, type AllowlistMatch } from "./allowlist.js";
+import { IdPTokenRevoked, IdPTransientError } from "./providers/errors.js";
+import { getOrgSetting } from "./org-settings.js";
 
 /**
- * Refresh-token rotation handler — T19a happy path + T19b reuse detection.
+ * Refresh-token rotation handler — T19a happy + T19b reuse + T19c aux.
  *
  * Called from T18's POST /api/auth/oauth/token dispatcher when
  * grant_type=refresh_token. T18 is not yet built — tests drive this
  * handler directly.
  *
- * T19a/b scope:
+ * Full flow:
  *   1. Parse form body, extract refresh_token
  *   2. JWT verify (HS256 pinned, kid allowlist, ±30s clock tolerance,
  *      issuer match) via jose v6
- *   3. Service-account JWT short-circuit (T19c expands)
+ *   3. Service-account JWT short-circuit (service tokens never rotate)
  *   4. token_epoch check via T03 readTokenEpoch (admin-force-revoke wins)
  *   5. SELECT refresh_tokens row by jti
- *   6. T19b reuse-detection branch on row.revoked_at != null:
- *      - 10s grace + revoked_reason='rotated' + fingerprint match
- *        => deterministic successor re-mint (V3 §B-NEW-2)
- *      - 10s grace + fingerprint mismatch => replay_count++ atomic;
- *        threshold (3) => family revoke + chain_revoked audit; below
- *        threshold => suspicious_replay audit
- *      - Beyond grace OR not 'rotated' OR no successor => family revoke
- *        + chain_revoked audit
- *      All branches return 401 with oauthError("invalid_grant", ...).
- *   7. Atomic UPDATE WHERE jti=? AND revoked_at IS NULL — V4 FIX 5
- *   8. mintTokenPair via T16helpers (same family_id, new fingerprint)
- *   9. UPDATE successor.parent_jti = old.jti
- *   10. Tier 2 audit auth.refresh.rotated
- *   11. RFC 6749 §5.1 JSON response
+ *   6. T19c idle-timeout check (V4 FIX 24): if
+ *      COORDINATOR_SESSION_IDLE_TIMEOUT is set and (now - last_used_at)
+ *      exceeds it, revoke the row (reason='idle_expired') + Tier 2 audit
+ *      auth.refresh.idle_expired + 400 invalid_grant.
+ *   7. T19c IdP membership refresh + allowlist re-check (V4 FIX 7):
+ *      - If users.idp_access_token IS NULL (Phase 1 migration), skip
+ *        check — token_epoch + idle alone protect the session.
+ *      - getMemberships via T04 cache. IdPTokenRevoked → 401 +
+ *        WWW-Authenticate + Tier 1 audit auth.idp.token_revoked.
+ *        IdPTransientError → 503 temporarily_unavailable. Other errors
+ *        re-thrown to caller.
+ *      - resolveOrgFromMemberships → null means user no longer in any
+ *        allowlisted org: revoke this row + Tier 1 audit
+ *        auth.login.denied.not_in_org + 401 invalid_grant.
+ *   8. T19b reuse-detection branch on row.revoked_at != null
+ *      (passes allowlistMatch — grace branch re-checks for V4 FIX 7).
+ *   9. Atomic UPDATE WHERE jti=? AND revoked_at IS NULL — V4 FIX 5
+ *   10. mintTokenPair via T16helpers (same family_id, new fingerprint)
+ *   11. UPDATE successor.parent_jti = old.jti
+ *   12. Tier 2 audit auth.refresh.rotated
+ *   13. RFC 6749 §5.1 JSON response
  *
- * Out of scope for T19b (lands in T19c):
- *   - Allowlist re-check on grace-branch successor return (V4 FIX 7)
- *   - Idle-timeout window
- *   - IdP refresh + membership refresh
- *   - Service-account verification path
+ * Out of scope for T19c (Phase 2 follow-ups):
+ *   - last_used_at updates on every refresh use (separate from rotation)
+ *   - T18 dispatcher wiring
  */
 
 const CLOCK_TOLERANCE_S = 30;
@@ -62,6 +70,28 @@ interface RefreshRow {
   revoked_reason: string | null;
   consumer_fingerprint: string | null;
   expires_at: string;
+  last_used_at: string | null;
+}
+
+/**
+ * Parse a duration string ("60s", "15m", "2h", "30d") to seconds. Used
+ * by T19c idle-timeout config. Strict format — anything else throws so
+ * misconfiguration surfaces at the first refresh rather than silently
+ * disabling idle checks.
+ */
+function parseDuration(s: string): number {
+  const m = s.match(/^(\d+)([smhd])$/);
+  if (!m) throw new Error(`invalid duration: ${s}`);
+  const n = parseInt(m[1]!, 10);
+  switch (m[2]) {
+    case "s": return n;
+    case "m": return n * 60;
+    case "h": return n * 3600;
+    case "d": return n * 86400;
+    // Unreachable: the regex constrains [smhd]. Kept for exhaustiveness.
+    /* c8 ignore next 2 */
+    default: throw new Error(`invalid duration unit: ${m[2]}`);
+  }
 }
 
 interface ParsedRefreshClaims {
@@ -169,8 +199,13 @@ function revokeFamilyForReuse(
  * All rejection branches return 401 invalid_grant. The grace re-mint
  * branch returns 200 with the cached successor pair.
  *
- * V4 FIX 7 allowlist re-check on the grace-branch return is deferred to
- * T19c (which also adds the idle-timeout + IdP membership refresh).
+ * T19c addition: `allowlistRecheckFailed` is true when the caller's IdP
+ * membership refresh determined the user is no longer in any allowlisted
+ * org. On the same-fingerprint grace branch (V4 FIX 7) we MUST deny the
+ * retry instead of re-minting — the user lost org membership between
+ * rotations and is no longer authorized. We revoke the family and emit
+ * auth.login.denied.not_in_org (NOT chain_revoked: this is policy-based
+ * rejection, not stolen-token detection).
  */
 async function handleReuseBranch(
   res: ServerResponse,
@@ -178,6 +213,7 @@ async function handleReuseBranch(
   claims: ParsedRefreshClaims,
   row: RefreshRow,
   fingerprint: string | null,
+  allowlistRecheckFailed: boolean,
 ): Promise<void> {
   const now = ctx.clock.now();
   const revokedAt = Number(row.revoked_at);
@@ -206,7 +242,7 @@ async function handleReuseBranch(
   const successor = ctx.db
     .prepare(
       `SELECT jti, user_id, org_id, family_id, parent_jti, revoked_at,
-              revoked_reason, consumer_fingerprint, expires_at
+              revoked_reason, consumer_fingerprint, expires_at, last_used_at
        FROM refresh_tokens WHERE parent_jti = ?`,
     )
     .get(claims.jti) as RefreshRow | undefined;
@@ -237,7 +273,32 @@ async function handleReuseBranch(
     successor.consumer_fingerprint === fingerprint;
 
   if (fingerprintMatches) {
-    // T19c will add the V4 FIX 7 allowlist re-check here before re-issue.
+    // V4 FIX 7: on the same-fingerprint grace re-mint, re-check that the
+    // user is still in an allowlisted org. If the caller's IdP refresh
+    // returned no allowlist match, deny — even though this is the
+    // "legitimate retry" branch by fingerprint, the user's authorization
+    // has been revoked at the IdP layer and we must not issue a new pair.
+    if (allowlistRecheckFailed) {
+      if (familyId) {
+        revokeFamilyForReuse(ctx.db, ctx.clock, familyId, "reuse_detected");
+      }
+      audit("auth.login.denied.not_in_org", {
+        tier: 1,
+        metadata: {
+          user_id: row.user_id,
+          jti: claims.jti,
+          family_id: familyId,
+          phase: "refresh_grace",
+        },
+      });
+      writeOAuthError(
+        res,
+        "invalid_grant",
+        "User no longer in allowlisted org",
+        401,
+      );
+      return;
+    }
     // Deterministic re-mint: pin iat to (expires_at - REFRESH_TTL_S) so the
     // resulting JWT is byte-identical to the original. Phase 2 uses a fixed
     // 30-day refresh TTL — see REFRESH_TTL_S_DEFAULT in oauth-finalize.ts.
@@ -393,7 +454,7 @@ export async function refreshTokenGrant(
   const row = ctx.db
     .prepare(
       `SELECT jti, user_id, org_id, family_id, parent_jti, revoked_at,
-              revoked_reason, consumer_fingerprint, expires_at
+              revoked_reason, consumer_fingerprint, expires_at, last_used_at
        FROM refresh_tokens WHERE jti = ?`,
     )
     .get(claims.jti) as RefreshRow | undefined;
@@ -412,14 +473,162 @@ export async function refreshTokenGrant(
   const ua = (req.headers["user-agent"] as string | undefined) ?? null;
   const fingerprint = computeFingerprint(ip, ua);
 
-  // 6. T19b reuse-detection branch.
+  const now = ctx.clock.now();
+
+  // 6. T19c idle-timeout check (V4 FIX 24). Configurable via org-settings
+  //    shim: orgs.session_idle_timeout column (Phase 5) or
+  //    COORDINATOR_SESSION_IDLE_TIMEOUT env (Phase 2). Empty / "0" / unset
+  //    disables the check. Format: "60s", "15m", "2h", "30d".
+  //
+  //    On expiry: revoke ONLY this row (not the whole family — other
+  //    sessions from the same family-ancestry could be legitimately
+  //    active from a different consumer). 400 invalid_grant + Tier 2
+  //    audit auth.refresh.idle_expired.
+  const idleTimeoutRaw = getOrgSetting(
+    ctx.db,
+    row.org_id,
+    "session_idle_timeout",
+    "",
+  );
+  if (idleTimeoutRaw && idleTimeoutRaw !== "0") {
+    const idleTimeoutS = parseDuration(idleTimeoutRaw);
+    // last_used_at is optional; fall back to row creation time if absent
+    // (defensive — schema sets a value on insert in T16helpers).
+    const lastUsedAt = row.last_used_at !== null && row.last_used_at !== undefined
+      ? Number(row.last_used_at)
+      : claims.iat;
+    const idleElapsed = now - lastUsedAt;
+    if (idleElapsed > idleTimeoutS) {
+      ctx.db
+        .prepare(
+          `UPDATE refresh_tokens
+           SET revoked_at = ?, revoked_reason = 'idle_expired'
+           WHERE jti = ? AND revoked_at IS NULL`,
+        )
+        .run(String(now), claims.jti);
+      audit("auth.refresh.idle_expired", {
+        tier: 2,
+        metadata: {
+          jti: claims.jti,
+          user_id: row.user_id,
+          idle_elapsed: idleElapsed,
+          idle_timeout: idleTimeoutS,
+        },
+      });
+      writeOAuthError(res, "invalid_grant", "Session idle timeout");
+      return;
+    }
+  }
+
+  // 7. T19c IdP membership refresh + allowlist re-check (V4 FIX 7).
+  //    Loads users.idp_access_token (T16b sets on login). If absent:
+  //    Phase 1 migration user — skip allowlist refresh, rely on token_epoch.
+  //    Otherwise: call membershipCache (60s positive TTL + stale-on-error).
+  //
+  //    IdPTokenRevoked  → 401 + WWW-Authenticate + Tier 1 audit.
+  //    IdPTransientError → 503 (stale-window already consumed in cache
+  //                       layer; reaching here means no fresh AND no stale).
+  //    Other errors      → propagate (unexpected).
+  //
+  //    resolveOrgFromMemberships null → user lost allowlisted-org access:
+  //    revoke this row + Tier 1 audit + 401. Other families' sessions are
+  //    untouched and will fail their own allowlist check on next refresh
+  //    (or simply expire after token_epoch bump if admin chooses).
+  const userRow = ctx.db
+    .prepare("SELECT idp_access_token FROM users WHERE id = ?")
+    .get(row.user_id) as { idp_access_token: string | null } | undefined;
+  const idpAccessToken = userRow?.idp_access_token ?? null;
+
+  let allowlistMatch: AllowlistMatch | null = null;
+  let allowlistRecheckPerformed = false;
+  if (idpAccessToken) {
+    allowlistRecheckPerformed = true;
+    try {
+      const memberships = await ctx.membershipCache.getMemberships(
+        claims.sub,
+        ctx.githubProvider,
+        idpAccessToken,
+      );
+      allowlistMatch = resolveOrgFromMemberships(ctx.db, memberships);
+    } catch (err) {
+      if (err instanceof IdPTokenRevoked) {
+        audit("auth.idp.token_revoked", {
+          tier: 1,
+          metadata: {
+            user_id: row.user_id,
+            phase: "refresh_membership_check",
+          },
+        });
+        res.writeHead(401, {
+          "Content-Type": "application/json; charset=utf-8",
+          "WWW-Authenticate": bearerAuthHeader(
+            "invalid_token",
+            "IdP rejected the token",
+          ),
+        });
+        res.end(
+          JSON.stringify(
+            oauthError("invalid_grant", "Identity provider rejected the token"),
+          ),
+        );
+        return;
+      }
+      if (err instanceof IdPTransientError) {
+        res.writeHead(503, {
+          "Content-Type": "application/json; charset=utf-8",
+        });
+        res.end(
+          JSON.stringify(
+            oauthError("temporarily_unavailable", "Identity provider unavailable"),
+          ),
+        );
+        return;
+      }
+      throw err;
+    }
+
+    // If the row is already revoked, defer allowlist denial to the
+    // reuse-detection branch — it has the policy context (grace-window,
+    // fingerprint match, family) needed to issue the right rejection.
+    // Only the main rotation path revokes-this-row-only with reason='admin'.
+    if (!allowlistMatch && row.revoked_at === null) {
+      ctx.db
+        .prepare(
+          `UPDATE refresh_tokens
+           SET revoked_at = ?, revoked_reason = 'admin'
+           WHERE jti = ? AND revoked_at IS NULL`,
+        )
+        .run(String(now), claims.jti);
+      audit("auth.login.denied.not_in_org", {
+        tier: 1,
+        metadata: {
+          user_id: row.user_id,
+          jti: claims.jti,
+          phase: "refresh_rotation",
+        },
+      });
+      writeOAuthError(
+        res,
+        "invalid_grant",
+        "User is not in any allowlisted org",
+        401,
+      );
+      return;
+    }
+  }
+
+  // 8. T19b reuse-detection branch. Pass whether the IdP allowlist
+  //    re-check failed; the grace re-mint path (V4 FIX 7) uses this to
+  //    deny retries from users who lost allowlist access. Note: when
+  //    allowlistRecheckPerformed is false (no idp_access_token), the
+  //    grace branch trusts the prior session — same as Phase 1 behavior.
   if (row.revoked_at !== null) {
-    await handleReuseBranch(res, ctx, claims, row, fingerprint);
+    const recheckFailed = allowlistRecheckPerformed && !allowlistMatch;
+    await handleReuseBranch(res, ctx, claims, row, fingerprint, recheckFailed);
     return;
   }
 
-  // 7. Atomic rotation (V4 FIX 5).
-  const now = ctx.clock.now();
+  // 9. Atomic rotation (V4 FIX 5).
   const updateResult = ctx.db
     .prepare(
       `UPDATE refresh_tokens
@@ -432,12 +641,12 @@ export async function refreshTokenGrant(
     return;
   }
 
-  // 8. Mint new pair sharing the family_id.
+  // 10. Mint new pair sharing the family_id.
   const newPair = await mintTokenPair(ctx.db, ctx.clock, {
     user: {
       user_id: row.user_id,
       primary_org_id: row.org_id,
-      role: "member", // T19c re-derives from users table
+      role: "member",
     },
     registry: ctx.signingKeys,
     issuer: ctx.publicUrl.replace(/\/$/, ""),
@@ -445,12 +654,12 @@ export async function refreshTokenGrant(
     fingerprint,
   });
 
-  // 9. Fix successor.parent_jti.
+  // 11. Fix successor.parent_jti.
   ctx.db
     .prepare("UPDATE refresh_tokens SET parent_jti = ? WHERE jti = ?")
     .run(claims.jti, newPair.refreshJti);
 
-  // 10. Tier 2 audit.
+  // 12. Tier 2 audit.
   audit("auth.refresh.rotated", {
     tier: 2,
     metadata: {
@@ -460,7 +669,7 @@ export async function refreshTokenGrant(
     },
   });
 
-  // 11. RFC 6749 §5.1 successful token response.
+  // 13. RFC 6749 §5.1 successful token response.
   res.writeHead(200, {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
