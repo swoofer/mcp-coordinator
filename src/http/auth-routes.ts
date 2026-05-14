@@ -6,6 +6,9 @@ import { handleOAuthToken } from "../auth/oauth-token.js";
 import { handleDeviceAuthorization, handleDeviceApprove } from "../auth/device-flow.js";
 import { handleLogout, handleLogoutAll, handleRevoke } from "../auth/logout.js";
 import { handleUserinfo } from "../auth/userinfo.js";
+import { handleDevicePage } from "../auth/pages/device.html.js";
+import { handleDeviceConfirmPage } from "../auth/pages/device-confirm.html.js";
+import { handleSuccessPage } from "../auth/pages/success.html.js";
 import { appError } from "./response-contract.js";
 
 /**
@@ -15,6 +18,9 @@ import { appError } from "./response-contract.js";
  *
  * Route table (Phase 2):
  *   GET  /auth/login                              → handleAuthLogin (T15)
+ *   GET  /auth/device                             → handleDevicePage (T21)
+ *   GET  /auth/device/confirm                     → handleDeviceConfirmPage (T21)
+ *   GET  /auth/success                            → handleSuccessPage (T21)
  *   GET  /api/auth/oauth/callback                 → handleOAuthCallback (T16)
  *   POST /api/auth/oauth/token                    → handleOAuthToken (T18)
  *   POST /api/auth/oauth/device_authorization     → handleDeviceAuthorization (T17)
@@ -24,9 +30,8 @@ import { appError } from "./response-contract.js";
  *   POST /api/auth/revoke                         → handleRevoke (T23)
  *   GET  /api/auth/me                             → handleUserinfo (T24)
  *
- * Device + success HTML pages (T21) and discovery doc (T14) are wired
- * separately by serve-http.ts at boot — they don't flow through this
- * dispatcher.
+ * Discovery doc (T14) is wired separately by serve-http.ts at boot —
+ * it doesn't flow through this dispatcher.
  */
 export async function dispatchAuthRoutes(
   req: IncomingMessage,
@@ -39,6 +44,18 @@ export async function dispatchAuthRoutes(
   // Strict method matching — wrong method on a known auth path returns 405.
   if (url === "/auth/login" && method === "GET") {
     await handleAuthLogin(req, res, ctx);
+    return true;
+  }
+  if (url === "/auth/device" && method === "GET") {
+    await handleDevicePage(req, res, ctx);
+    return true;
+  }
+  if (url === "/auth/device/confirm" && method === "GET") {
+    await handleDeviceConfirmPage(req, res, ctx);
+    return true;
+  }
+  if (url === "/auth/success" && method === "GET") {
+    await handleSuccessPage(req, res, ctx);
     return true;
   }
   if (url === "/api/auth/oauth/callback" && method === "GET") {
@@ -89,6 +106,9 @@ export async function dispatchAuthRoutes(
 
 const KNOWN_AUTH_PATHS = new Set([
   "/auth/login",
+  "/auth/device",
+  "/auth/device/confirm",
+  "/auth/success",
   "/api/auth/oauth/callback",
   "/api/auth/oauth/token",
   "/api/auth/oauth/device_authorization",
@@ -100,7 +120,14 @@ const KNOWN_AUTH_PATHS = new Set([
 ]);
 
 function methodForPath(url: string): string {
-  if (url === "/auth/login" || url === "/api/auth/oauth/callback" || url === "/api/auth/me") {
+  if (
+    url === "/auth/login" ||
+    url === "/auth/device" ||
+    url === "/auth/device/confirm" ||
+    url === "/auth/success" ||
+    url === "/api/auth/oauth/callback" ||
+    url === "/api/auth/me"
+  ) {
     return "GET";
   }
   return "POST";

@@ -6,18 +6,26 @@ import type { AuthHandlerContext } from "../../src/auth/context.js";
 import { FakeClock } from "../helpers/clock.js";
 
 /**
- * T14.5 — verify the auth-route dispatcher routes the 9 Phase 2 URLs to
- * the right stub handler (all of which return 501 + appError envelope),
- * returns false for non-auth URLs (caller falls through to handleRest),
- * and emits 405 + Allow header when a known auth path is hit with the
- * wrong method.
+ * T14.5 — verify the auth-route dispatcher routes the Phase 2 URLs to
+ * the right handler. Stub handlers (T15-T24 still pending) return 501 +
+ * appError envelope. T21 ships 3 real handlers (device/device-confirm/
+ * success HTML pages); those are verified via separate device-pages
+ * tests — here we only assert the dispatcher routes them (handled=true)
+ * and (for the URL-only paths) returns an HTML 200.
+ *
+ * Also verifies the dispatcher returns false for non-auth URLs (caller
+ * falls through to handleRest) and emits 405 + Allow header when a
+ * known auth path is hit with the wrong method.
  */
 
 interface MockResponse {
   statusCode: number | null;
-  headers: Record<string, string>;
+  headers: Record<string, string | string[]>;
   body: unknown;
+  rawBody: string | null;
   writeHead(status: number, headers?: Record<string, string>): MockResponse;
+  setHeader(name: string, value: string | string[]): void;
+  getHeader(name: string): string | string[] | undefined;
   end(payload?: string): void;
 }
 
@@ -26,13 +34,27 @@ function mockResponse(): MockResponse {
     statusCode: null,
     headers: {},
     body: undefined,
+    rawBody: null,
     writeHead(status: number, headers?: Record<string, string>) {
       this.statusCode = status;
-      if (headers) this.headers = { ...headers };
+      if (headers) this.headers = { ...this.headers, ...headers };
       return this;
     },
+    setHeader(name: string, value: string | string[]) {
+      this.headers[name] = value;
+    },
+    getHeader(name: string) {
+      return this.headers[name];
+    },
     end(payload?: string) {
-      this.body = payload ? JSON.parse(payload) : null;
+      this.rawBody = payload ?? null;
+      const ct = this.headers["Content-Type"];
+      const isJson = typeof ct === "string" && ct.includes("application/json");
+      if (payload && isJson) {
+        this.body = JSON.parse(payload);
+      } else {
+        this.body = payload ?? null;
+      }
     },
   };
   return res;
@@ -115,6 +137,9 @@ describe("dispatchAuthRoutes — happy-path stubs return 501", () => {
     { method: "POST", url: "/api/auth/logout-all", stub: "handleLogoutAll" },
     { method: "POST", url: "/api/auth/revoke", stub: "handleRevoke" },
     { method: "GET", url: "/api/auth/me", stub: "handleUserinfo" },
+    // NOTE: /auth/device, /auth/device/confirm, /auth/success were stubs
+    // in T14.5 but are now real T21 handlers — verified in
+    // device-pages.test.ts, plus the dispatcher-routing check below.
   ];
 
   for (const { method, url, stub } of cases) {
@@ -135,6 +160,44 @@ describe("dispatchAuthRoutes — happy-path stubs return 501", () => {
       expect(body.request_id).toBeNull();
     });
   }
+});
+
+describe("dispatchAuthRoutes — T21 HTML pages dispatched (not 501 stubs)", () => {
+  it("GET /auth/device routes to handleDevicePage (200 HTML, not 501)", async () => {
+    const res = mockResponse();
+    const handled = await dispatchAuthRoutes(
+      mockReq("GET", "/auth/device"),
+      res as unknown as ServerResponse,
+      ctx,
+    );
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["Content-Type"]).toContain("text/html");
+  });
+
+  it("GET /auth/device/confirm (no user_code) routes to handleDeviceConfirmPage (400 HTML)", async () => {
+    const res = mockResponse();
+    const handled = await dispatchAuthRoutes(
+      mockReq("GET", "/auth/device/confirm"),
+      res as unknown as ServerResponse,
+      ctx,
+    );
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(400);
+    expect(res.headers["Content-Type"]).toContain("text/html");
+  });
+
+  it("GET /auth/success routes to handleSuccessPage (200 HTML)", async () => {
+    const res = mockResponse();
+    const handled = await dispatchAuthRoutes(
+      mockReq("GET", "/auth/success"),
+      res as unknown as ServerResponse,
+      ctx,
+    );
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["Content-Type"]).toContain("text/html");
+  });
 });
 
 describe("dispatchAuthRoutes — 405 method-not-allowed on known paths", () => {
@@ -182,6 +245,45 @@ describe("dispatchAuthRoutes — 405 method-not-allowed on known paths", () => {
     const body = res.body as Record<string, unknown>;
     expect(body.code).toBe("METHOD_NOT_ALLOWED");
     expect(body.request_id).toBeNull();
+  });
+
+  it("POST /auth/device returns 405 + Allow: GET (T21 path)", async () => {
+    const res = mockResponse();
+    const handled = await dispatchAuthRoutes(
+      mockReq("POST", "/auth/device"),
+      res as unknown as ServerResponse,
+      ctx,
+    );
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(405);
+    expect(res.headers.Allow).toBe("GET");
+    const body = res.body as Record<string, unknown>;
+    expect(body.code).toBe("METHOD_NOT_ALLOWED");
+    expect(body.request_id).toBeNull();
+  });
+
+  it("POST /auth/device/confirm returns 405 + Allow: GET (T21 path)", async () => {
+    const res = mockResponse();
+    const handled = await dispatchAuthRoutes(
+      mockReq("POST", "/auth/device/confirm"),
+      res as unknown as ServerResponse,
+      ctx,
+    );
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(405);
+    expect(res.headers.Allow).toBe("GET");
+  });
+
+  it("POST /auth/success returns 405 + Allow: GET (T21 path)", async () => {
+    const res = mockResponse();
+    const handled = await dispatchAuthRoutes(
+      mockReq("POST", "/auth/success"),
+      res as unknown as ServerResponse,
+      ctx,
+    );
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(405);
+    expect(res.headers.Allow).toBe("GET");
   });
 
   it("GET /api/auth/oauth/callback wrong-method (DELETE) returns 405 + Allow: GET", async () => {
