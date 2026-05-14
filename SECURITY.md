@@ -1,105 +1,117 @@
 # Security Policy
 
+This document is mcp-coordinator's vulnerability disclosure policy. It
+follows the format GitHub recognizes for the repository's Security tab
+and the RFC 9116 contact metadata at `.well-known/security.txt`.
+
 ## Supported versions
 
-| Version | Supported |
-| ------- | --------- |
-| 0.x     | Yes (latest minor) |
+Security fixes are issued against the latest minor release. Older minors
+receive a fix only if the issue is critical (CVSS >= 9.0) and a clean
+backport exists.
+
+| Version | Supported          |
+| ------- | ------------------ |
+| 0.8.x   | Yes                |
+| 0.7.x   | Yes (current minor) |
+| < 0.7   | No                 |
 
 ## Reporting a vulnerability
 
-Email `gagnon_max11@hotmail.com` with details. Do not open a public issue for security reports.
+Email `security@example.com` (replace with the operator's mailbox before
+publishing the repo) with:
 
-We will acknowledge receipt within 7 days and provide a timeline for the fix or mitigation.
+- A short description of the issue.
+- Reproduction steps, including the affected version (`mcp-coordinator
+  --version`) and the relevant config (`COORDINATOR_OAUTH_ENABLED`,
+  IdP, deployment mode).
+- The impact you observed (auth bypass, data disclosure, privilege
+  escalation, denial of service, etc.).
+- Any proof-of-concept code or HTTP transcripts.
 
-## Threat model
+Please **do not** open a public GitHub issue, send a pull request that
+discloses the vulnerability in its diff, or post details to public
+channels (Discord, Slack, social media) before we have shipped a fix.
 
-mcp-coordinator runs entirely on the developer's local machine. It binds an
-HTTP server (default `127.0.0.1:3100`) and an embedded MQTT broker
-(default `127.0.0.1:1883`). It is **not** designed to be exposed to the
-public internet.
+A PGP key for encrypting reports is at the URL listed in
+`.well-known/security.txt` under `Encryption:` (placeholder until the
+operator publishes a key — see RFC 9116 §2.5.4).
 
-## Permission surface (by design)
+## Disclosure timeline
 
-This package is a **local MCP server**. The capabilities listed below are
-intentional and necessary for the product to work — they are not
-vulnerabilities.
+- **Acknowledgement**: we will reply within 7 days that the report was
+  received and assigned a tracking ID.
+- **Triage**: within 30 days of acknowledgement we will share the severity
+  rating (CVSS v3.1), the affected components, and a target fix date.
+- **Coordinated disclosure**: 90 days from acknowledgement is the default
+  embargo. We will release a fixed version, a CHANGELOG entry, and (where
+  applicable) a GitHub Security Advisory and CVE on or before that date.
+  We may shorten the embargo for already-public vulnerabilities and may
+  extend it (with the reporter's agreement) for fixes that need
+  coordinated rollout.
 
-| Capability             | Why it's needed                                                     |
-| ---------------------- | ------------------------------------------------------------------- |
-| `child_process.spawn`  | Launch the coordinator daemon (`server start --daemon`)             |
-| `child_process.spawn`  | Open the dashboard URL in the user's browser (`mcp-coordinator dashboard`) |
-| `child_process.execFile` | Read the Claude Code OAuth token from macOS Keychain (`security` CLI) |
-| `fs.read*` / `fs.write*` | Persist config, PID file, daemon log, SQLite database under `~/.mcp-coordinator/` |
-| `net.createServer`     | Bind the embedded MQTT TCP listener                                 |
-| `http.createServer`    | Serve the MCP HTTP transport, REST API and dashboard                |
-| `fetch`                | Anthropic OAuth quota endpoint only — `https://api.anthropic.com/api/oauth/usage` |
-| `process.env.COORDINATOR_*` | Configuration (port, data dir, JWT secret when auth is enabled)  |
+## Scope
 
-## Auditing tools and false-positive guidance
+In scope:
 
-Static scanners (e.g. SafeSkill) flag patterns that look risky but are
-benign in this codebase. The most common confusions:
+- Source code under `src/`, `cli/`, `dashboard/`, `scripts/`.
+- Dependencies declared in `package.json` (`dependencies` and
+  `devDependencies`) when the vulnerability is exploitable through
+  mcp-coordinator's documented surface.
+- Default configuration as shipped (`.env.example`, `docker-compose.yml`,
+  `Dockerfile`).
+- Release artifacts on npm and the official container images.
 
-### `db.exec()` is **not** `child_process.exec()`
+Out of scope:
 
-Many scans report dozens of "Spawns child process" findings that point at
-lines like `db.exec("DELETE FROM threads")` or
-`raw.exec("PRAGMA journal_mode = WAL")`. Those are calls into
-[better-sqlite3](https://github.com/WiseLibs/better-sqlite3)'s prepared-statement
-API. They never spawn a process — they execute a SQL statement against the
-embedded SQLite database. All such calls in this repo (under `src/database.ts`,
-`src/serve-http.ts`, `src/db-adapter.ts`) are SQL, not shell.
+- Third-party identity providers (GitHub OAuth, future providers). Report
+  those to the provider directly.
+- Misconfigurations that violate the documented operator guidance
+  (running with `COORDINATOR_JWT_SECRET` shorter than 32 bytes, exposing
+  the coordinator's HTTP listener to the public internet without TLS
+  termination, disabling cookie `Secure` via `COORDINATOR_INSECURE_COOKIES`
+  in production).
+- Local-machine attacks where the attacker already has filesystem read
+  access to `~/.mcp-coordinator/` (see `docs/security/threat-model.md`
+  for the trust boundary diagram).
+- Denial-of-service via resource exhaustion on a publicly exposed instance
+  that bypasses the documented rate limits.
+- Vulnerabilities in user-authored MCP servers connected to the
+  coordinator. Those have their own security boundaries.
 
-### `execFile` for Keychain access is shell-injection-safe
+## Hardening recommendations for operators
 
-`src/quota/credential-reader.ts` uses `child_process.execFile` to call
-`security find-generic-password` on macOS. `execFile` does **not** use a
-shell — arguments are passed as a fixed array, never interpolated into a
-command string, so they cannot be used for command injection. The args
-list is hardcoded; no user input is forwarded.
+- Generate `COORDINATOR_JWT_SECRET` from `openssl rand -base64 32` and
+  manage it through your secret manager (HashiCorp Vault, AWS Secrets
+  Manager, GCP Secret Manager, sealed-secrets, etc.). See
+  `docs/ops/key-rotation.md`.
+- Front the coordinator with a TLS-terminating reverse proxy (nginx,
+  Caddy, Cloudflare). Do **not** rely on `127.0.0.1` binding for
+  production — the coordinator is a multi-user service in Phase 2.
+- Enable audit log retention monitoring. Tier 1 events (default 365-day
+  retention) are the security signal; alert on
+  `auth.refresh.chain_revoked` and `auth.refresh.suspicious_replay`.
+- Subscribe the operations team to GitHub Security Advisories for this
+  repository.
 
-### Crypto + HTTP imports
+## Threat model and runbooks
 
-`crypto` is imported in `src/auth.ts` and `src/serve-http.ts` for JWT
-signing (`jose`), `randomUUID()`, and `timingSafeEqual()`. These are
-standard auth primitives, not data-exfiltration scaffolding.
+The full STRIDE-by-asset threat model is at
+`docs/security/threat-model.md`. Incident-response runbooks live in
+`docs/ops/`:
 
-### `Buffer.from(b64, "base64url")`
+- `docs/ops/key-rotation.md` — JWT signing-key rotation procedure.
+- `docs/ops/incident-refresh-leak.md` — suspected refresh-token theft.
+- `docs/ops/incident-signing-key-leak.md` — compromised
+  `COORDINATOR_JWT_SECRET`.
 
-`src/serve-http.ts` decodes the payload of JWTs that **the server itself
-just minted** so it can return the `exp` claim to the client. Inbound
-token verification happens through `jose.jwtVerify()` with the configured
-signing key — not through the local decode helper.
+## Hall of fame
 
-### Environment variables
+Researchers credited with valid disclosures will be listed here once we
+have any. We do not currently run a paid bug-bounty program; this section
+will be updated if that changes.
 
-All env-var reads use the `COORDINATOR_*` prefix and are read at startup
-into local constants. Nothing is forwarded over the network. The complete
-set of recognized env vars is documented in the README.
+## Machine-readable contact
 
-### Cross-file "taint flows" from config.ts
-
-Some scanners report critical taint flows of the form
-`os.homedir() → http.request()` or `fs.readFileSync() → child_process.spawn()`
-because `cli/config.ts` is imported by `cli/doctor.ts`, `cli/server/start.ts`
-and `cli/server/status.ts`. The actual data flow is much narrower:
-
-- `homedir()` is used only to compute the config directory path
-  (`~/.mcp-coordinator/`). The home-dir string itself never reaches the
-  network or any spawned process — it stays in the filesystem layer.
-- `readFileSync(configPath)` parses a JSON config. Only the integer `port`
-  field is ever passed to `fetch`, `http.request`, or `spawn` (as part of
-  the localhost URL or PORT env var). User secrets and home-dir contents
-  are never forwarded.
-
-The scanner's flow analysis is import-graph-based, not data-flow-based, so
-any function called by a module that imported `config.ts` is treated as a
-sink for everything `config.ts` reads. These reports can be ignored.
-
-## Outbound network calls
-
-The only outbound HTTP request the package can make is to
-`https://api.anthropic.com/api/oauth/usage`, gated behind the optional
-quota feature and only when an Anthropic OAuth token is present in the
-user's Keychain. No telemetry, no analytics, no auto-update calls.
+See `.well-known/security.txt` (RFC 9116) for machine-readable contact
+metadata.

@@ -1,0 +1,12 @@
+# RFC 9116 security contact metadata for mcp-coordinator.
+# Operators MUST replace the placeholder Contact address, set a real
+# Expires date no more than 12 months ahead, and (recommended) publish a
+# PGP key under Encryption.
+
+Contact: mailto:security@example.com
+Expires: 2027-05-13T00:00:00.000Z
+Preferred-Languages: en, fr
+Canonical: https://example.com/.well-known/security.txt
+Policy: https://github.com/your-org/mcp-coordinator/blob/main/SECURITY.md
+Acknowledgments: https://github.com/your-org/mcp-coordinator/blob/main/SECURITY.md#hall-of-fame
+# Encryption: https://example.com/pgp-key.txt
