@@ -114,9 +114,10 @@ describe("device_auth_requests table", () => {
     const cols = db.prepare("PRAGMA table_info(device_auth_requests)").all() as { name: string }[];
     const names = cols.map((c) => c.name).sort();
     // v0.8 adds: requester_ip, requester_user_agent, requester_country, failed_approval_attempts,
-    // denied_at, denied_reason (V4 FIX 21), last_polled_at, interval (T18 poll grant)
+    // denied_at, denied_reason (V4 FIX 21), last_polled_at, interval (T18 poll grant),
+    // approved_at (T20 approve handler)
     expect(names).toEqual([
-      "approved_user_id", "created_at", "denied_at", "denied_reason",
+      "approved_at", "approved_user_id", "created_at", "denied_at", "denied_reason",
       "device_code", "expires_at", "failed_approval_attempts", "interval",
       "last_polled_at", "nonce", "org_id", "requester_country",
       "requester_ip", "requester_user_agent", "user_code",

@@ -479,16 +479,16 @@ describe("handleDeviceAuthorization — RFC 8628 client_id tolerance (Phase 2)",
   });
 });
 
-describe("handleDeviceApprove — stub", () => {
-  it("stub returns 501 NOT_IMPLEMENTED envelope (T20 owner)", async () => {
-    // T17 ships only handleDeviceAuthorization; the approve handler remains a
-    // stub. This test pins the stub's response contract so future regressions
-    // accidentally swapping it for an empty handler fail loudly.
+describe("handleDeviceApprove — coexistence with T17 handler", () => {
+  it("real T20 handler returns 401 UNAUTHORIZED on synthetic req with no cookie/Bearer", async () => {
+    // T20 replaces the T14.5 stub. Synthetic mockReq has no Authorization
+    // header and no cookie → authenticateRequest's no-credential path returns
+    // 401, proving the real handler is wired (not the old 501 stub).
     const res = mockResponse();
     await handleDeviceApprove(mockReq(), res as unknown as ServerResponse, ctx);
-    expect(res.statusCode).toBe(501);
+    expect(res.statusCode).toBe(401);
     const body = JSON.parse(res.body!) as { code: string };
-    expect(body.code).toBe("NOT_IMPLEMENTED");
+    expect(body.code).toBe("UNAUTHORIZED");
   });
 });
 

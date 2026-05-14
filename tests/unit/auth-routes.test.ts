@@ -168,58 +168,21 @@ describe("dispatchAuthRoutes — non-auth URLs fall through", () => {
   });
 });
 
-describe("dispatchAuthRoutes — happy-path stubs return 501", () => {
-  const cases: Array<{ method: string; url: string; stub: string }> = [
-    // NOTE: GET /auth/login was a stub in T14.5 but is now a real T15
-    // handler — verified in oauth-login.test.ts + the dispatcher-routing
-    // assertion below (302 instead of 501).
-    // NOTE: GET /api/auth/oauth/callback was a stub in T14.5 but is now a real
-    // T16a handler (state validation + exchange) — verified in
-    // oauth-callback-state.test.ts + the dispatcher-routing assertion below
-    // (the synthetic mockReq has no state/code params → real handler returns
-    // 400 INVALID_REQUEST, still proving routing reached the new handler).
-    // NOTE: POST /api/auth/oauth/token was a stub in T14.5 but is now a real
-    // T18 handler — verified in oauth-token-dispatch.test.ts + the
-    // dispatcher-routing assertion below (synthetic mockReq has no body
-    // stream → real handler returns 400 invalid_request).
-    // NOTE: POST /api/auth/oauth/device_authorization was a stub in T14.5
-    // but is now a real T17 handler — verified in
-    // oauth-device-authorization.test.ts + the dispatcher-routing assertion
-    // below (400 INVALID_REQUEST on the synthetic mockReq because the real
-    // handler tries to read a body stream that's a plain object).
-    // NOTE: POST /api/auth/logout, /logout-all, /revoke were stubs in T14.5
-    // but are now real T23 handlers — verified in logout.test.ts + the
-    // dispatcher-routing assertion below (401 UNAUTHORIZED on the synthetic
-    // mockReq because authenticateRequest sees no Authorization/cookie).
-    // NOTE: GET /api/auth/me was a stub in T14.5 but is now a real T24
-    // handler — verified in userinfo.test.ts + the dispatcher-routing
-    // assertion below (401 UNAUTHORIZED on the synthetic mockReq because
-    // authenticateRequest sees no Authorization/cookie).
-    { method: "POST", url: "/auth/device/approve", stub: "handleDeviceApprove" },
-    // NOTE: /auth/device, /auth/device/confirm, /auth/success were stubs
-    // in T14.5 but are now real T21 handlers — verified in
-    // device-pages.test.ts, plus the dispatcher-routing check below.
-  ];
-
-  for (const { method, url, stub } of cases) {
-    it(`returns true + 501 for ${method} ${url} (${stub})`, async () => {
-      const res = mockResponse();
-      const handled = await dispatchAuthRoutes(
-        mockReq(method, url),
-        res as unknown as ServerResponse,
-        ctx,
-      );
-      expect(handled).toBe(true);
-      expect(res.statusCode).toBe(501);
-      const body = res.body as Record<string, unknown>;
-      expect(body.code).toBe("NOT_IMPLEMENTED");
-      expect(typeof body.message).toBe("string");
-      expect((body.message as string)).toContain(stub);
-      // Tests run outside withRequestId — request_id must be null.
-      expect(body.request_id).toBeNull();
-    });
-  }
-});
+// All T14.5 stub routes have shipped real Phase 2 handlers (T15/T16a/T17/T18/
+// T19/T20/T21/T23/T24). Each per-handler routing assertion now lives in its
+// own `describe` block below, replacing the legacy 501-stub loop:
+//   - GET  /auth/login                              → T15 (302)
+//   - GET  /auth/device, /auth/device/confirm,
+//          /auth/success                            → T21 (200 HTML)
+//   - GET  /api/auth/oauth/callback                 → T16a (400 INVALID_REQUEST)
+//   - POST /api/auth/oauth/token                    → T18 (400 invalid_request)
+//   - POST /api/auth/oauth/device_authorization     → T17 (200 with body)
+//   - POST /auth/device/approve                     → T20 (401 UNAUTHORIZED)
+//   - POST /api/auth/logout                         → T23 (401 UNAUTHORIZED)
+//   - POST /api/auth/logout-all                     → T23 (401 UNAUTHORIZED)
+//   - POST /api/auth/revoke                         → T23 (401 UNAUTHORIZED)
+//   - GET  /api/auth/me                             → T24 (401 UNAUTHORIZED)
+// See device-approve.test.ts for the full T20 contract.
 
 describe("dispatchAuthRoutes — T23 logout/logout-all/revoke dispatched (not 501 stubs)", () => {
   // mockReq enriched with headers — T23 handlers call authenticateRequest,
@@ -268,6 +231,18 @@ describe("dispatchAuthRoutes — T23 logout/logout-all/revoke dispatched (not 50
     const res = mockResponse();
     const handled = await dispatchAuthRoutes(
       mockReqWithHeaders("GET", "/api/auth/me"),
+      res as unknown as ServerResponse,
+      ctx,
+    );
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(401);
+    expect((res.body as Record<string, unknown>).code).toBe("UNAUTHORIZED");
+  });
+
+  it("POST /auth/device/approve routes to handleDeviceApprove (401, not 501)", async () => {
+    const res = mockResponse();
+    const handled = await dispatchAuthRoutes(
+      mockReqWithHeaders("POST", "/auth/device/approve"),
       res as unknown as ServerResponse,
       ctx,
     );

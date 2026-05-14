@@ -636,6 +636,9 @@ export function initDatabase(dataDir: string): void {
     //     slow_down responses.
     try { db.exec("ALTER TABLE device_auth_requests ADD COLUMN last_polled_at INTEGER"); } catch { /* already exists */ }
     try { db.exec("ALTER TABLE device_auth_requests ADD COLUMN interval INTEGER NOT NULL DEFAULT 5"); } catch { /* already exists */ }
+    // T20 POST /auth/device/approve: approved_at INTEGER — unix seconds when
+    // the approving user submitted the form. Nullable: NULL until approve.
+    try { db.exec("ALTER TABLE device_auth_requests ADD COLUMN approved_at INTEGER"); } catch { /* already exists */ }
     try { db.exec("CREATE INDEX IF NOT EXISTS idx_device_expires ON device_auth_requests(expires_at)"); } catch { /* already exists */ }
 
     // --- system_state table (NR12 restore detection + recovery markers) -------

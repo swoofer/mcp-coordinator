@@ -3,6 +3,9 @@ import crypto from "node:crypto";
 import type { AuthHandlerContext } from "./context.js";
 import { appError } from "../http/response-contract.js";
 import { audit } from "../security/audit.js";
+import { authenticateRequest } from "../auth.js";
+import { parseCookies } from "./cookies.js";
+import { verifyCsrfToken } from "./csrf.js";
 
 const DEVICE_CODE_TTL_S = 600;       // 10-minute device flow window per RFC 8628
 const DEFAULT_POLL_INTERVAL_S = 5;   // initial poll cadence; slow_down may increase
@@ -197,19 +200,296 @@ export async function handleDeviceAuthorization(
   res.end(JSON.stringify(response));
 }
 
+// V4 NR11: approve/deny rate limit per authenticated user.
+// 10/min and 20/hr — both must pass.
+const APPROVE_RATE_PER_MIN = { per: 10, window_seconds: 60 } as const;
+const APPROVE_RATE_PER_HOUR = { per: 20, window_seconds: 3600 } as const;
+
+const CSRF_COOKIE_NAME = "__Host-coordinator_csrf";
+const APPROVE_FAILURE_THRESHOLD = 5;
+
 /**
- * POST /auth/device/approve — user-facing form post that approves (or
- * denies) a pending device-authorization request.
+ * POST /auth/device/approve — user-facing form post that approves OR denies
+ * a pending device-authorization row.
  *
- * STUB: real implementation lands in T20. The stub returns 501 with a
- * structured app-error envelope so route registration can be tested
- * before the handler body exists.
+ * Flow (per plan v1 §T20 + V4 FIX 18/21 + V2 §C.9):
+ *   1. Authenticate via cookie (T27 Scenario 5) — browser-only, no Bearer.
+ *      Unauthenticated → 401 + WWW-Authenticate.
+ *   2. Parse form body (user_code, _csrf, action ∈ {approve, deny}).
+ *      Missing user_code/action → 400 INVALID_REQUEST.
+ *      Unknown action → 400 INVALID_ACTION.
+ *   3. Rate limit per authenticated user (V4 NR11: 10/min + 20/hr).
+ *   4. CSRF double-submit: `__Host-coordinator_csrf` cookie value must
+ *      timing-safe match the form `_csrf` field. Fail → 403 + Tier 2 audit
+ *      auth.csrf.failed.
+ *   5. action=approve: atomic CAS UPDATE
+ *         SET approved_user_id = ?, approved_at = ?
+ *         WHERE user_code = ? AND approved_user_id IS NULL
+ *           AND denied_at IS NULL AND expires_at > now
+ *           AND failed_approval_attempts < 5
+ *      Success → Tier 2 audit auth.device.approved + 302 /auth/success.
+ *      Failure → inspect row state:
+ *        - row missing                          → 302 ?error=invalid_code
+ *        - expired                              → 302 ?error=expired
+ *        - already approved/denied              → 302 ?error=consumed
+ *        - else (attempts ≥ 5 OR race)          → atomic increment
+ *           failed_approval_attempts; if new value ≥ 5 → V4 FIX 21 lockout
+ *           (set denied_at + denied_reason='too_many_failed_approvals') +
+ *           Tier 2 audit auth.device.denied reason='brute_force' + 302
+ *           ?error=lockout. Else → 302 ?error=consumed.
+ *   6. action=deny: atomic UPDATE SET denied_at, denied_reason='user_denied'
+ *      WHERE user_code = ? AND approved_user_id IS NULL AND denied_at IS NULL
+ *      AND expires_at > now. Success → Tier 2 audit auth.device.denied
+ *      reason='user_denied'. Always redirects to /auth/device?status=denied
+ *      (no info leak on unknown/expired user_code).
  */
 export async function handleDeviceApprove(
-  _req: IncomingMessage,
+  req: IncomingMessage,
   res: ServerResponse,
-  _ctx: AuthHandlerContext,
+  ctx: AuthHandlerContext,
 ): Promise<void> {
-  res.writeHead(501, { "Content-Type": "application/json; charset=utf-8" });
-  res.end(JSON.stringify(appError("NOT_IMPLEMENTED", "handleDeviceApprove: stub awaits T20")));
+  // (1) Cookie auth via T27 Scenario 5.
+  const authResult = await authenticateRequest(req, { authEnabled: true });
+  if (!authResult.ok) {
+    res.writeHead(authResult.status, {
+      "Content-Type": "application/json; charset=utf-8",
+      ...(authResult.wwwAuthenticate
+        ? { "WWW-Authenticate": authResult.wwwAuthenticate }
+        : {}),
+    });
+    res.end(JSON.stringify(appError("UNAUTHORIZED", authResult.error)));
+    return;
+  }
+  const claims = authResult.claims;
+
+  // (2) Parse form body.
+  let body: Record<string, string>;
+  try {
+    body = await parseFormBody(req);
+  } catch {
+    res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify(appError("INVALID_REQUEST", "Could not parse form body")));
+    return;
+  }
+
+  const userCode = body.user_code;
+  const csrfForm = body._csrf;
+  const action = body.action;
+
+  if (!userCode || !action) {
+    res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify(appError("INVALID_REQUEST", "Missing user_code or action")));
+    return;
+  }
+
+  // (3) Rate limit per authenticated user. Placed after auth so the key
+  // can use user_id (rather than IP, which can be shared/NATed for legit
+  // approvers); placed before CSRF so an attacker that spams /approve with
+  // bogus CSRF tokens still pays the per-user rate-limit cost.
+  const minRate = ctx.rateLimiter.check(
+    `device-approve-min:${claims.user_id}`,
+    APPROVE_RATE_PER_MIN,
+  );
+  if (!minRate.allowed) {
+    res.writeHead(429, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Retry-After": String(minRate.retry_after_seconds),
+    });
+    res.end(JSON.stringify(appError("RATE_LIMITED", "Too many device approve requests (per minute)")));
+    return;
+  }
+  const hourRate = ctx.rateLimiter.check(
+    `device-approve-hour:${claims.user_id}`,
+    APPROVE_RATE_PER_HOUR,
+  );
+  if (!hourRate.allowed) {
+    res.writeHead(429, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Retry-After": String(hourRate.retry_after_seconds),
+    });
+    res.end(JSON.stringify(appError("RATE_LIMITED", "Too many device approve requests (per hour)")));
+    return;
+  }
+
+  // (4) CSRF double-submit. Tier 2 audit on failure (V4 patches CUT 2 —
+  // SameSite=Strict + __Host- + this random double-submit is the defense).
+  const cookies = parseCookies(req);
+  const csrfCookie = cookies[CSRF_COOKIE_NAME];
+  if (!verifyCsrfToken(csrfCookie, csrfForm)) {
+    audit("auth.csrf.failed", {
+      tier: 2,
+      metadata: { user_id: claims.user_id, endpoint: "/auth/device/approve" },
+    });
+    res.writeHead(403, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify(appError("CSRF_FAILED", "CSRF validation failed")));
+    return;
+  }
+
+  const base = ctx.publicUrl.replace(/\/$/, "");
+  const now = ctx.clock.now();
+
+  if (action === "approve") {
+    // (5) Atomic CAS approve. CAST(expires_at AS INTEGER) — T17 stores as
+    // TEXT epoch seconds; SQLite needs the cast to compare against integer.
+    const result = ctx.db
+      .prepare(`
+        UPDATE device_auth_requests
+        SET approved_user_id = ?, approved_at = ?
+        WHERE user_code = ?
+          AND approved_user_id IS NULL
+          AND denied_at IS NULL
+          AND CAST(expires_at AS INTEGER) > ?
+          AND failed_approval_attempts < ?
+        RETURNING device_code, requester_ip, requester_user_agent
+      `)
+      .get(claims.user_id, now, userCode, now, APPROVE_FAILURE_THRESHOLD) as
+        | {
+            device_code: string;
+            requester_ip: string | null;
+            requester_user_agent: string | null;
+          }
+        | undefined;
+
+    if (result) {
+      audit("auth.device.approved", {
+        tier: 2,
+        metadata: {
+          actor_user_id: claims.user_id,
+          requester_ip: result.requester_ip,
+          requester_user_agent: result.requester_user_agent,
+        },
+      });
+      res.writeHead(302, { Location: `${base}/auth/success` });
+      res.end();
+      return;
+    }
+
+    // Approve UPDATE matched 0 rows — diagnose + maybe lockout.
+    await handleApproveFailure(res, ctx, base, userCode, claims.user_id, now);
+    return;
+  }
+
+  if (action === "deny") {
+    // (6) Atomic deny. Same WHERE guards as approve (sans attempts<5 —
+    // explicit user denial is always honored unless the row is expired
+    // or already consumed).
+    const denyResult = ctx.db
+      .prepare(`
+        UPDATE device_auth_requests
+        SET denied_at = ?, denied_reason = 'user_denied'
+        WHERE user_code = ?
+          AND approved_user_id IS NULL
+          AND denied_at IS NULL
+          AND CAST(expires_at AS INTEGER) > ?
+        RETURNING device_code
+      `)
+      .get(now, userCode, now) as { device_code: string } | undefined;
+
+    if (denyResult) {
+      audit("auth.device.denied", {
+        tier: 2,
+        metadata: {
+          actor_user_id: claims.user_id,
+          reason: "user_denied",
+        },
+      });
+    }
+    // Always redirect — no-op deny (unknown/expired/consumed user_code)
+    // gets the same response as a successful deny. Avoids leaking row
+    // existence to a CSRF-laundered attacker.
+    res.writeHead(302, { Location: `${base}/auth/device?status=denied` });
+    res.end();
+    return;
+  }
+
+  // Unknown action.
+  res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+  res.end(JSON.stringify(appError("INVALID_ACTION", "action must be 'approve' or 'deny'")));
+}
+
+/**
+ * Diagnose why an approve UPDATE matched 0 rows and emit the right redirect.
+ * Increments failed_approval_attempts only when the row exists, isn't
+ * expired, and isn't already consumed — i.e., the approve failed because
+ * attempts ≥ 5 OR a race (which we conservatively treat as another failed
+ * attempt). On crossing the V4 FIX 21 threshold, lock the row out.
+ */
+async function handleApproveFailure(
+  res: ServerResponse,
+  ctx: AuthHandlerContext,
+  base: string,
+  userCode: string,
+  callerUserId: string,
+  now: number,
+): Promise<void> {
+  const row = ctx.db
+    .prepare(`
+      SELECT user_code, approved_user_id, denied_at, expires_at,
+             failed_approval_attempts
+      FROM device_auth_requests WHERE user_code = ?
+    `)
+    .get(userCode) as
+      | {
+          user_code: string;
+          approved_user_id: string | null;
+          denied_at: number | null;
+          expires_at: number | string;
+          failed_approval_attempts: number;
+        }
+      | undefined;
+
+  if (!row) {
+    // Unknown user_code. No row to increment (brute-force counter is
+    // per-user_code); rate limit + 25.6B keyspace bound this attack.
+    res.writeHead(302, { Location: `${base}/auth/device?error=invalid_code` });
+    res.end();
+    return;
+  }
+
+  if (Number(row.expires_at) <= now) {
+    res.writeHead(302, { Location: `${base}/auth/device?error=expired` });
+    res.end();
+    return;
+  }
+
+  if (row.approved_user_id !== null || row.denied_at !== null) {
+    res.writeHead(302, { Location: `${base}/auth/device?error=consumed` });
+    res.end();
+    return;
+  }
+
+  // Row exists, not expired, not consumed. Approve failed because either
+  // failed_approval_attempts ≥ 5 OR a race occurred. Increment and check
+  // the V4 FIX 21 lockout threshold.
+  const incResult = ctx.db
+    .prepare(`
+      UPDATE device_auth_requests
+      SET failed_approval_attempts = failed_approval_attempts + 1
+      WHERE user_code = ?
+      RETURNING failed_approval_attempts
+    `)
+    .get(userCode) as { failed_approval_attempts: number } | undefined;
+  /* c8 ignore next */
+  const attempts = incResult?.failed_approval_attempts ?? 0;
+
+  if (attempts >= APPROVE_FAILURE_THRESHOLD) {
+    // V4 FIX 21: lock the row out so subsequent approves fall to "consumed".
+    ctx.db
+      .prepare(`
+        UPDATE device_auth_requests
+        SET denied_at = ?, denied_reason = 'too_many_failed_approvals'
+        WHERE user_code = ?
+      `)
+      .run(now, userCode);
+    audit("auth.device.denied", {
+      tier: 2,
+      metadata: { actor_user_id: callerUserId, reason: "brute_force" },
+    });
+    res.writeHead(302, { Location: `${base}/auth/device?error=lockout` });
+    res.end();
+    return;
+  }
+
+  res.writeHead(302, { Location: `${base}/auth/device?error=consumed` });
+  res.end();
 }
