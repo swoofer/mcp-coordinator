@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import type { AuthHandlerContext } from "./context.js";
 import type { ExchangeCodeResult } from "./providers/types.js";
 import { IdPTokenRevoked, IdPTransientError } from "./providers/errors.js";
-import { consumeOAuthState } from "./oauth-state.js";
+import { consumeOAuthState, inspectOAuthState } from "./oauth-state.js";
 import { parseCookies } from "./cookies.js";
 import { audit } from "../security/audit.js";
 import { appError, bearerAuthHeader } from "../http/response-contract.js";
@@ -102,23 +102,27 @@ export async function handleOAuthCallback(
   const row = consumeOAuthState(ctx.db, ctx.clock, state);
   if (!row) {
     // Was it consumed already, expired, or unknown? Disambiguate for status code.
-    const inspectRow = ctx.db
-      .prepare("SELECT consumed_at, expires_at FROM oauth_state WHERE state = ?")
-      .get(state) as { consumed_at: number | null; expires_at: number } | undefined;
-    if (!inspectRow) {
-      res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
-      res.end(JSON.stringify(appError("UNKNOWN_STATE", "State not recognized")));
-      return;
+    // inspectOAuthState would throw on a live un-consumed row, but that's
+    // impossible post-CAS-failure (CAS would have succeeded on a live row);
+    // the throw acts as an invariant assertion.
+    const inspectResult = inspectOAuthState(ctx.db, ctx.clock, state);
+    switch (inspectResult.status) {
+      case "unknown":
+        audit("auth.state.replay", { tier: 1, metadata: { reason: "state_unknown" } });
+        res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify(appError("UNKNOWN_STATE", "State not recognized")));
+        return;
+      case "consumed":
+        audit("auth.state.replay", { tier: 1, metadata: { reason: "state_consumed" } });
+        res.writeHead(409, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify(appError("STATE_ALREADY_CONSUMED", "This authorization was already completed")));
+        return;
+      case "expired":
+        audit("auth.state.replay", { tier: 1, metadata: { reason: "state_expired" } });
+        res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify(appError("STATE_EXPIRED", "Authorization expired; please retry")));
+        return;
     }
-    if (inspectRow.consumed_at !== null) {
-      res.writeHead(409, { "Content-Type": "application/json; charset=utf-8" });
-      res.end(JSON.stringify(appError("STATE_ALREADY_CONSUMED", "This authorization was already completed")));
-      return;
-    }
-    // Else expired
-    res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
-    res.end(JSON.stringify(appError("STATE_EXPIRED", "Authorization expired; please retry")));
-    return;
   }
 
   // Mix-up defense (V4)

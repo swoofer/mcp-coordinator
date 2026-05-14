@@ -356,6 +356,9 @@ describe("handleOAuthCallback — CAS + row state disambiguation", () => {
     );
     expect(res.statusCode).toBe(400);
     expect(JSON.parse(res.body!).code).toBe("UNKNOWN_STATE");
+    const rows = findAuditRows("auth.state.replay");
+    expect(rows).toHaveLength(1);
+    expect(JSON.parse(rows[0].metadata_json as string).reason).toBe("state_unknown");
   });
 
   it("state expired (expires_at < now) → 400 + STATE_EXPIRED", async () => {
@@ -369,6 +372,9 @@ describe("handleOAuthCallback — CAS + row state disambiguation", () => {
     );
     expect(res.statusCode).toBe(400);
     expect(JSON.parse(res.body!).code).toBe("STATE_EXPIRED");
+    const rows = findAuditRows("auth.state.replay");
+    expect(rows).toHaveLength(1);
+    expect(JSON.parse(rows[0].metadata_json as string).reason).toBe("state_expired");
   });
 
   it("state already consumed → 409 + STATE_ALREADY_CONSUMED", async () => {
@@ -382,6 +388,9 @@ describe("handleOAuthCallback — CAS + row state disambiguation", () => {
     );
     expect(res.statusCode).toBe(409);
     expect(JSON.parse(res.body!).code).toBe("STATE_ALREADY_CONSUMED");
+    const rows = findAuditRows("auth.state.replay");
+    expect(rows).toHaveLength(1);
+    expect(JSON.parse(rows[0].metadata_json as string).reason).toBe("state_consumed");
   });
 
   it("valid state + cookie match → consume succeeds + handler proceeds to exchange", async () => {
