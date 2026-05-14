@@ -26,6 +26,7 @@ export default defineConfig({
         "src/auth/request-id.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/auth/audit-context.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/security/audit.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
+        "src/security/audit-queue.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/auth/html.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/auth/org-settings.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/discovery.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },

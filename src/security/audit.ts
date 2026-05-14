@@ -1,6 +1,29 @@
 import { getDb } from "../database.js";
 import { getRequestId } from "../auth/request-id.js";
 import { getCurrentActor, getCurrentRequest } from "../auth/audit-context.js";
+import { AuditQueue, type AuditQueueRow } from "./audit-queue.js";
+
+let _auditQueue: AuditQueue | null = null;
+
+/**
+ * Initialize the Tier 2 audit queue. Called once at boot (T29). Pass the
+ * db handle so the queue's prepared statements bind to the right database
+ * (better-sqlite3 statements are per-connection).
+ */
+export function initAuditQueue(db: import("better-sqlite3").Database): AuditQueue {
+  _auditQueue = new AuditQueue(db);
+  return _auditQueue;
+}
+
+/** Accessor for tests + SIGTERM drain wiring (T29). */
+export function getAuditQueue(): AuditQueue | null {
+  return _auditQueue;
+}
+
+/** Test helper: reset the singleton between test runs. */
+export function resetAuditQueue(): void {
+  _auditQueue = null;
+}
 
 export interface AuditEvent {
   user_id?: string | null;
@@ -66,35 +89,37 @@ export interface AuditOptions {
  * retention queries (T28) classify by action name, not by stored tier.
  */
 export function audit(action: string, options: AuditOptions = {}): void {
-  // tier resolution kept for routing (Tier 2 fallback today; T11b later).
   const tier = options.tier ?? 2;
-  void tier; // currently unused at storage time — routes through same INSERT
-             // until T11b adds the AuditQueue branch.
-
   const actor = getCurrentActor();
   const request = getCurrentRequest();
-  const metadataJson = options.metadata ? JSON.stringify(options.metadata) : null;
-  const outcome = options.outcome ?? "success";
-  const target = options.target ?? null;
-  const requestId = getRequestId() ?? null;
+  const row: AuditQueueRow = {
+    actor_user_id: actor.userId,
+    actor_org_id: actor.orgId,
+    action,
+    target: options.target ?? null,
+    actor_ip: request.ip,
+    actor_user_agent: request.userAgent,
+    request_id: getRequestId() ?? null,
+    outcome: options.outcome ?? "success",
+    metadata_json: options.metadata ? JSON.stringify(options.metadata) : null,
+  };
 
-  getDb()
-    .prepare(`
-      INSERT INTO audit_log
-        (actor_user_id, actor_org_id, action, target,
-         actor_ip, actor_user_agent, request_id, outcome,
-         metadata_json)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `)
-    .run(
-      actor.userId,
-      actor.orgId,
-      action,
-      target,
-      request.ip,
-      request.userAgent,
-      requestId,
-      outcome,
-      metadataJson,
-    );
+  if (tier === 1 || !_auditQueue) {
+    // Tier 1: sync direct INSERT. Also covers the "queue not initialized"
+    // case — pre-boot audit emissions (e.g., migration) shouldn't drop.
+    getDb()
+      .prepare(`
+        INSERT INTO audit_log
+          (actor_user_id, actor_org_id, action, target,
+           actor_ip, actor_user_agent, request_id, outcome, metadata_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `)
+      .run(
+        row.actor_user_id, row.actor_org_id, row.action, row.target,
+        row.actor_ip, row.actor_user_agent, row.request_id, row.outcome,
+        row.metadata_json,
+      );
+  } else {
+    _auditQueue.enqueue(row);
+  }
 }
