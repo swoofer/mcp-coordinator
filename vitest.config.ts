@@ -51,6 +51,7 @@ export default defineConfig({
         "src/auth/pages/success.html.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/sweeper/index.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/security/audit-events.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
+        "src/boot.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
       },
     },
   },
