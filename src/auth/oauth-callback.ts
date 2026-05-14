@@ -7,7 +7,15 @@ import { consumeOAuthState, inspectOAuthState } from "./oauth-state.js";
 import { parseCookies } from "./cookies.js";
 import { hashIdentifier, isLocked, recordFailedLogin } from "./login-lockout.js";
 import { resolveOrgFromMemberships } from "./allowlist.js";
-import { provisionUser, type ProvisionedUser, type ProvisionResult } from "./oauth-finalize.js";
+import {
+  provisionUser,
+  mintTokenPair,
+  computeFingerprint,
+  setSessionCookies,
+  type ProvisionedUser,
+  type ProvisionResult,
+} from "./oauth-finalize.js";
+import { generateCsrfToken } from "./csrf.js";
 import { getOrgSetting } from "./org-settings.js";
 import { hashIdpUserId } from "./audit-helpers.js";
 import { audit } from "../security/audit.js";
@@ -376,16 +384,61 @@ async function finalizeBrowserOAuth(
   await finalizeBrowserOAuthMint(res, ctx, provisionResult.user, ip, userAgent);
 }
 
+/**
+ * T16c: complete the OAuth callback after T16b's provisioning TX commits.
+ *
+ * Flow:
+ *   1. Compute SHA-256 fingerprint(ip|ua) via T16helpers (V3 §B-NEW-2 —
+ *      consumed by T19b for stolen-token detection on refresh rotation).
+ *      Null when both inputs are null.
+ *   2. Generate 256-bit base64url CSRF token via T08.
+ *   3. mintTokenPair (T16helpers): signs access + refresh JWTs and INSERTs
+ *      the refresh_tokens row (single-statement INSERT is atomic; the prior
+ *      provisionUser TX already committed when we land here).
+ *   4. Tier 2 audit auth.login.success (V4 FIX 23 commit-then-audit; the
+ *      token mint + refresh INSERT have already committed). Tier 2 because
+ *      successful logins are high-volume operational, not security incidents.
+ *   5. Emit __Host-coordinator_session (HttpOnly) + __Host-coordinator_csrf
+ *      (NOT HttpOnly so JS can echo it for CSRF double-submit) + Max-Age=0
+ *      expire of __Host-coordinator_oauth_state.
+ *   6. 302 redirect to {publicUrl}/auth/success (V4 FIX 9 allowed HTML route).
+ */
 async function finalizeBrowserOAuthMint(
   res: ServerResponse,
-  _ctx: AuthHandlerContext,
-  _user: ProvisionedUser,
-  _ip: string | null,
-  _userAgent: string | null,
+  ctx: AuthHandlerContext,
+  user: ProvisionedUser,
+  ip: string | null,
+  userAgent: string | null,
 ): Promise<void> {
-  // T16c: JWT mint + cookies + redirect.
-  res.writeHead(501, { "Content-Type": "application/json; charset=utf-8" });
-  res.end(JSON.stringify(appError("NOT_IMPLEMENTED", "finalizeBrowserOAuthMint awaits T16c")));
+  const fingerprint = computeFingerprint(ip, userAgent);
+  const csrfToken = generateCsrfToken();
+
+  const issuer = ctx.publicUrl.replace(/\/$/, "");
+  const pair = await mintTokenPair(ctx.db, ctx.clock, {
+    user,
+    registry: ctx.signingKeys,
+    issuer,
+    fingerprint,
+  });
+
+  audit("auth.login.success", {
+    tier: 2,
+    metadata: {
+      user_id: user.user_id,
+      org_id: user.primary_org_id,
+      role: user.role,
+      family_id: pair.familyId,
+    },
+  });
+
+  setSessionCookies(res, {
+    accessJwt: pair.accessJwt,
+    csrfToken,
+    clearStateCookie: true,
+  });
+
+  res.writeHead(302, { Location: `${issuer}/auth/success` });
+  res.end();
 }
 
 /**
@@ -394,3 +447,10 @@ async function finalizeBrowserOAuthMint(
  * stages. Production callers MUST use {@link handleOAuthCallback}.
  */
 export { finalizeBrowserOAuth as __finalizeBrowserOAuth };
+
+/**
+ * Exported only for T16c tests that exercise the JWT mint + cookies +
+ * redirect path directly, bypassing the T16b provisioning flow. Production
+ * callers MUST use {@link handleOAuthCallback}.
+ */
+export { finalizeBrowserOAuthMint as __finalizeBrowserOAuthMint };

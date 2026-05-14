@@ -17,9 +17,10 @@ import { findAuditRows, expectAuditRow } from "../helpers/audit.js";
  * T16a — handleOAuthCallback steps 1-5 (query parse + state cookie HMAC +
  * atomic CAS + mix-up defense + IdP exchangeCode).
  *
- * Provisioning + JWT mint + cookies + redirect (steps 6+) are stubbed in
- * the production handler as finalizeBrowserOAuth → 501, so the "happy
- * path" test asserts 501 to confirm the handoff fires after exchangeCode.
+ * Provisioning + JWT mint + cookies + redirect (steps 6+) are tested in
+ * oauth-callback-provisioning.test.ts and oauth-callback-finalize.test.ts;
+ * here the "happy path" asserts the 302 redirect emitted by T16c to confirm
+ * the handoff after exchangeCode reaches a fully implemented finalize path.
  */
 
 const DIR = "data-test-oauth-callback-state";
@@ -136,7 +137,7 @@ function stubProvider(config: StubProviderConfig = {}): TrackedProvider {
       return impl(code, redirectUri, codeVerifier);
     },
     // T16b consumes this through the MembershipCache. T16a's tests pre-seed
-    // an allowlist row for "acme" so the happy path reaches T16c's 501 stub.
+    // an allowlist row for "acme" so the happy path reaches T16c's 302 redirect.
     listMemberships: async () => ["acme"],
   };
   return provider;
@@ -350,8 +351,8 @@ describe("handleOAuthCallback — state cookie", () => {
       res as unknown as ServerResponse,
       ctx,
     );
-    // CAS succeeded, exchange happy-path → 501 from finalizeBrowserOAuth stub
-    expect(res.statusCode).toBe(501);
+    // CAS succeeded, exchange happy-path → T16c 302 redirect
+    expect(res.statusCode).toBe(302);
     expect(findAuditRows("auth.state.replay")).toHaveLength(0);
   });
 });
@@ -417,8 +418,8 @@ describe("handleOAuthCallback — CAS + row state disambiguation", () => {
       res as unknown as ServerResponse,
       ctx,
     );
-    // 501 from finalizeBrowserOAuth stub = full path through exchange succeeded.
-    expect(res.statusCode).toBe(501);
+    // T16c 302 redirect = full path through exchange + provisioning succeeded.
+    expect(res.statusCode).toBe(302);
     // And the state row is now consumed.
     const row = getDb()
       .prepare("SELECT consumed_at FROM oauth_state WHERE state = ?")
@@ -453,7 +454,7 @@ describe("handleOAuthCallback — mix-up defense", () => {
 // -- IdP exchange (4 cases) -----------------------------------------------
 
 describe("handleOAuthCallback — IdP exchange", () => {
-  it("happy path → exchangeCode succeeds → finalizeBrowserOAuth stub fires (501)", async () => {
+  it("happy path → exchangeCode succeeds → T16c 302 redirect to /auth/success", async () => {
     const state = "s-happy";
     insertState(state);
     const provider = stubProvider();
@@ -463,8 +464,8 @@ describe("handleOAuthCallback — IdP exchange", () => {
       res as unknown as ServerResponse,
       makeCtx({ githubProvider: provider }),
     );
-    expect(res.statusCode).toBe(501);
-    expect(JSON.parse(res.body!).code).toBe("NOT_IMPLEMENTED");
+    expect(res.statusCode).toBe(302);
+    expect(res.headers["Location"]).toBe("http://localhost:3000/auth/success");
   });
 
   it("IdPTokenRevoked → 401 + WWW-Authenticate + Tier 1 audit auth.idp.token_revoked", async () => {
@@ -567,7 +568,7 @@ describe("handleOAuthCallback — edge cases", () => {
     );
   });
 
-  it("ip + user-agent from req are wired to finalize (still 501 stub)", async () => {
+  it("ip + user-agent from req are wired to finalize (302 redirect on success)", async () => {
     const state = "s-ip-ua";
     insertState(state);
     const res = mockResponse();
@@ -582,10 +583,10 @@ describe("handleOAuthCallback — edge cases", () => {
       res as unknown as ServerResponse,
       ctx,
     );
-    expect(res.statusCode).toBe(501);
+    expect(res.statusCode).toBe(302);
   });
 
-  it("missing req.socket → ip defaults to null (finalize stub still fires)", async () => {
+  it("missing req.socket → ip defaults to null (302 still emitted)", async () => {
     const state = "s-no-socket";
     insertState(state);
     const res = mockResponse();
@@ -596,7 +597,7 @@ describe("handleOAuthCallback — edge cases", () => {
       headers: { cookie: cookieFor(state) },
     } as unknown as IncomingMessage;
     await handleOAuthCallback(req, res as unknown as ServerResponse, ctx);
-    expect(res.statusCode).toBe(501);
+    expect(res.statusCode).toBe(302);
   });
 
   it("missing req.url → defaults to '/' (still parses empty query → INVALID_REQUEST)", async () => {

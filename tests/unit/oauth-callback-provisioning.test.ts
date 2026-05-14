@@ -32,11 +32,13 @@ import { findAuditRows, expectAuditRow } from "../helpers/audit.js";
  *   4. AUTO_PROVISION mode (T44)
  *   5. provisionUser inside BEGIN IMMEDIATE TX (T16helpers + V4 FIX 16)
  *   6. post-TX audits (V4 FIX 23 commit-then-audit)
- *   7. hand-off to T16c (finalizeBrowserOAuthMint → 501 stub)
+ *   7. hand-off to T16c (finalizeBrowserOAuthMint → 302 + cookies)
  *
  * Uses the internal __finalizeBrowserOAuth export so we can drive the
  * flow without re-running the upstream state/CAS/exchange machinery (T16a
- * tests cover those).
+ * tests cover those). Happy-path tests now observe T16c's 302 redirect to
+ * /auth/success because T16c is implemented; T16c-specific assertions live
+ * in oauth-callback-finalize.test.ts.
  */
 
 const DIR = "data-test-oauth-callback-provisioning";
@@ -282,8 +284,8 @@ describe("finalizeBrowserOAuth — listMemberships errors", () => {
       "10.0.0.1",
       "ua/1.0",
     );
-    // First call provisions → bootstrap admin → 501 stub.
-    expect(firstRes.statusCode).toBe(501);
+    // First call provisions → bootstrap admin → T16c 302 redirect.
+    expect(firstRes.statusCode).toBe(302);
     // Advance past positive TTL (60s) but stay within 10min stale window.
     clock.advance(120);
     // Now make the provider throw transient.
@@ -303,8 +305,8 @@ describe("finalizeBrowserOAuth — listMemberships errors", () => {
       "ua/1.0",
     );
     expect(throwCount).toBe(1);
-    // Stale-on-error served cached ["acme"] → existing user path → 501 stub.
-    expect(secondRes.statusCode).toBe(501);
+    // Stale-on-error served cached ["acme"] → existing user path → T16c 302.
+    expect(secondRes.statusCode).toBe(302);
   });
 });
 
@@ -349,7 +351,7 @@ describe("finalizeBrowserOAuth — allowlist", () => {
       "10.0.0.1",
       "ua/1.0",
     );
-    expect(res.statusCode).toBe(501);
+    expect(res.statusCode).toBe(302);
     // User was provisioned in org-a (alphabetical first).
     const row = getDb()
       .prepare("SELECT primary_org_id FROM users WHERE idp_user_id = ?")
@@ -391,7 +393,7 @@ describe("finalizeBrowserOAuth — AUTO_PROVISION mode", () => {
       "10.0.0.1",
       "ua/1.0",
     );
-    expect(res.statusCode).toBe(501);
+    expect(res.statusCode).toBe(302);
     const row = getDb()
       .prepare("SELECT id FROM users WHERE idp_user_id = ?")
       .get(USER_ALICE.idp_user_id);
@@ -477,7 +479,7 @@ describe("finalizeBrowserOAuth — AUTO_PROVISION mode", () => {
       "10.0.0.1",
       "ua/1.0",
     );
-    expect(res.statusCode).toBe(501);
+    expect(res.statusCode).toBe(302);
     // Access token was rotated.
     const row = getDb()
       .prepare("SELECT idp_access_token FROM users WHERE id = ?")
@@ -500,7 +502,7 @@ describe("finalizeBrowserOAuth — provisioning audits", () => {
       "10.0.0.1",
       "ua/1.0",
     );
-    expect(res.statusCode).toBe(501);
+    expect(res.statusCode).toBe(302);
 
     const createdRows = findAuditRows("auth.user.created");
     expect(createdRows).toHaveLength(1);
@@ -533,7 +535,7 @@ describe("finalizeBrowserOAuth — provisioning audits", () => {
       "10.0.0.1",
       "ua/1.0",
     );
-    expect(res.statusCode).toBe(501);
+    expect(res.statusCode).toBe(302);
 
     const createdRows = findAuditRows("auth.user.created");
     expect(createdRows).toHaveLength(1);
@@ -562,7 +564,7 @@ describe("finalizeBrowserOAuth — provisioning audits", () => {
       "10.0.0.1",
       "ua/1.0",
     );
-    expect(res.statusCode).toBe(501);
+    expect(res.statusCode).toBe(302);
     expect(findAuditRows("auth.user.created")).toHaveLength(0);
     expect(findAuditRows("auth.admin.bootstrapped")).toHaveLength(0);
     const row = getDb()
@@ -572,7 +574,7 @@ describe("finalizeBrowserOAuth — provisioning audits", () => {
     expect(row.last_login_at).toBe(expectedNow);
   });
 
-  it("happy path returns 501 from finalizeBrowserOAuthMint (T16c handoff)", async () => {
+  it("happy path returns 302 from finalizeBrowserOAuthMint (T16c handoff)", async () => {
     seedAcmeOrg();
     const provider = stubProvider({ memberships: ["acme"] });
     const res = mockResponse();
@@ -583,9 +585,10 @@ describe("finalizeBrowserOAuth — provisioning audits", () => {
       "10.0.0.1",
       "ua/1.0",
     );
-    expect(res.statusCode).toBe(501);
-    expect(JSON.parse(res.body!).code).toBe("NOT_IMPLEMENTED");
-    expect(JSON.parse(res.body!).message).toContain("T16c");
+    expect(res.statusCode).toBe(302);
+    expect(res.headers["Location"]).toBe("http://localhost:3000/auth/success");
+    // Set-Cookie present (T16c emits 3 cookies).
+    expect(res.headers["Set-Cookie"]).toBeDefined();
   });
 });
 
@@ -691,7 +694,7 @@ describe("finalizeBrowserOAuth — edge cases", () => {
       null,
       null,
     );
-    expect(res.statusCode).toBe(501);
+    expect(res.statusCode).toBe(302);
   });
 
   it("uses default Retry-After of 900s when limiter omits retry_after_seconds", async () => {
