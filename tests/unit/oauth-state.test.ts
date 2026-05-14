@@ -111,13 +111,13 @@ describe("consumeOAuthState", () => {
 
 describe("inspectOAuthState", () => {
   it("returns { status: 'unknown', row: null } for missing state", () => {
-    expect(inspectOAuthState(db, "ghost")).toEqual({ status: "unknown", row: null });
+    expect(inspectOAuthState(db, clock, "ghost")).toEqual({ status: "unknown", row: null });
   });
 
   it("returns { status: 'consumed', row } after a successful consume", () => {
     const { state } = createOAuthState(db, clock, "github", "https://app/cb");
     consumeOAuthState(db, clock, state);
-    const result = inspectOAuthState(db, state);
+    const result = inspectOAuthState(db, clock, state);
     expect(result.status).toBe("consumed");
     expect(result.row).not.toBeNull();
     expect(result.row?.consumed_at).not.toBeNull();
@@ -127,10 +127,18 @@ describe("inspectOAuthState", () => {
     const { state } = createOAuthState(db, clock, "github", "https://app/cb");
     clock.advance(601);
     // Don't bother consuming — just inspect a known-stale row.
-    const result = inspectOAuthState(db, state);
+    const result = inspectOAuthState(db, clock, state);
     expect(result.status).toBe("expired");
     expect(result.row).not.toBeNull();
     expect(result.row?.consumed_at).toBeNull();
+  });
+
+  it("throws when called on a live un-consumed un-expired row (precondition violation)", () => {
+    const { state } = createOAuthState(db, clock, "github", "https://app/cb");
+    // Do NOT consume, do NOT advance clock — row is live.
+    expect(() => inspectOAuthState(db, clock, state)).toThrow(
+      "inspectOAuthState: row is live (un-consumed, un-expired); use consumeOAuthState first",
+    );
   });
 });
 
@@ -145,6 +153,7 @@ describe("consumeOAuthState atomicity (property)", () => {
       fc.property(fc.integer({ min: 2, max: 50 }), (n) => {
         // Fresh row per property run.
         db.exec("DELETE FROM oauth_state");
+        clock.current = 1_000_000; // reset to base; defensive against future clock.advance() in this property
         const { state } = createOAuthState(db, clock, "github", "https://app/cb");
         let wins = 0;
         for (let i = 0; i < n; i++) {

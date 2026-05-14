@@ -40,6 +40,9 @@ export function createOAuthState(
   const state = crypto.randomBytes(32).toString("base64url");
   const code_verifier = crypto.randomBytes(32).toString("base64url");
   const now = clock.now();
+  // org_id is resolved at callback by T09 (allowlist) based on the user's GitHub
+  // org memberships. Left NULL on INSERT; future UPDATE may set it during the
+  // callback transaction.
   db.prepare(`
     INSERT INTO oauth_state (state, code_verifier, redirect_uri, provider, created_at, expires_at)
     VALUES (?, ?, ?, ?, ?, ?)
@@ -71,13 +74,18 @@ export function consumeOAuthState(
 // AFTER a failed CAS — the state is already known-bad so a non-atomic
 // read here is race-tolerant (any state change beyond consumed/expired
 // is impossible: once consumed_at is set, it never resets).
+// Precondition: caller must have just observed a failed consumeOAuthState
+// on this state. Enforced at runtime by checking expires_at against clock:
+// a live un-consumed row indicates a precondition violation and throws.
 export function inspectOAuthState(
   db: Database.Database,
+  clock: Clock,
   state: string,
 ): { status: OAuthStateStatus; row: OAuthStateRow | null } {
   const row = db.prepare("SELECT * FROM oauth_state WHERE state = ?").get(state) as OAuthStateRow | undefined;
   if (!row) return { status: "unknown", row: null };
   if (row.consumed_at !== null) return { status: "consumed", row };
-  // Row exists and is un-consumed -> it failed CAS via expires_at guard.
-  return { status: "expired", row };
+  // Row is un-consumed: distinguish truly-expired from live (precondition violation).
+  if (row.expires_at <= clock.now()) return { status: "expired", row };
+  throw new Error("inspectOAuthState: row is live (un-consumed, un-expired); use consumeOAuthState first");
 }
