@@ -378,19 +378,20 @@ describe("refreshTokenGrant — row lookup", () => {
 // ---------------------------------------------------------------------------
 // Revoked row placeholder (1 case; T19b expands)
 // ---------------------------------------------------------------------------
-describe("refreshTokenGrant — revoked row placeholder reject", () => {
-  it("row exists with revoked_at IS NOT NULL → 400 invalid_grant 'already revoked'", async () => {
+describe("refreshTokenGrant — revoked row reuse detection (T19b takes over)", () => {
+  it("row exists with revoked_at IS NOT NULL beyond grace → 401 chain_revoked", async () => {
     seedOrg();
     seedUser();
     const token = await mintRefresh({ jti: "jti-revoked" });
+    // Revoked 60s ago — well beyond the 10s grace; hard reuse path.
     seedRefreshRow("jti-revoked", { revokedAt: String(clock.now() - 60) });
     const req = mockRequest({ refresh_token: token });
     const res = mockResponse();
     await refreshTokenGrant(req, res as unknown as ServerResponse, makeCtx());
-    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).toBe(401);
     const body = JSON.parse(res.body!);
     expect(body.error).toBe("invalid_grant");
-    expect(body.error_description).toMatch(/already revoked/i);
+    expect(body.error_description).toMatch(/chain revoked/i);
   });
 });
 

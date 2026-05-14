@@ -228,6 +228,88 @@ describe("jwt-mint: access and refresh token minting", () => {
     expect(payload.issued_by).toBe("admin-user-id");
   });
 
+  it("mintAccessJWT iatOverride pins iat deterministically (T19b re-mint)", async () => {
+    const reg = buildJwtKeyRegistry(TEST_SECRET);
+    const pinned = 1_700_000_000;
+    const jwtA = await mintAccessJWT({
+      claims: baseAccessClaims,
+      registry: reg,
+      issuer: ISSUER,
+      ttlSeconds: 900,
+      iatOverride: pinned,
+      jti: "11111111-2222-3333-4444-555555555555",
+    });
+    const jwtB = await mintAccessJWT({
+      claims: baseAccessClaims,
+      registry: reg,
+      issuer: ISSUER,
+      ttlSeconds: 900,
+      iatOverride: pinned,
+      jti: "11111111-2222-3333-4444-555555555555",
+    });
+    // Byte-identical when iat + jti + claims + issuer + ttl all pinned.
+    expect(jwtA).toBe(jwtB);
+    const payload = decodeJwtPayload(jwtA);
+    expect(payload.iat).toBe(pinned);
+    expect(payload.exp).toBe(pinned + 900);
+  });
+
+  it("mintAccessJWT without iatOverride uses now (default behavior unchanged)", async () => {
+    const reg = buildJwtKeyRegistry(TEST_SECRET);
+    const before = Math.floor(Date.now() / 1000);
+    const jwt = await mintAccessJWT({
+      claims: baseAccessClaims,
+      registry: reg,
+      issuer: ISSUER,
+      ttlSeconds: 900,
+    });
+    const after = Math.floor(Date.now() / 1000);
+    const payload = decodeJwtPayload(jwt);
+    expect(payload.iat).toBeGreaterThanOrEqual(before);
+    expect(payload.iat).toBeLessThanOrEqual(after);
+  });
+
+  it("mintRefreshJWT iatOverride pins iat deterministically (T19b re-mint)", async () => {
+    const reg = buildJwtKeyRegistry(TEST_SECRET);
+    const pinned = 1_700_000_500;
+    const { jwt: jwtA, jti: jtiA } = await mintRefreshJWT({
+      claims: baseRefreshClaims,
+      registry: reg,
+      issuer: ISSUER,
+      ttlSeconds: 30 * 86400,
+      iatOverride: pinned,
+      jti: "22222222-3333-4444-5555-666666666666",
+    });
+    const { jwt: jwtB, jti: jtiB } = await mintRefreshJWT({
+      claims: baseRefreshClaims,
+      registry: reg,
+      issuer: ISSUER,
+      ttlSeconds: 30 * 86400,
+      iatOverride: pinned,
+      jti: "22222222-3333-4444-5555-666666666666",
+    });
+    expect(jwtA).toBe(jwtB);
+    expect(jtiA).toBe(jtiB);
+    const payload = decodeJwtPayload(jwtA);
+    expect(payload.iat).toBe(pinned);
+    expect(payload.exp).toBe(pinned + 30 * 86400);
+  });
+
+  it("mintRefreshJWT without iatOverride uses now (default behavior unchanged)", async () => {
+    const reg = buildJwtKeyRegistry(TEST_SECRET);
+    const before = Math.floor(Date.now() / 1000);
+    const { jwt } = await mintRefreshJWT({
+      claims: baseRefreshClaims,
+      registry: reg,
+      issuer: ISSUER,
+      ttlSeconds: 30 * 86400,
+    });
+    const after = Math.floor(Date.now() / 1000);
+    const payload = decodeJwtPayload(jwt);
+    expect(payload.iat).toBeGreaterThanOrEqual(before);
+    expect(payload.iat).toBeLessThanOrEqual(after);
+  });
+
   it("token signed with the registry's current.key — verifiable via jose.jwtVerify", async () => {
     const reg = buildJwtKeyRegistry(TEST_SECRET);
     const jwt = await mintAccessJWT({

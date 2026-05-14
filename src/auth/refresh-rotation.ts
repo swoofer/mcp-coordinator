@@ -1,48 +1,56 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import type Database from "better-sqlite3";
 import { jwtVerify } from "jose";
 import type { AuthHandlerContext } from "./context.js";
+import type { Clock } from "./clock.js";
 import { audit } from "../security/audit.js";
 import { oauthError } from "../http/response-contract.js";
 import { mintTokenPair, computeFingerprint } from "./oauth-finalize.js";
+import { mintAccessJWT, mintRefreshJWT } from "./jwt-mint.js";
 import { isAcceptedKid } from "./jwt-keys.js";
 import { readTokenEpoch } from "./token-epoch.js";
 
 /**
- * Refresh-token rotation handler — T19a happy path + JWT validation.
+ * Refresh-token rotation handler — T19a happy path + T19b reuse detection.
  *
  * Called from T18's POST /api/auth/oauth/token dispatcher when
  * grant_type=refresh_token. T18 is not yet built — tests drive this
  * handler directly.
  *
- * T19a scope (this file):
+ * T19a/b scope:
  *   1. Parse form body, extract refresh_token
  *   2. JWT verify (HS256 pinned, kid allowlist, ±30s clock tolerance,
  *      issuer match) via jose v6
  *   3. Service-account JWT short-circuit (T19c expands)
  *   4. token_epoch check via T03 readTokenEpoch (admin-force-revoke wins)
  *   5. SELECT refresh_tokens row by jti
- *   6. Revoked-row placeholder reject (T19b implements 10s grace +
- *      fingerprint + replay_count + family revoke)
- *   7. Atomic UPDATE WHERE jti=? AND revoked_at IS NULL — V4 FIX 5; if
- *      changes !== 1, race lost, treat as reuse (T19b implements)
+ *   6. T19b reuse-detection branch on row.revoked_at != null:
+ *      - 10s grace + revoked_reason='rotated' + fingerprint match
+ *        => deterministic successor re-mint (V3 §B-NEW-2)
+ *      - 10s grace + fingerprint mismatch => replay_count++ atomic;
+ *        threshold (3) => family revoke + chain_revoked audit; below
+ *        threshold => suspicious_replay audit
+ *      - Beyond grace OR not 'rotated' OR no successor => family revoke
+ *        + chain_revoked audit
+ *      All branches return 401 with oauthError("invalid_grant", ...).
+ *   7. Atomic UPDATE WHERE jti=? AND revoked_at IS NULL — V4 FIX 5
  *   8. mintTokenPair via T16helpers (same family_id, new fingerprint)
- *   9. UPDATE successor.parent_jti = old.jti (mintTokenPair sets NULL)
+ *   9. UPDATE successor.parent_jti = old.jti
  *   10. Tier 2 audit auth.refresh.rotated
- *   11. RFC 6749 §5.1 JSON response (no Cache-Control 'no-store')
+ *   11. RFC 6749 §5.1 JSON response
  *
- * Audits emit auth.invalid_token (Tier 2) on all rejection paths.
- *
- * Out of scope for T19a (lands in T19b/c):
- *   - 10s grace window + fingerprint match on revoked row (reuse vs.
- *     legitimate-late-retry)
- *   - Family-wide revocation on reuse detection
- *   - Idle-timeout window (separate from JWT exp)
- *   - IdP refresh + allowlist re-check
- *   - Service-account verification path (currently rejects flat)
+ * Out of scope for T19b (lands in T19c):
+ *   - Allowlist re-check on grace-branch successor return (V4 FIX 7)
+ *   - Idle-timeout window
+ *   - IdP refresh + membership refresh
+ *   - Service-account verification path
  */
 
 const CLOCK_TOLERANCE_S = 30;
 const ACCESS_TTL_S = 15 * 60; // matches mintTokenPair default
+const REFRESH_TTL_S = 30 * 24 * 3600; // matches mintTokenPair default
+const GRACE_WINDOW_S = 10;
+const REPLAY_THRESHOLD = 3;
 
 interface RefreshRow {
   jti: string;
@@ -51,6 +59,7 @@ interface RefreshRow {
   family_id: string | null;
   parent_jti: string | null;
   revoked_at: string | null;
+  revoked_reason: string | null;
   consumer_fingerprint: string | null;
   expires_at: string;
 }
@@ -86,20 +95,11 @@ async function parseFormBody(req: IncomingMessage): Promise<Record<string, strin
  * ACCEPTED_KIDS allowlist (`["hs256-v1"]`). Issuer must equal
  * ctx.publicUrl (trailing slash stripped). Clock skew tolerance ±30s
  * per RFC 7519 §4.1.4.
- *
- * Returns parsed claims on success. Throws on any validation failure
- * (jose's JWTExpired / JWTInvalid / JWSSignatureVerificationFailed /
- * etc., or our own `unknown_kid` / `no_key_for_kid` Errors).
  */
 async function verifyRefreshJwt(
   token: string,
   ctx: AuthHandlerContext,
 ): Promise<ParsedRefreshClaims> {
-  // jose enforces `algorithms: ["HS256"]` and `issuer` for us; the
-  // kid-lookup callback also enforces the kid allowlist. The two
-  // defense-in-depth checks below would be dead code (algorithms list
-  // covers alg; isAcceptedKid pairs with the registry so getKey always
-  // resolves) — omitted for 100% branch coverage.
   const { payload } = await jwtVerify(
     token,
     async (header) => {
@@ -107,7 +107,6 @@ async function verifyRefreshJwt(
       if (!kid || !isAcceptedKid(kid)) {
         throw new Error(`unknown_kid: ${String(kid)}`);
       }
-      // isAcceptedKid implies the registry has it (T08b invariant).
       return ctx.signingKeys.getKey(kid)!;
     },
     {
@@ -123,16 +122,217 @@ function writeOAuthError(
   res: ServerResponse,
   error: string,
   description: string,
+  status = 400,
 ): void {
-  res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
   res.end(JSON.stringify(oauthError(error, description)));
 }
 
 /**
+ * Atomic family revoke. Marks every non-revoked row in the family as
+ * revoked with the provided reason. Per V4 FIX 23 commit-then-audit:
+ * caller emits the Tier 1 audit AFTER this returns; if the audit insert
+ * throws, the revoke is already committed (security wins over telemetry).
+ */
+function revokeFamilyForReuse(
+  db: Database.Database,
+  clock: Clock,
+  familyId: string,
+  reason: "reuse_detected" | "suspicious_replay",
+): void {
+  const now = clock.now();
+  db.prepare(
+    `UPDATE refresh_tokens
+     SET revoked_at = ?, revoked_reason = ?
+     WHERE family_id = ? AND revoked_at IS NULL`,
+  ).run(String(now), reason, familyId);
+}
+
+/**
+ * T19b reuse-detection branch. Invoked when the SELECTed refresh row has
+ * a non-null `revoked_at`. Implements V3 §B-NEW-2 + V4 FIX 5/6/7/23:
+ *
+ *   - Beyond 10s grace OR revoked_reason != 'rotated' => HARD reuse:
+ *     revoke family + Tier 1 audit auth.refresh.chain_revoked + 401.
+ *   - Within grace + 'rotated' but no successor (orphan; should be
+ *     impossible given partial UNIQUE idx_refresh_parent, but defended)
+ *     => HARD reuse with reason=no_successor.
+ *   - Within grace + 'rotated' + successor exists + same fingerprint:
+ *     legitimate retry; re-mint deterministic pair via T08b iatOverride
+ *     and return 200 with the SAME refresh_jti so the client gets
+ *     byte-identical tokens.
+ *   - Within grace + 'rotated' + successor exists + mismatch fingerprint:
+ *     stolen-token signature. Atomic UPDATE ... RETURNING increments
+ *     replay_count. >= 3 => revoke family + chain_revoked audit. Below
+ *     threshold => Tier 1 suspicious_replay audit (no successor leaked).
+ *
+ * All rejection branches return 401 invalid_grant. The grace re-mint
+ * branch returns 200 with the cached successor pair.
+ *
+ * V4 FIX 7 allowlist re-check on the grace-branch return is deferred to
+ * T19c (which also adds the idle-timeout + IdP membership refresh).
+ */
+async function handleReuseBranch(
+  res: ServerResponse,
+  ctx: AuthHandlerContext,
+  claims: ParsedRefreshClaims,
+  row: RefreshRow,
+  fingerprint: string | null,
+): Promise<void> {
+  const now = ctx.clock.now();
+  const revokedAt = Number(row.revoked_at);
+  const elapsed = now - revokedAt;
+  const familyId = row.family_id;
+
+  // Hard reuse: beyond grace OR not a normal rotation.
+  if (elapsed >= GRACE_WINDOW_S || row.revoked_reason !== "rotated") {
+    if (familyId) {
+      revokeFamilyForReuse(ctx.db, ctx.clock, familyId, "reuse_detected");
+    }
+    audit("auth.refresh.chain_revoked", {
+      tier: 1,
+      metadata: {
+        old_jti: claims.jti,
+        family_id: familyId,
+        reason: "hard_reuse",
+        elapsed_seconds: elapsed,
+      },
+    });
+    writeOAuthError(res, "invalid_grant", "Refresh token chain revoked", 401);
+    return;
+  }
+
+  // Within grace + rotated: look up successor via partial UNIQUE index.
+  const successor = ctx.db
+    .prepare(
+      `SELECT jti, user_id, org_id, family_id, parent_jti, revoked_at,
+              revoked_reason, consumer_fingerprint, expires_at
+       FROM refresh_tokens WHERE parent_jti = ?`,
+    )
+    .get(claims.jti) as RefreshRow | undefined;
+
+  if (!successor) {
+    // Orphan: revoke row marked 'rotated' but no successor — treat as hard reuse.
+    if (familyId) {
+      revokeFamilyForReuse(ctx.db, ctx.clock, familyId, "reuse_detected");
+    }
+    audit("auth.refresh.chain_revoked", {
+      tier: 1,
+      metadata: {
+        old_jti: claims.jti,
+        family_id: familyId,
+        reason: "no_successor",
+      },
+    });
+    writeOAuthError(res, "invalid_grant", "Refresh token chain revoked", 401);
+    return;
+  }
+
+  // Fingerprint match → legitimate retry. Per V3 spec: "null fingerprint
+  // is unknown; treat as mismatch" — security default. Only a non-null
+  // exact match returns the cached successor.
+  const fingerprintMatches =
+    fingerprint !== null &&
+    successor.consumer_fingerprint !== null &&
+    successor.consumer_fingerprint === fingerprint;
+
+  if (fingerprintMatches) {
+    // T19c will add the V4 FIX 7 allowlist re-check here before re-issue.
+    // Deterministic re-mint: pin iat to (expires_at - REFRESH_TTL_S) so the
+    // resulting JWT is byte-identical to the original. Phase 2 uses a fixed
+    // 30-day refresh TTL — see REFRESH_TTL_S_DEFAULT in oauth-finalize.ts.
+    const successorExpiresAt = Number(successor.expires_at);
+    const successorIat = successorExpiresAt - REFRESH_TTL_S;
+    const issuer = ctx.publicUrl.replace(/\/$/, "");
+
+    const accessJwt = await mintAccessJWT({
+      claims: {
+        sub: successor.user_id,
+        active_org_id: successor.org_id,
+        family_id: successor.family_id ?? "",
+        role: "member", // T19c re-derives from users table
+      },
+      registry: ctx.signingKeys,
+      issuer,
+      ttlSeconds: ACCESS_TTL_S,
+      iatOverride: successorIat,
+    });
+    const { jwt: refreshJwt } = await mintRefreshJWT({
+      claims: {
+        sub: successor.user_id,
+        active_org_id: successor.org_id,
+        family_id: successor.family_id ?? "",
+        // successor.parent_jti is guaranteed non-null: the SELECT above
+        // is `WHERE parent_jti = claims.jti`, which excludes NULL rows.
+        parent_jti: successor.parent_jti as string,
+      },
+      registry: ctx.signingKeys,
+      issuer,
+      ttlSeconds: REFRESH_TTL_S,
+      jti: successor.jti,
+      iatOverride: successorIat,
+    });
+
+    res.writeHead(200, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+    });
+    res.end(
+      JSON.stringify({
+        access_token: accessJwt,
+        refresh_token: refreshJwt,
+        token_type: "Bearer",
+        expires_in: ACCESS_TTL_S,
+      }),
+    );
+    return;
+  }
+
+  // Fingerprint mismatch within grace → atomic replay_count++.
+  // The row was SELECTed by jti at the top of refreshTokenGrant and we
+  // hold no transaction lock, but the row never DELETEs in Phase 2 — only
+  // the revoked_at column flips. So `replayResult` is always defined.
+  const replayResult = ctx.db
+    .prepare(
+      `UPDATE refresh_tokens
+       SET replay_count = replay_count + 1
+       WHERE jti = ?
+       RETURNING replay_count`,
+    )
+    .get(claims.jti) as { replay_count: number };
+  const replayCount = replayResult.replay_count;
+
+  if (replayCount >= REPLAY_THRESHOLD) {
+    if (familyId) {
+      revokeFamilyForReuse(ctx.db, ctx.clock, familyId, "reuse_detected");
+    }
+    audit("auth.refresh.chain_revoked", {
+      tier: 1,
+      metadata: {
+        old_jti: claims.jti,
+        family_id: familyId,
+        reason: "replay_threshold_hit",
+        replay_count: replayCount,
+      },
+    });
+    writeOAuthError(res, "invalid_grant", "Refresh token chain revoked", 401);
+    return;
+  }
+
+  audit("auth.refresh.suspicious_replay", {
+    tier: 1,
+    metadata: {
+      old_jti: claims.jti,
+      family_id: familyId,
+      replay_count: replayCount,
+    },
+  });
+  writeOAuthError(res, "invalid_grant", "Refresh token validation failed", 401);
+}
+
+/**
  * POST /api/auth/oauth/token grant_type=refresh_token — refresh-token
- * rotation handler. See file header for full T19a flow. Exported as
- * a free function so T18's dispatcher can invoke it directly; tests
- * drive without going through the dispatcher.
+ * rotation handler. See file header for full T19a+T19b flow.
  */
 export async function refreshTokenGrant(
   req: IncomingMessage,
@@ -168,8 +368,7 @@ export async function refreshTokenGrant(
 
   // 3. Service-account short-circuit. T19c will expand to verify the
   //    service token against the service_tokens table; T19a rejects
-  //    flatly because service tokens never rotate (single use, mint a
-  //    new one via admin CLI per V4 §service-tokens).
+  //    flatly because service tokens never rotate.
   if (claims.service_account === true) {
     writeOAuthError(
       res,
@@ -179,8 +378,7 @@ export async function refreshTokenGrant(
     return;
   }
 
-  // 4. token_epoch check (T03). Checked before DB row lookup so an
-  //    admin force-revoke wins over a still-extant row.
+  // 4. token_epoch check (T03).
   const epoch = readTokenEpoch(ctx.db, claims.sub);
   if (claims.iat < epoch) {
     audit("auth.invalid_token", {
@@ -191,11 +389,11 @@ export async function refreshTokenGrant(
     return;
   }
 
-  // 5. SELECT refresh row
+  // 5. SELECT refresh row (includes revoked_reason for T19b).
   const row = ctx.db
     .prepare(
       `SELECT jti, user_id, org_id, family_id, parent_jti, revoked_at,
-              consumer_fingerprint, expires_at
+              revoked_reason, consumer_fingerprint, expires_at
        FROM refresh_tokens WHERE jti = ?`,
     )
     .get(claims.jti) as RefreshRow | undefined;
@@ -208,21 +406,19 @@ export async function refreshTokenGrant(
     return;
   }
 
-  // 6. T19b will handle row.revoked_at !== null with 10s grace +
-  //    fingerprint match + family revoke. T19a placeholder reject.
+  // Compute fingerprint BEFORE the revoked-row branch (handleReuseBranch
+  // needs it for the grace-window match check).
+  const ip = req.socket?.remoteAddress ?? null;
+  const ua = (req.headers["user-agent"] as string | undefined) ?? null;
+  const fingerprint = computeFingerprint(ip, ua);
+
+  // 6. T19b reuse-detection branch.
   if (row.revoked_at !== null) {
-    writeOAuthError(res, "invalid_grant", "Refresh token already revoked");
+    await handleReuseBranch(res, ctx, claims, row, fingerprint);
     return;
   }
 
-  // 7. Atomic rotation: UPDATE WHERE jti=? AND revoked_at IS NULL
-  //    (V4 FIX 5). If a concurrent rotation revoked the row between
-  //    our SELECT and UPDATE, changes !== 1 and we treat it as a race
-  //    (T19b adds full reuse-detection semantics for this path).
-  //    better-sqlite3 is sync — no explicit transaction wrapper needed
-  //    here; each statement is its own atomic unit and a failure
-  //    between UPDATE and INSERT leaves the user re-authable (old row
-  //    revoked, no new row) without a security regression.
+  // 7. Atomic rotation (V4 FIX 5).
   const now = ctx.clock.now();
   const updateResult = ctx.db
     .prepare(
@@ -236,17 +432,12 @@ export async function refreshTokenGrant(
     return;
   }
 
-  // 8. Mint new pair sharing the family_id; new fingerprint from this
-  //    request's ip+ua (V3 §B-NEW-2). T19b will use this fingerprint
-  //    in reuse detection on the next rotation attempt.
-  const ip = req.socket?.remoteAddress ?? null;
-  const ua = (req.headers["user-agent"] as string | undefined) ?? null;
-  const fingerprint = computeFingerprint(ip, ua);
+  // 8. Mint new pair sharing the family_id.
   const newPair = await mintTokenPair(ctx.db, ctx.clock, {
     user: {
       user_id: row.user_id,
       primary_org_id: row.org_id,
-      role: "member", // T19a placeholder; T19c re-derives from users table
+      role: "member", // T19c re-derives from users table
     },
     registry: ctx.signingKeys,
     issuer: ctx.publicUrl.replace(/\/$/, ""),
@@ -254,15 +445,12 @@ export async function refreshTokenGrant(
     fingerprint,
   });
 
-  // 9. Fix successor.parent_jti — mintTokenPair always inserts NULL,
-  //    but for non-root rotations we need the predecessor link so
-  //    T19b can walk the family tree on reuse detection.
+  // 9. Fix successor.parent_jti.
   ctx.db
     .prepare("UPDATE refresh_tokens SET parent_jti = ? WHERE jti = ?")
     .run(claims.jti, newPair.refreshJti);
 
-  // 10. Tier 2 audit. Old + new jti + family_id let the audit log
-  //     reconstruct the rotation chain for forensics.
+  // 10. Tier 2 audit.
   audit("auth.refresh.rotated", {
     tier: 2,
     metadata: {
