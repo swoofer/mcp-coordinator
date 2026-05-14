@@ -66,7 +66,7 @@ export function setCookies(res: ServerResponse, cookies: string[]): void {
   const existing = res.getHeader("Set-Cookie");
   let merged: string[];
   if (Array.isArray(existing)) {
-    merged = [...(existing as string[]), ...cookies];
+    merged = [...existing, ...cookies];
   } else if (typeof existing === "string") {
     merged = [existing, ...cookies];
   } else {

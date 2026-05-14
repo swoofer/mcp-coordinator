@@ -60,12 +60,15 @@ describe("parseCookies", () => {
       parse: (_: string) => ({ good: "1", bad: undefined as unknown as string }),
       serialize: (n: string, v: string) => `${n}=${v}`,
     }));
-    const mod = await import("../../src/auth/cookies.js");
-    const req = makeReq("good=1; bad=x");
-    const parsed = mod.parseCookies(req);
-    expect(parsed).toEqual({ good: "1" });
-    vi.doUnmock("cookie");
-    vi.resetModules();
+    try {
+      const mod = await import("../../src/auth/cookies.js");
+      const req = makeReq("good=1; bad=x");
+      const parsed = mod.parseCookies(req);
+      expect(parsed).toEqual({ good: "1" });
+    } finally {
+      vi.doUnmock("cookie");
+      vi.resetModules();
+    }
   });
 });
 
