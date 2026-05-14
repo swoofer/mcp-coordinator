@@ -4,6 +4,8 @@ import Database from "better-sqlite3";
 import { dispatchAuthRoutes } from "../../src/http/auth-routes.js";
 import type { AuthHandlerContext } from "../../src/auth/context.js";
 import { FakeClock } from "../helpers/clock.js";
+import { RateLimiter } from "../../src/auth/rate-limit.js";
+import type { IdPProvider } from "../../src/auth/providers/types.js";
 
 /**
  * T14.5 — verify the auth-route dispatcher routes the Phase 2 URLs to
@@ -67,9 +69,49 @@ function mockReq(method: string, url: string): IncomingMessage {
 let db: Database.Database;
 let ctx: AuthHandlerContext;
 
+const stubProvider: IdPProvider = {
+  name: "github",
+  buildAuthUrl: (state, redirectUri, codeChallenge) => {
+    const u = new URL("https://github.com/login/oauth/authorize");
+    u.searchParams.set("client_id", "TEST");
+    u.searchParams.set("redirect_uri", redirectUri);
+    u.searchParams.set("state", state);
+    if (codeChallenge) {
+      u.searchParams.set("code_challenge", codeChallenge);
+      u.searchParams.set("code_challenge_method", "S256");
+    }
+    return u.toString();
+  },
+  exchangeCode: async () => {
+    throw new Error("not used");
+  },
+};
+
 beforeEach(() => {
   db = new Database(":memory:");
-  ctx = { db, clock: new FakeClock() };
+  // Minimal oauth_state schema so the real /auth/login handler (T15)
+  // can INSERT during the dispatcher routing test.
+  db.exec(`
+    CREATE TABLE oauth_state (
+      state           TEXT PRIMARY KEY,
+      code_verifier   TEXT NOT NULL,
+      redirect_uri    TEXT NOT NULL,
+      provider        TEXT NOT NULL,
+      org_id          TEXT,
+      created_at      INTEGER NOT NULL,
+      expires_at      INTEGER NOT NULL,
+      consumed_at     INTEGER
+    );
+  `);
+  const clock = new FakeClock();
+  ctx = {
+    db,
+    clock,
+    githubProvider: stubProvider,
+    rateLimiter: new RateLimiter(clock),
+    publicUrl: "http://localhost:3000",
+    stateBindingKey: Buffer.alloc(32, 0x01),
+  };
 });
 
 afterEach(() => {
@@ -124,7 +166,9 @@ describe("dispatchAuthRoutes — non-auth URLs fall through", () => {
 
 describe("dispatchAuthRoutes — happy-path stubs return 501", () => {
   const cases: Array<{ method: string; url: string; stub: string }> = [
-    { method: "GET", url: "/auth/login", stub: "handleAuthLogin" },
+    // NOTE: GET /auth/login was a stub in T14.5 but is now a real T15
+    // handler — verified in oauth-login.test.ts + the dispatcher-routing
+    // assertion below (302 instead of 501).
     { method: "GET", url: "/api/auth/oauth/callback", stub: "handleOAuthCallback" },
     { method: "POST", url: "/api/auth/oauth/token", stub: "handleOAuthToken" },
     {
@@ -160,6 +204,20 @@ describe("dispatchAuthRoutes — happy-path stubs return 501", () => {
       expect(body.request_id).toBeNull();
     });
   }
+});
+
+describe("dispatchAuthRoutes — T15 /auth/login dispatched (not 501 stub)", () => {
+  it("GET /auth/login routes to handleAuthLogin (302 redirect, not 501)", async () => {
+    const res = mockResponse();
+    const handled = await dispatchAuthRoutes(
+      mockReq("GET", "/auth/login"),
+      res as unknown as ServerResponse,
+      ctx,
+    );
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(302);
+    expect(typeof res.headers.Location).toBe("string");
+  });
 });
 
 describe("dispatchAuthRoutes — T21 HTML pages dispatched (not 501 stubs)", () => {
@@ -311,9 +369,9 @@ describe("dispatchAuthRoutes — query strings + method defaults", () => {
       ctx,
     );
     expect(handled).toBe(true);
-    expect(res.statusCode).toBe(501);
-    const body = res.body as Record<string, unknown>;
-    expect((body.message as string)).toContain("handleAuthLogin");
+    // T15 handler now returns 302 (was 501 stub in T14.5).
+    expect(res.statusCode).toBe(302);
+    expect(typeof res.headers.Location).toBe("string");
   });
 
   it("missing req.method defaults to GET (covers method ?? branch)", async () => {
@@ -324,6 +382,7 @@ describe("dispatchAuthRoutes — query strings + method defaults", () => {
       ctx,
     );
     expect(handled).toBe(true);
-    expect(res.statusCode).toBe(501);
+    // T15 handler now returns 302 (was 501 stub in T14.5).
+    expect(res.statusCode).toBe(302);
   });
 });

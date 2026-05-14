@@ -50,6 +50,29 @@ export function createOAuthState(
   return { state, code_verifier };
 }
 
+/**
+ * Like createOAuthState, but accepts a caller-supplied code_verifier.
+ * The auto-generation in createOAuthState is convenient for tests; this
+ * variant is used by /auth/login (T15) which generates the verifier via
+ * T08b's PKCE module so the same verifier value flows into the GitHub
+ * authorize URL's code_challenge.
+ */
+export function createOAuthStateWithVerifier(
+  db: Database.Database,
+  clock: Clock,
+  provider: string,
+  redirectUri: string,
+  codeVerifier: string,
+): { state: string } {
+  const state = crypto.randomBytes(32).toString("base64url");
+  const now = clock.now();
+  db.prepare(`
+    INSERT INTO oauth_state (state, code_verifier, redirect_uri, provider, created_at, expires_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(state, codeVerifier, redirectUri, provider, now, now + TTL_S);
+  return { state };
+}
+
 // Atomic CAS: mark state consumed iff not already consumed AND not expired.
 // Returns the row's verifier/redirect/provider on success, null otherwise.
 // Atomicity lives in the UPDATE...WHERE clause — two concurrent callers

@@ -4,6 +4,7 @@ import fc from "fast-check";
 import type { Clock } from "../../src/auth/clock.js";
 import {
   createOAuthState,
+  createOAuthStateWithVerifier,
   consumeOAuthState,
   inspectOAuthState,
   type OAuthStateRow,
@@ -72,6 +73,43 @@ describe("createOAuthState", () => {
     const { state } = createOAuthState(db, clock, "github", "https://app/cb");
     const row = db.prepare("SELECT * FROM oauth_state WHERE state = ?").get(state) as OAuthStateRow;
     expect(row.provider).toBe("github");
+  });
+});
+
+describe("createOAuthStateWithVerifier", () => {
+  it("persists the caller-supplied code_verifier verbatim (not auto-generated)", () => {
+    const supplied = "my-precise-pkce-verifier-value-A1B2C3D4E5F6G7H8I9J0";
+    const { state } = createOAuthStateWithVerifier(
+      db,
+      clock,
+      "github",
+      "https://app/cb",
+      supplied,
+    );
+    const row = db
+      .prepare("SELECT * FROM oauth_state WHERE state = ?")
+      .get(state) as OAuthStateRow;
+    expect(row.code_verifier).toBe(supplied);
+    expect(row.provider).toBe("github");
+    expect(row.redirect_uri).toBe("https://app/cb");
+  });
+
+  it("still generates a 256-bit base64url state token (43 chars)", () => {
+    const { state } = createOAuthStateWithVerifier(
+      db,
+      clock,
+      "github",
+      "https://app/cb",
+      "anything",
+    );
+    expect(state).toHaveLength(43);
+    expect(state).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    const row = db
+      .prepare("SELECT * FROM oauth_state WHERE state = ?")
+      .get(state) as OAuthStateRow;
+    expect(row.created_at).toBe(1_000_000);
+    expect(row.expires_at).toBe(1_000_600);
+    expect(row.consumed_at).toBeNull();
   });
 });
 

@@ -6,6 +6,7 @@ import { handleDeviceConfirmPage } from "../../src/auth/pages/device-confirm.htm
 import { handleSuccessPage } from "../../src/auth/pages/success.html.js";
 import type { AuthHandlerContext } from "../../src/auth/context.js";
 import { FakeClock } from "../helpers/clock.js";
+import { RateLimiter } from "../../src/auth/rate-limit.js";
 
 /**
  * T21 — three unauthenticated HTML pages for the device-authorization flow:
@@ -121,7 +122,22 @@ beforeEach(() => {
   db = new Database(":memory:");
   setupSchema(db);
   clock = new FakeClock(1_700_000_000);
-  ctx = { db, clock };
+  // T15 extended AuthHandlerContext; device-page handlers don't read these
+  // fields but TypeScript requires they be present. Stub with safe defaults.
+  ctx = {
+    db,
+    clock,
+    githubProvider: {
+      name: "github",
+      buildAuthUrl: () => "https://example/unused",
+      exchangeCode: async () => {
+        throw new Error("not used in device-pages tests");
+      },
+    },
+    rateLimiter: new RateLimiter(clock),
+    publicUrl: "http://localhost:3000",
+    stateBindingKey: Buffer.alloc(32, 0x01),
+  };
 });
 
 afterEach(() => {

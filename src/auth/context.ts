@@ -1,5 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Clock } from "./clock.js";
+import type { IdPProvider } from "./providers/types.js";
+import type { RateLimiter } from "./rate-limit.js";
 
 /**
  * Phase 2 auth handler dependencies. Composed at boot (T29) and passed
@@ -8,9 +10,20 @@ import type { Clock } from "./clock.js";
  * rate limiter (T12), membership cache (T04), JWT key registry (T08b),
  * metrics registry (T37), logger (T36), etc.
  *
- * Currently minimal — db + clock are enough for the stub scaffolding.
+ * T15 adds the Phase C OAuth-init dependencies (githubProvider,
+ * rateLimiter, publicUrl, stateBindingKey). T29 boot composes; tests
+ * stub.
  */
 export interface AuthHandlerContext {
   db: Database.Database;
   clock: Clock;
+  /** GitHub IdP — Phase 2 single-provider. Phase 4 adds a registry. */
+  githubProvider: IdPProvider;
+  rateLimiter: RateLimiter;
+  /** Public URL for redirect URI construction. From COORDINATOR_PUBLIC_URL.
+   *  T29 boot validates this is set; tests pass directly. */
+  publicUrl: string;
+  /** HKDF-derived state-binding key (T08b deriveStateBindingKey).
+   *  Used for HMAC cookie binding per V4 FIX 19. */
+  stateBindingKey: Buffer;
 }
