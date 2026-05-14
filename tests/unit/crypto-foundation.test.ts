@@ -20,9 +20,11 @@ import {
 import { generateVerifier, computeChallenge } from "../../src/auth/pkce.js";
 import { assertSecretEntropy } from "../../src/auth/entropy.js";
 
-// Fixed test secrets keep tests deterministic. NEVER use these in prod.
+// Fixed 32-byte secret for deterministic JWT/HKDF tests. NOT used with
+// assertSecretEntropy (only two distinct byte values; would fail the
+// Shannon check). NEVER use these bytes in production.
 const TEST_SECRET = Buffer.from(
-  "a".repeat(16) + "B".repeat(16), // 32 bytes ASCII; diverse enough to avoid entropy false-positives
+  "a".repeat(16) + "B".repeat(16),
   "utf8",
 );
 // A high-entropy random secret for entropy tests below.

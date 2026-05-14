@@ -24,7 +24,7 @@ export interface MintAccessJWTOptions {
 // Mint a signed access JWT. HS256 pinned, kid in header. Pure function.
 export async function mintAccessJWT(opts: MintAccessJWTOptions): Promise<string> {
   const jti = crypto.randomUUID();
-  return new SignJWT({ ...opts.claims, jti })
+  return new SignJWT({ ...opts.claims })
     .setProtectedHeader({ alg: "HS256", kid: opts.registry.current.kid })
     .setIssuer(opts.issuer)
     .setIssuedAt()
@@ -58,7 +58,7 @@ export async function mintRefreshJWT(
   opts: MintRefreshJWTOptions,
 ): Promise<MintedRefreshJWT> {
   const jti = opts.jti ?? crypto.randomUUID();
-  const jwt = await new SignJWT({ ...opts.claims, jti })
+  const jwt = await new SignJWT({ ...opts.claims })
     .setProtectedHeader({ alg: "HS256", kid: opts.registry.current.kid })
     .setIssuer(opts.issuer)
     .setIssuedAt()
