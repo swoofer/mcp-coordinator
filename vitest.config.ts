@@ -37,6 +37,7 @@ export default defineConfig({
         "src/http/health.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/observability/metrics.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/http/metrics.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
+        "src/http/auth-routes.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
       },
     },
   },
