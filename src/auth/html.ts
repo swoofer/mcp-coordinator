@@ -9,7 +9,7 @@ const ESCAPE_MAP: Record<string, string> = {
 };
 
 /**
- * Escape the 5 HTML special chars (RFC 3986 §2.2 + HTML attribute safety).
+ * Escape the 5 HTML special chars (HTML5 §12.1.2 — text + attribute value safety).
  * Coerces any input to string via String(...). Use this on every
  * untrusted value before embedding in markup.
  */

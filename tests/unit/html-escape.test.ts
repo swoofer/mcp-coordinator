@@ -68,7 +68,7 @@ describe("render", () => {
     expect(render("[${x}]", { x: undefined })).toBe("[]");
   });
 
-  it("null ctx value is coerced via escapeHtml (NOT replaced with empty)", () => {
+  it("null ctx value → empty string (?? collapses null same as undefined)", () => {
     // `??` only fires on null/undefined; this verifies the null branch:
     // ctx[key] ?? "" gives "" for null. (This is intentional per the JSDoc
     // contract: undefined → ""; null → also "" because ?? matches both.)
