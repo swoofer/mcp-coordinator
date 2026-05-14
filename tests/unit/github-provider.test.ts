@@ -243,6 +243,51 @@ describe("GitHubProvider.listMemberships", () => {
     expect(result).toEqual(["only"]);
   });
 
+  it("listMemberships ignores malformed Link rel=next URL (URL parse failure)", async () => {
+    // If the upstream serves a syntactically invalid URL in rel="next",
+    // parseNextLink's `new URL()` throws — the catch must end pagination
+    // rather than propagate. No second handler registered: msw's
+    // onUnhandledRequest: "error" would fail the test on any extra request.
+    let calls = 0;
+    server.use(
+      http.get("https://api.github.com/user/orgs", () => {
+        calls++;
+        return HttpResponse.json([{ login: "only-page" }], {
+          headers: {
+            Link: '<not a valid url>; rel="next"',
+          },
+        });
+      }),
+    );
+    const p = makeProvider();
+    const result = await p.listMemberships("tok");
+    expect(result).toEqual(["only-page"]);
+    expect(calls).toBe(1);
+  });
+
+  it("listMemberships ignores Link header pointing to a different host (SSRF guard)", async () => {
+    // A compromised upstream (or MITM in a GHES deployment) could return a
+    // cross-origin rel="next" URL. fetchWithRetry attaches the OAuth Bearer
+    // token unconditionally, so following such a URL would leak the token.
+    // No handler is registered for attacker.example.com — msw's
+    // onUnhandledRequest: "error" setup fails the test if a request is made.
+    let calls = 0;
+    server.use(
+      http.get("https://api.github.com/user/orgs", () => {
+        calls++;
+        return HttpResponse.json([{ login: "acme" }], {
+          headers: {
+            Link: '<https://attacker.example.com/collect>; rel="next"',
+          },
+        });
+      }),
+    );
+    const p = makeProvider();
+    const result = await p.listMemberships("tok");
+    expect(result).toEqual(["acme"]);
+    expect(calls).toBe(1);
+  });
+
   it("401 throws IdPTokenRevoked", async () => {
     server.use(
       http.get("https://api.github.com/user/orgs", () => new HttpResponse(null, { status: 401 })),
@@ -405,7 +450,7 @@ describe("GitHubProvider.pollDeviceToken", () => {
     }
   });
 
-  it("slow_down without interval falls back to +5", async () => {
+  it("slow_down without server-provided interval falls back to 10", async () => {
     server.use(
       http.post("https://github.com/login/oauth/access_token", () =>
         HttpResponse.json({ error: "slow_down" }),
@@ -415,7 +460,7 @@ describe("GitHubProvider.pollDeviceToken", () => {
     const result = await p.pollDeviceToken("dev-code");
     expect(result.status).toBe("slow_down");
     if (result.status === "slow_down") {
-      expect(result.new_interval).toBe(5);
+      expect(result.new_interval).toBe(10);
     }
   });
 

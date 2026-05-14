@@ -109,13 +109,25 @@ function mapHttpError(status: number): Error {
  *
  * Format: `<https://api.github.com/user/orgs?page=2>; rel="next", <...>; rel="last"`
  * Returns the next-page URL or null if there is no next page.
+ *
+ * SSRF guard: requires the next URL's origin to match `expectedOrigin`. A
+ * compromised upstream (or MITM in a GHES deployment) could otherwise point
+ * pagination at an attacker-controlled host, leaking the OAuth Bearer token
+ * carried by `apiHeaders`.
  */
-function parseNextLink(linkHeader: string | null): string | null {
+function parseNextLink(linkHeader: string | null, expectedOrigin: string): string | null {
   if (!linkHeader) return null;
-  const parts = linkHeader.split(",");
-  for (const part of parts) {
+  for (const part of linkHeader.split(",")) {
     const match = part.match(/<([^>]+)>\s*;\s*rel="next"/);
-    if (match) return match[1];
+    if (match) {
+      try {
+        const next = new URL(match[1]);
+        if (next.origin !== expectedOrigin) return null;
+        return match[1];
+      } catch {
+        return null;
+      }
+    }
   }
   return null;
 }
@@ -180,6 +192,7 @@ export class GitHubProvider implements IdPProvider {
 
   async listMemberships(accessToken: string): Promise<string[]> {
     const logins: string[] = [];
+    const expectedOrigin = new URL(this.apiBaseUrl).origin;
     let url: string | null = `${this.apiBaseUrl}/user/orgs?per_page=100`;
     while (url) {
       const res: Response = await fetchWithRetry(url, {
@@ -194,7 +207,7 @@ export class GitHubProvider implements IdPProvider {
       for (const o of orgs) {
         logins.push(o.login);
       }
-      url = parseNextLink(res.headers.get("link"));
+      url = parseNextLink(res.headers.get("link"), expectedOrigin);
     }
     return logins;
   }
@@ -246,9 +259,11 @@ export class GitHubProvider implements IdPProvider {
         case "authorization_pending":
           return { status: "authorization_pending" };
         case "slow_down":
-          // Per RFC 8628 §3.5: server MAY include a new `interval`. If absent,
-          // fall back to a conservative +5s bump from baseline.
-          return { status: "slow_down", new_interval: errResp.interval ?? 5 };
+          // RFC 8628 §3.5: a compliant server MUST include `interval` on slow_down.
+          // Non-compliant server fallback: return 10s (2x the RFC minimum) as a
+          // conservative guess. Caller does not pass its current interval, so we
+          // cannot true add-5 here.
+          return { status: "slow_down", new_interval: errResp.interval ?? 10 };
         case "expired_token":
           return { status: "expired_token" };
         case "access_denied":
