@@ -1,4 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import crypto from "node:crypto";
 import {
   McpCoordinatorClient,
   UnauthorizedError,
@@ -7,6 +11,9 @@ import {
   UnknownCoordinatorError,
   OAuthError,
   makeCoordinatorError,
+  FileTokenStore,
+  MemoryTokenStore,
+  ProactiveRefresh,
 } from "../src/index.js";
 import type {
   TokenResponse,
@@ -322,5 +329,151 @@ describe("McpCoordinatorClient", () => {
     expect(err.httpStatus).toBe(418);
     expect(err.requestId).toBe("rq");
     expect(err.details).toEqual({ foo: 1 });
+  });
+});
+
+describe("McpCoordinatorClient + storage / refresh integration", () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    tmpDir = path.join(os.tmpdir(), `mcp-client-${crypto.randomUUID()}`);
+    await fs.promises.mkdir(tmpDir, { recursive: true });
+  });
+
+  afterEach(async () => {
+    await fs.promises.rm(tmpDir, { recursive: true, force: true }).catch(() => {
+      /* best-effort */
+    });
+  });
+
+  it("with FileTokenStore: setTokens persists; new client instance loads them", async () => {
+    const filePath = path.join(tmpDir, "tokens.json");
+    const store = new FileTokenStore({ filePath });
+    const fetchMock = vi.fn(async () => mockResponse({ status: 204 }));
+
+    const client1 = new McpCoordinatorClient({
+      baseUrl: BASE_URL,
+      fetch: fetchMock as unknown as typeof fetch,
+      store,
+    });
+    client1.setTokens({
+      accessToken: "at_a",
+      refreshToken: "rt_a",
+      accessExpiresAt: Math.floor(Date.now() / 1000) + 3600,
+    });
+    await client1.persistTokens();
+    client1.dispose();
+
+    // New client + new store instance pointing at the same file.
+    const store2 = new FileTokenStore({ filePath });
+    const client2 = new McpCoordinatorClient({
+      baseUrl: BASE_URL,
+      fetch: fetchMock as unknown as typeof fetch,
+      store: store2,
+    });
+    const loaded = await client2.loadFromStore();
+    expect(loaded?.accessToken).toBe("at_a");
+    expect(loaded?.refreshToken).toBe("rt_a");
+    expect(client2.getTokens()?.accessToken).toBe("at_a");
+    client2.dispose();
+  });
+
+  it("with ProactiveRefresh: setTokens schedules a timer that fires refresh", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchMock = vi.fn(async () =>
+        mockResponse({ status: 200, body: SAMPLE_TOKEN_RESPONSE }),
+      );
+      // Token expires in 200s, lead 120s, zero jitter -> fire in ~80s.
+      const strategy = new ProactiveRefresh(120, 0, () => 0.5);
+      const client = new McpCoordinatorClient({
+        baseUrl: BASE_URL,
+        fetch: fetchMock as unknown as typeof fetch,
+        refreshStrategy: strategy,
+      });
+      client.setTokens({
+        accessToken: "at_old",
+        refreshToken: "rt_old",
+        accessExpiresAt: Math.floor(Date.now() / 1000) + 200,
+      });
+      // Before the timer fires, no fetch yet.
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      // Advance fake time past the scheduled delay (~80s).
+      await vi.advanceTimersByTimeAsync(85_000);
+      // The setTimeout callback fires synchronously inside advanceTimersByTimeAsync;
+      // its inner await chain has had a chance to run.
+      expect(fetchMock).toHaveBeenCalled();
+      // Refresh call should have been to the token endpoint.
+      const firstCall = fetchMock.mock.calls[0]!;
+      expect(firstCall[0]).toBe(`${BASE_URL}/api/auth/oauth/token`);
+
+      client.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("with refreshLockPath: second concurrent refresh adopts the first's update via store", async () => {
+    const filePath = path.join(tmpDir, "tokens.json");
+    const lockPath = path.join(tmpDir, "tokens.json.lock");
+
+    // Shared memory store so both clients see updates.
+    const sharedStore = new MemoryTokenStore();
+    await sharedStore.save({
+      accessToken: "at_old",
+      refreshToken: "rt_old",
+      accessExpiresAt: Math.floor(Date.now() / 1000) - 10, // expired
+    });
+
+    // Use a FileTokenStore for the locking-coordination test so the lock path
+    // actually corresponds to a real file scenario.
+    const fileStore1 = new FileTokenStore({ filePath });
+    const fileStore2 = new FileTokenStore({ filePath });
+    await fileStore1.save({
+      accessToken: "at_old",
+      refreshToken: "rt_old",
+      accessExpiresAt: Math.floor(Date.now() / 1000) - 10,
+    });
+
+    // First client's fetch performs a real refresh (returns SAMPLE_TOKEN_RESPONSE,
+    // access_token=at_new). We add a small artificial delay so the second
+    // client is forced to wait on the lock.
+    const fetch1 = vi.fn(async () => {
+      await new Promise((r) => setTimeout(r, 100));
+      return mockResponse({ status: 200, body: SAMPLE_TOKEN_RESPONSE });
+    });
+    // Second client's fetch should NEVER be invoked -- after acquiring the
+    // lock it must re-read the store, find at_new (fresh), and return early.
+    const fetch2 = vi.fn(async () =>
+      mockResponse({ status: 200, body: { ...SAMPLE_TOKEN_RESPONSE, access_token: "at_BAD" } }),
+    );
+
+    const client1 = new McpCoordinatorClient({
+      baseUrl: BASE_URL,
+      fetch: fetch1 as unknown as typeof fetch,
+      store: fileStore1,
+      refreshLockPath: lockPath,
+    });
+    const client2 = new McpCoordinatorClient({
+      baseUrl: BASE_URL,
+      fetch: fetch2 as unknown as typeof fetch,
+      store: fileStore2,
+      refreshLockPath: lockPath,
+    });
+
+    await client1.loadFromStore();
+    await client2.loadFromStore();
+
+    // Kick both off; first grabs the lock and refreshes, second waits.
+    const [r1, r2] = await Promise.all([client1.refresh(), client2.refresh()]);
+
+    expect(r1.accessToken).toBe("at_new");
+    expect(r2.accessToken).toBe("at_new"); // adopted from store, not refetched
+    expect(fetch1).toHaveBeenCalledTimes(1);
+    expect(fetch2).not.toHaveBeenCalled();
+
+    client1.dispose();
+    client2.dispose();
   });
 });

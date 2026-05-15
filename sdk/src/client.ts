@@ -7,25 +7,48 @@ import type {
   DeviceCodeResponse,
   UserinfoResponse,
 } from "./types.js";
+import type { TokenStore } from "./storage.js";
+import type { RefreshStrategy } from "./refresh-strategy.js";
 
 export interface McpCoordinatorClientOptions {
   baseUrl: string;
   /** Optional fetch override for testing. */
   fetch?: typeof fetch;
+  /** Optional persistent token store. If provided, the client loads tokens
+   *  on first call (via loadFromStore) and saves after refresh / setTokens.
+   *  Default: in-memory only. */
+  store?: TokenStore;
+  /** Optional proactive refresh strategy. When set, the client schedules
+   *  a timer to refresh tokens BEFORE expiry. Default: lazy refresh in
+   *  maybeRefresh on the next API call. */
+  refreshStrategy?: RefreshStrategy;
+  /** Lock file path for multi-process refresh coordination. When set,
+   *  refresh() acquires this lock before issuing the network call so
+   *  concurrent CLI instances don't all refresh at once. */
+  refreshLockPath?: string;
 }
 
 export class McpCoordinatorClient {
   private readonly baseUrl: string;
   private readonly fetch: typeof globalThis.fetch;
   private tokens: TokenSet | null = null;
+  private readonly store: TokenStore | null;
+  private readonly refreshStrategy: RefreshStrategy | null;
+  private readonly refreshLockPath: string | null;
+  private refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(opts: McpCoordinatorClientOptions) {
     this.baseUrl = opts.baseUrl.replace(/\/$/, "");
     this.fetch = opts.fetch ?? globalThis.fetch.bind(globalThis);
+    this.store = opts.store ?? null;
+    this.refreshStrategy = opts.refreshStrategy ?? null;
+    this.refreshLockPath = opts.refreshLockPath ?? null;
   }
 
   setTokens(tokens: TokenSet): void {
     this.tokens = tokens;
+    void this.store?.save(tokens); // fire-and-forget; call persistTokens() to await
+    this.scheduleProactiveRefresh();
   }
 
   getTokens(): TokenSet | null {
@@ -34,6 +57,30 @@ export class McpCoordinatorClient {
 
   clearTokens(): void {
     this.tokens = null;
+    this.cancelProactiveRefresh();
+    void this.store?.clear();
+  }
+
+  /** Load tokens from store (if configured) on first use. Idempotent. */
+  async loadFromStore(): Promise<TokenSet | null> {
+    if (!this.store) return this.tokens;
+    if (!this.tokens) {
+      this.tokens = await this.store.load();
+      if (this.tokens) this.scheduleProactiveRefresh();
+    }
+    return this.tokens;
+  }
+
+  /** Explicit await-able persist hook for callers that need durability after setTokens. */
+  async persistTokens(): Promise<void> {
+    if (this.store && this.tokens) {
+      await this.store.save(this.tokens);
+    }
+  }
+
+  /** Cancel timers + close resources. Call on app shutdown. */
+  dispose(): void {
+    this.cancelProactiveRefresh();
   }
 
   /** GET /api/auth/me */
@@ -53,7 +100,7 @@ export class McpCoordinatorClient {
       headers: this.authHeader(),
     });
     this.handleEmptyResponse(res);
-    this.tokens = null;
+    this.clearTokens();
   }
 
   /** POST /api/auth/logout-all -- bumps user.token_epoch; clears local tokens. */
@@ -63,7 +110,7 @@ export class McpCoordinatorClient {
       headers: this.authHeader(),
     });
     this.handleEmptyResponse(res);
-    this.tokens = null;
+    this.clearTokens();
   }
 
   /** POST /api/auth/revoke -- RFC 7009 (always 200). */
@@ -81,6 +128,28 @@ export class McpCoordinatorClient {
 
   /** POST /api/auth/oauth/token grant=refresh_token */
   async refresh(): Promise<TokenSet> {
+    if (this.refreshLockPath) {
+      const lockPath = this.refreshLockPath;
+      const { withLock } = await import("./single-flight.js");
+      return withLock({ lockPath }, async () => {
+        // After acquiring the lock, re-read the store -- another process may
+        // have already refreshed.
+        if (this.store) {
+          const stored = await this.store.load();
+          if (stored && stored.accessExpiresAt > Math.floor(Date.now() / 1000) + 60) {
+            // Another process refreshed; adopt those tokens.
+            this.tokens = stored;
+            this.scheduleProactiveRefresh();
+            return stored;
+          }
+        }
+        return this.doRefresh();
+      });
+    }
+    return this.doRefresh();
+  }
+
+  private async doRefresh(): Promise<TokenSet> {
     if (!this.tokens) throw new Error("No refresh token; call setTokens() first");
     const res = await this.fetch(`${this.baseUrl}/api/auth/oauth/token`, {
       method: "POST",
@@ -97,6 +166,8 @@ export class McpCoordinatorClient {
       accessExpiresAt: Math.floor(Date.now() / 1000) + tokenResponse.expires_in,
     };
     this.tokens = newSet;
+    if (this.store) await this.store.save(newSet);
+    this.scheduleProactiveRefresh();
     return newSet;
   }
 
@@ -130,6 +201,8 @@ export class McpCoordinatorClient {
         accessExpiresAt: Math.floor(Date.now() / 1000) + tokenResponse.expires_in,
       };
       this.tokens = newSet;
+      if (this.store) await this.store.save(newSet);
+      this.scheduleProactiveRefresh();
       return newSet;
     }
     if (res.status === 400) {
@@ -162,6 +235,27 @@ export class McpCoordinatorClient {
       } catch {
         /* fall through; the upcoming request will surface the 401 */
       }
+    }
+  }
+
+  private scheduleProactiveRefresh(): void {
+    this.cancelProactiveRefresh();
+    if (!this.refreshStrategy || !this.tokens) return;
+    const delayMs = this.refreshStrategy.nextRefreshDelayMs(this.tokens);
+    if (delayMs === null) return; // already past trigger; lazy refresh will handle
+    this.refreshTimer = setTimeout(() => {
+      this.refresh().catch(() => {
+        /* errors will surface on next request */
+      });
+    }, delayMs);
+    const timer = this.refreshTimer as { unref?: () => void };
+    if (typeof timer.unref === "function") timer.unref();
+  }
+
+  private cancelProactiveRefresh(): void {
+    if (this.refreshTimer) {
+      clearTimeout(this.refreshTimer);
+      this.refreshTimer = null;
     }
   }
 
