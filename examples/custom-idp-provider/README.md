@@ -6,17 +6,20 @@ interface in `src/auth/providers/types.ts`.
 
 > Status -- read this before you start.
 >
-> Phase 2 ships with `GitHubProvider` only. The boot composer in
-> `src/boot.ts` registers exactly one provider, and the dashboard /
-> CLI assume the GitHub-org allowlist model. Multi-provider login
-> and abstracted allowlist semantics are scheduled for Phase 4. The
-> code in `google-provider.ts` is therefore a TEMPLATE: it compiles
-> against the Phase 2 interfaces but requires a small patch to
-> `src/boot.ts` to be reachable at runtime (see `README-add-to-registry.md`).
+> v0.9.0 ships with `GitHubProvider` AND `GoogleProvider` built in.
+> The boot composer in `src/boot.ts` registers GitHub unconditionally
+> and Google when `COORDINATOR_GOOGLE_CLIENT_ID` +
+> `COORDINATOR_GOOGLE_CLIENT_SECRET` are set. A generic
+> `OIDCProvider` for Okta / Auth0 / Azure AD / Keycloak follows in
+> T48 alongside the multi-provider login picker UI.
 >
-> Operators who need a non-GitHub IdP today must vendor a custom
-> build of the coordinator. There is no plugin or shared-object
-> loading mechanism in Phase 2.
+> The `google-provider.ts` file in this directory is therefore now
+> reference material for "what an IdPProvider implementation looks
+> like" rather than a runtime template -- production Google sign-in
+> uses `src/auth/providers/google.ts`. If you need a custom IdP
+> beyond GitHub / Google / OIDC, this directory still shows the
+> shape you'd vendor into a fork (see
+> `README-add-to-registry.md`).
 
 ## What you get in this directory
 

@@ -3,6 +3,7 @@ import { assertSecretEntropy } from "./auth/entropy.js";
 import { deriveStateBindingKey } from "./auth/crypto-keys.js";
 import { buildJwtKeyRegistry } from "./auth/jwt-keys.js";
 import { GitHubProvider } from "./auth/providers/github.js";
+import { GoogleProvider } from "./auth/providers/google.js";
 import { ProviderRegistry } from "./auth/providers/registry.js";
 import { MembershipCache } from "./auth/membership-cache.js";
 import { RateLimiter } from "./auth/rate-limit.js";
@@ -114,12 +115,31 @@ export function bootPhase2(opts: Phase2BootOptions): Phase2Bootstrap | null {
     ...(githubApiBaseUrl ? { apiBaseUrl: githubApiBaseUrl } : {}),
   });
 
-  // T45 (v0.9.0): provider registry. Phase 2 registers GitHub only;
-  // v0.9.0 adds Google + OIDC. The picker UI activates whenever
-  // providers.size() > 1. GitHub is the implicit default since it is
-  // registered first (matches Phase 2 single-provider behavior).
+  // T45 (v0.9.0): provider registry. GitHub is always registered;
+  // Google + OIDC register iff their env vars are present. The picker
+  // UI activates (T48) whenever providers.size() > 1; GitHub is the
+  // implicit default since it is registered first.
   const providers = new ProviderRegistry();
   providers.register(githubProvider);
+
+  // T47 (v0.9.0): GoogleProvider. Opt-in via env. Both client_id and
+  // client_secret are required; presence of only one is a config error
+  // so the deployment fails closed at boot rather than half-registering.
+  const googleClientId = process.env.COORDINATOR_GOOGLE_CLIENT_ID?.trim();
+  const googleClientSecret = process.env.COORDINATOR_GOOGLE_CLIENT_SECRET?.trim();
+  if (googleClientId || googleClientSecret) {
+    if (!googleClientId || !googleClientSecret) {
+      throw new BootValidationError(
+        "COORDINATOR_GOOGLE_CLIENT_ID and COORDINATOR_GOOGLE_CLIENT_SECRET must both be set, or both unset",
+      );
+    }
+    providers.register(
+      new GoogleProvider({
+        clientId: googleClientId,
+        clientSecret: googleClientSecret,
+      }),
+    );
+  }
 
   // 7. Initialize audit queue (Tier 2 buffered writes; T11b).
   initAuditQueue(db);
