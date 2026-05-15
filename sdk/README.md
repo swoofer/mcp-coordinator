@@ -9,11 +9,16 @@ This is the **T40 minimal** release. The package is `"private": true`; it is
 npm install file:./path/to/mcp-coordinator/sdk
 ```
 
-T40b (this release, v0.8.x) adds **file-based token persistence**,
-**proactive refresh with jitter**, and a **single-flight refresh lock**
-for multi-process CLI safety. See
+T40b (v0.8.x) added **file-based token persistence**, **proactive
+refresh with jitter**, and a **single-flight refresh lock** for
+multi-process CLI safety. See
 [Persistent storage + proactive refresh](#persistent-storage--proactive-refresh-v08x).
-A future T40c release will add OS keychain integration (`keytar`) and
+T40c (this release) adds **named-profile TOML config** and a
+**24h discovery-doc cache** so the SDK reads OAuth endpoints from the
+coordinator's `.well-known/oauth-authorization-server` rather than
+hardcoding them. See
+[Named profiles + discovery cache](#named-profiles--discovery-cache-v08x).
+A future T40d release will add OS keychain integration (`keytar`) and
 Windows DPAPI for the token file. See [Caveats](#caveats).
 
 ## Install
@@ -193,7 +198,7 @@ client.dispose(); // cancel proactive-refresh timer on app shutdown
 ```
 
 `FileTokenStore` writes the JSON token set with `chmod 0600` on POSIX
-(no Windows DPAPI yet -- that's T40c). The parent directory is created
+(no Windows DPAPI yet -- that's T40d). The parent directory is created
 with `chmod 0700` on POSIX. Writes are atomic via write-to-tmp + rename
 to prevent partial writes on crash.
 
@@ -216,19 +221,114 @@ import { MemoryTokenStore } from "@mcp-coordinator/sdk-js";
 const store = new MemoryTokenStore();
 ```
 
+## Named profiles + discovery cache (v0.8.x)
+
+### Named-profile TOML config
+
+Operators can define multiple coordinator profiles (e.g. `default`,
+`staging`, `prod`) in `~/.mcp-coordinator/config.toml`:
+
+```toml
+[profile.default]
+base_url = "https://dev-coord.example.com"
+client_id = "cli_dev"
+
+[profile.staging]
+base_url = "https://staging-coord.example.com"
+client_id = "cli_staging"
+tokens_path = "/var/lib/mcp/staging-tokens.json"  # custom per-profile
+
+[profile.prod]
+base_url = "https://coord.example.com"
+client_id = "cli_prod"
+```
+
+Load a profile at startup and feed its fields into the client:
+
+```ts
+import { loadProfile, McpCoordinatorClient, FileTokenStore } from "@mcp-coordinator/sdk-js";
+
+const profile = await loadProfile(); // env MCP_COORDINATOR_PROFILE || "default"
+if (!profile) throw new Error("No ~/.mcp-coordinator/config.toml found");
+
+const client = new McpCoordinatorClient({
+  baseUrl: profile.base_url!,
+  store: new FileTokenStore({ filePath: profile.tokens_path }),
+});
+```
+
+Profile selection precedence (highest first):
+
+1. `loadProfile({ profileName: "..." })` argument
+2. `MCP_COORDINATOR_PROFILE` environment variable
+3. `"default"`
+
+The parser supports only a minimal subset of TOML: `[profile.NAME]`
+sections containing `key = "string"` (double- or single-quoted) lines,
+inline `#` comments, blank lines, and the escape sequences `\n`, `\t`,
+`\r`, `\"`, `\\`. Arrays, nested tables, datetimes, numeric literals,
+and multi-line strings are rejected with a `TomlParseError` carrying
+the offending line number. Operators who need richer config can
+pre-process with a real TOML library and emit the simple subset.
+
+A missing config file returns `null` (operator simply isn't using profile
+config). A missing named profile throws `ProfileNotFoundError`, exposing
+`.profileName` and `.available` for friendly CLI error messages.
+
+### Discovery doc 24h cache
+
+`DiscoveryCache` wraps `GET ${baseUrl}/.well-known/oauth-authorization-server`
+with an in-memory + on-disk cache (default 24h TTL,
+`~/.mcp-coordinator/discovery-cache.json`). When passed to the client,
+endpoint paths are resolved from the discovery document rather than
+hardcoded -- so a future endpoint move on the coordinator won't break
+existing SDK installs.
+
+```ts
+import { DiscoveryCache, McpCoordinatorClient } from "@mcp-coordinator/sdk-js";
+
+const discovery = new DiscoveryCache({ baseUrl: "https://coord.example.com" });
+const client = new McpCoordinatorClient({
+  baseUrl: "https://coord.example.com",
+  discovery,
+});
+```
+
+Behavior:
+
+- **First call** fetches over the network and persists to disk (atomic
+  write-to-tmp + rename).
+- **Subsequent calls within 24h** return the in-memory copy without
+  network traffic.
+- **After TTL expiry**, the next call refetches.
+- **Network failure with a cached value**, even a stale one, returns the
+  last-known doc (stale-on-error). With no cache, the error propagates.
+- **Cache is keyed by `baseUrl`**, so switching profiles to a different
+  coordinator triggers a fresh fetch and ignores stale entries from
+  other deployments.
+
+The client only delegates `token_endpoint`,
+`device_authorization_endpoint`, `revocation_endpoint`, and
+`userinfo_endpoint` (with hardcoded fallback when it's absent) to the
+discovery doc. The browser-facing `/auth/login` and the
+`/api/auth/logout` and `/api/auth/logout-all` paths (not part of the
+OAuth metadata schema) remain hardcoded.
+
+Opt-in: when `discovery` is unset on `McpCoordinatorClient`, the prior
+hardcoded paths are used (no behavior change).
+
 ## Caveats
 
-The following features are deferred to T40c (a future release):
+The following features are deferred to T40d (a future release):
 
-- **Keychain integration.** `keytar` / OS keychain backend.
-- **Windows DPAPI.** Encrypted-at-rest token file on Windows.
-- **Discovery doc 24h cache.** Not implemented.
-- **Named-profile TOML config.** Not implemented; pass `baseUrl` directly.
+- **Keychain integration.** `keytar` / OS keychain backend (native dep).
+- **Windows DPAPI.** Encrypted-at-rest token file on Windows
+  (Win32 native).
 - **Sliding-token-life heuristics.** No adaptive lead based on observed
   drift between successive refreshes.
 
 For shared filesystems / multi-user systems, prefer `MemoryTokenStore`
-plus an OS-keychain wrapper of your own until T40c lands.
+plus an OS-keychain wrapper of your own until T40d lands.
 
 ## License
 

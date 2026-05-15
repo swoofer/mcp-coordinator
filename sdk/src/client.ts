@@ -9,6 +9,7 @@ import type {
 } from "./types.js";
 import type { TokenStore } from "./storage.js";
 import type { RefreshStrategy } from "./refresh-strategy.js";
+import type { DiscoveryCache } from "./discovery.js";
 
 export interface McpCoordinatorClientOptions {
   baseUrl: string;
@@ -26,6 +27,11 @@ export interface McpCoordinatorClientOptions {
    *  refresh() acquires this lock before issuing the network call so
    *  concurrent CLI instances don't all refresh at once. */
   refreshLockPath?: string;
+  /** Optional discovery-doc cache. When provided, the client resolves
+   *  token / device-authorization / revocation / userinfo endpoints from
+   *  the cached `${baseUrl}/.well-known/oauth-authorization-server`
+   *  document rather than hardcoding paths. Default: hardcoded paths. */
+  discovery?: DiscoveryCache;
 }
 
 export class McpCoordinatorClient {
@@ -35,6 +41,7 @@ export class McpCoordinatorClient {
   private readonly store: TokenStore | null;
   private readonly refreshStrategy: RefreshStrategy | null;
   private readonly refreshLockPath: string | null;
+  private readonly discovery: DiscoveryCache | null;
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(opts: McpCoordinatorClientOptions) {
@@ -43,6 +50,34 @@ export class McpCoordinatorClient {
     this.store = opts.store ?? null;
     this.refreshStrategy = opts.refreshStrategy ?? null;
     this.refreshLockPath = opts.refreshLockPath ?? null;
+    this.discovery = opts.discovery ?? null;
+  }
+
+  // ---- endpoint resolution (discovery-doc-aware) ----
+
+  private async tokenEndpoint(): Promise<string> {
+    if (!this.discovery) return `${this.baseUrl}/api/auth/oauth/token`;
+    const doc = await this.discovery.load();
+    return doc.token_endpoint;
+  }
+
+  private async deviceAuthorizationEndpoint(): Promise<string> {
+    if (!this.discovery) return `${this.baseUrl}/api/auth/oauth/device_authorization`;
+    const doc = await this.discovery.load();
+    return doc.device_authorization_endpoint;
+  }
+
+  private async revocationEndpoint(): Promise<string> {
+    if (!this.discovery) return `${this.baseUrl}/api/auth/revoke`;
+    const doc = await this.discovery.load();
+    return doc.revocation_endpoint;
+  }
+
+  private async userinfoEndpoint(): Promise<string> {
+    if (!this.discovery) return `${this.baseUrl}/api/auth/me`;
+    const doc = await this.discovery.load();
+    // userinfo_endpoint is optional in the OpenAPI; fall back to hardcoded.
+    return doc.userinfo_endpoint ?? `${this.baseUrl}/api/auth/me`;
   }
 
   setTokens(tokens: TokenSet): void {
@@ -83,10 +118,11 @@ export class McpCoordinatorClient {
     this.cancelProactiveRefresh();
   }
 
-  /** GET /api/auth/me */
+  /** GET /api/auth/me (or discovery-resolved userinfo_endpoint) */
   async whoami(): Promise<UserinfoResponse> {
     await this.maybeRefresh();
-    const res = await this.fetch(`${this.baseUrl}/api/auth/me`, {
+    const url = await this.userinfoEndpoint();
+    const res = await this.fetch(url, {
       method: "GET",
       headers: this.authHeader(),
     });
@@ -113,9 +149,10 @@ export class McpCoordinatorClient {
     this.clearTokens();
   }
 
-  /** POST /api/auth/revoke -- RFC 7009 (always 200). */
+  /** POST /api/auth/revoke (or discovery-resolved revocation_endpoint) -- RFC 7009 (always 200). */
   async revoke(token: string): Promise<void> {
-    const res = await this.fetch(`${this.baseUrl}/api/auth/revoke`, {
+    const url = await this.revocationEndpoint();
+    const res = await this.fetch(url, {
       method: "POST",
       headers: {
         ...this.authHeader(),
@@ -151,7 +188,8 @@ export class McpCoordinatorClient {
 
   private async doRefresh(): Promise<TokenSet> {
     if (!this.tokens) throw new Error("No refresh token; call setTokens() first");
-    const res = await this.fetch(`${this.baseUrl}/api/auth/oauth/token`, {
+    const url = await this.tokenEndpoint();
+    const res = await this.fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
@@ -171,9 +209,10 @@ export class McpCoordinatorClient {
     return newSet;
   }
 
-  /** POST /api/auth/oauth/device_authorization (RFC 8628 init) */
+  /** POST /api/auth/oauth/device_authorization (RFC 8628 init; or discovery-resolved device_authorization_endpoint) */
   async deviceCodeStart(): Promise<DeviceCodeResponse> {
-    const res = await this.fetch(`${this.baseUrl}/api/auth/oauth/device_authorization`, {
+    const url = await this.deviceAuthorizationEndpoint();
+    const res = await this.fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: "",
@@ -185,7 +224,8 @@ export class McpCoordinatorClient {
   async deviceCodePoll(
     deviceCode: string,
   ): Promise<TokenSet | { status: "pending" | "slow_down" | "expired" | "denied" }> {
-    const res = await this.fetch(`${this.baseUrl}/api/auth/oauth/token`, {
+    const url = await this.tokenEndpoint();
+    const res = await this.fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
