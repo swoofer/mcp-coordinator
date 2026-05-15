@@ -55,11 +55,15 @@ function mockResponse(): MockResponse {
   return res;
 }
 
-function mockReq(remoteAddress: string | undefined = "127.0.0.1"): IncomingMessage {
+function mockReq(
+  remoteAddress: string | undefined = "127.0.0.1",
+  url = "/auth/login",
+): IncomingMessage {
   // Cast a minimal duck-typed object as IncomingMessage. The handler only
-  // reads req.socket?.remoteAddress; everything else stays undefined.
+  // reads req.socket?.remoteAddress and req.url; everything else stays
+  // undefined.
   const socket = remoteAddress === undefined ? undefined : { remoteAddress };
-  return { method: "GET", url: "/auth/login", socket } as unknown as IncomingMessage;
+  return { method: "GET", url, socket } as unknown as IncomingMessage;
 }
 
 function setCookieEntries(res: MockResponse): string[] {
@@ -370,5 +374,160 @@ describe("handleAuthLogin — rate limiting", () => {
     const res = mockResponse();
     await handleAuthLogin(mockReq(undefined), res as unknown as ServerResponse, sharedCtx);
     expect(res.statusCode).toBe(302);
+  });
+});
+
+// -- T49: multi-provider picker --------------------------------------
+
+import { ProviderRegistry } from "../../src/auth/providers/registry.js";
+
+function makeStubProvider(name: string): IdPProvider {
+  return {
+    name,
+    buildAuthUrl: (state, redirectUri, codeChallenge) => {
+      const u = new URL(`https://${name}.example/authorize`);
+      u.searchParams.set("state", state);
+      u.searchParams.set("redirect_uri", redirectUri);
+      if (codeChallenge) u.searchParams.set("code_challenge", codeChallenge);
+      return u.toString();
+    },
+    exchangeCode: async () => {
+      throw new Error("not used");
+    },
+  };
+}
+
+function multiProviderRegistry(...names: string[]): ProviderRegistry {
+  const r = new ProviderRegistry();
+  for (const name of names) {
+    r.register(makeStubProvider(name));
+  }
+  return r;
+}
+
+describe("handleAuthLogin — picker (multi-provider)", () => {
+  it("single provider: skips picker, redirects straight to authorize URL", async () => {
+    const res = mockResponse();
+    await handleAuthLogin(mockReq(), res as unknown as ServerResponse, ctx);
+    expect(res.statusCode).toBe(302);
+  });
+
+  it("two providers, no ?provider= param: renders 200 HTML picker", async () => {
+    const sharedCtx = makeCtx({
+      providers: multiProviderRegistry("github", "google"),
+    });
+    const res = mockResponse();
+    await handleAuthLogin(mockReq(), res as unknown as ServerResponse, sharedCtx);
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["Content-Type"]).toMatch(/text\/html/);
+    expect(res.body).toMatch(/<title>Sign in/);
+    // Both providers should appear as buttons linking to ?provider=X.
+    expect(res.body).toContain("/auth/login?provider=github");
+    expect(res.body).toContain("/auth/login?provider=google");
+    expect(res.body).toContain("Continue with GitHub");
+    expect(res.body).toContain("Continue with Google");
+  });
+
+  it("two providers, ?provider=github: redirects to that provider's authorize URL", async () => {
+    const sharedCtx = makeCtx({
+      providers: multiProviderRegistry("github", "google"),
+    });
+    const res = mockResponse();
+    await handleAuthLogin(
+      mockReq("127.0.0.1", "/auth/login?provider=github"),
+      res as unknown as ServerResponse,
+      sharedCtx,
+    );
+    expect(res.statusCode).toBe(302);
+    const loc = res.headers.Location as string;
+    expect(loc).toMatch(/^https:\/\/github\.example\/authorize\?/);
+  });
+
+  it("two providers, ?provider=google: redirects to google authorize URL", async () => {
+    const sharedCtx = makeCtx({
+      providers: multiProviderRegistry("github", "google"),
+    });
+    const res = mockResponse();
+    await handleAuthLogin(
+      mockReq("127.0.0.1", "/auth/login?provider=google"),
+      res as unknown as ServerResponse,
+      sharedCtx,
+    );
+    expect(res.statusCode).toBe(302);
+    const loc = res.headers.Location as string;
+    expect(loc).toMatch(/^https:\/\/google\.example\/authorize\?/);
+  });
+
+  it("?provider= with unknown name: 400 UNKNOWN_PROVIDER (does not silently fall back)", async () => {
+    const sharedCtx = makeCtx({
+      providers: multiProviderRegistry("github", "google"),
+    });
+    const res = mockResponse();
+    await handleAuthLogin(
+      mockReq("127.0.0.1", "/auth/login?provider=evil"),
+      res as unknown as ServerResponse,
+      sharedCtx,
+    );
+    expect(res.statusCode).toBe(400);
+    const body = JSON.parse(res.body!);
+    expect(body.code).toBe("UNKNOWN_PROVIDER");
+    expect(body.message).toContain("evil");
+  });
+
+  it("?provider= with unknown name on single-provider setup: still 400 (not silent fallback)", async () => {
+    // ctx has only github registered. An explicit ?provider=oidc must
+    // not redirect to github -- the user typed something specific.
+    const res = mockResponse();
+    await handleAuthLogin(
+      mockReq("127.0.0.1", "/auth/login?provider=oidc"),
+      res as unknown as ServerResponse,
+      ctx,
+    );
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.body!).code).toBe("UNKNOWN_PROVIDER");
+  });
+
+  it("?provider=github on single-provider setup: redirects normally", async () => {
+    const res = mockResponse();
+    await handleAuthLogin(
+      mockReq("127.0.0.1", "/auth/login?provider=github"),
+      res as unknown as ServerResponse,
+      ctx,
+    );
+    expect(res.statusCode).toBe(302);
+  });
+
+  it("oauth_state row records the selected provider (not the default)", async () => {
+    const sharedCtx = makeCtx({
+      providers: multiProviderRegistry("github", "google"),
+    });
+    const res = mockResponse();
+    await handleAuthLogin(
+      mockReq("127.0.0.1", "/auth/login?provider=google"),
+      res as unknown as ServerResponse,
+      sharedCtx,
+    );
+    const loc = new URL(res.headers.Location as string);
+    const state = loc.searchParams.get("state");
+    const row = db
+      .prepare("SELECT provider FROM oauth_state WHERE state = ?")
+      .get(state) as { provider: string };
+    expect(row.provider).toBe("google");
+  });
+
+  it("picker render still consumes a rate-limit token", async () => {
+    const sharedCtx = makeCtx({
+      providers: multiProviderRegistry("github", "google"),
+    });
+    // Burn 30 tokens via picker renders.
+    for (let i = 0; i < 30; i++) {
+      const r = mockResponse();
+      await handleAuthLogin(mockReq(), r as unknown as ServerResponse, sharedCtx);
+      expect(r.statusCode).toBe(200);
+    }
+    // 31st should 429.
+    const blocked = mockResponse();
+    await handleAuthLogin(mockReq(), blocked as unknown as ServerResponse, sharedCtx);
+    expect(blocked.statusCode).toBe(429);
   });
 });
