@@ -35,11 +35,19 @@ const ENV_KEYS = [
   "COORDINATOR_GITHUB_ORG",
   "COORDINATOR_INSECURE_COOKIES",
   "COORDINATOR_ALLOW_RESTORE",
+  "COORDINATOR_JWT_SECRET_PREV",
+  "COORDINATOR_JWT_SECRET_PREV_ROTATED_AT",
+  "COORDINATOR_GITHUB_AUTH_BASE_URL",
+  "COORDINATOR_GITHUB_API_BASE_URL",
 ];
 
 // 32 random bytes (high entropy, no dictionary words) — passes
 // assertSecretEntropy(128).
 const STRONG_SECRET = "ZGVhZGJlZWZjYWZlYmFiZTAxMjM0NTY3ODlhYmNkZWY=xY9q";
+// A DIFFERENT high-entropy secret used as the "prev" during rotation
+// overlap tests. Distinct bytes from STRONG_SECRET to ensure boot wires
+// them through as separate kid entries.
+const STRONG_SECRET_PREV = "QkJCQkNDQ0NEREREMTIzNDU2N3F4UnZMbXp6OUtPUEFi";
 
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS orgs (
@@ -486,5 +494,219 @@ describe("bootPhase2 — success path", () => {
     // context uses something time-like.
     expect(result!.context.clock.now()).toBeGreaterThan(1_600_000_000);
     void result!.shutdown();
+  });
+});
+
+describe("bootPhase2 — JWT prev-secret rotation overlap (v0.8.1)", () => {
+  it("COORDINATOR_JWT_SECRET_PREV unset: boot succeeds, no config.key_rotation audit", () => {
+    applyValidEnv();
+    // Sanity: ensure prev is not set from a prior test's snapshot.
+    delete process.env.COORDINATOR_JWT_SECRET_PREV;
+    delete process.env.COORDINATOR_JWT_SECRET_PREV_ROTATED_AT;
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+
+    const row = db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM audit_log WHERE action = ?",
+      )
+      .get("config.key_rotation") as { n: number };
+    expect(row.n).toBe(0);
+
+    // The signing registry should NOT resolve hs256-v0 (no prev key).
+    expect(result!.context.signingKeys.getKey("hs256-v0")).toBeUndefined();
+    void result!.shutdown();
+  });
+
+  it("COORDINATOR_JWT_SECRET_PREV set: boot wires prev into registry + emits config.key_rotation Tier 1 audit", () => {
+    applyValidEnv();
+    process.env.COORDINATOR_JWT_SECRET_PREV = STRONG_SECRET_PREV;
+    delete process.env.COORDINATOR_JWT_SECRET_PREV_ROTATED_AT;
+
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+
+    // The registry now resolves hs256-v0 to the prev key bytes.
+    const v0 = result!.context.signingKeys.getKey("hs256-v0");
+    expect(v0).toBeInstanceOf(Uint8Array);
+    expect(Buffer.from(v0!).equals(Buffer.from(STRONG_SECRET_PREV, "utf8")))
+      .toBe(true);
+    // Current kid still signs new tokens with the current secret.
+    expect(result!.context.signingKeys.current.kid).toBe("hs256-v1");
+    expect(
+      Buffer.from(result!.context.signingKeys.current.key).equals(
+        Buffer.from(STRONG_SECRET, "utf8"),
+      ),
+    ).toBe(true);
+
+    // Tier 1 audit row emitted with both kids + rotated_at="unset".
+    const audit = db
+      .prepare(
+        "SELECT metadata_json FROM audit_log WHERE action = ?",
+      )
+      .get("config.key_rotation") as { metadata_json: string } | undefined;
+    expect(audit).toBeDefined();
+    const meta = JSON.parse(audit!.metadata_json);
+    expect(meta.current_kid).toBe("hs256-v1");
+    expect(meta.prev_kid).toBe("hs256-v0");
+    expect(meta.rotated_at).toBe("unset");
+
+    void result!.shutdown();
+  });
+
+  it("COORDINATOR_JWT_SECRET_PREV weak (dictionary word): throws BootValidationError-like entropy error", () => {
+    applyValidEnv();
+    process.env.COORDINATOR_JWT_SECRET_PREV = "changeme";
+    // assertSecretEntropy throws a generic Error (not BootValidationError);
+    // either way boot must fail before composing the registry.
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
+      /secret entropy/,
+    );
+  });
+
+  it("COORDINATOR_JWT_SECRET_PREV_ROTATED_AT (ISO timestamp): surfaces in audit metadata", () => {
+    applyValidEnv();
+    process.env.COORDINATOR_JWT_SECRET_PREV = STRONG_SECRET_PREV;
+    process.env.COORDINATOR_JWT_SECRET_PREV_ROTATED_AT =
+      "2026-05-15T00:00:00Z";
+
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+
+    const audit = db
+      .prepare(
+        "SELECT metadata_json FROM audit_log WHERE action = ?",
+      )
+      .get("config.key_rotation") as { metadata_json: string };
+    const meta = JSON.parse(audit.metadata_json);
+    expect(meta.rotated_at).toBe("2026-05-15T00:00:00Z");
+    expect(meta.current_kid).toBe("hs256-v1");
+    expect(meta.prev_kid).toBe("hs256-v0");
+
+    void result!.shutdown();
+  });
+
+  it("COORDINATOR_JWT_SECRET_PREV whitespace-only: treated as unset (no audit, no prev key)", () => {
+    applyValidEnv();
+    process.env.COORDINATOR_JWT_SECRET_PREV = "   ";
+
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+
+    expect(result!.context.signingKeys.getKey("hs256-v0")).toBeUndefined();
+    const row = db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM audit_log WHERE action = ?",
+      )
+      .get("config.key_rotation") as { n: number };
+    expect(row.n).toBe(0);
+
+    void result!.shutdown();
+  });
+});
+
+describe("bootPhase2 — GHES base URL wiring (v0.8.1-P2)", () => {
+  // GitHubProvider doesn't expose authBaseUrl/apiBaseUrl publicly, so we
+  // assert wiring behaviorally via buildAuthUrl — which prefixes with
+  // `${this.authBaseUrl}/login/oauth/authorize`. That URL is the observable
+  // surface that proves the env var flowed through the constructor.
+
+  it("neither env var set: GitHubProvider defaults to github.com (buildAuthUrl points at github.com)", () => {
+    applyValidEnv();
+    delete process.env.COORDINATOR_GITHUB_AUTH_BASE_URL;
+    delete process.env.COORDINATOR_GITHUB_API_BASE_URL;
+
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+
+    const authUrl = result!.context.githubProvider.buildAuthUrl(
+      "state-x",
+      "https://coordinator.example.com/cb",
+    );
+    expect(authUrl.startsWith("https://github.com/login/oauth/authorize"))
+      .toBe(true);
+
+    void result!.shutdown();
+  });
+
+  it("both env vars set: GitHubProvider uses the GHES overrides", () => {
+    applyValidEnv();
+    process.env.COORDINATOR_GITHUB_AUTH_BASE_URL = "https://github.example.com";
+    process.env.COORDINATOR_GITHUB_API_BASE_URL =
+      "https://github.example.com/api/v3";
+
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+
+    const authUrl = result!.context.githubProvider.buildAuthUrl(
+      "state-x",
+      "https://coordinator.example.com/cb",
+    );
+    expect(
+      authUrl.startsWith("https://github.example.com/login/oauth/authorize"),
+    ).toBe(true);
+
+    void result!.shutdown();
+  });
+
+  it("only AUTH_BASE_URL set: auth overridden, api defaults to api.github.com", () => {
+    applyValidEnv();
+    process.env.COORDINATOR_GITHUB_AUTH_BASE_URL = "https://github.example.com";
+    delete process.env.COORDINATOR_GITHUB_API_BASE_URL;
+
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+
+    const authUrl = result!.context.githubProvider.buildAuthUrl(
+      "state-x",
+      "https://coordinator.example.com/cb",
+    );
+    expect(
+      authUrl.startsWith("https://github.example.com/login/oauth/authorize"),
+    ).toBe(true);
+    // api base default is exercised indirectly: provider construction
+    // succeeded with only the auth override, proving the conditional spread
+    // didn't accidentally pass undefined as apiBaseUrl.
+
+    void result!.shutdown();
+  });
+
+  it("whitespace-only env vars: treated as unset (defaults to github.com)", () => {
+    applyValidEnv();
+    process.env.COORDINATOR_GITHUB_AUTH_BASE_URL = "   ";
+    process.env.COORDINATOR_GITHUB_API_BASE_URL = "   ";
+
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+
+    const authUrl = result!.context.githubProvider.buildAuthUrl(
+      "state-x",
+      "https://coordinator.example.com/cb",
+    );
+    expect(authUrl.startsWith("https://github.com/login/oauth/authorize"))
+      .toBe(true);
+
+    void result!.shutdown();
+  });
+
+  it("invalid URL: throws BootValidationError", () => {
+    applyValidEnv();
+    process.env.COORDINATOR_GITHUB_AUTH_BASE_URL = "not-a-url";
+
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
+      BootValidationError,
+    );
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
+      /COORDINATOR_GITHUB_AUTH_BASE_URL is not a valid URL/,
+    );
+  });
+
+  it("non-http(s) scheme: throws BootValidationError", () => {
+    applyValidEnv();
+    process.env.COORDINATOR_GITHUB_API_BASE_URL = "ftp://github.example.com";
+
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
+      /COORDINATOR_GITHUB_API_BASE_URL must be http:\/\/ or https:\/\//,
+    );
   });
 });

@@ -78,12 +78,39 @@ export function bootPhase2(opts: Phase2BootOptions): Phase2Bootstrap | null {
 
   // 6. Compose Phase 2 components.
   const stateBindingKey = deriveStateBindingKey(secretBuf);
-  const signingKeys = buildJwtKeyRegistry(secretBuf);
+
+  // Optional prev secret for rotation overlap (v0.8.1+). When set, registers
+  // under kid "hs256-v0" verify-only so existing sessions don't immediately
+  // 401 when JWT_SECRET is rotated. See docs/ops/key-rotation.md.
+  let prevSecretBuf: Buffer | undefined;
+  const prevSecret = process.env.COORDINATOR_JWT_SECRET_PREV;
+  if (prevSecret && prevSecret.trim() !== "") {
+    // Entropy validation: prev MUST also meet the bar (operators should never
+    // rotate FROM a weak secret either — the entropy check applies to both).
+    prevSecretBuf = Buffer.from(prevSecret, "utf8");
+    assertSecretEntropy(prevSecretBuf, MIN_JWT_SECRET_BITS);
+  }
+  const signingKeys = buildJwtKeyRegistry(secretBuf, prevSecretBuf);
   const rateLimiter = new RateLimiter(clock);
   const membershipCache = new MembershipCache(clock);
+
+  // GHES support (v0.8.1-P2): both optional. Unset/empty → GitHubProvider
+  // defaults (github.com / api.github.com) take over. Conditional spread so we
+  // never pass undefined into the config object — the constructor's `?? DEFAULT`
+  // fallback only fires when the key is absent.
+  const githubAuthBaseUrl = process.env.COORDINATOR_GITHUB_AUTH_BASE_URL?.trim();
+  const githubApiBaseUrl = process.env.COORDINATOR_GITHUB_API_BASE_URL?.trim();
+  if (githubAuthBaseUrl) {
+    validateGithubBaseUrl(githubAuthBaseUrl, "COORDINATOR_GITHUB_AUTH_BASE_URL");
+  }
+  if (githubApiBaseUrl) {
+    validateGithubBaseUrl(githubApiBaseUrl, "COORDINATOR_GITHUB_API_BASE_URL");
+  }
   const githubProvider = new GitHubProvider({
     clientId: githubClientId,
     clientSecret: githubClientSecret,
+    ...(githubAuthBaseUrl ? { authBaseUrl: githubAuthBaseUrl } : {}),
+    ...(githubApiBaseUrl ? { apiBaseUrl: githubApiBaseUrl } : {}),
   });
 
   // 7. Initialize audit queue (Tier 2 buffered writes; T11b).
@@ -113,6 +140,23 @@ export function bootPhase2(opts: Phase2BootOptions): Phase2Bootstrap | null {
     tier: 1,
     metadata: { public_url: publicUrl, github_org: githubOrg },
   });
+
+  // 11b. Emit config.key_rotation audit when a prev secret is configured
+  // (Tier 1; v0.8.1 rotation-overlap support). rotated_at is advisory
+  // only — the audit captures the operator-supplied timestamp for
+  // correlation across deployments. "unset" sentinel when not provided.
+  if (prevSecretBuf) {
+    const rotatedAt =
+      process.env.COORDINATOR_JWT_SECRET_PREV_ROTATED_AT ?? "unset";
+    audit("config.key_rotation", {
+      tier: 1,
+      metadata: {
+        rotated_at: rotatedAt,
+        current_kid: "hs256-v1",
+        prev_kid: "hs256-v0",
+      },
+    });
+  }
 
   return {
     context,
@@ -166,6 +210,24 @@ function validatePublicUrl(url: string): void {
 
 function isLocalhost(host: string): boolean {
   return host === "localhost" || host === "127.0.0.1" || host === "::1";
+}
+
+// GHES env-var validator. Same format check as PUBLIC_URL — must parse + must
+// be http(s). Unlike PUBLIC_URL we do NOT enforce localhost-or-https here: a
+// GHES instance commonly lives on https://github.<corp>, and a private dev
+// GHES could legitimately run on plain http for testing.
+function validateGithubBaseUrl(url: string, varName: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new BootValidationError(`${varName} is not a valid URL: ${url}`);
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new BootValidationError(
+      `${varName} must be http:// or https://, got ${parsed.protocol}`,
+    );
+  }
 }
 
 function ensureBootstrapOrg(db: Database.Database, githubOrg: string): void {

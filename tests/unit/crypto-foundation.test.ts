@@ -78,7 +78,11 @@ describe("jwt-keys: kid registry and allowlist", () => {
     expect(Buffer.from(k!).equals(TEST_SECRET)).toBe(true);
   });
 
-  it("getKey('hs256-v0') returns undefined (not yet registered)", () => {
+  it("getKey('hs256-v0') returns undefined when no prev secret is provided", () => {
+    // v0.8.1: hs256-v0 is allowlisted but the key only resolves when an
+    // operator passes prev secret to buildJwtKeyRegistry. With no prev,
+    // verify of an hs256-v0-signed token still fails (caller throws on the
+    // undefined key — see verifyPhase2SessionCookie defense-in-depth).
     const reg = buildJwtKeyRegistry(TEST_SECRET);
     expect(reg.getKey("hs256-v0")).toBeUndefined();
     expect(reg.getKey("attacker-controlled-kid")).toBeUndefined();
@@ -86,11 +90,93 @@ describe("jwt-keys: kid registry and allowlist", () => {
 
   it("isAcceptedKid returns true for allowlisted kids, false otherwise", () => {
     expect(isAcceptedKid("hs256-v1")).toBe(true);
-    expect(isAcceptedKid("hs256-v0")).toBe(false);
+    // v0.8.1: hs256-v0 is on the allowlist (verify-only during rotation
+    // overlap). Resolution still depends on registry having a prev key.
+    expect(isAcceptedKid("hs256-v0")).toBe(true);
     expect(isAcceptedKid("")).toBe(false);
     expect(isAcceptedKid("none")).toBe(false);
     // Allowlist sanity: ACCEPTED_KIDS reflects current registry.
-    expect(ACCEPTED_KIDS).toEqual(["hs256-v1"]);
+    expect(ACCEPTED_KIDS).toEqual(["hs256-v1", "hs256-v0"]);
+  });
+
+  // ---- v0.8.1 prev-secret overlap cases --------------------------------
+  it("buildJwtKeyRegistry(current, prev) registers prev under 'hs256-v0' for verify", () => {
+    const prev = Buffer.from(
+      "X".repeat(16) + "y".repeat(16),
+      "utf8",
+    );
+    const reg = buildJwtKeyRegistry(TEST_SECRET, prev);
+    const got = reg.getKey("hs256-v0");
+    expect(got).toBeInstanceOf(Uint8Array);
+    expect(Buffer.from(got!).equals(prev)).toBe(true);
+  });
+
+  it("buildJwtKeyRegistry(current, prev) leaves current.kid === 'hs256-v1' (sign target unchanged)", () => {
+    const prev = Buffer.from("Z".repeat(32), "utf8");
+    const reg = buildJwtKeyRegistry(TEST_SECRET, prev);
+    // current is always the sign target; the prev kid is verify-only.
+    expect(reg.current.kid).toBe("hs256-v1");
+    expect(Buffer.from(reg.current.key).equals(TEST_SECRET)).toBe(true);
+  });
+
+  it("buildJwtKeyRegistry(current, prev) still resolves 'hs256-v1' to current (both kids coexist)", () => {
+    const prev = Buffer.from("Q".repeat(32), "utf8");
+    const reg = buildJwtKeyRegistry(TEST_SECRET, prev);
+    const v1 = reg.getKey("hs256-v1");
+    expect(v1).toBeInstanceOf(Uint8Array);
+    expect(Buffer.from(v1!).equals(TEST_SECRET)).toBe(true);
+    // And the prev kid resolves to the prev key, not the current.
+    const v0 = reg.getKey("hs256-v0");
+    expect(Buffer.from(v0!).equals(prev)).toBe(true);
+    expect(Buffer.from(v0!).equals(TEST_SECRET)).toBe(false);
+  });
+
+  it("rotation round-trip: token minted under old secret verifies via prev kid after rotation", async () => {
+    // 1. Mint a token under the "old" secret (this is the secret in use
+    //    before rotation).
+    const OLD_SECRET = Buffer.from("o".repeat(16) + "P".repeat(16), "utf8");
+    const oldReg = buildJwtKeyRegistry(OLD_SECRET);
+    const issuer = "https://coord.test.example";
+    const oldJwt = await mintAccessJWT({
+      claims: {
+        sub: "user-rotate-1",
+        active_org_id: "org-z",
+        family_id: "fam-1",
+        role: "member",
+      },
+      registry: oldReg,
+      issuer,
+      ttlSeconds: 900,
+    });
+    // Confirm the token was minted under hs256-v1.
+    const header = decodeJwtHeader(oldJwt);
+    expect(header.kid).toBe("hs256-v1");
+
+    // 2. Now "rotate": the operator promotes OLD_SECRET to PREV and picks
+    //    a NEW current secret. Build a registry that reflects post-rotation.
+    const NEW_SECRET = Buffer.from("n".repeat(16) + "Q".repeat(16), "utf8");
+    const rotatedReg = buildJwtKeyRegistry(NEW_SECRET, OLD_SECRET);
+
+    // 3. The OLD token's header.kid is "hs256-v1", but its signature was
+    //    produced with OLD_SECRET — which in the rotated registry is now
+    //    registered under "hs256-v0". The verifier must resolve the prev
+    //    kid to validate this token. Simulate the verify-with-resolver
+    //    pattern used by verifyPhase2SessionCookie / refreshTokenGrant.
+    const prevKey = rotatedReg.getKey("hs256-v0");
+    expect(prevKey).toBeInstanceOf(Uint8Array);
+    const { payload } = await jwtVerify(oldJwt, prevKey!, {
+      algorithms: ["HS256"],
+      issuer,
+    });
+    expect(payload.sub).toBe("user-rotate-1");
+
+    // 4. Sanity check: the NEW-current key does NOT verify the old token.
+    await expect(
+      jwtVerify(oldJwt, rotatedReg.current.key, {
+        algorithms: ["HS256"],
+        issuer,
+      }),
+    ).rejects.toThrow();
   });
 });
 
