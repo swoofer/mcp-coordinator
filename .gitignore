@@ -19,3 +19,7 @@ test-results.json
 docs/index.html.backup-*
 sdk/dist
 sdk/node_modules
+# Playwright E2E artifacts (T39)
+test-results/
+playwright-report/
+pw-output.log
