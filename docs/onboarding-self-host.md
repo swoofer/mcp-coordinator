@@ -306,6 +306,21 @@ UPDATE users SET role = 'admin' WHERE id = '<your_user_id>';
 There is only ONE bootstrap admin per deployment. All subsequent users
 land as `member` regardless of order.
 
+### GitHub Enterprise Server (GHES)
+
+Phase 2 supports GHES via two optional env vars:
+
+- `COORDINATOR_GITHUB_AUTH_BASE_URL` -- your GHES authorize/token base
+  (e.g. `https://github.example.com`)
+- `COORDINATOR_GITHUB_API_BASE_URL` -- your GHES API base
+  (e.g. `https://github.example.com/api/v3`)
+
+Both are validated at boot: each must parse as a URL and use `http://`
+or `https://`. Unset or empty falls back to the github.com defaults.
+
+See `examples/ghes-config/` for a complete example, including
+network reachability and private-CA notes.
+
 ### Restore-from-backup boot refused
 
 Symptom: after restoring `data/coordinator.db` from backup, the coordinator

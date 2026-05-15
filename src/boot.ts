@@ -93,9 +93,24 @@ export function bootPhase2(opts: Phase2BootOptions): Phase2Bootstrap | null {
   const signingKeys = buildJwtKeyRegistry(secretBuf, prevSecretBuf);
   const rateLimiter = new RateLimiter(clock);
   const membershipCache = new MembershipCache(clock);
+
+  // GHES support (v0.8.1-P2): both optional. Unset/empty → GitHubProvider
+  // defaults (github.com / api.github.com) take over. Conditional spread so we
+  // never pass undefined into the config object — the constructor's `?? DEFAULT`
+  // fallback only fires when the key is absent.
+  const githubAuthBaseUrl = process.env.COORDINATOR_GITHUB_AUTH_BASE_URL?.trim();
+  const githubApiBaseUrl = process.env.COORDINATOR_GITHUB_API_BASE_URL?.trim();
+  if (githubAuthBaseUrl) {
+    validateGithubBaseUrl(githubAuthBaseUrl, "COORDINATOR_GITHUB_AUTH_BASE_URL");
+  }
+  if (githubApiBaseUrl) {
+    validateGithubBaseUrl(githubApiBaseUrl, "COORDINATOR_GITHUB_API_BASE_URL");
+  }
   const githubProvider = new GitHubProvider({
     clientId: githubClientId,
     clientSecret: githubClientSecret,
+    ...(githubAuthBaseUrl ? { authBaseUrl: githubAuthBaseUrl } : {}),
+    ...(githubApiBaseUrl ? { apiBaseUrl: githubApiBaseUrl } : {}),
   });
 
   // 7. Initialize audit queue (Tier 2 buffered writes; T11b).
@@ -195,6 +210,24 @@ function validatePublicUrl(url: string): void {
 
 function isLocalhost(host: string): boolean {
   return host === "localhost" || host === "127.0.0.1" || host === "::1";
+}
+
+// GHES env-var validator. Same format check as PUBLIC_URL — must parse + must
+// be http(s). Unlike PUBLIC_URL we do NOT enforce localhost-or-https here: a
+// GHES instance commonly lives on https://github.<corp>, and a private dev
+// GHES could legitimately run on plain http for testing.
+function validateGithubBaseUrl(url: string, varName: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new BootValidationError(`${varName} is not a valid URL: ${url}`);
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new BootValidationError(
+      `${varName} must be http:// or https://, got ${parsed.protocol}`,
+    );
+  }
 }
 
 function ensureBootstrapOrg(db: Database.Database, githubOrg: string): void {

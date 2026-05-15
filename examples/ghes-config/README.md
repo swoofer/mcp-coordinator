@@ -4,21 +4,15 @@ This directory documents how to point mcp-coordinator at a GitHub
 Enterprise Server instance instead of github.com. The included
 `.env.example` shows the full set of environment variables you need.
 
-> Important caveat -- read this before you spend time on it.
+> As of v0.8.1, `bootPhase2` reads `COORDINATOR_GITHUB_AUTH_BASE_URL`
+> and `COORDINATOR_GITHUB_API_BASE_URL` from the environment and
+> passes them through to the `GitHubProvider` constructor. Both env
+> vars are optional; unset/empty falls back to the github.com defaults.
+> Both values are validated at boot — they must parse as URLs and use
+> `http://` or `https://`.
 >
-> The `GitHubProvider` class in `src/auth/providers/github.ts` already
-> accepts `authBaseUrl` and `apiBaseUrl` config fields. However, the
-> Phase 2 `bootPhase2` composer in `src/boot.ts` constructs the
-> provider with hardcoded github.com URLs and does NOT yet read
-> `COORDINATOR_GITHUB_AUTH_BASE_URL` / `COORDINATOR_GITHUB_API_BASE_URL`
-> from the environment.
->
-> GHES support is therefore documented but not yet plumbed. To use
-> this configuration today you need a small patch in `src/boot.ts`
-> to read these two env vars and pass them through to the
-> `GitHubProvider` constructor. The plumbing is tracked as a
-> follow-up task; the `.env.example` here is the target schema, not
-> the current behavior on an unmodified Phase 2 release.
+> The `.env.example` in this directory ships as-is for GHES
+> deployments; no source patch is needed.
 
 ## How GitHubProvider's URLs are used
 
@@ -112,8 +106,7 @@ multi-org allowlisting is on the roadmap.
 
 ## Verifying the configuration
 
-After you've patched `bootPhase2` to read the env vars (see caveat
-above), end-to-end smoke:
+End-to-end smoke (v0.8.1+ ships the wiring; no source patch needed):
 
 1. `curl https://<ghes-host>/api/v3/rate_limit` from the coordinator
    host -- confirms network reachability and TLS trust.
