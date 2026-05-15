@@ -14,7 +14,9 @@ import {
   FileTokenStore,
   MemoryTokenStore,
   ProactiveRefresh,
+  DiscoveryCache,
 } from "../src/index.js";
+import type { DiscoveryDoc } from "../src/discovery.js";
 import type {
   TokenResponse,
   UserinfoResponse,
@@ -475,5 +477,113 @@ describe("McpCoordinatorClient + storage / refresh integration", () => {
 
     client1.dispose();
     client2.dispose();
+  });
+});
+
+describe("McpCoordinatorClient + discovery integration", () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    tmpDir = path.join(os.tmpdir(), `mcp-client-discovery-${crypto.randomUUID()}`);
+    await fs.promises.mkdir(tmpDir, { recursive: true });
+  });
+
+  afterEach(async () => {
+    await fs.promises.rm(tmpDir, { recursive: true, force: true }).catch(() => {
+      /* best-effort */
+    });
+  });
+
+  function makeDiscoveryDoc(overrides: Partial<DiscoveryDoc> = {}): DiscoveryDoc {
+    return {
+      issuer: BASE_URL,
+      authorization_endpoint: `${BASE_URL}/auth/login`,
+      token_endpoint: `${BASE_URL}/oauth2/token`, // intentionally non-default
+      device_authorization_endpoint: `${BASE_URL}/oauth2/device`,
+      revocation_endpoint: `${BASE_URL}/oauth2/revoke`,
+      userinfo_endpoint: `${BASE_URL}/oauth2/userinfo`,
+      grant_types_supported: ["refresh_token", "urn:ietf:params:oauth:grant-type:device_code"],
+      response_types_supported: ["code"],
+      code_challenge_methods_supported: ["S256"],
+      token_endpoint_auth_methods_supported: ["none"],
+      ...overrides,
+    };
+  }
+
+  it("with DiscoveryCache: refresh uses token_endpoint from the discovery doc", async () => {
+    const cachePath = path.join(tmpDir, "discovery-cache.json");
+    const doc = makeDiscoveryDoc();
+    let fetchedDiscovery = false;
+    const fetchMock = vi.fn(async (url: string, _init?: RequestInit) => {
+      if (url.endsWith("/.well-known/oauth-authorization-server")) {
+        fetchedDiscovery = true;
+        return mockResponse({ status: 200, body: doc });
+      }
+      // Refresh must hit the discovery-supplied token endpoint, not hardcoded.
+      expect(url).toBe(`${BASE_URL}/oauth2/token`);
+      return mockResponse({ status: 200, body: SAMPLE_TOKEN_RESPONSE });
+    });
+    const discovery = new DiscoveryCache({
+      baseUrl: BASE_URL,
+      fetch: fetchMock as unknown as typeof fetch,
+      cachePath,
+    });
+    const client = new McpCoordinatorClient({
+      baseUrl: BASE_URL,
+      fetch: fetchMock as unknown as typeof fetch,
+      discovery,
+    });
+    client.setTokens({
+      accessToken: "at_old",
+      refreshToken: "rt_old",
+      accessExpiresAt: Math.floor(Date.now() / 1000) + 3600,
+    });
+    const newSet = await client.refresh();
+    expect(fetchedDiscovery).toBe(true);
+    expect(newSet.accessToken).toBe("at_new");
+  });
+
+  it("without DiscoveryCache: refresh keeps hardcoded /api/auth/oauth/token (existing behavior)", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      expect(url).toBe(`${BASE_URL}/api/auth/oauth/token`);
+      return mockResponse({ status: 200, body: SAMPLE_TOKEN_RESPONSE });
+    });
+    const client = new McpCoordinatorClient({
+      baseUrl: BASE_URL,
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+    client.setTokens({
+      accessToken: "at_old",
+      refreshToken: "rt_old",
+      accessExpiresAt: Math.floor(Date.now() / 1000) + 3600,
+    });
+    await client.refresh();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("DiscoveryCache fetch error during refresh() bubbles up (no prior cache)", async () => {
+    const cachePath = path.join(tmpDir, "discovery-cache.json");
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith("/.well-known/oauth-authorization-server")) {
+        throw new Error("discovery boom");
+      }
+      return mockResponse({ status: 200, body: SAMPLE_TOKEN_RESPONSE });
+    });
+    const discovery = new DiscoveryCache({
+      baseUrl: BASE_URL,
+      fetch: fetchMock as unknown as typeof fetch,
+      cachePath,
+    });
+    const client = new McpCoordinatorClient({
+      baseUrl: BASE_URL,
+      fetch: fetchMock as unknown as typeof fetch,
+      discovery,
+    });
+    client.setTokens({
+      accessToken: "at_old",
+      refreshToken: "rt_old",
+      accessExpiresAt: Math.floor(Date.now() / 1000) + 3600,
+    });
+    await expect(client.refresh()).rejects.toThrow("discovery boom");
   });
 });
