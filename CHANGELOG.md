@@ -1,5 +1,84 @@
 # Changelog
 
+## [0.9.0](https://github.com/swoofer/mcp-coordinator/compare/v0.8.1...v0.9.0) (2026-05-15)
+
+Multi-IdP release. The single-provider GitHub-only login surface that shipped
+in Phase 2 opens up to GitHub + Google + generic OIDC, selected via a picker
+UI when more than one provider is registered. Phase 2 deployments that stay
+on GitHub-only see no behavioural change.
+
+### Features
+
+* **auth/providers/registry:** `ProviderRegistry` class -- per-server registry
+  instance attached to `AuthHandlerContext.providers`. First registration
+  becomes the implicit default; `setDefault()`, `has()`, `list()`, `names()`,
+  `size()`, and `clear()` complete the API. Replaces the Phase 1 module-level
+  `Map` skeleton. (T45)
+* **auth/handlers:** every OAuth handler resolves the IdP through the registry
+  (`oauth-login`: `getDefault()`; `oauth-callback`: `get(row.provider)`;
+  `oauth-token`: `get(body.provider ?? default)`; `refresh-rotation`:
+  `get(users.idp_provider)`). The legacy `ctx.githubProvider` alias is removed.
+  Mix-up defense audit `auth.state.mixup` now records `registered_providers`
+  instead of a hardcoded `expected_provider`. (T46)
+* **auth/providers/google:** first-class `GoogleProvider`. id_token signature
+  is mandatory: jose `createRemoteJWKSet` + RS256 + `iss=https://accounts.google.com`
+  + `aud=client_id`. Identity claims read from the verified id_token (no
+  extra `/userinfo` round-trip). Workspace `hd` claim surfaces as
+  `idp_org_id`. Opt-in via `COORDINATOR_GOOGLE_CLIENT_ID` +
+  `COORDINATOR_GOOGLE_CLIENT_SECRET` (both required or neither). (T47)
+* **auth/providers/oidc:** generic `OIDCProvider` for Okta / Auth0 /
+  Azure AD / Keycloak / Authentik. Auto-discovers `authorization_endpoint`,
+  `token_endpoint`, and `jwks_uri` from
+  `<issuer>/.well-known/openid-configuration`. id_token verified with the
+  configured issuer, client_id audience, RS256. Discovery doc's own
+  `issuer` field is cross-checked against config (catches redirect attacks
+  on the discovery URL). Email-claim fallback chain: `email` →
+  `preferred_username` → `sub`. Opt-in via `COORDINATOR_OIDC_ISSUER_URL` +
+  `COORDINATOR_OIDC_CLIENT_ID` + `COORDINATOR_OIDC_CLIENT_SECRET`. (T48)
+* **auth/login:** picker UI on GET `/auth/login` when `providers.size() > 1`.
+  Each button is a top-level GET to `/auth/login?provider=<name>`; the
+  flow itself is unchanged. Friendly built-in labels for `github` / `google`
+  / `oidc`; title-cased fallback for custom provider names. Unknown
+  `?provider=X` returns 400 `UNKNOWN_PROVIDER` -- no silent fallback. (T49)
+
+### Bug Fixes
+
+* **auth/refresh-rotation:** the IdP-membership recheck now uses the user's
+  stored `idp_provider` column rather than assuming GitHub, so multi-provider
+  users get their allowlist re-evaluated against the IdP they actually signed
+  in with.
+
+### Configuration
+
+* **env:** `.env.example` updated -- the previously "Phase 4 preview" section
+  for Google + OIDC is now live with usage notes.
+
+### Test posture
+
+* **+61 tests** vs v0.8.1 (1623 total): 10 ProviderRegistry, 16 GoogleProvider
+  (id_token verification, JWKS rotation, cross-tenant rejection, transport
+  failures), 21 OIDCProvider (discovery validation, issuer mismatch, expired
+  tokens), 8 login-picker (rendering + escaping), 6 picker integration
+  (oauth-login behavior with 1 vs N providers), boot wiring for both new
+  IdPs.
+
+### BREAKING CHANGES
+
+* **AuthHandlerContext.githubProvider** removed -- handlers resolve the IdP
+  via `ctx.providers` now. Downstream consumers that embed the coordinator
+  and constructed contexts by hand must update; the test helper
+  `singleProviderRegistry(provider)` in `tests/helpers/` shows the pattern.
+* **IdPProvider.buildAuthUrl** return type widened from `string` to
+  `string | Promise<string>`. Built-in providers stay synchronous; only
+  `OIDCProvider` is async (lazy discovery on first call). Handlers
+  `await` the result. Custom provider implementations stay source-compatible.
+* **provisionUser** signature gained a required `providerName: string`
+  parameter as the 6th argument. Internal helper; only relevant if you
+  call it from custom code.
+* **auth.state.mixup audit:** `{ observed_provider, expected_provider: "github" }`
+  → `{ observed_provider, registered_providers: string[] }`. Log-pipeline
+  consumers that parsed `expected_provider` need to update.
+
 ## [0.8.1](https://github.com/swoofer/mcp-coordinator/compare/v0.8.0...v0.8.1) (2026-05-15)
 
 Patches + extended test coverage + SDK enhancements + documentation. No new public API beyond v0.8.0; closes gaps that were honestly flagged in v0.8.0's docs.
