@@ -1,5 +1,63 @@
 # Changelog
 
+## [0.9.1](https://github.com/swoofer/mcp-coordinator/compare/v0.9.0...v0.9.1) (2026-05-15)
+
+Audit log tamper-evidence release. Adds a SHA-256 hash chain over every
+`audit_log` row and an operator script to verify it. SOC 2 Type II
+deployments now have built-in in-place-tamper detection, with a
+documented external tip-attestation workflow for full deletion +
+timestamp coverage. Single-instance, single-IdP behaviour is
+unchanged.
+
+### Features
+
+* **audit:** SHA-256 hash chain on every `audit_log` row -- new
+  `prev_hash` + `row_hash` columns; `row_hash = SHA-256(prev_hash ||
+  canonicalRowFields(row))`. Tier 1 sync, Tier 2 batched, and the
+  shutdown `audit_loss` row all chain inside the same SQLite
+  transaction as the tip lookup. Canonical serialization is JSON with
+  alphabetical keys + explicit nulls -- ambiguity between "absent"
+  and "explicitly null" is impossible. `GENESIS_HASH` (`"0".repeat(64)`)
+  seeds the chain on an empty table. Migration backfills pre-existing
+  rows in id-order; idempotent + crash-safe. (T50)
+* **scripts/verify-audit-chain.ts:** operator CLI that walks the chain
+  and reports `wrong_row_hash` / `wrong_prev_hash` / `missing_hash` /
+  `id_gap_before` findings. Robust to front-deletion (legitimate
+  sweeper retention); accepts the first observed row's `prev_hash` as
+  the entry point. JSON output for monitoring; exit 0 OK, 1 findings,
+  2 operational error. (T51)
+
+### Documentation
+
+* **docs/ops/audit-integrity.md:** new SOC 2 Type II runbook -- what
+  the chain proves (in-place tamper detection + middle-row insertion
+  detection), what it doesn't (timestamp integrity, deletion
+  detection without external tip-attestation), how to run the
+  verifier, the tip-attestation workflow, monitoring integration,
+  incident recovery.
+* **docs/security/threat-model.md:** new residual risk #10 records
+  the tamper-evidence feature with explicit `created_at` + deletion
+  gaps. Review cadence updated to v0.10.
+
+### Limitations (intentional, documented)
+
+* `created_at` is set by SQLite default and is NOT in the hash --
+  timestamp rewrites are not detected by the chain alone.
+* Deletion of recent rows is indistinguishable from legitimate
+  sweeper retention without the external tip-attestation workflow.
+* The backfill assumes pre-migration rows are pristine; this is
+  forward evidence only.
+
+### Test posture
+
+* **+32 tests** vs v0.9.0 (1655 total): 12 chain-pure unit tests
+  (canonical serialization determinism, hash chain construction,
+  per-field tamper detection), 10 end-to-end integration tests (Tier
+  1, Tier 2 batched, interleaved 1/2, backfill idempotence +
+  crash-recovery, in-place tamper), 10 verifier-script tests (valid
+  chain, content tamper, prev_hash forgery, missing hash, front vs
+  middle deletion, bad args, missing DB, human + JSON output).
+
 ## [0.9.0](https://github.com/swoofer/mcp-coordinator/compare/v0.8.1...v0.9.0) (2026-05-15)
 
 Multi-IdP release. The single-provider GitHub-only login surface that shipped
