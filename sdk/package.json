@@ -1,6 +1,6 @@
 {
   "name": "@mcp-coordinator/sdk-js",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "private": true,
   "description": "TypeScript SDK for mcp-coordinator Phase 2 OAuth API (minimal)",
   "type": "module",

@@ -1,5 +1,47 @@
 # Changelog
 
+## [0.8.1](https://github.com/swoofer/mcp-coordinator/compare/v0.8.0...v0.8.1) (2026-05-15)
+
+Patches + extended test coverage + SDK enhancements + documentation. No new public API beyond v0.8.0; closes gaps that were honestly flagged in v0.8.0's docs.
+
+### Features
+
+* **auth:** JWT key rotation overlap via `COORDINATOR_JWT_SECRET_PREV` + `COORDINATOR_JWT_SECRET_PREV_ROTATED_AT`. New kid `"hs256-v0"` verifies old tokens during the overlap window; `"hs256-v1"` signs new tokens. Tier 1 audit `config.key_rotation` emitted at boot when prev is configured. Closes the caveat in `docs/ops/key-rotation.md`.
+* **auth/providers/github:** GHES env vars `COORDINATOR_GITHUB_AUTH_BASE_URL` + `COORDINATOR_GITHUB_API_BASE_URL` now flow through `bootPhase2` to `GitHubProvider`. Both optional; unset = github.com defaults. Closes the caveat in `examples/ghes-config/README.md`.
+* **sdk:** `FileTokenStore` persists tokens to `~/.mcp-coordinator/tokens.json` with `chmod 0600` (POSIX) + atomic write-rename. `MemoryTokenStore` for ephemeral use cases.
+* **sdk:** `ProactiveRefresh` schedules refresh at `accessExpiresAt - 120s ± 30s jitter`, preventing thundering-herd when many CLI instances share a vendored tokens.json.
+* **sdk:** Single-flight refresh lock via atomic O_EXCL file lock + stale-lock recovery (30s mtime threshold) for multi-process CLI safety.
+* **sdk:** `McpCoordinatorClient` accepts optional `store` + `refreshStrategy` + `refreshLockPath`. `dispose()` cancels the timer on app shutdown.
+
+### Tests
+
+* **tests/e2e/:** Playwright E2E suite covering full browser OAuth + device flow + refresh-on-401 (5 scenarios, ~12s, zero flakes over 5 runs). Uses v0.8.1-P2's GHES env wiring to point GitHubProvider at a local mock-github HTTP server (no fetch monkey-patching).
+* **tests/integration/d1-d10-matrix.test.ts:** 10 cross-cutting scenarios (20 cases) exercising component-interaction seams where Phase 2 bugs are most likely. Covers V3 §B-NEW-2 chain revocation, V4 FIX 7 grace-branch allowlist re-check, V4 FIX 18 device-poll CAS, V4 FIX 23 commit-then-audit, V4 FIX 24 idle-first ordering.
+* **tests/perf/:** 3 benches + 2 chaos scripts (refresh rotation: p50 0.8ms / p99 15ms / 841 ops/s ; token-epoch: p50 8µs / 98k ops/s ; audit queue: 0 drops at 20K burst, exact 5000-drop accounting at 15K overflow ; IdP 50% failure: stale-on-error keeps 0 hard failures). NOT wired into CI — operator-only tooling. See `docs/ops/perf-bench.md`.
+
+### Documentation
+
+* **README.md:** "What's New in v0.8.0 (Phase 2 OAuth)" section + Phase 2 quick-start under Authentication + SDK subsection + Roadmap rewrite + top-nav anchors. README went from 962 → 1132 lines (+192 / -11 net).
+* **docs/ops/key-rotation.md:** "planned v0.8.x patch" caveat removed; procedure documented end-to-end with the now-working `_PREV` env var.
+* **docs/security/threat-model.md:** residual risk #6 marked "addressed in v0.8.1".
+* **examples/ghes-config/README.md:** caveat removed; example ships as-is for GHES deployments.
+* **docs/onboarding-self-host.md:** new GHES subsection pointing to `examples/ghes-config/`.
+* **docs/ops/perf-bench.md:** new operator runbook for perf + chaos scripts.
+* **.env.example:** 4 new optional env vars documented (2 for key rotation, 2 for GHES).
+
+### Configuration
+
+New optional environment variables:
+
+* `COORDINATOR_JWT_SECRET_PREV` — previous JWT secret during rotation overlap; verify-only.
+* `COORDINATOR_JWT_SECRET_PREV_ROTATED_AT` — optional ISO timestamp for `config.key_rotation` audit correlation.
+* `COORDINATOR_GITHUB_AUTH_BASE_URL` — GHES authorize/token endpoint (e.g., `https://github.example.com`). Unset = `https://github.com`.
+* `COORDINATOR_GITHUB_API_BASE_URL` — GHES API endpoint (e.g., `https://github.example.com/api/v3`). Unset = `https://api.github.com`.
+
+### Test posture
+
+1555 individual tests passing across 116 vitest files + 5 Playwright E2E scenarios + 46 SDK tests + 5 standalone perf/chaos scripts. 100% branch coverage enforced on every security-critical module. 6 pre-existing Windows EBUSY teardown flakes ignored per project convention.
+
 ## [0.8.0](https://github.com/swoofer/mcp-coordinator/compare/v0.7.0...v0.8.0) (2026-05-14)
 
 Phase 2 of the auth roadmap: OAuth 2.1 + RFC 8628 device flow + cookie sessions + service tokens + audit pipeline + sweeper. Feature-flagged behind `COORDINATOR_OAUTH_ENABLED=true` (default false). Phase 1 deployments are byte-identical when the flag is unset.
