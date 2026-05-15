@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Clock } from "../auth/clock.js";
 import { realClock } from "../auth/clock.js";
+import { GENESIS_HASH, computeRowHash } from "./audit-chain.js";
 
 export interface AuditQueueRow {
   actor_user_id: string | null;
@@ -61,15 +62,20 @@ export class AuditQueue {
       INSERT INTO audit_log
         (actor_user_id, actor_org_id, action, target,
          actor_ip, actor_user_agent, request_id, outcome,
-         metadata_json)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         metadata_json, prev_hash, row_hash)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     this.shutdownStmt = db.prepare(`
       INSERT INTO audit_log
-        (action, outcome, metadata_json)
-      VALUES (?, ?, ?)
+        (action, outcome, metadata_json, prev_hash, row_hash)
+      VALUES (?, ?, ?, ?, ?)
     `);
+    this.tipStmt = db.prepare(
+      "SELECT row_hash FROM audit_log WHERE row_hash IS NOT NULL ORDER BY id DESC LIMIT 1",
+    );
   }
+
+  private readonly tipStmt: Database.Statement<unknown[]>;
 
   enqueue(row: AuditQueueRow): void {
     if (this.closed) {
@@ -120,10 +126,26 @@ export class AuditQueue {
     this.closed = true;
     if (this._dropped > 0) {
       try {
+        const tip = this.tipStmt.get() as { row_hash: string } | undefined;
+        const prevHash = tip?.row_hash ?? GENESIS_HASH;
+        const metadata = JSON.stringify({ dropped_count: this._dropped });
+        const rowHash = computeRowHash(prevHash, {
+          action: "system.shutdown.audit_loss",
+          actor_org_id: null,
+          actor_ip: null,
+          actor_user_agent: null,
+          actor_user_id: null,
+          metadata_json: metadata,
+          outcome: "failure",
+          request_id: null,
+          target: null,
+        });
         this.shutdownStmt.run(
           "system.shutdown.audit_loss",
           "failure",
-          JSON.stringify({ dropped_count: this._dropped }),
+          metadata,
+          prevHash,
+          rowHash,
         );
       } catch (err) {
         // Final-row write failure is itself unrecoverable telemetry loss;
@@ -166,15 +188,36 @@ export class AuditQueue {
   }
 
   private writeBatchSync(rows: AuditQueueRow[]): void {
-    // Better-sqlite3 transaction for batched writes.
-    const stmt = this.insertStmt;
+    // Better-sqlite3 transaction for batched writes. The hash chain is
+    // built inside the transaction: tip lookup runs once, then each row
+    // is hashed against the previous row's hash and inserted with both
+    // prev_hash and row_hash. Concurrent writers cannot interleave
+    // because the transaction holds an IMMEDIATE lock from the first
+    // statement onward.
+    const insertStmt = this.insertStmt;
+    const tipStmt = this.tipStmt;
     const tx = this.db.transaction((batch: AuditQueueRow[]) => {
+      const tip = tipStmt.get() as { row_hash: string } | undefined;
+      let prevHash = tip?.row_hash ?? GENESIS_HASH;
       for (const r of batch) {
-        stmt.run(
+        const rowHash = computeRowHash(prevHash, {
+          action: r.action,
+          actor_org_id: r.actor_org_id,
+          actor_ip: r.actor_ip,
+          actor_user_agent: r.actor_user_agent,
+          actor_user_id: r.actor_user_id,
+          metadata_json: r.metadata_json,
+          outcome: r.outcome,
+          request_id: r.request_id,
+          target: r.target,
+        });
+        insertStmt.run(
           r.actor_user_id, r.actor_org_id, r.action, r.target,
           r.actor_ip, r.actor_user_agent, r.request_id, r.outcome,
           r.metadata_json,
+          prevHash, rowHash,
         );
+        prevHash = rowHash;
       }
     });
     tx(rows);
