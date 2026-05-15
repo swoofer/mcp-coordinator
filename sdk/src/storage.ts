@@ -17,11 +17,12 @@ export interface FileTokenStoreOptions {
 /**
  * File-backed token store. Writes ~/.mcp-coordinator/tokens.json with
  * chmod 0600 on POSIX (rw for owner only). On Windows the default ACL
- * applies; T40c will add DPAPI integration. The directory is created
+ * applies; for encrypted-at-rest on Windows use KeytarTokenStore
+ * (Credential Manager wraps DPAPI internally). The directory is created
  * on first save with chmod 0700 on POSIX.
  *
  * NOT secure on shared filesystems -- operators on multi-user systems
- * should use keytar (T40c).
+ * should use KeytarTokenStore (opt-in via `npm install keytar`).
  *
  * Atomic writes via write-to-tmp + rename to prevent partial writes
  * on crash during save.
