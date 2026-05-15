@@ -54,6 +54,11 @@
     "start": "node dist/src/serve-http.js",
     "dev": "tsx src/serve-http.ts",
     "dev:stdio": "tsx src/index.ts",
+    "perf:rotation": "tsx tests/perf/bench-refresh-rotation.ts",
+    "perf:audit": "tsx tests/perf/bench-audit-queue.ts",
+    "perf:token-epoch": "tsx tests/perf/bench-token-epoch.ts",
+    "chaos:idp": "tsx tests/perf/chaos/idp-failure-injection.ts",
+    "chaos:audit": "tsx tests/perf/chaos/audit-queue-overflow.ts",
     "prepublishOnly": "npm run build && npm test"
   },
   "dependencies": {
