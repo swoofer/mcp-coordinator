@@ -3,6 +3,7 @@ import type { Clock } from "./clock.js";
 import type { JwtKeyRegistry } from "./jwt-keys.js";
 import type { MembershipCache } from "./membership-cache.js";
 import type { IdPProvider } from "./providers/types.js";
+import type { ProviderRegistry } from "./providers/registry.js";
 import type { RateLimiter } from "./rate-limit.js";
 
 /**
@@ -20,8 +21,18 @@ import type { RateLimiter } from "./rate-limit.js";
 export interface AuthHandlerContext {
   db: Database.Database;
   clock: Clock;
-  /** GitHub IdP — Phase 2 single-provider. Phase 4 adds a registry. */
+  /** GitHub IdP — Phase 2 single-provider compatibility pointer. T45
+   *  (v0.9.0) added the registry below; this field remains a convenience
+   *  alias for the GitHub provider so existing handlers keep compiling
+   *  while T46 migrates them to `providers.get(state.provider)`. After
+   *  T46 lands this field is removed. New code should NOT add new
+   *  references to this field. */
   githubProvider: IdPProvider;
+  /** IdP provider registry (T45). Always non-null; boot registers at
+   *  least GitHubProvider. Handlers should use this rather than
+   *  `githubProvider` so multi-IdP selection (T46+) works without
+   *  further refactoring. */
+  providers: ProviderRegistry;
   rateLimiter: RateLimiter;
   /** Public URL for redirect URI construction. From COORDINATOR_PUBLIC_URL.
    *  T29 boot validates this is set; tests pass directly. */

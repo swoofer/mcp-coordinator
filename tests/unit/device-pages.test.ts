@@ -6,6 +6,7 @@ import { handleDeviceConfirmPage } from "../../src/auth/pages/device-confirm.htm
 import { handleSuccessPage } from "../../src/auth/pages/success.html.js";
 import type { AuthHandlerContext } from "../../src/auth/context.js";
 import { FakeClock } from "../helpers/clock.js";
+import { singleProviderRegistry } from "../helpers/index.js";
 import { RateLimiter } from "../../src/auth/rate-limit.js";
 import { buildJwtKeyRegistry } from "../../src/auth/jwt-keys.js";
 import { MembershipCache } from "../../src/auth/membership-cache.js";
@@ -126,16 +127,18 @@ beforeEach(() => {
   clock = new FakeClock(1_700_000_000);
   // T15 extended AuthHandlerContext; device-page handlers don't read these
   // fields but TypeScript requires they be present. Stub with safe defaults.
+  const stubProvider = {
+    name: "github" as const,
+    buildAuthUrl: () => "https://example/unused",
+    exchangeCode: async () => {
+      throw new Error("not used in device-pages tests");
+    },
+  };
   ctx = {
     db,
     clock,
-    githubProvider: {
-      name: "github",
-      buildAuthUrl: () => "https://example/unused",
-      exchangeCode: async () => {
-        throw new Error("not used in device-pages tests");
-      },
-    },
+    githubProvider: stubProvider,
+    providers: singleProviderRegistry(stubProvider),
     rateLimiter: new RateLimiter(clock),
     publicUrl: "http://localhost:3000",
     stateBindingKey: Buffer.alloc(32, 0x01),

@@ -8,6 +8,7 @@ import type Database from "better-sqlite3";
 import { handleDeviceApprove } from "../../src/auth/device-flow.js";
 import type { AuthHandlerContext } from "../../src/auth/context.js";
 import { FakeClock } from "../helpers/clock.js";
+import { singleProviderRegistry } from "../helpers/index.js";
 import { RateLimiter } from "../../src/auth/rate-limit.js";
 import { buildJwtKeyRegistry } from "../../src/auth/jwt-keys.js";
 import { MembershipCache } from "../../src/auth/membership-cache.js";
@@ -138,6 +139,7 @@ function makeCtx(overrides: Partial<AuthHandlerContext> = {}): AuthHandlerContex
     db: getDb() as unknown as AuthHandlerContext["db"],
     clock,
     githubProvider: stubProvider,
+    providers: singleProviderRegistry(stubProvider),
     rateLimiter,
     publicUrl: ISSUER,
     stateBindingKey: STATE_BINDING_KEY,

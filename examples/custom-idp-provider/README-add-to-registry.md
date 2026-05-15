@@ -1,8 +1,9 @@
 # Registering a custom IdP provider
 
-The provider registry (`src/auth/providers/registry.ts`) is a Map
-that the boot composer reads to discover available IdPs. To add a
-new provider:
+The provider registry (`src/auth/providers/registry.ts`) exports a
+`ProviderRegistry` class; `bootPhase2` constructs one instance and
+attaches it to the handler context as `ctx.providers`. To add a new
+provider:
 
 1. Copy `google-provider.ts` to `src/auth/providers/<name>.ts` in
    your fork of mcp-coordinator. Update the relative imports so they
@@ -10,15 +11,15 @@ new provider:
    paths used by the example.
 
 2. Modify `src/boot.ts` to import and register the provider. Inside
-   `bootPhase2`, after the existing GitHub registration:
+   `bootPhase2`, after the existing GitHub registration on the
+   `providers` registry instance:
 
    ```ts
    import { GoogleProvider } from "./auth/providers/google.js";
-   import { registerProvider } from "./auth/providers/registry.js";
 
-   // inside bootPhase2:
+   // inside bootPhase2, after `providers.register(githubProvider)`:
    if (process.env.COORDINATOR_GOOGLE_CLIENT_ID) {
-     registerProvider(
+     providers.register(
        new GoogleProvider({
          clientId: process.env.COORDINATOR_GOOGLE_CLIENT_ID,
          clientSecret: process.env.COORDINATOR_GOOGLE_CLIENT_SECRET!,
@@ -34,11 +35,13 @@ new provider:
    access inside `src/auth/`, so the registration must live in the
    boot composer where env reads are concentrated.
 
-3. **Phase 2 single-provider constraint.** Only ONE provider can
-   serve `/auth/login` in Phase 2. If you register both GitHub and
-   Google, the dashboard's login button will only point at one of
-   them (whichever the composer wires to the login route).
-   Multi-provider login picker is on the Phase 4 roadmap.
+3. **Single-provider behaviour (v0.8 and earlier).** At v0.9.0 the
+   registry is wired but `/auth/login` still routes through the
+   first-registered (default) provider. The multi-provider picker
+   UI activates in a later v0.9.x point release; until then
+   registering additional providers is no-op at the login route,
+   though the providers are still callable via `ctx.providers.get()`
+   from any custom integration code.
 
 4. **Allowlist semantics.** Phase 2's `orgs.allowlist_github_org`
    column is GitHub-specific by name. For a Google provider you

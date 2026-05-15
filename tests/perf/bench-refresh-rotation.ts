@@ -35,6 +35,7 @@ import { initDatabase, getDb, closeDb } from "../../src/database.js";
 import { initAuditQueue, resetAuditQueue } from "../../src/security/audit.js";
 import type { AuthHandlerContext } from "../../src/auth/context.js";
 import type { ExchangeCodeResult, IdPProvider } from "../../src/auth/providers/types.js";
+import { singleProviderRegistry } from "../helpers/index.js";
 
 const ISSUER = "http://localhost:3000";
 const SIGNING_SECRET = Buffer.alloc(32, 0x01);
@@ -100,6 +101,7 @@ async function main(): Promise<void> {
     db: db as unknown as import("better-sqlite3").Database,
     clock: realClock,
     githubProvider: stubProvider,
+    providers: singleProviderRegistry(stubProvider),
     rateLimiter: new RateLimiter(realClock),
     publicUrl: ISSUER,
     stateBindingKey: STATE_BINDING_KEY,

@@ -5,6 +5,7 @@ import fs from "node:fs";
 import { handleOAuthCallback } from "../../src/auth/oauth-callback.js";
 import type { AuthHandlerContext } from "../../src/auth/context.js";
 import { FakeClock } from "../helpers/clock.js";
+import { singleProviderRegistry } from "../helpers/index.js";
 import { RateLimiter } from "../../src/auth/rate-limit.js";
 import { buildJwtKeyRegistry } from "../../src/auth/jwt-keys.js";
 import { MembershipCache } from "../../src/auth/membership-cache.js";
@@ -151,6 +152,7 @@ function makeCtx(overrides: Partial<AuthHandlerContext> = {}): AuthHandlerContex
     db: getDb() as unknown as AuthHandlerContext["db"],
     clock,
     githubProvider: stubProvider(),
+    providers: singleProviderRegistry(stubProvider()),
     rateLimiter: new RateLimiter(clock),
     publicUrl: "http://localhost:3000",
     stateBindingKey: STATE_BINDING_KEY,
@@ -462,7 +464,7 @@ describe("handleOAuthCallback — IdP exchange", () => {
     await handleOAuthCallback(
       mockReq({ state, code: "code-xyz", cookieHeader: cookieFor(state) }),
       res as unknown as ServerResponse,
-      makeCtx({ githubProvider: provider }),
+      makeCtx({ githubProvider: provider, providers: singleProviderRegistry(provider) }),
     );
     expect(res.statusCode).toBe(302);
     expect(res.headers["Location"]).toBe("http://localhost:3000/auth/success");
@@ -480,7 +482,7 @@ describe("handleOAuthCallback — IdP exchange", () => {
     await handleOAuthCallback(
       mockReq({ state, code: "c", cookieHeader: cookieFor(state) }),
       res as unknown as ServerResponse,
-      makeCtx({ githubProvider: provider }),
+      makeCtx({ githubProvider: provider, providers: singleProviderRegistry(provider) }),
     );
     expect(res.statusCode).toBe(401);
     expect(res.headers["WWW-Authenticate"]).toBeDefined();
@@ -502,7 +504,7 @@ describe("handleOAuthCallback — IdP exchange", () => {
     await handleOAuthCallback(
       mockReq({ state, code: "c", cookieHeader: cookieFor(state) }),
       res as unknown as ServerResponse,
-      makeCtx({ githubProvider: provider }),
+      makeCtx({ githubProvider: provider, providers: singleProviderRegistry(provider) }),
     );
     expect(res.statusCode).toBe(503);
     expect(JSON.parse(res.body!).code).toBe("IDP_UNAVAILABLE");
@@ -521,7 +523,7 @@ describe("handleOAuthCallback — IdP exchange", () => {
       handleOAuthCallback(
         mockReq({ state, code: "c", cookieHeader: cookieFor(state) }),
         res as unknown as ServerResponse,
-        makeCtx({ githubProvider: provider }),
+        makeCtx({ githubProvider: provider, providers: singleProviderRegistry(provider) }),
       ),
     ).rejects.toThrow("oops");
   });
@@ -558,7 +560,7 @@ describe("handleOAuthCallback — edge cases", () => {
     await handleOAuthCallback(
       mockReq({ state, code: "code-abc", cookieHeader: cookieFor(state) }),
       res as unknown as ServerResponse,
-      makeCtx({ githubProvider: provider }),
+      makeCtx({ githubProvider: provider, providers: singleProviderRegistry(provider) }),
     );
     expect(provider.lastExchange).not.toBeNull();
     expect(provider.lastExchange!.code).toBe("code-abc");

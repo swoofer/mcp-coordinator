@@ -10,6 +10,7 @@ import {
 import type { AuthHandlerContext } from "../../src/auth/context.js";
 import { computeFingerprint } from "../../src/auth/oauth-finalize.js";
 import { FakeClock } from "../helpers/clock.js";
+import { singleProviderRegistry } from "../helpers/index.js";
 import { RateLimiter } from "../../src/auth/rate-limit.js";
 import { buildJwtKeyRegistry } from "../../src/auth/jwt-keys.js";
 import { MembershipCache } from "../../src/auth/membership-cache.js";
@@ -104,17 +105,19 @@ let rateLimiter: RateLimiter;
 let membershipCache: MembershipCache;
 
 function makeCtx(overrides: Partial<AuthHandlerContext> = {}): AuthHandlerContext {
+  const defaultProvider: IdPProvider = {
+    name: "github",
+    buildAuthUrl: () => "https://example/unused",
+    exchangeCode: async (): Promise<ExchangeCodeResult> => {
+      throw new Error("exchangeCode not used in T16c direct tests");
+    },
+    listMemberships: async () => ["acme"],
+  };
   return {
     db: getDb() as unknown as AuthHandlerContext["db"],
     clock,
-    githubProvider: {
-      name: "github",
-      buildAuthUrl: () => "https://example/unused",
-      exchangeCode: async (): Promise<ExchangeCodeResult> => {
-        throw new Error("exchangeCode not used in T16c direct tests");
-      },
-      listMemberships: async () => ["acme"],
-    } as IdPProvider,
+    githubProvider: defaultProvider,
+    providers: singleProviderRegistry(defaultProvider),
     rateLimiter,
     publicUrl: "http://localhost:3000",
     stateBindingKey: STATE_BINDING_KEY,
@@ -446,7 +449,7 @@ describe("finalizeBrowserOAuthMint — end-to-end via handleOAuthCallback", () =
       listMemberships: async () => ["acme"],
     };
 
-    const ctx = makeCtx({ githubProvider: provider });
+    const ctx = makeCtx({ githubProvider: provider, providers: singleProviderRegistry(provider) });
 
     const res = mockResponse();
     const req = {

@@ -3,6 +3,7 @@ import { assertSecretEntropy } from "./auth/entropy.js";
 import { deriveStateBindingKey } from "./auth/crypto-keys.js";
 import { buildJwtKeyRegistry } from "./auth/jwt-keys.js";
 import { GitHubProvider } from "./auth/providers/github.js";
+import { ProviderRegistry } from "./auth/providers/registry.js";
 import { MembershipCache } from "./auth/membership-cache.js";
 import { RateLimiter } from "./auth/rate-limit.js";
 import { initAuditQueue, getAuditQueue, audit } from "./security/audit.js";
@@ -113,6 +114,13 @@ export function bootPhase2(opts: Phase2BootOptions): Phase2Bootstrap | null {
     ...(githubApiBaseUrl ? { apiBaseUrl: githubApiBaseUrl } : {}),
   });
 
+  // T45 (v0.9.0): provider registry. Phase 2 registers GitHub only;
+  // v0.9.0 adds Google + OIDC. The picker UI activates whenever
+  // providers.size() > 1. GitHub is the implicit default since it is
+  // registered first (matches Phase 2 single-provider behavior).
+  const providers = new ProviderRegistry();
+  providers.register(githubProvider);
+
   // 7. Initialize audit queue (Tier 2 buffered writes; T11b).
   initAuditQueue(db);
 
@@ -124,6 +132,7 @@ export function bootPhase2(opts: Phase2BootOptions): Phase2Bootstrap | null {
     db,
     clock,
     githubProvider,
+    providers,
     rateLimiter,
     publicUrl,
     stateBindingKey,
