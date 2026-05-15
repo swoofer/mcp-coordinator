@@ -8,6 +8,31 @@ export interface IdpUserInfo {
 export interface ExchangeCodeResult {
   user: IdpUserInfo;
   accessToken: string;
+  /** Seconds-until-expiry of `accessToken`, when the IdP advertises one
+   *  (e.g. GitHub App user-to-server tokens: 28800 = 8h). OAuth App
+   *  tokens have no expiry; omit. */
+  accessTokenExpiresIn?: number;
+  /** Refresh token, when the IdP returns one (GitHub Apps always do;
+   *  OAuth Apps don't). Stored in `users.idp_refresh_token` so
+   *  refresh-rotation can call `IdPProvider.refreshIdpToken` to mint a
+   *  fresh access token on 401. */
+  refreshToken?: string;
+  /** Seconds-until-expiry of the refresh token. After this window the
+   *  user must re-authorize from scratch (GitHub Apps: 6mo). */
+  refreshTokenExpiresIn?: number;
+}
+
+/**
+ * Result of an IdP refresh-token exchange. The provider returns a
+ * fresh access token (and possibly a rotated refresh token) which
+ * the caller stores in `users.idp_access_token` /
+ * `users.idp_refresh_token` before retrying the original API call.
+ */
+export interface IdpRefreshResult {
+  accessToken: string;
+  accessTokenExpiresIn?: number;
+  refreshToken?: string;
+  refreshTokenExpiresIn?: number;
 }
 
 export interface DeviceCodeResponse {
@@ -33,6 +58,13 @@ export interface IdPProvider {
   listMemberships?(accessToken: string): Promise<string[]>;
   requestDeviceCode?(): Promise<DeviceCodeResponse>;
   pollDeviceToken?(deviceCode: string): Promise<DevicePollResult>;
+  /** Exchange a refresh token for a fresh access token (and possibly a
+   *  rotated refresh token). Implemented only by providers whose IdP
+   *  returns expiring access tokens with refresh -- currently
+   *  GitHubAppProvider (T53). On 401/invalid_grant from the IdP,
+   *  implementations MUST throw IdPTokenRevoked so refresh-rotation
+   *  treats the row as evicted. */
+  refreshIdpToken?(refreshToken: string): Promise<IdpRefreshResult>;
 }
 
 // Branded types: nominal at the type level via a phantom __brand tag.
