@@ -1,5 +1,101 @@
 # Changelog
 
+## [0.10.0](https://github.com/swoofer/mcp-coordinator/compare/v0.9.2...v0.10.0) (2026-05-16)
+
+GitHub App release. Adds a `GitHubAppProvider` sibling to the existing
+OAuth App provider, with built-in user-to-server token refresh
+handling. Existing OAuth App and Google / OIDC deployments are
+behaviour-compatible -- the new provider is opt-in via env vars.
+
+### Features
+
+* **auth/providers/github-app:** new `GitHubAppProvider` implementing
+  the user-to-server OAuth flow for GitHub Apps. Differences from
+  `GitHubProvider` (OAuth App):
+  - `buildAuthUrl` omits the `scope` param (GitHub Apps declare
+    permissions at registration time)
+  - `exchangeCode` surfaces optional `accessTokenExpiresIn`,
+    `refreshToken`, `refreshTokenExpiresIn` from the IdP response
+    (App user-to-server tokens are 8h + auto-rotating refresh)
+  - `refreshIdpToken(refreshToken)` -- new optional `IdPProvider`
+    method that exchanges a refresh token for a fresh
+    access+refresh pair via `grant_type=refresh_token`. Maps
+    GitHub's "200-with-error-body" failure mode to
+    `IdPTokenRevoked`.
+  - No device flow (GitHub Apps don't support RFC 8628)
+  - Registry name defaults to `"github-app"` but is overridable via
+    `COORDINATOR_GITHUB_APP_NAME`. (T53)
+* **auth/refresh-rotation:** IdP refresh-token recovery. On
+  `IdPTokenRevoked` from `/user/orgs` AND the provider implements
+  `refreshIdpToken` AND the user has a stored refresh token, the
+  handler exchanges the refresh token for a fresh access+refresh
+  pair, persists both to `users.idp_access_token` /
+  `users.idp_refresh_token`, emits a Tier 2
+  `auth.idp.token_refreshed` audit, and retries the membership
+  check before declaring the row evicted. Failures fall through to
+  the existing Tier 1 `auth.idp.token_revoked` path. (T54)
+* **db:** `ALTER TABLE users ADD COLUMN idp_refresh_token TEXT`
+  idempotent migration. Nullable; OAuth App / Google / OIDC users
+  keep `NULL` forever; only GitHub App provisioned users populate
+  it. Same plaintext + never-in-logs posture as
+  `idp_access_token`.
+* **boot:** `COORDINATOR_GITHUB_APP_CLIENT_ID` +
+  `COORDINATOR_GITHUB_APP_CLIENT_SECRET` env vars register the new
+  provider when both are set (partial config fails closed at
+  boot, matching the Google/OIDC pattern). Shares GHES base URLs
+  with `GitHubProvider`. Optional
+  `COORDINATOR_GITHUB_APP_NAME` overrides the registry key.
+
+### Documentation
+
+* **docs/superpowers/specs/2026-05-16-github-app-design.md:**
+  design spec covering motivation, scope, identity model, OAuth
+  flow specifics, refresh-token lifecycle, allowlist semantics,
+  threat model, env vars, coexistence with OAuth App, and open
+  questions (encryption-at-rest for `idp_refresh_token`,
+  installation-list-based allowlist as v0.10.x exploration).
+* **docs/idp-providers.md:** new "Configuring GitHub App" section
+  with setup walkthrough, differences-vs-OAuth-App matrix,
+  refresh-token recovery model, coexistence + migration story,
+  gotchas (IdP refresh-token replay detection NOT implemented in
+  v0.10.0; App must be installed in user's org; no App-as-itself
+  installation flow in v0.10.0).
+* **.env.example:** `COORDINATOR_GITHUB_APP_*` env-var block.
+
+### Test posture
+
+* **+45 tests** vs v0.9.2 (1700 total):
+  - 19 GitHubAppProvider unit tests (buildAuthUrl no-scope / S256 /
+    GHES; exchangeCode happy + missing-refresh / 401 / 503 /
+    error-label; listMemberships; refreshIdpToken happy + wire
+    format / 401 / 503 / 200-with-error / 200-missing-access_token;
+    device-flow absence)
+  - 7 boot wiring tests (unset / both-set / partial / custom NAME /
+    GHES / 4-provider coexistence)
+  - 5 refresh-rotation recovery tests (refresh-ok + rotation
+    continues, provider returns access-only, refresh-fails -> 401,
+    no-refresh-token-stored -> 401, no-refreshIdpToken-method ->
+    401)
+  - 14 shared HTTP transport tests (already covered indirectly by
+    the existing GitHubProvider suite; `github-shared.ts`
+    refactored without behaviour change so 35 OAuth App tests
+    still pass)
+
+### Out of scope for v0.10.0
+
+- **App-as-itself installation tokens for membership queries.** The
+  v1 implementation uses the user-to-server token to call
+  `/user/orgs`, functionally identical to OAuth App. v0.10.x will
+  evaluate App-JWT-signed installation token flow that builds the
+  allowlist from the App's installation footprint rather than user
+  org memberships.
+- **Device flow.** GitHub Apps do not support RFC 8628.
+- **Webhook-driven membership cache invalidation.** v1.0 work.
+- **IdP refresh-token replay detection.** The coordinator's
+  reuse-detection logic covers ITS OWN refresh family only;
+  GitHub-side refresh-token replay is detected by GitHub at its
+  discretion.
+
 ## [0.9.2](https://github.com/swoofer/mcp-coordinator/compare/v0.9.1...v0.9.2) (2026-05-15)
 
 Operations release. New `mcp-coordinator rotate-jwt-secret` CLI

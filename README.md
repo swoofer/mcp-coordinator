@@ -2,7 +2,7 @@
 
 # mcp-coordinator
 
-**Embedded MQTT broker + MCP server for multi-agent coordination. Zero conflicts, everyone aligned. Optional OAuth 2.1 + device flow with multi-IdP (GitHub, Google, generic OIDC) -- v0.9.0.**
+**Embedded MQTT broker + MCP server for multi-agent coordination. Zero conflicts, everyone aligned. Optional OAuth 2.1 + device flow with multi-IdP (GitHub OAuth App + GitHub App, Google, generic OIDC) -- v0.10.0.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![npm](https://img.shields.io/npm/v/mcp-coordinator.svg)](https://www.npmjs.com/package/mcp-coordinator)
@@ -324,6 +324,44 @@ Audit log tamper-evidence. New `prev_hash` + `row_hash` columns on `audit_log` b
 
 ---
 
+## What's New in v0.10.0 (GitHub App)
+
+Released 2026-05-16. Adds a `GitHubAppProvider` sibling to the existing OAuth App `GitHubProvider`, with built-in user-to-server token refresh handling. Existing OAuth App and Google / OIDC deployments stay behaviour-compatible; the new provider is opt-in via env vars.
+
+### Why GitHub App on top of OAuth App?
+
+- **Fine-grained permissions** -- GitHub Apps declare per-resource permissions, OAuth App scopes are coarser
+- **Installation isolation** -- the App's footprint IS the allowlist; uninstalling the App from an org is an immediate hard revoke
+- **Short-lived user-to-server tokens** -- 8h TTL with auto-rotating refresh tokens vs OAuth App's effectively permanent tokens
+
+### Configure
+
+```bash
+export COORDINATOR_GITHUB_APP_CLIENT_ID=Iv1.0123456789abcdef
+export COORDINATOR_GITHUB_APP_CLIENT_SECRET=<from-app-settings>
+# Optional: registry key (default "github-app")
+export COORDINATOR_GITHUB_APP_NAME=acme-app
+```
+
+Both `_ID` + `_SECRET` are required together; partial config fails closed at boot. Co-exists with `COORDINATOR_GITHUB_CLIENT_ID` + `_SECRET` (OAuth App) -- the picker UI on `/auth/login` shows both entry points when both providers are registered. See [`docs/idp-providers.md`](./docs/idp-providers.md#configuring-github-app) for the full setup walkthrough.
+
+### Refresh-token recovery
+
+On `IdPTokenRevoked` from `/user/orgs` at refresh-rotation time, the coordinator calls `GitHubAppProvider.refreshIdpToken(refresh_token)` to mint a fresh access token + rotated refresh token, persists both, and retries the membership check. A Tier 2 `auth.idp.token_refreshed` audit row captures the recovery. If refresh fails too -- existing Tier 1 `auth.idp.token_revoked` + 401 path.
+
+### Out of scope for v0.10.0
+
+- App-as-itself installation token flow for membership queries (v0.10.x exploration; requires PEM private key provisioning)
+- Webhook-driven membership cache invalidation (v1.0)
+- IdP refresh-token replay detection (the coordinator's reuse logic covers ITS OWN refresh family only)
+
+### Testing
+
+- **1700 tests passing** (+45 vs v0.9.2)
+- 19 `GitHubAppProvider` unit tests, 5 refresh-rotation recovery tests, 7 boot wiring tests, plus the shared HTTP transport refactor exercised by the 35 existing OAuth App tests
+
+---
+
 ## What's New in v0.5.0
 
 Released 2026-05-10.
@@ -396,14 +434,17 @@ Audit log tamper-evidence (SHA-256 hash chain on every `audit_log` row + `verify
 
 `mcp-coordinator rotate-jwt-secret` CLI helper + auto-rotation operator runbook.
 
+### v0.10.0 (shipped 2026-05-16)
+
+`GitHubAppProvider` sibling to the OAuth App provider, with built-in user-to-server token refresh handling. New env vars `COORDINATOR_GITHUB_APP_CLIENT_ID` / `_SECRET` / `_NAME`. Co-exists with OAuth App. 1700 tests.
+
 ### v0.5.0 (shipped 2026-05-10)
 
 Working-files in-flight tracking, tree-sitter symbol annotations across 15 languages, git co-change Layer 4 scoring, dashboard Conflict signals panel, schema downgrade guard, 5 new Prometheus metrics.
 
 ### Planned
 
-- **v0.9.x** — GitHub App flow (separate from OAuth App, uses installation tokens), OIDC `nonce` claim verification.
-- **v0.10** — Postgres adapter for regulated multi-instance workloads (Phase 4); native hd-based allowlist column so Google Workspace deployments don't have to overload `allowlist_github_org`.
+- **v0.10.x** — App-as-itself installation token flow for GitHub App (allowlist driven by App installation footprint rather than user org memberships); OIDC `nonce` claim verification; Postgres adapter for regulated multi-instance workloads; native `hd`-based allowlist column so Google Workspace deployments don't have to overload `allowlist_github_org`.
 - **v1.0** — Phase 5 multi-instance (Redis pub/sub for membership cache invalidation + token_epoch reads + rate-limit + sweeper leader election).
 
 ### Open items / known issues
