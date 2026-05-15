@@ -18,8 +18,10 @@ T40c (this release) adds **named-profile TOML config** and a
 coordinator's `.well-known/oauth-authorization-server` rather than
 hardcoding them. See
 [Named profiles + discovery cache](#named-profiles--discovery-cache-v08x).
-A future T40d release will add OS keychain integration (`keytar`) and
-Windows DPAPI for the token file. See [Caveats](#caveats).
+T40d (this release) adds **opt-in OS keychain integration** via a
+lazy-loaded `keytar` adapter (`KeytarTokenStore`). The SDK does not
+bundle `keytar`; operators install it in their own project. See
+[OS keychain via keytar (opt-in)](#os-keychain-via-keytar-opt-in).
 
 ## Install
 
@@ -197,10 +199,12 @@ await client.loadFromStore(); // restore tokens from disk on startup
 client.dispose(); // cancel proactive-refresh timer on app shutdown
 ```
 
-`FileTokenStore` writes the JSON token set with `chmod 0600` on POSIX
-(no Windows DPAPI yet -- that's T40d). The parent directory is created
-with `chmod 0700` on POSIX. Writes are atomic via write-to-tmp + rename
-to prevent partial writes on crash.
+`FileTokenStore` writes the JSON token set with `chmod 0600` on POSIX.
+On Windows the default ACL applies; for encrypted-at-rest token storage
+on Windows, use `KeytarTokenStore` (Credential Manager wraps DPAPI
+internally -- see [OS keychain via keytar (opt-in)](#os-keychain-via-keytar-opt-in)).
+The parent directory is created with `chmod 0700` on POSIX. Writes are
+atomic via write-to-tmp + rename to prevent partial writes on crash.
 
 `ProactiveRefresh(leadSeconds, jitterSeconds)` schedules a refresh at
 `accessExpiresAt - leadSeconds +/- jitterSeconds`. The jitter prevents
@@ -220,6 +224,37 @@ A `MemoryTokenStore` is also exported for tests and ephemeral CLI runs:
 import { MemoryTokenStore } from "@mcp-coordinator/sdk-js";
 const store = new MemoryTokenStore();
 ```
+
+### OS keychain via keytar (opt-in)
+
+For CLI tools that want native OS keychain integration (Windows
+Credential Manager, macOS Keychain, Linux libsecret), install `keytar`
+separately and use `KeytarTokenStore`:
+
+```bash
+npm install keytar
+```
+
+```ts
+import { McpCoordinatorClient, KeytarTokenStore } from "@mcp-coordinator/sdk-js";
+
+const client = new McpCoordinatorClient({
+  baseUrl: "https://coordinator.example.com",
+  store: new KeytarTokenStore({ account: "prod" }), // one keychain entry per profile
+});
+```
+
+If keytar isn't installed, the first `store.load()` call throws
+`KeytarUnavailableError` with install instructions. Operators on
+locked-down systems (no native compiler) should use `FileTokenStore`
+instead -- no security compromise since `FileTokenStore` writes 0600 +
+atomic rename.
+
+The SDK does NOT bundle keytar (avoids cross-platform native-build pain
+for users who don't need it). Token set is stored as a single JSON blob
+under `(serviceName, account)`; default `serviceName = "mcp-coordinator"`
+and `account = "default"`. Override `account` per profile for
+multi-tenant CLI installs.
 
 ## Named profiles + discovery cache (v0.8.x)
 
@@ -319,16 +354,16 @@ hardcoded paths are used (no behavior change).
 
 ## Caveats
 
-The following features are deferred to T40d (a future release):
+The following enhancements remain deferred:
 
-- **Keychain integration.** `keytar` / OS keychain backend (native dep).
-- **Windows DPAPI.** Encrypted-at-rest token file on Windows
-  (Win32 native).
 - **Sliding-token-life heuristics.** No adaptive lead based on observed
   drift between successive refreshes.
 
-For shared filesystems / multi-user systems, prefer `MemoryTokenStore`
-plus an OS-keychain wrapper of your own until T40d lands.
+Windows DPAPI is not implemented as a separate adapter -- `keytar` on
+Windows already wraps the Credential Manager (which uses DPAPI
+internally), so `KeytarTokenStore` covers that use case. For shared
+filesystems / multi-user systems, prefer `KeytarTokenStore` (after
+`npm install keytar`) over `FileTokenStore`.
 
 ## License
 

@@ -6,3 +6,4 @@ export * from "./refresh-strategy.js";
 export * from "./single-flight.js";
 export * from "./profiles.js";
 export * from "./discovery.js";
+export * from "./keytar-store.js";
