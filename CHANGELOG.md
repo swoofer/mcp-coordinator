@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.9.2](https://github.com/swoofer/mcp-coordinator/compare/v0.9.1...v0.9.2) (2026-05-15)
+
+Operations release. New `mcp-coordinator rotate-jwt-secret` CLI
+helper + auto-rotation runbook close the manual gap noted in v0.8.1's
+key-rotation procedure. No code paths in the hot request path changed;
+existing deployments continue running unchanged.
+
+### Features
+
+* **cli:** `mcp-coordinator rotate-jwt-secret` generates a fresh
+  base64 secret with crypto.randomBytes (default 256 bits, 128
+  minimum), validates entropy against the boot-time floor, and prints
+  the operator rotation workflow. Three output formats: `env`
+  (default, copy-pasteable block + workflow comments), `json`
+  (machine-readable for cron pipelines), `secret-only` (raw secret
+  only). Stateless -- never reads the current secret, never writes to
+  any secrets manager, never restarts a coordinator instance. (T52)
+
+### Documentation
+
+* **docs/ops/auto-rotation.md:** new operator runbook covering
+  systemd-timer + Vault automation and Kubernetes CronJob automation
+  around the `rotate-jwt-secret` helper. Explicit out-of-scope notes
+  for service-token rotation (admin-driven by design) and IdP client
+  secrets (rotate through the IdP's own admin UI).
+
+### Test posture
+
+* **+14 tests** vs v0.9.1 (1669 total): plan determinism with
+  injected clock + RNG, base64 length invariants, entropy floor
+  rejection at boundary, broken-RNG rejection, CLI exit codes for
+  invalid args, all three output formats parseable.
+
 ## [0.9.1](https://github.com/swoofer/mcp-coordinator/compare/v0.9.0...v0.9.1) (2026-05-15)
 
 Audit log tamper-evidence release. Adds a SHA-256 hash chain over every

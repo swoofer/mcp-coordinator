@@ -318,6 +318,10 @@ Released 2026-05-15. Single-provider GitHub-only deployments stay behaviour-comp
 
 Audit log tamper-evidence. New `prev_hash` + `row_hash` columns on `audit_log` build a SHA-256 chain over every row written via `audit()`. `scripts/verify-audit-chain.ts` walks the chain and reports tampering; `docs/ops/audit-integrity.md` is the SOC 2 Type II operator runbook covering the external tip-attestation workflow that closes the deletion-detection gap.
 
+### v0.9.2 follow-up (2026-05-15)
+
+`mcp-coordinator rotate-jwt-secret` CLI helper generates a fresh signing secret with entropy validation + prints the operator workflow. `docs/ops/auto-rotation.md` covers systemd-timer + Vault and Kubernetes CronJob automation patterns around the helper.
+
 ---
 
 ## What's New in v0.5.0
@@ -388,13 +392,17 @@ Multi-IdP: `ProviderRegistry` class + first-class `GoogleProvider` (id_token ver
 
 Audit log tamper-evidence (SHA-256 hash chain on every `audit_log` row + `verify-audit-chain.ts` operator script + SOC 2 Type II runbook).
 
+### v0.9.2 (shipped 2026-05-15)
+
+`mcp-coordinator rotate-jwt-secret` CLI helper + auto-rotation operator runbook.
+
 ### v0.5.0 (shipped 2026-05-10)
 
 Working-files in-flight tracking, tree-sitter symbol annotations across 15 languages, git co-change Layer 4 scoring, dashboard Conflict signals panel, schema downgrade guard, 5 new Prometheus metrics.
 
 ### Planned
 
-- **v0.9.x** — GitHub App flow (separate from OAuth App, uses installation tokens), automated rotation tooling for `JWT_SECRET`, OIDC `nonce` claim verification.
+- **v0.9.x** — GitHub App flow (separate from OAuth App, uses installation tokens), OIDC `nonce` claim verification.
 - **v0.10** — Postgres adapter for regulated multi-instance workloads (Phase 4); native hd-based allowlist column so Google Workspace deployments don't have to overload `allowlist_github_org`.
 - **v1.0** — Phase 5 multi-instance (Redis pub/sub for membership cache invalidation + token_epoch reads + rate-limit + sweeper leader election).
 
