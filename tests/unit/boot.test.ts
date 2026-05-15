@@ -39,6 +39,8 @@ const ENV_KEYS = [
   "COORDINATOR_JWT_SECRET_PREV_ROTATED_AT",
   "COORDINATOR_GITHUB_AUTH_BASE_URL",
   "COORDINATOR_GITHUB_API_BASE_URL",
+  "COORDINATOR_GOOGLE_CLIENT_ID",
+  "COORDINATOR_GOOGLE_CLIENT_SECRET",
 ];
 
 // 32 random bytes (high entropy, no dictionary words) — passes
@@ -709,5 +711,66 @@ describe("bootPhase2 — GHES base URL wiring (v0.8.1-P2)", () => {
     expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
       /COORDINATOR_GITHUB_API_BASE_URL must be http:\/\/ or https:\/\//,
     );
+  });
+});
+
+describe("bootPhase2 — Google IdP wiring (v0.9.0 T47)", () => {
+  it("both env vars unset: only github is registered", () => {
+    applyValidEnv();
+    // Explicitly unset Google vars to make the test self-documenting.
+    delete process.env.COORDINATOR_GOOGLE_CLIENT_ID;
+    delete process.env.COORDINATOR_GOOGLE_CLIENT_SECRET;
+
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+    expect(result!.context.providers.names()).toEqual(["github"]);
+    void result!.shutdown();
+  });
+
+  it("both env vars set: registers google as a second provider; github stays default", () => {
+    applyValidEnv();
+    process.env.COORDINATOR_GOOGLE_CLIENT_ID = "google-cid.apps.googleusercontent.com";
+    process.env.COORDINATOR_GOOGLE_CLIENT_SECRET = "google-secret";
+
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+    expect(result!.context.providers.names()).toEqual(["github", "google"]);
+    expect(result!.context.providers.getDefault()!.name).toBe("github");
+    expect(result!.context.providers.get("google")).not.toBeNull();
+    void result!.shutdown();
+  });
+
+  it("only client_id set: throws BootValidationError (fail-closed half-config)", () => {
+    applyValidEnv();
+    process.env.COORDINATOR_GOOGLE_CLIENT_ID = "google-cid.apps.googleusercontent.com";
+    delete process.env.COORDINATOR_GOOGLE_CLIENT_SECRET;
+
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
+      BootValidationError,
+    );
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
+      /both be set, or both unset/,
+    );
+  });
+
+  it("only client_secret set: throws BootValidationError", () => {
+    applyValidEnv();
+    delete process.env.COORDINATOR_GOOGLE_CLIENT_ID;
+    process.env.COORDINATOR_GOOGLE_CLIENT_SECRET = "google-secret";
+
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
+      /both be set, or both unset/,
+    );
+  });
+
+  it("whitespace-only env vars: treated as unset", () => {
+    applyValidEnv();
+    process.env.COORDINATOR_GOOGLE_CLIENT_ID = "   ";
+    process.env.COORDINATOR_GOOGLE_CLIENT_SECRET = "   ";
+
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+    expect(result!.context.providers.names()).toEqual(["github"]);
+    void result!.shutdown();
   });
 });
