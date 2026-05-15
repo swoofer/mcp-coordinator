@@ -4,6 +4,8 @@ import type { AuthHandlerContext } from "./context.js";
 import { generateVerifier, computeChallenge } from "./pkce.js";
 import { createOAuthStateWithVerifier } from "./oauth-state.js";
 import { hostCookie, setCookies } from "./cookies.js";
+import { sendHtml } from "./html.js";
+import { renderLoginPicker } from "./pages/login-picker.html.js";
 import { appError } from "../http/response-contract.js";
 
 const STATE_COOKIE_NAME = "__Host-coordinator_oauth_state";
@@ -34,14 +36,26 @@ function bindState(state: string, key: Buffer): string {
 /**
  * GET /auth/login — OAuth flow init.
  *
- * Phase 2 single-provider: redirects to GitHub authorize URL with state +
- * PKCE S256 code_challenge. The state cookie is HMAC-bound (V4 FIX 19)
- * so the callback can verify the state came from this server, not a
- * forged/replayed query parameter.
+ * Provider selection (T49):
+ *   - 0 providers registered    -> 500 NO_IDP_CONFIGURED
+ *   - 1 provider                -> redirect straight to authorize URL
+ *   - 2+ providers, no ?provider -> render picker page (the user
+ *                                  clicks a button which re-issues GET
+ *                                  /auth/login?provider=<name>)
+ *   - 2+ providers, ?provider=X -> validate name is registered;
+ *                                  unknown name -> 400 UNKNOWN_PROVIDER
+ *                                  (does NOT silently fall back to the
+ *                                  default -- an explicit but wrong
+ *                                  selection is a user-visible bug)
  *
- * Cookie SameSite=Lax (NOT Strict): the GitHub redirect back to
+ * Once a provider is selected, the flow is identical: PKCE verifier +
+ * S256 challenge, oauth_state row, HMAC-bound state cookie (V4 FIX 19),
+ * 302 to authorize URL. The state row stores provider.name so the
+ * callback knows which IdP issued the code.
+ *
+ * Cookie SameSite=Lax (NOT Strict): the IdP redirect back to
  * /api/auth/oauth/callback is cross-site, and Strict would drop the
- * cookie. Lax is enough — the cookie is only read on the callback's
+ * cookie. Lax is enough -- the cookie is only read on the callback's
  * top-level navigation, not on cross-site fetches.
  */
 export async function handleAuthLogin(
@@ -50,7 +64,12 @@ export async function handleAuthLogin(
   ctx: AuthHandlerContext,
 ): Promise<void> {
   // Rate limit (per IP). req.socket may be absent in synthetic tests;
-  // fall back to a constant bucket so the limiter still engages.
+  // fall back to a constant bucket so the limiter still engages. The
+  // picker render itself consumes a rate-limit token even though it
+  // does no DB work; that's intentional -- /auth/login is the
+  // entry-point both for picker renders and for actual flow init, and
+  // a 60/min burst is generous enough that legitimate users never hit
+  // it.
   const ip = req.socket?.remoteAddress ?? "unknown";
   const rate = ctx.rateLimiter.check(`auth-login:${ip}`, RATE_LIMIT_CONFIG);
   if (!rate.allowed) {
@@ -62,14 +81,34 @@ export async function handleAuthLogin(
     return;
   }
 
-  // T46: resolve provider via the registry. Phase 2 always uses the
-  // implicit default (GitHub). Future picker UI (T48) will pass an
-  // explicit ?provider= query param.
-  const provider = ctx.providers.getDefault();
-  if (!provider) {
-    res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
-    res.end(JSON.stringify(appError("NO_IDP_CONFIGURED", "No IdP provider is registered")));
+  // T49: select provider. ?provider= takes precedence; otherwise the
+  // registry default; otherwise the picker page when ambiguous.
+  const url = new URL(req.url ?? "/", "http://localhost");
+  const requestedProvider = url.searchParams.get("provider");
+
+  let provider;
+  if (requestedProvider !== null) {
+    provider = ctx.providers.get(requestedProvider);
+    if (!provider) {
+      res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(
+        JSON.stringify(
+          appError("UNKNOWN_PROVIDER", `Unknown provider: ${requestedProvider}`),
+        ),
+      );
+      return;
+    }
+  } else if (ctx.providers.size() > 1) {
+    // Multiple providers + no explicit selection -> render picker.
+    sendHtml(res, 200, renderLoginPicker(ctx.providers.names()));
     return;
+  } else {
+    provider = ctx.providers.getDefault();
+    if (!provider) {
+      res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify(appError("NO_IDP_CONFIGURED", "No IdP provider is registered")));
+      return;
+    }
   }
 
   // PKCE — generate verifier (256-bit, base64url) + S256 challenge.
