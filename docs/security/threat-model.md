@@ -469,9 +469,22 @@ that compensate.
    should monitor `system.shutdown.audit_loss` events and alert on any
    occurrence.
 
+10. **Audit log tamper detection** — addressed in v0.9.1 via SHA-256
+    hash chain on every `audit_log` row (`prev_hash` + `row_hash`
+    columns; see `src/security/audit-chain.ts`). In-place edits and
+    middle-row insertions are detectable by
+    `scripts/verify-audit-chain.ts` (see `docs/ops/audit-integrity.md`).
+    Two gaps remain and require the operator-side tip-attestation
+    workflow documented in that runbook:
+    (a) `created_at` is intentionally outside the hash, so timestamp
+    rewrites are not detected by the chain alone;
+    (b) deletion of recent rows is indistinguishable from legitimate
+    sweeper retention without an external signed tip-record.
+
 ## Review cadence
 
 This threat model is reviewed every minor release and on any change to
 `src/auth/`, `src/security/`, or `src/boot.ts`. The next mandatory
-review is **v0.9.0** (Phase 3 admin endpoints). Material changes are
-called out in CHANGELOG.md under the version's `### Security` heading.
+review is **v0.10** (Phase 3 admin endpoints + Postgres adapter).
+Material changes are called out in CHANGELOG.md under the version's
+`### Security` heading.
