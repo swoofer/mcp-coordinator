@@ -1,0 +1,359 @@
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { http, HttpResponse } from "msw";
+import { setupServer } from "msw/node";
+import { SignJWT, exportJWK, generateKeyPair } from "jose";
+import { OIDCProvider } from "../../src/auth/providers/oidc.js";
+import { IdPTokenRevoked, IdPTransientError } from "../../src/auth/providers/errors.js";
+
+const ISSUER = "https://idp.example.test/realms/main";
+const DISCOVERY_URL = `${ISSUER}/.well-known/openid-configuration`;
+const AUTHORIZATION_ENDPOINT = `${ISSUER}/protocol/openid-connect/auth`;
+const TOKEN_ENDPOINT = `${ISSUER}/protocol/openid-connect/token`;
+const JWKS_URI = `${ISSUER}/protocol/openid-connect/certs`;
+const CLIENT_ID = "test-oidc-client";
+const CLIENT_SECRET = "test-oidc-secret";
+const REDIRECT_URI = "https://example.test/api/auth/oauth/callback";
+
+const server = setupServer();
+
+let privateKey: CryptoKey;
+let kid: string;
+let jwksBody: { keys: Array<Record<string, unknown>> };
+
+beforeAll(async () => {
+  const pair = await generateKeyPair("RS256");
+  privateKey = pair.privateKey;
+  const jwk = await exportJWK(pair.publicKey);
+  kid = "oidc-test-kid-1";
+  jwksBody = { keys: [{ ...jwk, alg: "RS256", use: "sig", kid }] };
+  server.listen({ onUnhandledRequest: "error" });
+});
+
+afterEach(() => server.resetHandlers());
+afterAll(() => server.close());
+
+function mountDiscoveryAndJwks(overrides?: Partial<{ issuer: string }>): void {
+  server.use(
+    http.get(DISCOVERY_URL, () =>
+      HttpResponse.json({
+        issuer: overrides?.issuer ?? ISSUER,
+        authorization_endpoint: AUTHORIZATION_ENDPOINT,
+        token_endpoint: TOKEN_ENDPOINT,
+        jwks_uri: JWKS_URI,
+        response_types_supported: ["code"],
+        id_token_signing_alg_values_supported: ["RS256"],
+      }),
+    ),
+    http.get(JWKS_URI, () => HttpResponse.json(jwksBody)),
+  );
+}
+
+interface IdTokenOverrides {
+  sub?: string;
+  email?: string;
+  name?: string;
+  preferred_username?: string;
+  iss?: string;
+  aud?: string;
+  alg?: "RS256" | "HS256";
+  kidOverride?: string;
+  expSeconds?: number;
+}
+
+async function makeIdToken(overrides: IdTokenOverrides = {}): Promise<string> {
+  const claims: Record<string, unknown> = { sub: overrides.sub ?? "user-7" };
+  if (overrides.email !== undefined) claims.email = overrides.email;
+  if (overrides.name !== undefined) claims.name = overrides.name;
+  if (overrides.preferred_username !== undefined) {
+    claims.preferred_username = overrides.preferred_username;
+  }
+  return new SignJWT(claims)
+    .setProtectedHeader({
+      alg: overrides.alg ?? "RS256",
+      kid: overrides.kidOverride ?? kid,
+    })
+    .setIssuer(overrides.iss ?? ISSUER)
+    .setAudience(overrides.aud ?? CLIENT_ID)
+    .setIssuedAt()
+    .setExpirationTime(
+      Math.floor(Date.now() / 1000) + (overrides.expSeconds ?? 3600),
+    )
+    .sign(privateKey);
+}
+
+function makeProvider(extra?: Partial<{ name: string }>): OIDCProvider {
+  return new OIDCProvider({
+    clientId: CLIENT_ID,
+    clientSecret: CLIENT_SECRET,
+    issuerUrl: ISSUER,
+    ...(extra?.name !== undefined ? { name: extra.name } : {}),
+  });
+}
+
+describe("OIDCProvider.buildAuthUrl", () => {
+  it("fetches discovery doc and points at authorization_endpoint", async () => {
+    mountDiscoveryAndJwks();
+    const url = await makeProvider().buildAuthUrl(
+      "state-x",
+      REDIRECT_URI,
+      "challenge-y",
+    );
+    const u = new URL(url);
+    expect(u.origin + u.pathname).toBe(AUTHORIZATION_ENDPOINT);
+    expect(u.searchParams.get("client_id")).toBe(CLIENT_ID);
+    expect(u.searchParams.get("redirect_uri")).toBe(REDIRECT_URI);
+    expect(u.searchParams.get("state")).toBe("state-x");
+    expect(u.searchParams.get("scope")).toBe("openid email profile");
+    expect(u.searchParams.get("response_type")).toBe("code");
+    expect(u.searchParams.get("code_challenge")).toBe("challenge-y");
+    expect(u.searchParams.get("code_challenge_method")).toBe("S256");
+  });
+
+  it("custom name parameter is used", () => {
+    const p = makeProvider({ name: "okta" });
+    expect(p.name).toBe("okta");
+  });
+
+  it("defaults name to 'oidc'", () => {
+    const p = makeProvider();
+    expect(p.name).toBe("oidc");
+  });
+
+  it("caches discovery doc across calls (single GET)", async () => {
+    let discoveryCalls = 0;
+    server.use(
+      http.get(DISCOVERY_URL, () => {
+        discoveryCalls += 1;
+        return HttpResponse.json({
+          issuer: ISSUER,
+          authorization_endpoint: AUTHORIZATION_ENDPOINT,
+          token_endpoint: TOKEN_ENDPOINT,
+          jwks_uri: JWKS_URI,
+        });
+      }),
+    );
+    const p = makeProvider();
+    await p.buildAuthUrl("s1", REDIRECT_URI);
+    await p.buildAuthUrl("s2", REDIRECT_URI);
+    expect(discoveryCalls).toBe(1);
+  });
+});
+
+describe("OIDCProvider discovery validation", () => {
+  it("rejects discovery doc whose `issuer` does not match config", async () => {
+    mountDiscoveryAndJwks({ issuer: "https://impostor.example.test" });
+    await expect(
+      makeProvider().buildAuthUrl("s1", REDIRECT_URI),
+    ).rejects.toThrow(/discovery issuer mismatch/);
+  });
+
+  it("maps 503 discovery responses to IdPTransientError", async () => {
+    server.use(http.get(DISCOVERY_URL, () => HttpResponse.json({}, { status: 503 })));
+    await expect(
+      makeProvider().buildAuthUrl("s1", REDIRECT_URI),
+    ).rejects.toBeInstanceOf(IdPTransientError);
+  });
+
+  it("maps 4xx discovery responses to a generic Error (config issue)", async () => {
+    server.use(http.get(DISCOVERY_URL, () => HttpResponse.json({}, { status: 404 })));
+    await expect(
+      makeProvider().buildAuthUrl("s1", REDIRECT_URI),
+    ).rejects.toThrow(/HTTP 404/);
+  });
+});
+
+describe("OIDCProvider.exchangeCode -- happy paths", () => {
+  it("returns idp_user_id + email + name from verified id_token", async () => {
+    const idToken = await makeIdToken({
+      email: "alice@example.test",
+      name: "Alice",
+    });
+    mountDiscoveryAndJwks();
+    server.use(
+      http.post(TOKEN_ENDPOINT, () =>
+        HttpResponse.json({
+          access_token: "oidc-access-1",
+          id_token: idToken,
+          token_type: "Bearer",
+          expires_in: 3600,
+        }),
+      ),
+    );
+
+    const result = await makeProvider().exchangeCode("code-1", REDIRECT_URI, "verifier");
+    expect(result.user).toEqual({
+      idp_user_id: "user-7",
+      email: "alice@example.test",
+      name: "Alice",
+    });
+    expect(result.accessToken).toBe("oidc-access-1");
+  });
+
+  it("falls back to preferred_username when id_token lacks email", async () => {
+    const idToken = await makeIdToken({ preferred_username: "alice" });
+    mountDiscoveryAndJwks();
+    server.use(
+      http.post(TOKEN_ENDPOINT, () =>
+        HttpResponse.json({
+          access_token: "oidc-access-2",
+          id_token: idToken,
+          token_type: "Bearer",
+        }),
+      ),
+    );
+
+    const result = await makeProvider().exchangeCode("code-2", REDIRECT_URI);
+    expect(result.user.email).toBe("alice");
+  });
+
+  it("falls back to sub when id_token lacks email and preferred_username", async () => {
+    const idToken = await makeIdToken({ sub: "fallback-sub" });
+    mountDiscoveryAndJwks();
+    server.use(
+      http.post(TOKEN_ENDPOINT, () =>
+        HttpResponse.json({
+          access_token: "oidc-access-3",
+          id_token: idToken,
+          token_type: "Bearer",
+        }),
+      ),
+    );
+
+    const result = await makeProvider().exchangeCode("code-3", REDIRECT_URI);
+    expect(result.user.email).toBe("fallback-sub");
+  });
+});
+
+describe("OIDCProvider.exchangeCode -- id_token verification", () => {
+  it("rejects wrong issuer (cross-tenant)", async () => {
+    const idToken = await makeIdToken({ iss: "https://evil.example/" });
+    mountDiscoveryAndJwks();
+    server.use(
+      http.post(TOKEN_ENDPOINT, () =>
+        HttpResponse.json({
+          access_token: "x",
+          id_token: idToken,
+          token_type: "Bearer",
+        }),
+      ),
+    );
+    await expect(
+      makeProvider().exchangeCode("c", REDIRECT_URI),
+    ).rejects.toBeInstanceOf(IdPTokenRevoked);
+  });
+
+  it("rejects wrong audience", async () => {
+    const idToken = await makeIdToken({ aud: "another-rp" });
+    mountDiscoveryAndJwks();
+    server.use(
+      http.post(TOKEN_ENDPOINT, () =>
+        HttpResponse.json({
+          access_token: "x",
+          id_token: idToken,
+          token_type: "Bearer",
+        }),
+      ),
+    );
+    await expect(
+      makeProvider().exchangeCode("c", REDIRECT_URI),
+    ).rejects.toBeInstanceOf(IdPTokenRevoked);
+  });
+
+  it("rejects unknown signing kid (key rotation gap)", async () => {
+    const idToken = await makeIdToken({ kidOverride: "rotated-key" });
+    mountDiscoveryAndJwks();
+    server.use(
+      http.post(TOKEN_ENDPOINT, () =>
+        HttpResponse.json({
+          access_token: "x",
+          id_token: idToken,
+          token_type: "Bearer",
+        }),
+      ),
+    );
+    await expect(
+      makeProvider().exchangeCode("c", REDIRECT_URI),
+    ).rejects.toBeInstanceOf(IdPTransientError);
+  });
+
+  it("rejects expired id_token", async () => {
+    const idToken = await makeIdToken({ expSeconds: -10 });
+    mountDiscoveryAndJwks();
+    server.use(
+      http.post(TOKEN_ENDPOINT, () =>
+        HttpResponse.json({
+          access_token: "x",
+          id_token: idToken,
+          token_type: "Bearer",
+        }),
+      ),
+    );
+    await expect(
+      makeProvider().exchangeCode("c", REDIRECT_URI),
+    ).rejects.toBeInstanceOf(IdPTokenRevoked);
+  });
+});
+
+describe("OIDCProvider.exchangeCode -- token endpoint failures", () => {
+  it("maps 401 to IdPTokenRevoked", async () => {
+    mountDiscoveryAndJwks();
+    server.use(http.post(TOKEN_ENDPOINT, () => HttpResponse.json({}, { status: 401 })));
+    await expect(
+      makeProvider().exchangeCode("c", REDIRECT_URI),
+    ).rejects.toBeInstanceOf(IdPTokenRevoked);
+  });
+
+  it("maps 502 to IdPTransientError", async () => {
+    mountDiscoveryAndJwks();
+    server.use(http.post(TOKEN_ENDPOINT, () => HttpResponse.json({}, { status: 502 })));
+    await expect(
+      makeProvider().exchangeCode("c", REDIRECT_URI),
+    ).rejects.toBeInstanceOf(IdPTransientError);
+  });
+
+  it("maps 400 invalid_grant to a generic Error", async () => {
+    mountDiscoveryAndJwks();
+    server.use(
+      http.post(TOKEN_ENDPOINT, () =>
+        HttpResponse.json({ error: "invalid_grant" }, { status: 400 }),
+      ),
+    );
+    await expect(
+      makeProvider().exchangeCode("c", REDIRECT_URI),
+    ).rejects.toThrow(/HTTP 400/);
+  });
+});
+
+describe("OIDCProvider.listMemberships", () => {
+  it("throws -- generic OIDC has no portable group model", async () => {
+    await expect(makeProvider().listMemberships("token")).rejects.toThrow(
+      /vendor a subclass/,
+    );
+  });
+});
+
+describe("OIDCProvider issuer URL normalization", () => {
+  it("strips trailing slash from issuer before building discovery URL", async () => {
+    let discoveryUrlSeen: string | null = null;
+    server.use(
+      http.get("https://idp.example.test/realms/main/.well-known/openid-configuration", ({ request }) => {
+        discoveryUrlSeen = request.url;
+        return HttpResponse.json({
+          issuer: "https://idp.example.test/realms/main/",
+          authorization_endpoint: AUTHORIZATION_ENDPOINT,
+          token_endpoint: TOKEN_ENDPOINT,
+          jwks_uri: JWKS_URI,
+        });
+      }),
+    );
+    const p = new OIDCProvider({
+      clientId: CLIENT_ID,
+      clientSecret: CLIENT_SECRET,
+      issuerUrl: "https://idp.example.test/realms/main/",
+    });
+    await p.buildAuthUrl("s", REDIRECT_URI);
+    expect(discoveryUrlSeen).toBe(
+      "https://idp.example.test/realms/main/.well-known/openid-configuration",
+    );
+  });
+});

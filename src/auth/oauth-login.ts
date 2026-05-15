@@ -98,7 +98,7 @@ export async function handleAuthLogin(
   setCookies(res, [stateCookie]);
 
   // Build IdP authorize URL with state + S256 challenge.
-  const authUrl = provider.buildAuthUrl(state, redirectUri, codeChallenge);
+  const authUrl = await provider.buildAuthUrl(state, redirectUri, codeChallenge);
 
   res.writeHead(302, { Location: authUrl });
   res.end();

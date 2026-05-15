@@ -4,6 +4,7 @@ import { deriveStateBindingKey } from "./auth/crypto-keys.js";
 import { buildJwtKeyRegistry } from "./auth/jwt-keys.js";
 import { GitHubProvider } from "./auth/providers/github.js";
 import { GoogleProvider } from "./auth/providers/google.js";
+import { OIDCProvider } from "./auth/providers/oidc.js";
 import { ProviderRegistry } from "./auth/providers/registry.js";
 import { MembershipCache } from "./auth/membership-cache.js";
 import { RateLimiter } from "./auth/rate-limit.js";
@@ -137,6 +138,42 @@ export function bootPhase2(opts: Phase2BootOptions): Phase2Bootstrap | null {
       new GoogleProvider({
         clientId: googleClientId,
         clientSecret: googleClientSecret,
+      }),
+    );
+  }
+
+  // T48 (v0.9.0): generic OIDC. Opt-in via env; issuer_url + client_id
+  // + client_secret are all required if ANY is set, same fail-closed
+  // posture as Google. Discovery doc is fetched lazily at first use.
+  const oidcIssuerUrl = process.env.COORDINATOR_OIDC_ISSUER_URL?.trim();
+  const oidcClientId = process.env.COORDINATOR_OIDC_CLIENT_ID?.trim();
+  const oidcClientSecret = process.env.COORDINATOR_OIDC_CLIENT_SECRET?.trim();
+  if (oidcIssuerUrl || oidcClientId || oidcClientSecret) {
+    if (!oidcIssuerUrl || !oidcClientId || !oidcClientSecret) {
+      throw new BootValidationError(
+        "COORDINATOR_OIDC_ISSUER_URL, COORDINATOR_OIDC_CLIENT_ID, and COORDINATOR_OIDC_CLIENT_SECRET must all be set together",
+      );
+    }
+    // Validate issuer URL is http(s) and parseable -- catch typos at
+    // boot rather than at first /auth/login.
+    try {
+      const parsed = new URL(oidcIssuerUrl);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        throw new BootValidationError(
+          `COORDINATOR_OIDC_ISSUER_URL must be http:// or https://, got ${parsed.protocol}`,
+        );
+      }
+    } catch (err) {
+      if (err instanceof BootValidationError) throw err;
+      throw new BootValidationError(
+        `COORDINATOR_OIDC_ISSUER_URL is not a valid URL: ${oidcIssuerUrl}`,
+      );
+    }
+    providers.register(
+      new OIDCProvider({
+        clientId: oidcClientId,
+        clientSecret: oidcClientSecret,
+        issuerUrl: oidcIssuerUrl,
       }),
     );
   }
