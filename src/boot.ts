@@ -78,7 +78,19 @@ export function bootPhase2(opts: Phase2BootOptions): Phase2Bootstrap | null {
 
   // 6. Compose Phase 2 components.
   const stateBindingKey = deriveStateBindingKey(secretBuf);
-  const signingKeys = buildJwtKeyRegistry(secretBuf);
+
+  // Optional prev secret for rotation overlap (v0.8.1+). When set, registers
+  // under kid "hs256-v0" verify-only so existing sessions don't immediately
+  // 401 when JWT_SECRET is rotated. See docs/ops/key-rotation.md.
+  let prevSecretBuf: Buffer | undefined;
+  const prevSecret = process.env.COORDINATOR_JWT_SECRET_PREV;
+  if (prevSecret && prevSecret.trim() !== "") {
+    // Entropy validation: prev MUST also meet the bar (operators should never
+    // rotate FROM a weak secret either — the entropy check applies to both).
+    prevSecretBuf = Buffer.from(prevSecret, "utf8");
+    assertSecretEntropy(prevSecretBuf, MIN_JWT_SECRET_BITS);
+  }
+  const signingKeys = buildJwtKeyRegistry(secretBuf, prevSecretBuf);
   const rateLimiter = new RateLimiter(clock);
   const membershipCache = new MembershipCache(clock);
   const githubProvider = new GitHubProvider({
@@ -113,6 +125,23 @@ export function bootPhase2(opts: Phase2BootOptions): Phase2Bootstrap | null {
     tier: 1,
     metadata: { public_url: publicUrl, github_org: githubOrg },
   });
+
+  // 11b. Emit config.key_rotation audit when a prev secret is configured
+  // (Tier 1; v0.8.1 rotation-overlap support). rotated_at is advisory
+  // only — the audit captures the operator-supplied timestamp for
+  // correlation across deployments. "unset" sentinel when not provided.
+  if (prevSecretBuf) {
+    const rotatedAt =
+      process.env.COORDINATOR_JWT_SECRET_PREV_ROTATED_AT ?? "unset";
+    audit("config.key_rotation", {
+      tier: 1,
+      metadata: {
+        rotated_at: rotatedAt,
+        current_kid: "hs256-v1",
+        prev_kid: "hs256-v0",
+      },
+    });
+  }
 
   return {
     context,

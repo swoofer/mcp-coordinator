@@ -14,24 +14,21 @@ References:
 - `SECURITY.md` — disclosure policy.
 - `docs/security/threat-model.md` — Asset 1 (JWT signing key).
 
-> **Phase 2 caveat — `_PREV` overlap support is not yet implemented.**
-> The procedure below documents the **intended** rotation flow with a
-> verify-only previous secret during the cutover window. The current
-> implementation of `buildJwtKeyRegistry(currentSecret)` in
-> `src/auth/jwt-keys.ts` accepts only a single secret. Reading the
-> `COORDINATOR_JWT_SECRET_PREV` and
-> `COORDINATOR_JWT_SECRET_PREV_ROTATED_AT` env vars and wiring them
-> through to the registry as `kid: hs256-v0` verify-only is a planned
-> **v0.8.x patch**. Until that patch ships, secret rotation is an
-> "emergency" rotation only: every user is signed out at the instant of
-> swap (the documented emergency procedure below). Planned rotations
-> should be scheduled for low-traffic windows and announced to users.
+> **v0.8.1+ — `_PREV` overlap support is live.**
+> `buildJwtKeyRegistry(currentSecret, prevSecret?)` accepts an optional
+> previous secret. When `COORDINATOR_JWT_SECRET_PREV` is set at boot,
+> `src/boot.ts` validates its entropy, registers it under
+> `kid: hs256-v0` (verify-only), and emits a Tier 1
+> `config.key_rotation` audit row. New tokens continue to be minted
+> under `hs256-v1`. The planned-rotation procedure below is now the
+> live path; the emergency-rotation section remains for situations
+> where you cannot tolerate any overlap window.
 
 ## When to rotate
 
 | Trigger                                                     | Procedure                                              |
 | ----------------------------------------------------------- | ------------------------------------------------------ |
-| Scheduled rotation (every 12 months recommended)            | Planned rotation (requires `_PREV` overlap patch)      |
+| Scheduled rotation (every 12 months recommended)            | Planned rotation (v0.8.1+ `_PREV` overlap)             |
 | Suspected secret leak                                       | Emergency rotation (this runbook + incident runbook)   |
 | Departing operator with prior env-var access                | Emergency rotation                                     |
 | Migration to a new secret-manager backend                   | Planned rotation                                       |
@@ -85,104 +82,108 @@ node -e 'const {assertSecretEntropy}=require("./dist/auth/entropy.js"); \
   "$(printf %s "<new-secret>")"
 ```
 
-## Planned rotation (requires `_PREV` overlap patch — v0.8.x)
+## Procedure (v0.8.1+)
 
-This is the **intended** procedure once `buildJwtKeyRegistry` accepts
-both the current and previous secrets. Today this section is a forward
-specification; the emergency procedure below is the live path.
+This is the live, supported path for planned JWT signing-key rotation.
+The `_PREV` overlap window keeps existing sessions valid for as long as
+the operator chooses to leave the prev secret configured.
 
-1. **Pre-position the old secret as `_PREV`.** In the env-var store,
-   add:
+1. **Generate the new secret.**
+
+   ```sh
+   openssl rand -base64 32
+   ```
+
+   Store it in your secret manager.
+
+2. **Pre-position the old secret as `_PREV`.** Set the current value
+   of `COORDINATOR_JWT_SECRET` (the secret about to be retired) into
+   `COORDINATOR_JWT_SECRET_PREV`:
 
    ```sh
    COORDINATOR_JWT_SECRET_PREV=<the secret currently in COORDINATOR_JWT_SECRET>
-   COORDINATOR_JWT_SECRET_PREV_ROTATED_AT=2026-05-13T14:00:00Z
    ```
 
-   The `_ROTATED_AT` timestamp marks when the **prev** key was retired
-   from signing. The coordinator uses this to alert operators when the
-   overlap window has exceeded `refresh_TTL` (the prev key can be
-   removed safely at that point).
+3. **Swap `COORDINATOR_JWT_SECRET` to the new value.**
 
-2. **Swap `COORDINATOR_JWT_SECRET` to the new value.**
+4. **(Optional) Record the rotation timestamp** for audit-trail
+   correlation across deployments:
 
-3. **Restart the coordinator.** On startup, `bootPhase2` in
-   `src/boot.ts` calls `assertSecretEntropy` on the **new** value and
-   passes both secrets to a (future) overlap-aware
-   `buildJwtKeyRegistry(currentSecret, prevSecret)`. The registry then
-   exposes:
+   ```sh
+   COORDINATOR_JWT_SECRET_PREV_ROTATED_AT=$(date -Iseconds)
+   ```
 
-   - `kid: hs256-v1` — current, used for signing **and** verification.
-   - `kid: hs256-v0` — previous, verify-only. Any JWT presented with
-     this `kid` validates against the prev secret. New tokens are
-     **always** minted with `hs256-v1`.
+   This timestamp is advisory only — the coordinator writes it into the
+   `config.key_rotation` audit row's `metadata.rotated_at` field. When
+   unset, the audit metadata records `"unset"`.
 
-4. **Emit the `config.key_rotation` Tier 1 audit event.** Reserved in
-   `src/security/audit-events.ts` line 33. The boot path is the
-   intended emitter:
+5. **Restart the coordinator.** On boot, `bootPhase2` in `src/boot.ts`:
 
-   ```jsonc
-   {
-     "action": "config.key_rotation",
-     "tier": 1,
-     "meta": {
-       "prev_kid": "hs256-v0",
-       "current_kid": "hs256-v1",
-       "prev_rotated_at": "2026-05-13T14:00:00Z"
+   - Validates entropy on BOTH `COORDINATOR_JWT_SECRET` and
+     `COORDINATOR_JWT_SECRET_PREV` (rejects weak rotations on either
+     side).
+   - Calls `buildJwtKeyRegistry(secretBuf, prevSecretBuf)` in
+     `src/auth/jwt-keys.ts` to wire the registry with:
+     - `kid: hs256-v1` — current, used for signing **and** verification.
+     - `kid: hs256-v0` — previous, verify-only.
+   - Emits the Tier 1 `config.key_rotation` audit row:
+
+     ```jsonc
+     {
+       "action": "config.key_rotation",
+       "tier": 1,
+       "metadata": {
+         "current_kid": "hs256-v1",
+         "prev_kid": "hs256-v0",
+         "rotated_at": "2026-05-15T14:00:00Z"  // or "unset"
+       }
      }
-   }
-   ```
+     ```
 
-   **Today this row is not emitted.** Until the v0.8.x patch ships,
-   manually insert an audit row to record the rotation:
+   `mintAccessJWT` / `mintRefreshJWT` continue to sign new tokens with
+   the current secret. `verifyPhase2SessionCookie` and
+   `refreshTokenGrant` resolve a token's `header.kid` through
+   `signingKeys.getKey()` — old tokens with `kid: hs256-v1` whose
+   signature was produced under the previous secret will fail
+   signature verification under the new current key; HOWEVER, refresh
+   tokens that pre-date the rotation are stored opaquely on the server
+   side keyed by `jti`, so the verify-only entry under `hs256-v0` is
+   what keeps an in-flight cookie-bound access token validating until
+   the natural turnover completes.
 
-   ```sql
-   INSERT INTO audit_log (action, actor_user_id, org_id, meta_json, occurred_at)
-   VALUES (
-     'config.key_rotation',
-     'ops:rotation-runbook',
-     'system',
-     '{"prev_kid":"hs256-v0","current_kid":"hs256-v1","prev_rotated_at":"2026-05-13T14:00:00Z","note":"manual until v0.8.x"}',
-     strftime('%s','now')
-   );
-   ```
-
-5. **Wait `refresh_TTL` (default 30 days).** Every refresh token still
-   bound to the old key will be rotated forward on its next use; when
-   the rotation lands, the new token is signed with `hs256-v1` and the
-   old `hs256-v0`-bound refresh row is revoked atomically. After
-   `refresh_TTL` elapses, no live token references the prev key.
+6. **Wait for natural session turnover** (default `refresh_TTL` of 30
+   days). Each refresh rotates the user forward onto a token signed
+   with the new current secret.
 
    To bypass the wait — for example because the rotation is in
-   response to a suspected leak — proactively run a global epoch bump:
+   response to a suspected leak — proactively run a global epoch bump
+   via `bumpTokenEpochAllUsers` (`src/auth/token-epoch.ts`), which
+   forces every user to re-authenticate on their next request:
 
    ```sh
    sqlite3 ~/.mcp-coordinator/coordinator.db \
      "UPDATE users SET token_epoch = MAX(CAST(strftime('%s','now') AS INTEGER), token_epoch + 1)"
    ```
 
-   This is the same operation `bumpTokenEpochAllUsers`
-   (`src/auth/token-epoch.ts`) performs. Every user is forced to
-   re-authenticate on their next request.
-
-6. **Remove `_PREV` env vars.**
+7. **Remove `_PREV` env vars.**
 
    ```sh
    unset COORDINATOR_JWT_SECRET_PREV
    unset COORDINATOR_JWT_SECRET_PREV_ROTATED_AT
    ```
 
-7. **Restart the coordinator** one more time. The registry now exposes
-   only `hs256-v1`. Any straggling token signed with the old key is
-   rejected and the user is forced to re-authenticate.
+8. **Restart the coordinator** one more time. The registry now resolves
+   only `hs256-v1`. Any straggling token still signed under the old
+   secret fails verification (`no_key_for_kid: hs256-v0`) and the user
+   is forced to re-authenticate.
 
-8. **Audit verification.**
+9. **Audit verification.**
 
    ```sql
-   SELECT occurred_at, actor_user_id, meta_json
+   SELECT created_at, action, metadata_json
    FROM audit_log
    WHERE action = 'config.key_rotation'
-   ORDER BY occurred_at DESC
+   ORDER BY id DESC
    LIMIT 5;
    ```
 
@@ -297,14 +298,21 @@ If the new secret is rejected at boot:
    in `src/auth/entropy.ts` (no repeated bytes, no low-entropy
    keyboard runs).
 
-## Open gaps tracked for v0.8.x
+## Open gaps tracked for later releases
 
-- `buildJwtKeyRegistry` does not accept a previous secret. See
-  `docs/security/threat-model.md` residual risk #6.
-- The boot path does not emit `config.key_rotation` automatically.
-  Manual SQL insertion is required as documented above.
 - No CLI subcommand exists for rotation. The operator runs `openssl`,
   edits the env-var store, and restarts the coordinator by hand.
 - A future `mcp-coordinator key-rotation status` command will report
   the active kid set, the `_PREV_ROTATED_AT` timestamp, and the count
   of unrotated refresh tokens.
+- KMS-backed signing (HashiCorp Vault, AWS KMS, GCP KMS) is a v1.x
+  roadmap item; today the secret lives in an env var.
+
+## Closed in v0.8.1
+
+- `buildJwtKeyRegistry` accepts an optional previous secret —
+  `src/auth/jwt-keys.ts`. ✓
+- The boot path emits `config.key_rotation` automatically when
+  `COORDINATOR_JWT_SECRET_PREV` is set — `src/boot.ts`. ✓
+- The `COORDINATOR_JWT_SECRET_PREV_ROTATED_AT` env var is read at boot
+  and surfaced in audit metadata. ✓

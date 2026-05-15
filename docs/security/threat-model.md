@@ -443,14 +443,15 @@ that compensate.
    HS256 because the kid registry (`src/auth/jwt-keys.ts`) and rotation
    procedure are simpler to verify in-tree.
 
-6. **Refresh-key overlap not yet implemented** — `buildJwtKeyRegistry`
-   in `src/auth/jwt-keys.ts` accepts only the current secret. The
-   `_PREV` overlap support documented in `docs/ops/key-rotation.md` is
-   a planned v0.8.x patch. Until it ships, JWT key rotation forces all
-   users to re-authenticate at the moment of secret swap (acceptable
-   for emergency rotation, suboptimal for planned rotation). The
-   `config.key_rotation` Tier 1 audit row is reserved
-   (`src/security/audit-events.ts` line 33) but not yet emitted.
+6. **JWT signing key rotation** — addressed in v0.8.1 via prev-secret
+   overlap support (`COORDINATOR_JWT_SECRET_PREV`). Old kid `hs256-v0`
+   remains verify-only during the overlap window (operator-controlled
+   duration). The Tier 1 `config.key_rotation` audit row is emitted by
+   `src/boot.ts` when prev is configured. Reference:
+   `docs/ops/key-rotation.md`. The remaining gap is operational
+   convenience (no CLI helper, no automated `_PREV_ROTATED_AT` alerting
+   when overlap exceeds `refresh_TTL`) — tracked for a future minor
+   release rather than as a security residual risk.
 
 7. **No MFA at the coordinator layer** — the coordinator delegates
    identity to GitHub OAuth and does not enforce MFA itself. Operators
