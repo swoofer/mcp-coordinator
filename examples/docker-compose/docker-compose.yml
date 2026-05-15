@@ -1,0 +1,39 @@
+version: "3.9"
+
+services:
+  coordinator:
+    image: node:22-alpine
+    working_dir: /app
+    command: sh -c "npx mcp-coordinator@latest server start"
+    env_file: .env
+    volumes:
+      - coordinator-data:/app/data
+    networks: [internal]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:3000/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks: [internal]
+    depends_on: [coordinator]
+    restart: unless-stopped
+
+volumes:
+  coordinator-data:
+  caddy-data:
+  caddy-config:
+
+networks:
+  internal:
+    driver: bridge
