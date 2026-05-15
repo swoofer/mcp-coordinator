@@ -1,0 +1,24 @@
+{
+  "name": "@mcp-coordinator/sdk-js",
+  "version": "0.8.0",
+  "private": true,
+  "description": "TypeScript SDK for mcp-coordinator Phase 2 OAuth API (minimal)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run"
+  },
+  "engines": { "node": ">=20" },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.0"
+  }
+}

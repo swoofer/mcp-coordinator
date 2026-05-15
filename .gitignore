@@ -17,3 +17,5 @@ scan.pdf
 .claude/
 test-results.json
 docs/index.html.backup-*
+sdk/dist
+sdk/node_modules
