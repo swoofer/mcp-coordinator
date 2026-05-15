@@ -9,9 +9,12 @@ This is the **T40 minimal** release. The package is `"private": true`; it is
 npm install file:./path/to/mcp-coordinator/sdk
 ```
 
-A future T40b release (Phase 5 / v0.8.x) will publish a full-featured client
-to npm with keychain integration, file-based token persistence, proactive
-refresh jitter, and a single-flight refresh lock. See [Caveats](#caveats).
+T40b (this release, v0.8.x) adds **file-based token persistence**,
+**proactive refresh with jitter**, and a **single-flight refresh lock**
+for multi-process CLI safety. See
+[Persistent storage + proactive refresh](#persistent-storage--proactive-refresh-v08x).
+A future T40c release will add OS keychain integration (`keytar`) and
+Windows DPAPI for the token file. See [Caveats](#caveats).
 
 ## Install
 
@@ -165,24 +168,67 @@ try {
 }
 ```
 
+## Persistent storage + proactive refresh (v0.8.x)
+
+By default the SDK keeps tokens in memory only. For long-lived CLI tools
+and MCP servers, configure persistent storage and proactive refresh:
+
+```ts
+import {
+  McpCoordinatorClient,
+  FileTokenStore,
+  ProactiveRefresh,
+} from "@mcp-coordinator/sdk-js";
+
+const client = new McpCoordinatorClient({
+  baseUrl: "https://coordinator.example.com",
+  store: new FileTokenStore(), // ~/.mcp-coordinator/tokens.json (chmod 0600)
+  refreshStrategy: new ProactiveRefresh(120, 30), // refresh at T-2min +/- 30s
+  refreshLockPath: "~/.mcp-coordinator/refresh.lock", // multi-process safe
+});
+
+await client.loadFromStore(); // restore tokens from disk on startup
+// ... use client normally ...
+client.dispose(); // cancel proactive-refresh timer on app shutdown
+```
+
+`FileTokenStore` writes the JSON token set with `chmod 0600` on POSIX
+(no Windows DPAPI yet -- that's T40c). The parent directory is created
+with `chmod 0700` on POSIX. Writes are atomic via write-to-tmp + rename
+to prevent partial writes on crash.
+
+`ProactiveRefresh(leadSeconds, jitterSeconds)` schedules a refresh at
+`accessExpiresAt - leadSeconds +/- jitterSeconds`. The jitter prevents
+thundering-herd refreshes when many CLI instances share a vendored
+`tokens.json` and hit their first refresh simultaneously.
+
+`refreshLockPath` enables a single-flight lock around the refresh call
+(atomic `O_EXCL` file create + stale-lock recovery). After acquiring
+the lock, the SDK re-reads the store and adopts a freshly-refreshed
+TokenSet if another process beat it to the punch -- avoiding redundant
+refresh round-trips and protecting against double-spending the refresh
+token in racey CLI matrices.
+
+A `MemoryTokenStore` is also exported for tests and ephemeral CLI runs:
+
+```ts
+import { MemoryTokenStore } from "@mcp-coordinator/sdk-js";
+const store = new MemoryTokenStore();
+```
+
 ## Caveats
 
-This is the **minimal** SDK. The following features are deferred to T40b
-(Phase 5 / v0.8.x):
+The following features are deferred to T40c (a future release):
 
-- **Keychain integration.** Token persistence is in-memory only. Consumers
-  must serialize `client.getTokens()` to their own store (file, OS keychain
-  via `keytar`, etc.).
-- **Proactive refresh jitter.** The minimal SDK refreshes at T-60s with no
-  randomization; fleets of concurrent clients could stampede.
-- **Single-flight refresh lock.** No OS-level lock means two concurrent
-  refresh calls from the same machine may both spend the refresh token.
+- **Keychain integration.** `keytar` / OS keychain backend.
+- **Windows DPAPI.** Encrypted-at-rest token file on Windows.
 - **Discovery doc 24h cache.** Not implemented.
 - **Named-profile TOML config.** Not implemented; pass `baseUrl` directly.
+- **Sliding-token-life heuristics.** No adaptive lead based on observed
+  drift between successive refreshes.
 
-Use this SDK for in-repo integration tests or as a starting point for your
-own client. For production agents, wait for T40b or extend the client
-yourself.
+For shared filesystems / multi-user systems, prefer `MemoryTokenStore`
+plus an OS-keychain wrapper of your own until T40c lands.
 
 ## License
 
