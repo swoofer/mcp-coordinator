@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import crypto from "node:crypto";
 import type { AuthHandlerContext } from "./context.js";
-import type { ExchangeCodeResult } from "./providers/types.js";
+import type { ExchangeCodeResult, IdPProvider } from "./providers/types.js";
 import { IdPTokenRevoked, IdPTransientError } from "./providers/errors.js";
 import { consumeOAuthState, inspectOAuthState } from "./oauth-state.js";
 import { parseCookies } from "./cookies.js";
@@ -138,21 +138,29 @@ export async function handleOAuthCallback(
     }
   }
 
-  // Mix-up defense (V4)
-  if (row.provider !== "github") {
+  // T46: mix-up defense (V4) — verify the state's provider is one we
+  // currently have registered. Unknown name → 400 + Tier 1 audit. The
+  // observed_provider is kept in the audit so operators see what arrived;
+  // the registered names list bounds the expected side without leaking
+  // anything sensitive.
+  const provider = ctx.providers.get(row.provider);
+  if (!provider) {
     audit("auth.state.mixup", {
       tier: 1,
-      metadata: { observed_provider: row.provider, expected_provider: "github" },
+      metadata: {
+        observed_provider: row.provider,
+        registered_providers: ctx.providers.names(),
+      },
     });
     res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
-    res.end(JSON.stringify(appError("PROVIDER_MISMATCH", "State does not match the expected provider")));
+    res.end(JSON.stringify(appError("PROVIDER_MISMATCH", "State does not match a registered provider")));
     return;
   }
 
-  // Exchange code with GitHub
+  // Exchange code with the resolved IdP
   let exchangeResult: ExchangeCodeResult;
   try {
-    exchangeResult = await ctx.githubProvider.exchangeCode(
+    exchangeResult = await provider.exchangeCode(
       code,
       row.redirect_uri,
       row.code_verifier,
@@ -177,7 +185,7 @@ export async function handleOAuthCallback(
 
   const ip = req.socket?.remoteAddress ?? null;
   const userAgent = (req.headers["user-agent"] as string | undefined) ?? null;
-  await finalizeBrowserOAuth(res, ctx, exchangeResult, ip, userAgent);
+  await finalizeBrowserOAuth(res, ctx, provider, exchangeResult, ip, userAgent);
 }
 
 /**
@@ -225,6 +233,7 @@ class ProvisioningDeniedError extends Error {
 async function finalizeBrowserOAuth(
   res: ServerResponse,
   ctx: AuthHandlerContext,
+  provider: IdPProvider,
   exchange: ExchangeCodeResult,
   ip: string | null,
   userAgent: string | null,
@@ -259,7 +268,7 @@ async function finalizeBrowserOAuth(
   try {
     memberships = await ctx.membershipCache.getMemberships(
       exchange.user.idp_user_id,
-      ctx.githubProvider,
+      provider,
       exchange.accessToken,
     );
   } catch (err) {
@@ -321,7 +330,7 @@ async function finalizeBrowserOAuth(
           .prepare(
             "SELECT id FROM users WHERE idp_provider = ? AND idp_user_id = ?",
           )
-          .get("github", exchange.user.idp_user_id);
+          .get(provider.name, exchange.user.idp_user_id);
         if (!existing) {
           throw new ProvisioningDeniedError("USER_NOT_PROVISIONED");
         }
@@ -335,6 +344,7 @@ async function finalizeBrowserOAuth(
           org_id: allowlistMatch.org_id,
           org_name: allowlistMatch.org_name,
         },
+        provider.name,
       );
     });
     provisionResult = tx.immediate();

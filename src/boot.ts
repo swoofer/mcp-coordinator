@@ -131,7 +131,6 @@ export function bootPhase2(opts: Phase2BootOptions): Phase2Bootstrap | null {
   const context: AuthHandlerContext = {
     db,
     clock,
-    githubProvider,
     providers,
     rateLimiter,
     publicUrl,

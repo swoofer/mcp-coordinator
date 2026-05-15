@@ -109,10 +109,29 @@ async function handleAuthorizationCodeGrant(
     return;
   }
 
+  // T46: resolve the IdP. The CLI auth-code grant predates the picker;
+  // an explicit provider hint (body.provider) wins, otherwise fall back
+  // to the registry default. Unknown name → 400 invalid_request.
+  const providerName = body.provider;
+  const provider = providerName
+    ? ctx.providers.get(providerName)
+    : ctx.providers.getDefault();
+  if (!provider) {
+    emitOAuthError(
+      res,
+      400,
+      "invalid_request",
+      providerName
+        ? `Unknown provider: ${providerName}`
+        : "No IdP provider is registered",
+    );
+    return;
+  }
+
   // 1. Exchange the authorization code at the IdP.
   let exchange;
   try {
-    exchange = await ctx.githubProvider.exchangeCode(
+    exchange = await provider.exchangeCode(
       code,
       redirectUri,
       codeVerifier,
@@ -148,7 +167,7 @@ async function handleAuthorizationCodeGrant(
   try {
     memberships = await ctx.membershipCache.getMemberships(
       exchange.user.idp_user_id,
-      ctx.githubProvider,
+      provider,
       exchange.accessToken,
     );
   } catch (err) {
@@ -192,10 +211,17 @@ async function handleAuthorizationCodeGrant(
 
   // 3. Find-or-create user inside a TX.
   const tx = ctx.db.transaction(() => {
-    return provisionUser(ctx.db, ctx.clock, exchange.user, exchange.accessToken, {
-      org_id: allowlistMatch.org_id,
-      org_name: allowlistMatch.org_name,
-    });
+    return provisionUser(
+      ctx.db,
+      ctx.clock,
+      exchange.user,
+      exchange.accessToken,
+      {
+        org_id: allowlistMatch.org_id,
+        org_name: allowlistMatch.org_name,
+      },
+      provider.name,
+    );
   });
   const provisionResult = tx();
 

@@ -62,17 +62,27 @@ export async function handleAuthLogin(
     return;
   }
 
+  // T46: resolve provider via the registry. Phase 2 always uses the
+  // implicit default (GitHub). Future picker UI (T48) will pass an
+  // explicit ?provider= query param.
+  const provider = ctx.providers.getDefault();
+  if (!provider) {
+    res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify(appError("NO_IDP_CONFIGURED", "No IdP provider is registered")));
+    return;
+  }
+
   // PKCE — generate verifier (256-bit, base64url) + S256 challenge.
   const codeVerifier = generateVerifier();
   const codeChallenge = computeChallenge(codeVerifier);
 
   // Persist state + verifier. Normalize trailing slash on publicUrl so
-  // the redirect_uri sent to GitHub is canonical (GitHub matches exactly).
+  // the redirect_uri sent to the IdP is canonical (GitHub/Google match exactly).
   const redirectUri = `${ctx.publicUrl.replace(/\/$/, "")}/api/auth/oauth/callback`;
   const { state } = createOAuthStateWithVerifier(
     ctx.db,
     ctx.clock,
-    "github",
+    provider.name,
     redirectUri,
     codeVerifier,
   );
@@ -87,8 +97,8 @@ export async function handleAuthLogin(
   });
   setCookies(res, [stateCookie]);
 
-  // Build GitHub authorize URL with state + S256 challenge.
-  const authUrl = ctx.githubProvider.buildAuthUrl(state, redirectUri, codeChallenge);
+  // Build IdP authorize URL with state + S256 challenge.
+  const authUrl = provider.buildAuthUrl(state, redirectUri, codeChallenge);
 
   res.writeHead(302, { Location: authUrl });
   res.end();

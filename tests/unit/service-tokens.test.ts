@@ -130,7 +130,6 @@ function makeCtx(
   return {
     db: getDb() as unknown as AuthHandlerContext["db"],
     clock,
-    githubProvider: stubProvider,
     providers: singleProviderRegistry(stubProvider),
     rateLimiter,
     publicUrl: ISSUER,

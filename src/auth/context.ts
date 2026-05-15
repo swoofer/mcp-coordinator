@@ -2,36 +2,26 @@ import type Database from "better-sqlite3";
 import type { Clock } from "./clock.js";
 import type { JwtKeyRegistry } from "./jwt-keys.js";
 import type { MembershipCache } from "./membership-cache.js";
-import type { IdPProvider } from "./providers/types.js";
 import type { ProviderRegistry } from "./providers/registry.js";
 import type { RateLimiter } from "./rate-limit.js";
 
 /**
  * Phase 2 auth handler dependencies. Composed at boot (T29) and passed
- * to every dispatchAuthRoutes call from serve-http.ts. Future tasks
- * extend this with: providers registry (T05), audit queue (T11b),
- * rate limiter (T12), membership cache (T04), JWT key registry (T08b),
- * metrics registry (T37), logger (T36), etc.
+ * to every dispatchAuthRoutes call from serve-http.ts.
  *
- * T15 adds the Phase C OAuth-init dependencies (githubProvider,
- * rateLimiter, publicUrl, stateBindingKey). T16helpers adds signingKeys
- * (JWT key registry) used by mintTokenPair in the shared finalize path.
- * T29 boot composes; tests stub.
+ * T15 added the Phase C OAuth-init dependencies (rateLimiter,
+ * publicUrl, stateBindingKey). T16helpers added signingKeys (JWT key
+ * registry) used by mintTokenPair. T45 added the ProviderRegistry.
+ * T46 dropped the legacy single-provider `githubProvider` field; all
+ * handlers now resolve their IdP through `providers`.
  */
 export interface AuthHandlerContext {
   db: Database.Database;
   clock: Clock;
-  /** GitHub IdP — Phase 2 single-provider compatibility pointer. T45
-   *  (v0.9.0) added the registry below; this field remains a convenience
-   *  alias for the GitHub provider so existing handlers keep compiling
-   *  while T46 migrates them to `providers.get(state.provider)`. After
-   *  T46 lands this field is removed. New code should NOT add new
-   *  references to this field. */
-  githubProvider: IdPProvider;
   /** IdP provider registry (T45). Always non-null; boot registers at
-   *  least GitHubProvider. Handlers should use this rather than
-   *  `githubProvider` so multi-IdP selection (T46+) works without
-   *  further refactoring. */
+   *  least one provider. Handlers resolve the active IdP via
+   *  `providers.get(name)` (callback uses state.provider, refresh uses
+   *  user.idp_provider, login uses `providers.getDefault()`). */
   providers: ProviderRegistry;
   rateLimiter: RateLimiter;
   /** Public URL for redirect URI construction. From COORDINATOR_PUBLIC_URL.

@@ -97,7 +97,6 @@ function makeCtx(overrides: Partial<AuthHandlerContext> = {}): AuthHandlerContex
   return {
     db: getDb() as unknown as AuthHandlerContext["db"],
     clock,
-    githubProvider: defaultProvider,
     providers: singleProviderRegistry(defaultProvider),
     rateLimiter,
     publicUrl: ISSUER,

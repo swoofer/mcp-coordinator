@@ -116,7 +116,6 @@ function makeCtx(overrides: Partial<AuthHandlerContext> = {}): AuthHandlerContex
   return {
     db: getDb() as unknown as AuthHandlerContext["db"],
     clock,
-    githubProvider: defaultProvider,
     providers: singleProviderRegistry(defaultProvider),
     rateLimiter,
     publicUrl: "http://localhost:3000",
@@ -449,7 +448,7 @@ describe("finalizeBrowserOAuthMint — end-to-end via handleOAuthCallback", () =
       listMemberships: async () => ["acme"],
     };
 
-    const ctx = makeCtx({ githubProvider: provider, providers: singleProviderRegistry(provider) });
+    const ctx = makeCtx({ providers: singleProviderRegistry(provider) });
 
     const res = mockResponse();
     const req = {
