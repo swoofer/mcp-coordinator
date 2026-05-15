@@ -2,13 +2,14 @@
 
 # mcp-coordinator
 
-**Embedded MQTT broker + MCP server for multi-agent coordination. Zero conflicts, everyone aligned.**
+**Embedded MQTT broker + MCP server for multi-agent coordination. Zero conflicts, everyone aligned. Optional OAuth 2.1 + device flow (Phase 2, v0.8.0).**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![npm](https://img.shields.io/npm/v/mcp-coordinator.svg)](https://www.npmjs.com/package/mcp-coordinator)
 [![Tests](https://github.com/swoofer/mcp-coordinator/actions/workflows/test.yml/badge.svg)](https://github.com/swoofer/mcp-coordinator/actions)
+[![E2E](https://github.com/swoofer/mcp-coordinator/actions/workflows/e2e.yml/badge.svg)](https://github.com/swoofer/mcp-coordinator/actions/workflows/e2e.yml)
 
-[Getting started](#getting-started) · [Problem](#the-problem) · [How It Works](#how-it-works) · [MQTT Layer](#mqtt-communication-layer) · [Scoring](#impact-scoring) · [MCP Tools](#mcp-tools) · [CLI](#cli) · [Standalone use](#standalone-use--without-an-orchestrator) · [Quota](#anthropic-quota-pre-flight) · [Dashboard](#dashboard) · [Config](#configuration) · [Auth](#authentication)
+[Getting started](#getting-started) · [Problem](#the-problem) · [How It Works](#how-it-works) · [MQTT Layer](#mqtt-communication-layer) · [Scoring](#impact-scoring) · [MCP Tools](#mcp-tools) · [CLI](#cli) · [Standalone use](#standalone-use--without-an-orchestrator) · [Quota](#anthropic-quota-pre-flight) · [Dashboard](#dashboard) · [Config](#configuration) · [Auth](#authentication) · [Phase 2 OAuth](#phase-2-v080--full-oauth-flow) · [SDK](#sdk)
 
 </div>
 
@@ -166,6 +167,106 @@ Scores are categorized into three outcomes:
 
 ---
 
+## What's New in v0.8.0 (Phase 2 OAuth)
+
+Released 2026-05-14. Feature-flagged behind `COORDINATOR_OAUTH_ENABLED=true`. Phase 1 deployments are byte-identical when the flag is unset.
+
+### A. OAuth 2.1 + device flow (RFC 6749 + RFC 8628)
+
+- `GET /auth/login` initiates the browser flow with PKCE S256 + HMAC-bound state cookie
+- `GET /api/auth/oauth/callback` performs state CAS + provider mix-up defense + IdP code exchange + user provisioning inside a transaction
+- `POST /api/auth/oauth/token` unified grant endpoint (authorization_code, refresh_token, device_code per RFC 8628)
+- `POST /api/auth/oauth/device_authorization` for CLI / TV / IoT device flow
+- 5 HTML pages: /auth/login, /auth/device, /auth/device/confirm, /auth/device/approve POST, /auth/success
+- See [`docs/openapi.yaml`](./docs/openapi.yaml) for the full API spec
+
+### B. Refresh-token rotation with stolen-token detection (V3 §B-NEW-2)
+
+- Each refresh issues a new family member (`family_id`) with `parent_jti` lineage
+- 10-second grace window allows legitimate retries with matching fingerprint
+- Mismatched fingerprint within grace → atomic `replay_count++`; family revoked at threshold 3
+- Hard reuse (rotation > 10s old) → immediate family revoke + `auth.refresh.chain_revoked` Tier 1 audit
+
+### C. Cookie sessions (Scenario 5)
+
+- `__Host-coordinator_session` cookie + `__Host-coordinator_csrf` (double-submit pattern)
+- `authenticateRequest` now handles 5 scenarios: legacy fallback, no-auth, v0.6 legacy JWT reject, Bearer JWT, cookie session
+- `POST /api/auth/logout` (revoke current refresh), `/logout-all` (bump `token_epoch` → all sessions invalidated instantly), `/revoke` (RFC 7009)
+- `GET /api/auth/me` userinfo helper
+
+### D. Service tokens (V4 §5.5)
+
+- Admin-issued long-lived JWTs for CI/CD: `mcp-coordinator service-token issue --user X --org Y --scope read --ttl 30d --reason "..."`
+- 90d hardcoded TTL ceiling; reason ≥10 chars required; admin-only issuance
+- `family_id` format `service:<uuid>` distinguishes from user refresh families
+- DB-lookup verification on every request (admin force-revoke is immediate)
+- `list` + `revoke` CLI verbs; `auth.service_token.{issued,revoked,used}` audit events
+
+### E. Audit pipeline (two-tier durability per V3 NR13)
+
+- 35 audit event types catalogued in `src/security/audit-events.ts`
+- Tier 1 (sync direct INSERT, never drop): security-critical events (refresh.chain_revoked, login.locked, token.revoked, admin.bootstrapped, ...)
+- Tier 2 (async batched queue, may drop under pressure): high-volume operational (login.success, refresh.rotated, device.code_issued, ...)
+- AsyncLocalStorage-based actor + request_id propagation — no explicit threading
+- Audit queue capacity 10K with backpressure → `auth.shutdown.audit_loss` row on drop
+
+### F. Operational
+
+- `bootPhase2` composes ServerContext at boot: env validation, HKDF key derivation, restore detection (NR12), feature-flag gate
+- Sweeper prunes 6 tables on 60s cadence (oauth_state, device_auth_requests, refresh_tokens × 2 retention buckets, audit_log × 2 tiers) with adaptive chained passes + 5-failure circuit breaker
+- Rate limiter + login lockout (5 failures / 15min → 15min lockout per V3 §B-NEW-8) in-memory token bucket
+- IdP membership cache with 60s positive TTL + 10min stale-on-error window (V3 §B-NEW-5)
+
+### G. Observability
+
+- 29 new Prometheus metrics in `src/observability/metrics.ts` (auth activity, refresh chain, device flow, IdP, audit queue, sweeper, rate limit, request duration)
+- `/metrics/auth` Prometheus scrape endpoint (localhost-only + optional Bearer auth)
+- `/healthz` (liveness) + `/health/ready` (readiness — DB + sweeper circuit + audit queue depth + draining flag)
+- Pino logger with 16 redact paths per V4 §11.3
+- Grafana dashboard JSON ([`docs/ops/dashboards/coordinator.json`](./docs/ops/dashboards/coordinator.json)) + Prometheus alert rules YAML ([`docs/ops/alerts/coordinator-alerts.yaml`](./docs/ops/alerts/coordinator-alerts.yaml))
+
+### H. CLI
+
+- `mcp-coordinator init phase2` interactive wizard for first-time Phase 2 setup
+- `mcp-coordinator doctor --phase2` runs 8 Phase 2 health probes (DB schema version, JWT_SECRET entropy, discovery doc reachability, etc.)
+- `mcp-coordinator service-token {issue,list,revoke}` for admin token management
+
+### I. Testing
+
+- **1555 tests passing** across 116 test files (up from 392 at v0.5.0)
+- 100% branch coverage enforced via vitest per-file thresholds on every security-critical module (csrf, token-epoch, oauth-state, jwt-mint, membership-cache, refresh-rotation, service-tokens, github provider, etc.)
+- Playwright E2E suite (`tests/e2e/`) — 5 scenarios in ~12s, zero flakes over 5 runs
+- D1-D10 cross-cutting test matrix (`tests/integration/d1-d10-matrix.test.ts`) — 20 cases proving component-interaction seams
+- Phase 1 backcompat suite (`tests/backcompat/`) — 31 cases proving `COORDINATOR_OAUTH_ENABLED` unset = byte-identical Phase 1
+- Cross-tenant isolation suite — 22 cases proving multi-tenant data boundary
+
+### J. SDK (`sdk/`)
+
+- TypeScript client `@mcp-coordinator/sdk-js` in repo workspace (not yet published)
+- `McpCoordinatorClient` with verbs: `whoami`, `logout`, `logoutAll`, `revoke`, `refresh`, `deviceCodeStart`, `deviceCodePoll`
+- 14 typed error subclasses mapping to the OpenAPI error envelope
+- `FileTokenStore` persists tokens to `~/.mcp-coordinator/tokens.json` with `chmod 0600` (POSIX) + atomic write-rename
+- `ProactiveRefresh` schedules refresh at `accessExpiresAt - 120s ± 30s jitter`
+- Single-flight refresh lock via atomic O_EXCL file lock (multi-process CLI safety)
+- See [`sdk/README.md`](./sdk/README.md) for usage
+
+### Documentation
+
+23 new doc files under `docs/` and `examples/`:
+
+- Operator: [`docs/onboarding-self-host.md`](./docs/onboarding-self-host.md), [`docs/ops/upgrade-phase1-to-phase2.md`](./docs/ops/upgrade-phase1-to-phase2.md), 8 ops runbooks
+- Security: [`docs/security/threat-model.md`](./docs/security/threat-model.md), 3 incident runbooks, [`SECURITY.md`](./SECURITY.md), `.well-known/security.txt`
+- Compliance: [`docs/gdpr.md`](./docs/gdpr.md), [`docs/idp-providers.md`](./docs/idp-providers.md)
+- API: [`docs/openapi.yaml`](./docs/openapi.yaml) (OpenAPI 3.1, 17 endpoints, 13 schemas)
+- Examples: `examples/{docker-compose,nginx-reverse-proxy,ghes-config,custom-idp-provider}/`
+
+### v0.8.1 follow-up (2026-05-15)
+
+- JWT key rotation overlap (prev-secret support per [`docs/ops/key-rotation.md`](./docs/ops/key-rotation.md))
+- GHES env vars wiring (`COORDINATOR_GITHUB_AUTH_BASE_URL` + `_API_BASE_URL`)
+
+---
+
 ## What's New in v0.5.0
 
 Released 2026-05-10.
@@ -216,24 +317,31 @@ Released 2026-05-10.
 
 ## Roadmap
 
-### v0.5.0 (shipped 2026-05-10)
+### v0.8.0 (shipped 2026-05-14)
 
-Working-files in-flight tracking, tree-sitter symbol annotations across 15 languages, git co-change Layer 4 scoring, dashboard Conflict signals panel, schema downgrade guard, 5 new Prometheus metrics. 392 tests across 35+ files.
+Phase 2 OAuth 2.1 + RFC 8628 device flow + cookie sessions + service tokens + audit pipeline + sweeper + 29 Prometheus metrics + reference SDK. Feature-flagged behind `COORDINATOR_OAUTH_ENABLED=true`; Phase 1 deployments byte-identical when unset. 1555 tests passing across 116 files.
 
 See [CHANGELOG.md](./CHANGELOG.md) for the full list.
 
-### Next: LLM Reasoner (v0.6 — opt-in, gated)
+### v0.8.1 (shipped 2026-05-15)
 
-Design lives in `docs/superpowers/specs/2026-05-10-v0.6-semantic-conflict-design.md` section "v0.6.1 — LLM Reasoner OPT-IN, gray-zone".
+JWT key rotation overlap (prev-secret support) + GHES env vars wiring.
 
-- Default OFF — zero impact on users without an Anthropic API key.
-- Activates only on gray-zone scores [30, 89] (~5–10% of announces in current telemetry).
-- `COORDINATOR_REASONER=claude` env gate; `reasoner_cache` table + singleflight dedup.
-- Kill criterion: verdict change < 25% / p50 latency > 100 ms / cost > $10/dev/month.
-- **Implementation plan will be drafted once v0.5.0 has 1 month of gray-zone telemetry to validate ROI.**
+### v0.5.0 (shipped 2026-05-10)
+
+Working-files in-flight tracking, tree-sitter symbol annotations across 15 languages, git co-change Layer 4 scoring, dashboard Conflict signals panel, schema downgrade guard, 5 new Prometheus metrics.
+
+### Planned
+
+- **v0.8.x** — Performance bench + chaos suite (T33), Grafana dashboards (T37b is shipped but iterative refinement), GitHub App flow (vs OAuth App), Postgres backend for SOC 2 Type II regulated workloads (Phase 4).
+- **v0.9.0** — Multi-IdP registry activation (Google + generic OIDC + Azure AD) per [`docs/idp-providers.md`](./docs/idp-providers.md).
+- **v1.0** — Phase 5 multi-instance (Redis pub/sub for membership cache invalidation + token_epoch reads + rate-limit + sweeper leader election).
 
 ### Open items / known issues
 
+- T40c SDK enhancements: keytar keychain integration, Windows DPAPI for token file, named-profile TOML config, discovery doc 24h cache
+- T33 perf bench + chaos suite (next sprint)
+- Encryption-at-rest (v0.7.5 deferred) — SQLCipher whole-DB encryption
 - v0.5.0 dashboard Conflict signals widget shows aggregated counts only; per-layer outcome breakdown (`auto_resolved`, `consensus`, `timeout`, `cancelled`) currently returns zeros — the `layer_firings` table is not yet joined against the `events` table (decorative, not blocking).
 - CHANGELOG has both an auto-generated `## [0.5.0]` block (from release-please) and a stale manual `## [0.6.0]` heading from the original plan — cosmetic, will be reconciled in a doc-only commit.
 
@@ -841,6 +949,68 @@ export COORDINATOR_JWT_PREV_SECRET=old-secret-here
 ```
 
 **Rolling back to v0.6**: requires restoring from backup. The v0.6 binary refuses to boot a v0.7 DB (PRAGMA user_version guard).
+
+### Phase 2 (v0.8.0+) — full OAuth flow
+
+Phase 2 adds OAuth 2.1 + RFC 8628 device flow + cookie sessions + service tokens on top of the v0.7 foundation. Activate by setting `COORDINATOR_OAUTH_ENABLED=true` plus the 5 required env vars; Phase 1 deployments are unaffected when the flag is unset.
+
+**Quick start** (full walkthrough in [`docs/onboarding-self-host.md`](./docs/onboarding-self-host.md)):
+
+```bash
+export COORDINATOR_OAUTH_ENABLED=true
+export COORDINATOR_JWT_SECRET=$(openssl rand -base64 32)
+export COORDINATOR_GITHUB_CLIENT_ID=<from-github-oauth-app>
+export COORDINATOR_GITHUB_CLIENT_SECRET=<from-github-oauth-app>
+export COORDINATOR_GITHUB_ORG=<your-org-slug>
+export COORDINATOR_PUBLIC_URL=https://coordinator.example.com
+
+mcp-coordinator init phase2  # interactive wizard
+mcp-coordinator server start
+```
+
+The first user to sign in via `${PUBLIC_URL}/auth/login` becomes the bootstrap admin atomically.
+
+**Service tokens for CI/CD:**
+
+```bash
+mcp-coordinator service-token issue \
+  --user u-admin-123 --org org-acme-001 \
+  --scope read --ttl 30d --reason "CI deploy pipeline"
+# → Returns access_token (show once)
+```
+
+**Documentation:**
+
+- [Onboarding](./docs/onboarding-self-host.md) — zero to first sign-in
+- [Upgrade v0.7.0 → v0.8.0](./docs/ops/upgrade-phase1-to-phase2.md)
+- [OpenAPI spec](./docs/openapi.yaml) — 17 endpoints
+- [Threat model](./docs/security/threat-model.md) — STRIDE per asset
+- [Key rotation](./docs/ops/key-rotation.md) — JWT_SECRET overlap procedure
+- [Backup & restore](./docs/ops/backup-restore.md) — Litestream + NR12 reconciliation
+- [GDPR Art. 17 procedures](./docs/gdpr.md)
+- [SDK quick-start](./sdk/README.md)
+
+---
+
+## SDK
+
+A TypeScript reference client lives in [`sdk/`](./sdk/) (not yet published to npm). Install via `npm install file:./sdk` from a consumer project.
+
+```ts
+import { McpCoordinatorClient, FileTokenStore, ProactiveRefresh } from "@mcp-coordinator/sdk-js";
+
+const client = new McpCoordinatorClient({
+  baseUrl: "https://coordinator.example.com",
+  store: new FileTokenStore(),
+  refreshStrategy: new ProactiveRefresh(),
+  refreshLockPath: process.env.HOME + "/.mcp-coordinator/refresh.lock",
+});
+
+await client.loadFromStore();
+const me = await client.whoami();
+```
+
+See [`sdk/README.md`](./sdk/README.md) for the full API.
 
 ---
 
