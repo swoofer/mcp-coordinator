@@ -78,6 +78,8 @@ const SCHEMA = `
     request_id        TEXT,
     outcome           TEXT,
     metadata_json     TEXT,
+    prev_hash         TEXT,
+    row_hash          TEXT,
     created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now'))
   );
 `;

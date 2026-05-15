@@ -2,12 +2,86 @@ import path from "path";
 import { mkdirSync, chmodSync } from "fs";
 import { createRequire } from "module";
 import type { DatabaseAdapter } from "./db-adapter.js";
+import {
+  GENESIS_HASH,
+  computeRowHash,
+  type AuditChainFields,
+} from "./security/audit-chain.js";
 
 const require = createRequire(import.meta.url);
 
 let db: DatabaseAdapter;
 
 const CURRENT_USER_VERSION = 8;
+
+/**
+ * Narrow type alias for the migration code paths in this file. The
+ * `DatabaseAdapter` interface is intentionally tiny (just `exec` +
+ * `prepare(...).run/get/all`), so migrations that want to iterate over
+ * a result set go through this cast rather than widening the adapter
+ * for every call site.
+ */
+type MigrationDb = {
+  prepare: (sql: string) => {
+    all: (...args: unknown[]) => unknown[];
+    get: (...args: unknown[]) => unknown;
+    run: (...args: unknown[]) => { changes: number };
+  };
+};
+
+interface AuditRowForBackfill extends AuditChainFields {
+  id: number;
+  prev_hash: string | null;
+  row_hash: string | null;
+}
+
+/**
+ * T50 (v0.9.1) backfill. Walk existing audit_log rows in id-order and
+ * fill in prev_hash + row_hash for every row that doesn't have them yet.
+ *
+ * Idempotent: rows that already have a non-null row_hash are skipped so
+ * a partial migration (interrupted boot) resumes cleanly. The first
+ * unhashed row uses the LAST hashed row's row_hash as prev_hash (or
+ * GENESIS_HASH if no rows have been hashed yet) -- this keeps the chain
+ * unbroken across a partial backfill.
+ *
+ * Wrapped in a single transaction so a crash mid-backfill leaves
+ * audit_log in a fully-hashed or fully-unhashed state.
+ */
+function backfillAuditChain(mdb: MigrationDb): void {
+  const tailStmt = mdb.prepare(
+    "SELECT row_hash FROM audit_log WHERE row_hash IS NOT NULL ORDER BY id DESC LIMIT 1",
+  );
+  const tail = tailStmt.get() as { row_hash: string } | undefined;
+  let prevHash = tail?.row_hash ?? GENESIS_HASH;
+
+  const selectStmt = mdb.prepare(
+    "SELECT id, actor_user_id, actor_org_id, action, target, " +
+      "actor_ip, actor_user_agent, request_id, outcome, metadata_json, " +
+      "prev_hash, row_hash FROM audit_log WHERE row_hash IS NULL ORDER BY id ASC",
+  );
+  const rows = selectStmt.all() as AuditRowForBackfill[];
+  if (rows.length === 0) return;
+
+  const updateStmt = mdb.prepare(
+    "UPDATE audit_log SET prev_hash = ?, row_hash = ? WHERE id = ?",
+  );
+
+  // better-sqlite3 exposes db.transaction(...); via the adapter we drop
+  // to a plain BEGIN/COMMIT pair, which works on every backend.
+  mdb.prepare("BEGIN IMMEDIATE").run();
+  try {
+    for (const row of rows) {
+      const rowHash = computeRowHash(prevHash, row);
+      updateStmt.run(prevHash, rowHash, row.id);
+      prevHash = rowHash;
+    }
+    mdb.prepare("COMMIT").run();
+  } catch (err) {
+    mdb.prepare("ROLLBACK").run();
+    throw err;
+  }
+}
 
 const SCHEMA = `
     CREATE TABLE IF NOT EXISTS agents (
@@ -549,6 +623,24 @@ export function initDatabase(dataDir: string): void {
         ).run(JSON.stringify({ rows_marked_legacy: updateResult.changes, from_version: 7, to_version: 8 }));
       }
     } catch { /* defensive: any failure means migration already happened */ }
+
+    // --- audit_log: hash chain (T50 v0.9.1) -----------------------------------
+    // Each row carries prev_hash (the previous row's row_hash) + row_hash
+    // (SHA-256 over prev_hash || canonicalRowFields(this row)). Tampering with
+    // any row's content breaks its row_hash; inserting a forged row in the
+    // middle breaks the next row's prev_hash linkage.
+    //
+    // Backfill: existing audit_log rows are chained in id-order from
+    // GENESIS_HASH so post-migration verification accepts the historical
+    // tail. Pre-migration tampering is NOT detectable -- this is forward
+    // evidence only. Operators wanting deletion + retroactive-tamper
+    // detection must pair the chain with the external tip-attestation
+    // workflow in docs/ops/audit-integrity.md.
+    try { db.exec("ALTER TABLE audit_log ADD COLUMN prev_hash TEXT"); } catch { /* already exists */ }
+    try { db.exec("ALTER TABLE audit_log ADD COLUMN row_hash TEXT"); } catch { /* already exists */ }
+    try {
+      backfillAuditChain(db as unknown as MigrationDb);
+    } catch { /* defensive: any failure means backfill already happened */ }
 
     // --- users: rename org_id → primary_org_id + new columns ------------------
     // NOTE: SQLite ALTER TABLE RENAME COLUMN automatically updates indexes that
