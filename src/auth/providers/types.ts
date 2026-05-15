@@ -28,7 +28,7 @@ export type DevicePollResult =
 
 export interface IdPProvider {
   readonly name: string;
-  buildAuthUrl(state: string, redirectUri: string, codeChallenge?: string): string;
+  buildAuthUrl(state: string, redirectUri: string, codeChallenge?: string): string | Promise<string>;
   exchangeCode(code: string, redirectUri: string, codeVerifier?: string): Promise<ExchangeCodeResult>;
   listMemberships?(accessToken: string): Promise<string[]>;
   requestDeviceCode?(): Promise<DeviceCodeResponse>;

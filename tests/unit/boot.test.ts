@@ -41,6 +41,9 @@ const ENV_KEYS = [
   "COORDINATOR_GITHUB_API_BASE_URL",
   "COORDINATOR_GOOGLE_CLIENT_ID",
   "COORDINATOR_GOOGLE_CLIENT_SECRET",
+  "COORDINATOR_OIDC_ISSUER_URL",
+  "COORDINATOR_OIDC_CLIENT_ID",
+  "COORDINATOR_OIDC_CLIENT_SECRET",
 ];
 
 // 32 random bytes (high entropy, no dictionary words) — passes
@@ -614,7 +617,7 @@ describe("bootPhase2 — GHES base URL wiring (v0.8.1-P2)", () => {
   // `${this.authBaseUrl}/login/oauth/authorize`. That URL is the observable
   // surface that proves the env var flowed through the constructor.
 
-  it("neither env var set: GitHubProvider defaults to github.com (buildAuthUrl points at github.com)", () => {
+  it("neither env var set: GitHubProvider defaults to github.com (buildAuthUrl points at github.com)", async () => {
     applyValidEnv();
     delete process.env.COORDINATOR_GITHUB_AUTH_BASE_URL;
     delete process.env.COORDINATOR_GITHUB_API_BASE_URL;
@@ -622,7 +625,7 @@ describe("bootPhase2 — GHES base URL wiring (v0.8.1-P2)", () => {
     const result = bootPhase2({ enabled: true, db, clock });
     expect(result).not.toBeNull();
 
-    const authUrl = result!.context.providers.get("github")!.buildAuthUrl(
+    const authUrl = await result!.context.providers.get("github")!.buildAuthUrl(
       "state-x",
       "https://coordinator.example.com/cb",
     );
@@ -632,7 +635,7 @@ describe("bootPhase2 — GHES base URL wiring (v0.8.1-P2)", () => {
     void result!.shutdown();
   });
 
-  it("both env vars set: GitHubProvider uses the GHES overrides", () => {
+  it("both env vars set: GitHubProvider uses the GHES overrides", async () => {
     applyValidEnv();
     process.env.COORDINATOR_GITHUB_AUTH_BASE_URL = "https://github.example.com";
     process.env.COORDINATOR_GITHUB_API_BASE_URL =
@@ -641,7 +644,7 @@ describe("bootPhase2 — GHES base URL wiring (v0.8.1-P2)", () => {
     const result = bootPhase2({ enabled: true, db, clock });
     expect(result).not.toBeNull();
 
-    const authUrl = result!.context.providers.get("github")!.buildAuthUrl(
+    const authUrl = await result!.context.providers.get("github")!.buildAuthUrl(
       "state-x",
       "https://coordinator.example.com/cb",
     );
@@ -652,7 +655,7 @@ describe("bootPhase2 — GHES base URL wiring (v0.8.1-P2)", () => {
     void result!.shutdown();
   });
 
-  it("only AUTH_BASE_URL set: auth overridden, api defaults to api.github.com", () => {
+  it("only AUTH_BASE_URL set: auth overridden, api defaults to api.github.com", async () => {
     applyValidEnv();
     process.env.COORDINATOR_GITHUB_AUTH_BASE_URL = "https://github.example.com";
     delete process.env.COORDINATOR_GITHUB_API_BASE_URL;
@@ -660,7 +663,7 @@ describe("bootPhase2 — GHES base URL wiring (v0.8.1-P2)", () => {
     const result = bootPhase2({ enabled: true, db, clock });
     expect(result).not.toBeNull();
 
-    const authUrl = result!.context.providers.get("github")!.buildAuthUrl(
+    const authUrl = await result!.context.providers.get("github")!.buildAuthUrl(
       "state-x",
       "https://coordinator.example.com/cb",
     );
@@ -674,7 +677,7 @@ describe("bootPhase2 — GHES base URL wiring (v0.8.1-P2)", () => {
     void result!.shutdown();
   });
 
-  it("whitespace-only env vars: treated as unset (defaults to github.com)", () => {
+  it("whitespace-only env vars: treated as unset (defaults to github.com)", async () => {
     applyValidEnv();
     process.env.COORDINATOR_GITHUB_AUTH_BASE_URL = "   ";
     process.env.COORDINATOR_GITHUB_API_BASE_URL = "   ";
@@ -682,7 +685,7 @@ describe("bootPhase2 — GHES base URL wiring (v0.8.1-P2)", () => {
     const result = bootPhase2({ enabled: true, db, clock });
     expect(result).not.toBeNull();
 
-    const authUrl = result!.context.providers.get("github")!.buildAuthUrl(
+    const authUrl = await result!.context.providers.get("github")!.buildAuthUrl(
       "state-x",
       "https://coordinator.example.com/cb",
     );
@@ -771,6 +774,95 @@ describe("bootPhase2 — Google IdP wiring (v0.9.0 T47)", () => {
     const result = bootPhase2({ enabled: true, db, clock });
     expect(result).not.toBeNull();
     expect(result!.context.providers.names()).toEqual(["github"]);
+    void result!.shutdown();
+  });
+});
+
+describe("bootPhase2 — generic OIDC wiring (v0.9.0 T48)", () => {
+  it("no OIDC env vars set: registry has only github", () => {
+    applyValidEnv();
+    delete process.env.COORDINATOR_OIDC_ISSUER_URL;
+    delete process.env.COORDINATOR_OIDC_CLIENT_ID;
+    delete process.env.COORDINATOR_OIDC_CLIENT_SECRET;
+
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+    expect(result!.context.providers.names()).toEqual(["github"]);
+    void result!.shutdown();
+  });
+
+  it("all three OIDC env vars set: registers oidc as a second provider", () => {
+    applyValidEnv();
+    process.env.COORDINATOR_OIDC_ISSUER_URL = "https://idp.example.test/realms/main";
+    process.env.COORDINATOR_OIDC_CLIENT_ID = "oidc-cid";
+    process.env.COORDINATOR_OIDC_CLIENT_SECRET = "oidc-secret";
+
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+    expect(result!.context.providers.names()).toEqual(["github", "oidc"]);
+    expect(result!.context.providers.get("oidc")).not.toBeNull();
+    void result!.shutdown();
+  });
+
+  it("only issuer set: throws BootValidationError", () => {
+    applyValidEnv();
+    process.env.COORDINATOR_OIDC_ISSUER_URL = "https://idp.example.test/realms/main";
+    delete process.env.COORDINATOR_OIDC_CLIENT_ID;
+    delete process.env.COORDINATOR_OIDC_CLIENT_SECRET;
+
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
+      BootValidationError,
+    );
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
+      /must all be set together/,
+    );
+  });
+
+  it("only client_id set: throws BootValidationError", () => {
+    applyValidEnv();
+    delete process.env.COORDINATOR_OIDC_ISSUER_URL;
+    process.env.COORDINATOR_OIDC_CLIENT_ID = "oidc-cid";
+    delete process.env.COORDINATOR_OIDC_CLIENT_SECRET;
+
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
+      /must all be set together/,
+    );
+  });
+
+  it("malformed issuer URL: throws BootValidationError", () => {
+    applyValidEnv();
+    process.env.COORDINATOR_OIDC_ISSUER_URL = "not-a-url";
+    process.env.COORDINATOR_OIDC_CLIENT_ID = "oidc-cid";
+    process.env.COORDINATOR_OIDC_CLIENT_SECRET = "oidc-secret";
+
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
+      /is not a valid URL/,
+    );
+  });
+
+  it("ftp:// issuer URL: throws BootValidationError", () => {
+    applyValidEnv();
+    process.env.COORDINATOR_OIDC_ISSUER_URL = "ftp://idp.example.test";
+    process.env.COORDINATOR_OIDC_CLIENT_ID = "oidc-cid";
+    process.env.COORDINATOR_OIDC_CLIENT_SECRET = "oidc-secret";
+
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
+      /must be http:\/\/ or https:\/\//,
+    );
+  });
+
+  it("github + google + oidc all configured: three providers, github default", () => {
+    applyValidEnv();
+    process.env.COORDINATOR_GOOGLE_CLIENT_ID = "google-cid";
+    process.env.COORDINATOR_GOOGLE_CLIENT_SECRET = "google-secret";
+    process.env.COORDINATOR_OIDC_ISSUER_URL = "https://idp.example.test/realms/main";
+    process.env.COORDINATOR_OIDC_CLIENT_ID = "oidc-cid";
+    process.env.COORDINATOR_OIDC_CLIENT_SECRET = "oidc-secret";
+
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+    expect(result!.context.providers.names()).toEqual(["github", "google", "oidc"]);
+    expect(result!.context.providers.getDefault()!.name).toBe("github");
     void result!.shutdown();
   });
 });
