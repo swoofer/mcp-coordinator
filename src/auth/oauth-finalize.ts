@@ -64,6 +64,7 @@ export function provisionUser(
   idpUser: IdpUserInfo,
   accessToken: string,
   allowlistOrg: AllowlistOrg,
+  providerName: string,
 ): ProvisionResult {
   const existing = db
     .prepare(
@@ -71,7 +72,7 @@ export function provisionUser(
        FROM users
        WHERE idp_provider = ? AND idp_user_id = ?`,
     )
-    .get("github", idpUser.idp_user_id) as
+    .get(providerName, idpUser.idp_user_id) as
     | { id: string; primary_org_id: string; role: string }
     | undefined;
 
@@ -108,7 +109,7 @@ export function provisionUser(
     allowlistOrg.org_id,
     idpUser.email,
     idpUser.name ?? null,
-    "github",
+    providerName,
     idpUser.idp_user_id,
     accessToken,
     "member", // start as member; bootstrap check may promote

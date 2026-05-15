@@ -137,7 +137,6 @@ beforeEach(() => {
   ctx = {
     db,
     clock,
-    githubProvider: stubProvider,
     providers: singleProviderRegistry(stubProvider),
     rateLimiter: new RateLimiter(clock),
     publicUrl: "http://localhost:3000",

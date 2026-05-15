@@ -441,8 +441,9 @@ describe("bootPhase2 — success path", () => {
     expect(bs.context.signingKeys.current.kid).toBe("hs256-v1");
     expect(bs.context.rateLimiter).toBeDefined();
     expect(bs.context.membershipCache).toBeDefined();
-    expect(bs.context.githubProvider).toBeDefined();
-    expect(bs.context.githubProvider.name).toBe("github");
+    const githubProvider = bs.context.providers.get("github");
+    expect(githubProvider).not.toBeNull();
+    expect(githubProvider!.name).toBe("github");
     expect(bs.sweeper).toBeDefined();
     expect(typeof bs.shutdown).toBe("function");
     void bs.shutdown();
@@ -619,7 +620,7 @@ describe("bootPhase2 — GHES base URL wiring (v0.8.1-P2)", () => {
     const result = bootPhase2({ enabled: true, db, clock });
     expect(result).not.toBeNull();
 
-    const authUrl = result!.context.githubProvider.buildAuthUrl(
+    const authUrl = result!.context.providers.get("github")!.buildAuthUrl(
       "state-x",
       "https://coordinator.example.com/cb",
     );
@@ -638,7 +639,7 @@ describe("bootPhase2 — GHES base URL wiring (v0.8.1-P2)", () => {
     const result = bootPhase2({ enabled: true, db, clock });
     expect(result).not.toBeNull();
 
-    const authUrl = result!.context.githubProvider.buildAuthUrl(
+    const authUrl = result!.context.providers.get("github")!.buildAuthUrl(
       "state-x",
       "https://coordinator.example.com/cb",
     );
@@ -657,7 +658,7 @@ describe("bootPhase2 — GHES base URL wiring (v0.8.1-P2)", () => {
     const result = bootPhase2({ enabled: true, db, clock });
     expect(result).not.toBeNull();
 
-    const authUrl = result!.context.githubProvider.buildAuthUrl(
+    const authUrl = result!.context.providers.get("github")!.buildAuthUrl(
       "state-x",
       "https://coordinator.example.com/cb",
     );
@@ -679,7 +680,7 @@ describe("bootPhase2 — GHES base URL wiring (v0.8.1-P2)", () => {
     const result = bootPhase2({ enabled: true, db, clock });
     expect(result).not.toBeNull();
 
-    const authUrl = result!.context.githubProvider.buildAuthUrl(
+    const authUrl = result!.context.providers.get("github")!.buildAuthUrl(
       "state-x",
       "https://coordinator.example.com/cb",
     );

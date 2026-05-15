@@ -121,7 +121,6 @@ function makeCtx(overrides: Partial<AuthHandlerContext> = {}): AuthHandlerContex
   return {
     db,
     clock,
-    githubProvider: STUB_PROVIDER,
     providers: singleProviderRegistry(STUB_PROVIDER),
     rateLimiter: new RateLimiter(clock),
     publicUrl: "http://localhost:3000",

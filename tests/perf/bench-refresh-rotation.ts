@@ -100,7 +100,6 @@ async function main(): Promise<void> {
   const ctx: AuthHandlerContext = {
     db: db as unknown as import("better-sqlite3").Database,
     clock: realClock,
-    githubProvider: stubProvider,
     providers: singleProviderRegistry(stubProvider),
     rateLimiter: new RateLimiter(realClock),
     publicUrl: ISSUER,

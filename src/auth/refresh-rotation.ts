@@ -544,18 +544,27 @@ export async function refreshTokenGrant(
   //    untouched and will fail their own allowlist check on next refresh
   //    (or simply expire after token_epoch bump if admin chooses).
   const userRow = ctx.db
-    .prepare("SELECT idp_access_token FROM users WHERE id = ?")
-    .get(row.user_id) as { idp_access_token: string | null } | undefined;
+    .prepare("SELECT idp_access_token, idp_provider FROM users WHERE id = ?")
+    .get(row.user_id) as
+    | { idp_access_token: string | null; idp_provider: string }
+    | undefined;
   const idpAccessToken = userRow?.idp_access_token ?? null;
+  const idpProviderName = userRow?.idp_provider ?? null;
+
+  // T46: look up the IdP via the registry using the user's stored
+  // idp_provider. If a previously-provisioned user's provider is no
+  // longer registered (e.g. operator removed it from boot config),
+  // skip the allowlist recheck — token_epoch remains the kill switch.
+  const idpProvider = idpProviderName ? ctx.providers.get(idpProviderName) : null;
 
   let allowlistMatch: AllowlistMatch | null = null;
   let allowlistRecheckPerformed = false;
-  if (idpAccessToken) {
+  if (idpAccessToken && idpProvider) {
     allowlistRecheckPerformed = true;
     try {
       const memberships = await ctx.membershipCache.getMemberships(
         claims.sub,
-        ctx.githubProvider,
+        idpProvider,
         idpAccessToken,
       );
       allowlistMatch = resolveOrgFromMemberships(ctx.db, memberships);

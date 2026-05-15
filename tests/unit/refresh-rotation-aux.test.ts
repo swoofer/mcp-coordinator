@@ -112,7 +112,6 @@ function makeCtx(overrides: Partial<AuthHandlerContext> = {}): AuthHandlerContex
   return {
     db: getDb() as unknown as AuthHandlerContext["db"],
     clock,
-    githubProvider: makeProvider(),
     providers: singleProviderRegistry(makeProvider()),
     rateLimiter,
     publicUrl: ISSUER,
@@ -426,7 +425,7 @@ describe("refreshTokenGrant — grace allowlist denial with NULL family_id", () 
     await refreshTokenGrant(
       req,
       res as unknown as ServerResponse,
-      makeCtx({ githubProvider: provider, providers: singleProviderRegistry(provider) }),
+      makeCtx({ providers: singleProviderRegistry(provider) }),
     );
 
     expect(res.statusCode).toBe(401);
@@ -457,7 +456,7 @@ describe("refreshTokenGrant — IdP errors", () => {
     await refreshTokenGrant(
       req,
       res as unknown as ServerResponse,
-      makeCtx({ githubProvider: provider, providers: singleProviderRegistry(provider) }),
+      makeCtx({ providers: singleProviderRegistry(provider) }),
     );
 
     expect(res.statusCode).toBe(401);
@@ -489,7 +488,7 @@ describe("refreshTokenGrant — IdP errors", () => {
     await refreshTokenGrant(
       req,
       res as unknown as ServerResponse,
-      makeCtx({ githubProvider: provider, providers: singleProviderRegistry(provider) }),
+      makeCtx({ providers: singleProviderRegistry(provider) }),
     );
 
     expect(res.statusCode).toBe(503);
@@ -513,7 +512,7 @@ describe("refreshTokenGrant — IdP errors", () => {
       refreshTokenGrant(
         req,
         res as unknown as ServerResponse,
-        makeCtx({ githubProvider: provider, providers: singleProviderRegistry(provider) }),
+        makeCtx({ providers: singleProviderRegistry(provider) }),
       ),
     ).rejects.toThrow(/unexpected boom/);
   });
@@ -547,7 +546,7 @@ describe("refreshTokenGrant — allowlist re-check (main path)", () => {
     await refreshTokenGrant(
       req,
       res as unknown as ServerResponse,
-      makeCtx({ githubProvider: provider, providers: singleProviderRegistry(provider) }),
+      makeCtx({ providers: singleProviderRegistry(provider) }),
     );
 
     expect(res.statusCode).toBe(401);
@@ -584,7 +583,7 @@ describe("refreshTokenGrant — allowlist re-check (main path)", () => {
     await refreshTokenGrant(
       req,
       res as unknown as ServerResponse,
-      makeCtx({ githubProvider: provider, providers: singleProviderRegistry(provider) }),
+      makeCtx({ providers: singleProviderRegistry(provider) }),
     );
     expect(res.statusCode).toBe(200);
   });
@@ -667,7 +666,7 @@ describe("refreshTokenGrant — grace branch allowlist re-check (V4 FIX 7)", () 
     await refreshTokenGrant(
       req,
       res as unknown as ServerResponse,
-      makeCtx({ githubProvider: provider, providers: singleProviderRegistry(provider) }),
+      makeCtx({ providers: singleProviderRegistry(provider) }),
     );
 
     expect(res.statusCode).toBe(401);

@@ -118,19 +118,21 @@ let clock: FakeClock;
 let rateLimiter: RateLimiter;
 let membershipCache: MembershipCache;
 
-function makeCtx(overrides: Partial<AuthHandlerContext> = {}): AuthHandlerContext {
-  const provider = overrides.githubProvider ?? stubProvider();
+function makeCtx(
+  overrides: Partial<AuthHandlerContext> & { provider?: IdPProvider } = {},
+): AuthHandlerContext {
+  const { provider: providerOverride, ...rest } = overrides;
+  const provider = providerOverride ?? stubProvider();
   return {
     db: getDb() as unknown as AuthHandlerContext["db"],
     clock,
-    githubProvider: provider,
-    providers: overrides.providers ?? singleProviderRegistry(provider),
+    providers: rest.providers ?? singleProviderRegistry(provider),
     rateLimiter,
     publicUrl: "http://localhost:3000",
     stateBindingKey: Buffer.alloc(32, 0x01),
     signingKeys: buildJwtKeyRegistry(Buffer.alloc(32, 0x01)),
     membershipCache,
-    ...overrides,
+    ...rest,
   };
 }
 
@@ -181,6 +183,7 @@ describe("finalizeBrowserOAuth — login lockout", () => {
     await __finalizeBrowserOAuth(
       res as unknown as ServerResponse,
       makeCtx(),
+      stubProvider(),
       makeExchange(),
       "10.0.0.1",
       "ua/1.0",
@@ -203,7 +206,9 @@ describe("finalizeBrowserOAuth — login lockout", () => {
       // No org seeded → allowlist resolution returns null → 403 NOT_IN_ALLOWLIST.
       await __finalizeBrowserOAuth(
         res as unknown as ServerResponse,
-        makeCtx({ githubProvider: provider }),
+        makeCtx({ provider: provider }),
+
+        provider,
         makeExchange(),
         "10.0.0.1",
         "ua/1.0",
@@ -215,7 +220,9 @@ describe("finalizeBrowserOAuth — login lockout", () => {
     const res = mockResponse();
     await __finalizeBrowserOAuth(
       res as unknown as ServerResponse,
-      makeCtx({ githubProvider: provider }),
+      makeCtx({ provider: provider }),
+
+      provider,
       makeExchange(),
       "10.0.0.1",
       "ua/1.0",
@@ -242,7 +249,9 @@ describe("finalizeBrowserOAuth — listMemberships errors", () => {
     const res = mockResponse();
     await __finalizeBrowserOAuth(
       res as unknown as ServerResponse,
-      makeCtx({ githubProvider: provider }),
+      makeCtx({ provider: provider }),
+
+      provider,
       makeExchange(),
       "10.0.0.1",
       "ua/1.0",
@@ -265,7 +274,9 @@ describe("finalizeBrowserOAuth — listMemberships errors", () => {
     const res = mockResponse();
     await __finalizeBrowserOAuth(
       res as unknown as ServerResponse,
-      makeCtx({ githubProvider: provider }),
+      makeCtx({ provider: provider }),
+
+      provider,
       makeExchange(),
       "10.0.0.1",
       "ua/1.0",
@@ -278,11 +289,12 @@ describe("finalizeBrowserOAuth — listMemberships errors", () => {
     seedAcmeOrg();
     // Prime cache with a successful call.
     const provider = stubProvider({ memberships: ["acme"] });
-    const ctx = makeCtx({ githubProvider: provider });
+    const ctx = makeCtx({ provider: provider });
     const firstRes = mockResponse();
     await __finalizeBrowserOAuth(
       firstRes as unknown as ServerResponse,
       ctx,
+      provider,
       makeExchange(),
       "10.0.0.1",
       "ua/1.0",
@@ -302,7 +314,9 @@ describe("finalizeBrowserOAuth — listMemberships errors", () => {
     const secondRes = mockResponse();
     await __finalizeBrowserOAuth(
       secondRes as unknown as ServerResponse,
-      makeCtx({ githubProvider: provider2 }),
+      makeCtx({ provider: provider2 }),
+
+      provider2,
       makeExchange(),
       "10.0.0.1",
       "ua/1.0",
@@ -322,7 +336,9 @@ describe("finalizeBrowserOAuth — allowlist", () => {
     const res = mockResponse();
     await __finalizeBrowserOAuth(
       res as unknown as ServerResponse,
-      makeCtx({ githubProvider: provider }),
+      makeCtx({ provider: provider }),
+
+      provider,
       makeExchange(),
       "10.0.0.1",
       "ua/1.0",
@@ -349,7 +365,9 @@ describe("finalizeBrowserOAuth — allowlist", () => {
     const res = mockResponse();
     await __finalizeBrowserOAuth(
       res as unknown as ServerResponse,
-      makeCtx({ githubProvider: provider }),
+      makeCtx({ provider: provider }),
+
+      provider,
       makeExchange(),
       "10.0.0.1",
       "ua/1.0",
@@ -368,7 +386,9 @@ describe("finalizeBrowserOAuth — allowlist", () => {
     const res = mockResponse();
     await __finalizeBrowserOAuth(
       res as unknown as ServerResponse,
-      makeCtx({ githubProvider: provider }),
+      makeCtx({ provider: provider }),
+
+      provider,
       makeExchange(),
       "10.0.0.1",
       "ua/1.0",
@@ -391,7 +411,9 @@ describe("finalizeBrowserOAuth — AUTO_PROVISION mode", () => {
     const res = mockResponse();
     await __finalizeBrowserOAuth(
       res as unknown as ServerResponse,
-      makeCtx({ githubProvider: provider }),
+      makeCtx({ provider: provider }),
+
+      provider,
       makeExchange(),
       "10.0.0.1",
       "ua/1.0",
@@ -410,7 +432,9 @@ describe("finalizeBrowserOAuth — AUTO_PROVISION mode", () => {
     const res = mockResponse();
     await __finalizeBrowserOAuth(
       res as unknown as ServerResponse,
-      makeCtx({ githubProvider: provider }),
+      makeCtx({ provider: provider }),
+
+      provider,
       makeExchange(),
       "10.0.0.1",
       "ua/1.0",
@@ -438,7 +462,9 @@ describe("finalizeBrowserOAuth — AUTO_PROVISION mode", () => {
     const res = mockResponse();
     await __finalizeBrowserOAuth(
       res as unknown as ServerResponse,
-      makeCtx({ githubProvider: provider }),
+      makeCtx({ provider: provider }),
+
+      provider,
       makeExchange(),
       "10.0.0.1",
       "ua/1.0",
@@ -477,7 +503,9 @@ describe("finalizeBrowserOAuth — AUTO_PROVISION mode", () => {
     const res = mockResponse();
     await __finalizeBrowserOAuth(
       res as unknown as ServerResponse,
-      makeCtx({ githubProvider: provider }),
+      makeCtx({ provider: provider }),
+
+      provider,
       makeExchange(USER_ALICE, "new-token"),
       "10.0.0.1",
       "ua/1.0",
@@ -500,7 +528,9 @@ describe("finalizeBrowserOAuth — provisioning audits", () => {
     const res = mockResponse();
     await __finalizeBrowserOAuth(
       res as unknown as ServerResponse,
-      makeCtx({ githubProvider: provider }),
+      makeCtx({ provider: provider }),
+
+      provider,
       makeExchange(),
       "10.0.0.1",
       "ua/1.0",
@@ -533,7 +563,9 @@ describe("finalizeBrowserOAuth — provisioning audits", () => {
     const res = mockResponse();
     await __finalizeBrowserOAuth(
       res as unknown as ServerResponse,
-      makeCtx({ githubProvider: provider }),
+      makeCtx({ provider: provider }),
+
+      provider,
       makeExchange(),
       "10.0.0.1",
       "ua/1.0",
@@ -562,7 +594,9 @@ describe("finalizeBrowserOAuth — provisioning audits", () => {
     const res = mockResponse();
     await __finalizeBrowserOAuth(
       res as unknown as ServerResponse,
-      makeCtx({ githubProvider: provider }),
+      makeCtx({ provider: provider }),
+
+      provider,
       makeExchange(USER_ALICE, "fresh-token"),
       "10.0.0.1",
       "ua/1.0",
@@ -583,7 +617,9 @@ describe("finalizeBrowserOAuth — provisioning audits", () => {
     const res = mockResponse();
     await __finalizeBrowserOAuth(
       res as unknown as ServerResponse,
-      makeCtx({ githubProvider: provider }),
+      makeCtx({ provider: provider }),
+
+      provider,
       makeExchange(),
       "10.0.0.1",
       "ua/1.0",
@@ -609,7 +645,9 @@ describe("finalizeBrowserOAuth — edge cases", () => {
     await expect(
       __finalizeBrowserOAuth(
         res as unknown as ServerResponse,
-        makeCtx({ githubProvider: provider }),
+        makeCtx({ provider: provider }),
+
+        provider,
         makeExchange(),
         "10.0.0.1",
         "ua/1.0",
@@ -648,9 +686,10 @@ describe("finalizeBrowserOAuth — edge cases", () => {
       __finalizeBrowserOAuth(
         res as unknown as ServerResponse,
         makeCtx({
-          githubProvider: provider,
+          provider: provider,
           db: wrappedDb as unknown as AuthHandlerContext["db"],
         }),
+        provider,
         makeExchange(),
         "10.0.0.1",
         "ua/1.0",
@@ -673,7 +712,9 @@ describe("finalizeBrowserOAuth — edge cases", () => {
     const res = mockResponse();
     await __finalizeBrowserOAuth(
       res as unknown as ServerResponse,
-      makeCtx({ githubProvider: provider }),
+      makeCtx({ provider: provider }),
+
+      provider,
       makeExchange(userWithEmptyId),
       "10.0.0.99",
       "ua/1.0",
@@ -692,7 +733,9 @@ describe("finalizeBrowserOAuth — edge cases", () => {
     const res = mockResponse();
     await __finalizeBrowserOAuth(
       res as unknown as ServerResponse,
-      makeCtx({ githubProvider: provider }),
+      makeCtx({ provider: provider }),
+
+      provider,
       makeExchange(userWithEmptyId),
       null,
       null,
@@ -717,6 +760,7 @@ describe("finalizeBrowserOAuth — edge cases", () => {
     await __finalizeBrowserOAuth(
       res as unknown as ServerResponse,
       makeCtx({ rateLimiter: wrappedLimiter }),
+      stubProvider(),
       makeExchange(),
       "10.0.0.1",
       "ua/1.0",

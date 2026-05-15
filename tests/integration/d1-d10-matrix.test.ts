@@ -345,7 +345,6 @@ function makeCtx(
   return {
     db: getDb() as unknown as AuthHandlerContext["db"],
     clock,
-    githubProvider: makeProvider(),
     providers: singleProviderRegistry(makeProvider()),
     rateLimiter,
     publicUrl: ISSUER,
@@ -890,7 +889,7 @@ describe("D6 — allowlist removal mid-session via IdP refresh", () => {
       res as unknown as ServerResponse,
       makeCtx((() => {
         const p = makeProvider(async () => ["acme"]);
-        return { githubProvider: p, providers: singleProviderRegistry(p) };
+        return { providers: singleProviderRegistry(p) };
       })()),
     );
     expect(res.statusCode).toBe(401);

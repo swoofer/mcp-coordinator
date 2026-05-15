@@ -144,7 +144,7 @@ describe("provisionUser", () => {
        VALUES ('admin-existing', 'org-1', 'admin', '1')`,
     ).run();
 
-    const result = provisionUser(db, clock, IDP_USER_ALICE, "tok-alice", ALLOWLIST_ORG);
+    const result = provisionUser(db, clock, IDP_USER_ALICE, "tok-alice", ALLOWLIST_ORG, "github");
     expect(result.isNew).toBe(true);
     expect(result.bootstrapAdmin).toBe(false);
     expect(result.user.role).toBe("member");
@@ -153,14 +153,14 @@ describe("provisionUser", () => {
   });
 
   it("new user with no admin: returns bootstrapAdmin=true (first user becomes admin)", () => {
-    const result = provisionUser(db, clock, IDP_USER_ALICE, "tok-alice", ALLOWLIST_ORG);
+    const result = provisionUser(db, clock, IDP_USER_ALICE, "tok-alice", ALLOWLIST_ORG, "github");
     expect(result.isNew).toBe(true);
     expect(result.bootstrapAdmin).toBe(true);
     expect(result.user.role).toBe("admin");
   });
 
   it("new user: INSERTs users row with idp_access_token + last_login_at populated", () => {
-    const result = provisionUser(db, clock, IDP_USER_ALICE, "tok-alice-secret", ALLOWLIST_ORG);
+    const result = provisionUser(db, clock, IDP_USER_ALICE, "tok-alice-secret", ALLOWLIST_ORG, "github");
     const row = db.prepare("SELECT * FROM users WHERE id = ?").get(result.user.user_id) as {
       idp_access_token: string;
       last_login_at: string;
@@ -178,7 +178,7 @@ describe("provisionUser", () => {
   });
 
   it("new user (bootstrapped admin): user_orgs row gets FINAL role 'admin' (not 'member')", () => {
-    const result = provisionUser(db, clock, IDP_USER_ALICE, "tok-alice", ALLOWLIST_ORG);
+    const result = provisionUser(db, clock, IDP_USER_ALICE, "tok-alice", ALLOWLIST_ORG, "github");
     expect(result.bootstrapAdmin).toBe(true);
     const userOrg = db
       .prepare("SELECT role FROM user_orgs WHERE user_id = ? AND org_id = ?")
@@ -193,10 +193,10 @@ describe("provisionUser", () => {
 
   it("returning user: returns isNew=false and updates idp_access_token + last_login_at", () => {
     // First login.
-    const first = provisionUser(db, clock, IDP_USER_ALICE, "tok-old", ALLOWLIST_ORG);
+    const first = provisionUser(db, clock, IDP_USER_ALICE, "tok-old", ALLOWLIST_ORG, "github");
     // Advance clock; second login should refresh fields.
     clock.advance(3600);
-    const second = provisionUser(db, clock, IDP_USER_ALICE, "tok-new", ALLOWLIST_ORG);
+    const second = provisionUser(db, clock, IDP_USER_ALICE, "tok-new", ALLOWLIST_ORG, "github");
     expect(second.isNew).toBe(false);
     expect(second.bootstrapAdmin).toBe(false);
     expect(second.user.user_id).toBe(first.user.user_id);
@@ -209,22 +209,22 @@ describe("provisionUser", () => {
   });
 
   it("returning user: does NOT insert duplicate users row", () => {
-    provisionUser(db, clock, IDP_USER_ALICE, "tok-1", ALLOWLIST_ORG);
-    provisionUser(db, clock, IDP_USER_ALICE, "tok-2", ALLOWLIST_ORG);
+    provisionUser(db, clock, IDP_USER_ALICE, "tok-1", ALLOWLIST_ORG, "github");
+    provisionUser(db, clock, IDP_USER_ALICE, "tok-2", ALLOWLIST_ORG, "github");
     const count = db.prepare("SELECT COUNT(*) as c FROM users").get() as { c: number };
     expect(count.c).toBe(1);
   });
 
   it("returning user: does NOT insert duplicate user_orgs row", () => {
-    provisionUser(db, clock, IDP_USER_ALICE, "tok-1", ALLOWLIST_ORG);
-    provisionUser(db, clock, IDP_USER_ALICE, "tok-2", ALLOWLIST_ORG);
+    provisionUser(db, clock, IDP_USER_ALICE, "tok-1", ALLOWLIST_ORG, "github");
+    provisionUser(db, clock, IDP_USER_ALICE, "tok-2", ALLOWLIST_ORG, "github");
     const count = db.prepare("SELECT COUNT(*) as c FROM user_orgs").get() as { c: number };
     expect(count.c).toBe(1);
   });
 
   it("new user with missing IdP name: stores NULL in users.name (?? null branch)", () => {
     const noName: IdpUserInfo = { idp_user_id: "gh-300", email: "noname@example.com" };
-    const result = provisionUser(db, clock, noName, "tok-noname", ALLOWLIST_ORG);
+    const result = provisionUser(db, clock, noName, "tok-noname", ALLOWLIST_ORG, "github");
     const row = db.prepare("SELECT name FROM users WHERE id = ?").get(result.user.user_id) as {
       name: string | null;
     };
@@ -241,13 +241,13 @@ describe("provisionUser", () => {
       `INSERT INTO user_orgs (user_id, org_id, role, joined_at)
        VALUES ('admin-existing', 'org-1', 'admin', '1')`,
     ).run();
-    const first = provisionUser(db, clock, IDP_USER_BOB, "tok-bob", ALLOWLIST_ORG);
+    const first = provisionUser(db, clock, IDP_USER_BOB, "tok-bob", ALLOWLIST_ORG, "github");
     expect(first.user.role).toBe("member");
 
     // Now wipe admin and re-login Bob: he should still be 'member' (role frozen).
     db.prepare("DELETE FROM user_orgs WHERE user_id = 'admin-existing'").run();
     db.prepare("DELETE FROM users WHERE id = 'admin-existing'").run();
-    const second = provisionUser(db, clock, IDP_USER_BOB, "tok-bob-2", ALLOWLIST_ORG);
+    const second = provisionUser(db, clock, IDP_USER_BOB, "tok-bob-2", ALLOWLIST_ORG, "github");
     expect(second.bootstrapAdmin).toBe(false);
     expect(second.user.role).toBe("member");
   });

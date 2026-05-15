@@ -113,7 +113,6 @@ function makeCtx(overrides: Partial<AuthHandlerContext> = {}): AuthHandlerContex
   return {
     db: getDb() as unknown as AuthHandlerContext["db"],
     clock,
-    githubProvider: makeProvider(),
     providers: singleProviderRegistry(makeProvider()),
     rateLimiter,
     publicUrl: ISSUER,
@@ -352,7 +351,7 @@ describe("handleOAuthToken — grant_type=authorization_code", () => {
     await handleOAuthToken(
       req,
       res as unknown as ServerResponse,
-      makeCtx({ githubProvider: provider, providers: singleProviderRegistry(provider) }),
+      makeCtx({ providers: singleProviderRegistry(provider) }),
     );
     expect(res.statusCode).toBe(401);
     const body = JSON.parse(res.body!);
@@ -378,7 +377,7 @@ describe("handleOAuthToken — grant_type=authorization_code", () => {
     await handleOAuthToken(
       req,
       res as unknown as ServerResponse,
-      makeCtx({ githubProvider: provider, providers: singleProviderRegistry(provider) }),
+      makeCtx({ providers: singleProviderRegistry(provider) }),
     );
     expect(res.statusCode).toBe(503);
     expect(JSON.parse(res.body!).error).toBe("temporarily_unavailable");
@@ -400,7 +399,7 @@ describe("handleOAuthToken — grant_type=authorization_code", () => {
       handleOAuthToken(
         req,
         res as unknown as ServerResponse,
-        makeCtx({ githubProvider: provider, providers: singleProviderRegistry(provider) }),
+        makeCtx({ providers: singleProviderRegistry(provider) }),
       ),
     ).rejects.toThrow(/boom/);
   });
@@ -431,7 +430,7 @@ describe("handleOAuthToken — grant_type=authorization_code", () => {
     await handleOAuthToken(
       req,
       res as unknown as ServerResponse,
-      makeCtx({ githubProvider: provider, providers: singleProviderRegistry(provider) }),
+      makeCtx({ providers: singleProviderRegistry(provider) }),
     );
 
     expect(res.statusCode).toBe(200);
@@ -483,7 +482,7 @@ describe("handleOAuthToken — grant_type=authorization_code", () => {
     await handleOAuthToken(
       stream as unknown as IncomingMessage,
       res as unknown as ServerResponse,
-      makeCtx({ githubProvider: provider, providers: singleProviderRegistry(provider) }),
+      makeCtx({ providers: singleProviderRegistry(provider) }),
     );
     expect(res.statusCode).toBe(200);
     // Fingerprint was computed from ip alone.
@@ -514,7 +513,7 @@ describe("handleOAuthToken — grant_type=authorization_code", () => {
     await handleOAuthToken(
       req,
       res as unknown as ServerResponse,
-      makeCtx({ githubProvider: provider, providers: singleProviderRegistry(provider) }),
+      makeCtx({ providers: singleProviderRegistry(provider) }),
     );
 
     expect(res.statusCode).toBe(200);
@@ -546,7 +545,7 @@ describe("handleOAuthToken — authorization_code allowlist", () => {
     await handleOAuthToken(
       req,
       res as unknown as ServerResponse,
-      makeCtx({ githubProvider: provider, providers: singleProviderRegistry(provider) }),
+      makeCtx({ providers: singleProviderRegistry(provider) }),
     );
     expect(res.statusCode).toBe(403);
     expect(JSON.parse(res.body!).error).toBe("access_denied");
@@ -578,7 +577,7 @@ describe("handleOAuthToken — authorization_code allowlist", () => {
     await handleOAuthToken(
       req,
       res as unknown as ServerResponse,
-      makeCtx({ githubProvider: provider, providers: singleProviderRegistry(provider) }),
+      makeCtx({ providers: singleProviderRegistry(provider) }),
     );
     expect(res.statusCode).toBe(401);
     expect(JSON.parse(res.body!).error).toBe("invalid_grant");
@@ -608,7 +607,7 @@ describe("handleOAuthToken — authorization_code allowlist", () => {
     await handleOAuthToken(
       req,
       res as unknown as ServerResponse,
-      makeCtx({ githubProvider: provider, providers: singleProviderRegistry(provider) }),
+      makeCtx({ providers: singleProviderRegistry(provider) }),
     );
     expect(res.statusCode).toBe(503);
     expect(JSON.parse(res.body!).error).toBe("temporarily_unavailable");
@@ -635,7 +634,7 @@ describe("handleOAuthToken — authorization_code allowlist", () => {
       handleOAuthToken(
         req,
         res as unknown as ServerResponse,
-        makeCtx({ githubProvider: provider, providers: singleProviderRegistry(provider) }),
+        makeCtx({ providers: singleProviderRegistry(provider) }),
       ),
     ).rejects.toThrow(/network unrest/);
   });
