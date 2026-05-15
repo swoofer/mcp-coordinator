@@ -6,7 +6,11 @@ import { handleOAuthToken } from "../auth/oauth-token.js";
 import { handleDeviceAuthorization, handleDeviceApprove } from "../auth/device-flow.js";
 import { handleLogout, handleLogoutAll, handleRevoke } from "../auth/logout.js";
 import { handleUserinfo } from "../auth/userinfo.js";
-import { handleIssueServiceToken } from "../admin/handle-service-tokens.js";
+import {
+  handleIssueServiceToken,
+  handleListServiceTokens,
+  handleRevokeServiceToken,
+} from "../admin/handle-service-tokens.js";
 import { handleDevicePage } from "../auth/pages/device.html.js";
 import { handleDeviceConfirmPage } from "../auth/pages/device-confirm.html.js";
 import { handleSuccessPage } from "../auth/pages/success.html.js";
@@ -30,6 +34,9 @@ import { appError } from "./response-contract.js";
  *   POST /api/auth/logout-all                     → handleLogoutAll (T23)
  *   POST /api/auth/revoke                         → handleRevoke (T23)
  *   GET  /api/auth/me                             → handleUserinfo (T24)
+ *   POST /api/admin/service-tokens                → handleIssueServiceToken (T25)
+ *   GET  /api/admin/service-tokens                → handleListServiceTokens (T25)
+ *   POST /api/admin/service-tokens/<jti>/revoke   → handleRevokeServiceToken (T25)
  *
  * Discovery doc (T14) is wired separately by serve-http.ts at boot —
  * it doesn't flow through this dispatcher.
@@ -95,6 +102,23 @@ export async function dispatchAuthRoutes(
     await handleIssueServiceToken(req, res, ctx);
     return true;
   }
+  if (url === "/api/admin/service-tokens" && method === "GET") {
+    await handleListServiceTokens(req, res, ctx);
+    return true;
+  }
+
+  // Service-token revoke is parameterized (jti in URL). Match via regex
+  // before the KNOWN_AUTH_PATHS check; non-POST methods on this path fall
+  // through to the dispatcher's return false (handleRest will 404). This
+  // skips the 405 branch for parameterized paths -- acceptable trade-off.
+  const revokeMatch = url.match(
+    /^\/api\/admin\/service-tokens\/([^/]+)\/revoke$/,
+  );
+  if (revokeMatch && method === "POST") {
+    const jti = decodeURIComponent(revokeMatch[1]!);
+    await handleRevokeServiceToken(req, res, ctx, jti);
+    return true;
+  }
 
   // Known auth path but wrong method → 405. Match the URL ignoring method.
   if (KNOWN_AUTH_PATHS.has(url)) {
@@ -126,6 +150,7 @@ const KNOWN_AUTH_PATHS = new Set([
 ]);
 
 function methodForPath(url: string): string {
+  if (url === "/api/admin/service-tokens") return "GET, POST";
   if (
     url === "/auth/login" ||
     url === "/auth/device" ||

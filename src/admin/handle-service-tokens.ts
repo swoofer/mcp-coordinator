@@ -1,12 +1,17 @@
 // T25 — POST /api/admin/service-tokens. Admin-only service-token issuance.
 // Per V4 FIX 10 + V2 §A.7. Emits Tier 1 audit auth.service_token.issued so
 // the provenance trail survives even if the audit queue drains late.
+//
+// T25 follow-up: GET /api/admin/service-tokens (list) and POST
+// /api/admin/service-tokens/<jti>/revoke wrap the same admin-auth gate.
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { AuthHandlerContext } from "../auth/context.js";
 import { authenticateRequest } from "../auth.js";
 import { appError } from "../http/response-contract.js";
 import {
   issueServiceToken,
+  listServiceTokens,
+  revokeServiceToken,
   ServiceTokenValidationError,
   type ServiceTokenScope,
 } from "../auth/service-tokens.js";
@@ -172,4 +177,141 @@ export async function handleIssueServiceToken(
     res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
     res.end(JSON.stringify(appError(err.code, err.message)));
   }
+}
+
+/**
+ * GET /api/admin/service-tokens — admin-only list of service tokens.
+ *
+ * Query string filters: ?user=<id>, ?org=<id>, ?active_only=true. Returns
+ * { tokens: [...] } with each row tagged status='active'|'revoked'|'expired'
+ * derived from revoked_at + expires_at vs the current clock.
+ */
+export async function handleListServiceTokens(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: AuthHandlerContext,
+): Promise<void> {
+  const authResult = await authenticateRequest(req, { authEnabled: true });
+  if (!authResult.ok) {
+    res.writeHead(authResult.status, {
+      "Content-Type": "application/json; charset=utf-8",
+      ...(authResult.wwwAuthenticate
+        ? { "WWW-Authenticate": authResult.wwwAuthenticate }
+        : {}),
+    });
+    res.end(JSON.stringify(appError("UNAUTHORIZED", authResult.error)));
+    return;
+  }
+  if (authResult.claims.role !== "admin") {
+    res.writeHead(403, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(
+      JSON.stringify(
+        appError("FORBIDDEN", "Only admins can list service tokens"),
+      ),
+    );
+    return;
+  }
+
+  const url = new URL(req.url ?? "/", "http://localhost");
+  const userFilter = url.searchParams.get("user") ?? undefined;
+  const orgFilter = url.searchParams.get("org") ?? undefined;
+  const activeOnly = url.searchParams.get("active_only") === "true";
+
+  const rows = listServiceTokens(ctx.db, {
+    userId: userFilter,
+    orgId: orgFilter,
+    activeOnly,
+  });
+
+  const now = ctx.clock.now();
+  res.writeHead(200, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+  });
+  res.end(
+    JSON.stringify({
+      tokens: rows.map((r) => ({
+        jti: r.jti,
+        user_id: r.user_id,
+        org_id: r.org_id,
+        family_id: r.family_id,
+        expires_at: r.expires_at,
+        created_at: r.created_at,
+        last_used_at: r.last_used_at,
+        revoked_at: r.revoked_at,
+        revoked_reason: r.revoked_reason,
+        status:
+          r.revoked_at !== null
+            ? "revoked"
+            : Number(r.expires_at) < now
+              ? "expired"
+              : "active",
+      })),
+    }),
+  );
+}
+
+/**
+ * POST /api/admin/service-tokens/<jti>/revoke — admin-only revoke.
+ *
+ * Idempotent at the row level: 404 NOT_FOUND on unknown jti AND on
+ * already-revoked rows (revokeServiceToken returns false in both cases).
+ * Emits Tier 1 audit auth.service_token.revoked with revoked_by_admin_id.
+ */
+export async function handleRevokeServiceToken(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: AuthHandlerContext,
+  jti: string,
+): Promise<void> {
+  const authResult = await authenticateRequest(req, { authEnabled: true });
+  if (!authResult.ok) {
+    res.writeHead(authResult.status, {
+      "Content-Type": "application/json; charset=utf-8",
+      ...(authResult.wwwAuthenticate
+        ? { "WWW-Authenticate": authResult.wwwAuthenticate }
+        : {}),
+    });
+    res.end(JSON.stringify(appError("UNAUTHORIZED", authResult.error)));
+    return;
+  }
+  if (authResult.claims.role !== "admin") {
+    res.writeHead(403, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(
+      JSON.stringify(
+        appError("FORBIDDEN", "Only admins can revoke service tokens"),
+      ),
+    );
+    return;
+  }
+
+  const revoked = revokeServiceToken(
+    ctx.db,
+    ctx.clock,
+    jti,
+    authResult.claims.user_id,
+  );
+  if (!revoked) {
+    res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(
+      JSON.stringify(
+        appError("NOT_FOUND", "Service token not found or already revoked"),
+      ),
+    );
+    return;
+  }
+
+  audit("auth.service_token.revoked", {
+    tier: 1,
+    metadata: {
+      jti,
+      revoked_by_admin_id: authResult.claims.user_id,
+    },
+  });
+
+  res.writeHead(200, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+  });
+  res.end(JSON.stringify({ revoked: true, jti }));
 }
