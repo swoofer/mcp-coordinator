@@ -1,21 +1,30 @@
 # IdP providers -- adding a new identity provider
 
-mcp-coordinator's Phase 2 OAuth flow is decoupled from the underlying
-identity provider via the `IdPProvider` interface (T02). Phase 2 ships
-exactly one concrete implementation: `GitHubProvider` (T05). This document
-shows how to add additional providers (Google, generic OIDC, Azure AD)
-for Phase 4.
+mcp-coordinator's OAuth flow is decoupled from the underlying identity
+provider via the `IdPProvider` interface. **v0.9.0 ships three concrete
+implementations out of the box**: `GitHubProvider`, `GoogleProvider`,
+and a generic `OIDCProvider` for any conformant OpenID Connect issuer
+(tested against Okta / Auth0 / Azure AD / Keycloak / Authentik).
 
-**Scope**: this is forward-looking scaffolding documentation. None of
-the providers below are wired into v0.8.0. The registry pattern is
-production-ready -- the missing piece is the per-provider implementation
-plus boot-time registration.
+This document covers two scenarios:
+
+1. **Configuring** one of the built-in providers via env vars -- jump
+   to "Configuring Google", "Configuring generic OIDC", or "Configuring
+   Azure AD / Entra ID" below.
+2. **Adding** a fully custom IdP that isn't OIDC-conformant -- read the
+   `IdPProvider` interface section then vendor a subclass into a fork.
+   The contract is small enough that custom IdPs are usually well under
+   200 lines.
 
 References:
 
-- `src/auth/providers/types.ts` (T02) -- the `IdPProvider` interface
-- `src/auth/providers/registry.ts` (T02) -- the global Map<string, IdPProvider>
-- `src/auth/providers/github.ts` (T05) -- the canonical GitHub implementation
+- `src/auth/providers/types.ts` -- the `IdPProvider` interface
+- `src/auth/providers/registry.ts` -- `ProviderRegistry` class (one
+  instance per server, attached to `AuthHandlerContext.providers`)
+- `src/auth/providers/github.ts` -- the canonical GitHub implementation
+- `src/auth/providers/google.ts` -- Google OAuth + OIDC with id_token
+  signature verification (T47)
+- `src/auth/providers/oidc.ts` -- generic OIDC with discovery (T48)
 - `src/auth/providers/errors.ts` -- typed errors all providers must throw
 
 ## The `IdPProvider` interface
@@ -53,11 +62,14 @@ export type DevicePollResult =
 export interface IdPProvider {
   readonly name: string;
 
+  // Return type widened to allow async providers (T48 OIDCProvider
+  // fetches its discovery doc lazily on first call). GitHub + Google
+  // stay synchronous.
   buildAuthUrl(
     state: string,
     redirectUri: string,
     codeChallenge?: string,
-  ): string;
+  ): string | Promise<string>;
 
   exchangeCode(
     code: string,
@@ -171,33 +183,67 @@ export class GitHubProvider implements IdPProvider {
 
 ### Registration
 
-`registry.ts` exposes:
+`registry.ts` exports a `ProviderRegistry` class. `bootPhase2` constructs
+exactly one instance per server and attaches it to
+`AuthHandlerContext.providers`:
 
 ```ts
-export function registerProvider(p: IdPProvider): void;
-export function getProvider(name: string): IdPProvider | null;
-```
-
-Provider registration happens during `bootPhase2(opts)` (T29) based on
-env vars. The current boot path conditionally registers GitHub:
-
-```ts
-if (env.COORDINATOR_GITHUB_CLIENT_ID && env.COORDINATOR_GITHUB_CLIENT_SECRET) {
-  registerProvider(new GitHubProvider({
-    clientId: env.COORDINATOR_GITHUB_CLIENT_ID,
-    clientSecret: env.COORDINATOR_GITHUB_CLIENT_SECRET,
-  }));
+class ProviderRegistry {
+  register(p: IdPProvider): void;
+  get(name: string): IdPProvider | null;
+  has(name: string): boolean;
+  list(): IdPProvider[];
+  names(): string[];
+  size(): number;
+  getDefault(): IdPProvider | null;     // first-registered, or set explicitly
+  setDefault(name: string): void;
 }
 ```
 
-To add a provider in Phase 4, follow the same pattern: read the
-provider-specific env vars, instantiate, register. The provider key
-(`p.name`) becomes the active IdP for users created via that flow;
-users keep their original provider on their `users.idp_provider` column.
+The first registration becomes the implicit default (so single-provider
+deployments keep working without configuration). `setDefault(name)`
+overrides if you need a non-GitHub default. `/auth/login` renders a
+picker page whenever `size() > 1`; otherwise it 302s straight to the
+default.
 
-## Adding Google (Phase 4)
+The current boot path always registers `GitHubProvider`, and conditionally
+registers `GoogleProvider` and `OIDCProvider` based on env vars:
 
-OAuth 2.1 + OpenID Connect via Google Identity Platform.
+```ts
+const providers = new ProviderRegistry();
+
+providers.register(new GitHubProvider({
+  clientId: env.COORDINATOR_GITHUB_CLIENT_ID,
+  clientSecret: env.COORDINATOR_GITHUB_CLIENT_SECRET,
+}));
+
+if (env.COORDINATOR_GOOGLE_CLIENT_ID && env.COORDINATOR_GOOGLE_CLIENT_SECRET) {
+  providers.register(new GoogleProvider({ ... }));
+}
+
+if (env.COORDINATOR_OIDC_ISSUER_URL && env.COORDINATOR_OIDC_CLIENT_ID
+    && env.COORDINATOR_OIDC_CLIENT_SECRET) {
+  providers.register(new OIDCProvider({ ... }));
+}
+```
+
+The provider's `name` field becomes the value stored in
+`users.idp_provider` for users who sign in via that flow. Once a user
+exists, their provider is sticky -- subsequent refresh-rotation
+re-checks always go back through the IdP that originally provisioned
+them, even if the deployment later adds or removes other providers.
+
+## Configuring Google
+
+Built-in. Wire it on with two env vars:
+
+```sh
+export COORDINATOR_GOOGLE_CLIENT_ID=...
+export COORDINATOR_GOOGLE_CLIENT_SECRET=...
+```
+
+Setting only one is a fail-closed boot error -- the coordinator refuses
+to start half-configured.
 
 ### Setup
 
@@ -206,104 +252,147 @@ OAuth 2.1 + OpenID Connect via Google Identity Platform.
 2. Application type: Web application
 3. Authorized redirect URIs:
    `${COORDINATOR_PUBLIC_URL}/api/auth/oauth/callback`
-4. Copy Client ID and Client Secret
+4. Copy Client ID and Client Secret into the env vars above
 
 ### Required scopes
 
-- `openid`
-- `email` -- maps to `IdpUserInfo.email` (validated via the `email_verified`
-  claim before trusting)
-- `profile` -- maps to `IdpUserInfo.name`
+`GoogleProvider.buildAuthUrl` always requests `openid email profile`.
+You don't need to add anything in the Google Cloud Console scope list.
 
-For Google Workspace org allowlisting:
+### id_token verification (mandatory)
 
-- `https://www.googleapis.com/auth/admin.directory.group.readonly` -- list
-  the user's Workspace groups (membership-equivalent semantics)
+Every Google sign-in verifies the returned `id_token` against Google's
+public JWKS (jose `createRemoteJWKSet`):
 
-### Claim mapping
+- `alg=RS256` only
+- `iss=https://accounts.google.com`
+- `aud` must equal your `COORDINATOR_GOOGLE_CLIENT_ID`
+- `exp` must be in the future
 
-| `IdpUserInfo` field | Google source                              |
-|---------------------|--------------------------------------------|
-| `idp_user_id`       | `sub` claim from the ID token              |
-| `email`             | `email` claim (require `email_verified=true`) |
-| `name`              | `name` claim (optional)                    |
-| `idp_org_id`        | `hd` claim (hosted domain, e.g. "example.com") |
-
-### Gotchas
-
-- **Discovery doc**. Google publishes
-  `https://accounts.google.com/.well-known/openid-configuration` -- fetch
-  once at boot, cache the `token_endpoint` and `authorization_endpoint`
-  URIs.
-- **`hd` claim for org allowlist**. The `hd` claim is unverified for
-  consumer Gmail accounts. For Workspace tenancy, additionally verify the
-  user is in the expected Workspace customer via the Admin SDK
-  (otherwise an attacker can spoof `hd` with a custom OAuth client of
-  their own).
-- **Device flow**. Google supports RFC 8628 via the
-  `https://oauth2.googleapis.com/device/code` endpoint. Limited to
-  installed app clients; web app clients cannot use device flow.
-- **Refresh tokens**. Google issues refresh tokens only when
-  `access_type=offline` is included in the auth URL and the user has
-  not previously consented. The coordinator's own refresh-token rotation
-  is independent of the IdP refresh, but storing the IdP refresh is
-  necessary if you ever need to re-poll membership without re-prompting
-  the user.
-
-## Adding generic OIDC (Phase 4)
-
-For any RFC 6749 + OIDC-compliant IdP not specifically supported (Okta,
-Auth0, Keycloak, ...).
-
-### Setup
-
-- Issuer URL: `https://your-tenant.example.com`
-- Discover via `${ISSUER}/.well-known/openid-configuration`
-- Required env vars (template):
-
-```
-COORDINATOR_OIDC_ISSUER_URL=
-COORDINATOR_OIDC_CLIENT_ID=
-COORDINATOR_OIDC_CLIENT_SECRET=
-COORDINATOR_OIDC_NAME=okta              # registry key
-COORDINATOR_OIDC_SCOPES=openid email profile groups
-```
+Any failure maps to `IdPTokenRevoked` (401 to the caller). JWKS-fetch
+failures map to `IdPTransientError` (503).
 
 ### Claim mapping
 
-OIDC standard claims map directly:
-
-| `IdpUserInfo` field | OIDC claim                                 |
-|---------------------|--------------------------------------------|
-| `idp_user_id`       | `sub`                                      |
-| `email`             | `email` (require `email_verified=true`)    |
-| `name`              | `name`                                     |
-| `idp_org_id`        | `groups` (first match, or per allowlist)   |
+| `IdpUserInfo` field | Google id_token claim |
+|---------------------|-----------------------|
+| `idp_user_id`       | `sub`                 |
+| `email`             | `email`               |
+| `name`              | `name` (optional)     |
+| `idp_org_id`        | `hd` (Workspace hosted domain, optional) |
 
 ### Gotchas
 
-- **ID token signature verification**. Unlike GitHub (which returns an
-  opaque access token), OIDC returns a signed JWT ID token. You MUST
-  verify the signature against the IdP's JWKS (`jwks_uri` from the
-  discovery doc), validate `iss`, `aud`, `exp`, `iat`, and `nonce` (if
-  used). The jose library used elsewhere in the codebase handles all of
-  this -- pin algorithm via `algorithms: [...]` allowlist, never accept
-  `alg=none`.
-- **JWKS rotation**. Cache the JWKS with a short TTL (10 minutes) and
-  refresh on `kid` miss. Do NOT call `jwks_uri` on every login.
-- **Groups encoding**. Some IdPs return `groups` as an array of strings;
-  others as a space-delimited string; Keycloak nests them in
-  `realm_access.roles`. Use a configurable JSONPath or per-provider
-  override.
-- **Device flow**. RFC 8628 support is optional in OIDC. Probe
-  `device_authorization_endpoint` in the discovery doc; absence means
-  pollDeviceToken / requestDeviceCode should throw "not supported" at
-  construction time.
+- **`hd` claim for org allowlist**. The `hd` claim only appears for
+  Workspace accounts. A consumer Gmail user (`@gmail.com`) will produce
+  an `IdpUserInfo` with `idp_org_id` undefined -- the allowlist code
+  treats them as un-allowlisted.
+- **Device flow**. `GoogleProvider.requestDeviceCode` / `pollDeviceToken`
+  are not implemented yet. Google's RFC 8628 endpoint
+  (`https://oauth2.googleapis.com/device/code`) is limited to installed
+  app clients, which the coordinator's web-app client registration
+  cannot satisfy.
+- **`listMemberships` throws** -- Google has no GitHub-org equivalent.
+  Allowlist deployments must drive off the `hd` claim instead;
+  schema-level hd allowlist is planned for v0.10.
 
-## Adding Azure AD / Entra ID (Phase 4+)
+## Configuring generic OIDC
+
+Built-in. Wire it on with three env vars:
+
+```sh
+export COORDINATOR_OIDC_ISSUER_URL=https://your-tenant.example.com
+export COORDINATOR_OIDC_CLIENT_ID=...
+export COORDINATOR_OIDC_CLIENT_SECRET=...
+```
+
+All three are required together; any partial config is a fail-closed
+boot error. The issuer URL is parse-and-protocol checked at boot.
+
+### Discovery
+
+On the first call to `/auth/login`, `OIDCProvider` fetches
+`${ISSUER}/.well-known/openid-configuration` and caches:
+
+- `authorization_endpoint`
+- `token_endpoint`
+- `jwks_uri`
+
+The discovery doc's own `issuer` field MUST equal the configured
+`COORDINATOR_OIDC_ISSUER_URL` -- if not, boot is fine but the first
+`/auth/login` fails with a `discovery issuer mismatch` error. This
+defends against an attacker who can redirect requests to a malicious
+discovery URL.
+
+The cache lives for the process lifetime (OIDC issuers publish stable
+endpoint URLs by contract; a boot redeploy is the implicit invalidator).
+
+### id_token verification (mandatory)
+
+Every OIDC sign-in verifies the returned `id_token` against the
+discovered JWKS:
+
+- `alg=RS256` only (`alg=none` and HS256 are rejected)
+- `iss` must equal `COORDINATOR_OIDC_ISSUER_URL` exactly (no trailing
+  slash normalization on the compare -- if your IdP returns
+  `https://issuer.example/` in `iss`, configure that exact value here)
+- `aud` must equal `COORDINATOR_OIDC_CLIENT_ID`
+- `exp` must be in the future
+
+JWKS-by-`kid` lookup is automatic. Verification failure -> 401;
+JWKS-fetch failure -> 503.
+
+### Claim mapping
+
+| `IdpUserInfo` field | OIDC claim                                                             |
+|---------------------|------------------------------------------------------------------------|
+| `idp_user_id`       | `sub`                                                                  |
+| `email`             | `email` -> `preferred_username` -> `sub` (first non-empty wins)        |
+| `name`              | `name` (optional)                                                      |
+| `idp_org_id`        | not set (generic OIDC has no portable org claim; see Gotchas)          |
+
+### Provider name in the picker
+
+The registry key is `"oidc"` and the picker label is `"Single
+Sign-On"`. If you want a more specific label (e.g. `"Okta"`), construct
+the provider with an explicit `name`:
+
+```ts
+new OIDCProvider({ ..., name: "okta" });
+```
+
+Then `?provider=okta` is the picker target; the title-cased fallback
+gives the user "Continue with Okta".
+
+### Gotchas
+
+- **`listMemberships` throws** -- generic OIDC has no portable group
+  model. Some IdPs publish `groups`, others use
+  `realm_access.roles` (Keycloak) or App Role claims (Azure AD).
+  Deployments needing OIDC-driven allowlisting must vendor a subclass
+  that knows the issuer-specific claim shape.
+- **Device flow is not implemented**. RFC 8628 support is optional in
+  OIDC core; a future PR will probe `device_authorization_endpoint`
+  in the discovery doc and conditionally implement
+  `requestDeviceCode` / `pollDeviceToken`.
+- **`nonce` is not currently sent or verified**. PKCE + state HMAC
+  already provide proof-of-possession; nonce-as-defense-in-depth
+  requires an extra `oauth_state.nonce` column (planned).
+
+## Configuring Azure AD / Entra ID
 
 Microsoft Entra ID (formerly Azure Active Directory) is OIDC-compliant
-but has Microsoft-specific quirks worth a dedicated implementation.
+and works through the built-in `OIDCProvider`. Use the `_v2.0` issuer
+URL -- v1.0 is deprecated and does not advertise discovery:
+
+```sh
+export COORDINATOR_OIDC_ISSUER_URL=https://login.microsoftonline.com/${TENANT_ID}/v2.0
+export COORDINATOR_OIDC_CLIENT_ID=...
+export COORDINATOR_OIDC_CLIENT_SECRET=...
+```
+
+For multi-tenant apps use `common` or `organizations` as the tenant
+segment; the discovery doc handles the rest.
 
 ### Setup
 
@@ -352,29 +441,36 @@ but has Microsoft-specific quirks worth a dedicated implementation.
 - **Device flow**. Supported via
   `https://login.microsoftonline.com/${tid}/oauth2/v2.0/devicecode`.
 
-## Checklist for new providers
+## Checklist for custom providers
 
-When adding a provider in Phase 4, ensure:
+If your IdP isn't OIDC-conformant and you need to vendor a subclass into
+a fork, ensure:
 
 - [ ] `class MyProvider implements IdPProvider`
 - [ ] `name` is lowercase, URL-safe, unique in the registry
 - [ ] zod schemas for all IdP response shapes
 - [ ] `AbortSignal.timeout(5000)` on every fetch
-- [ ] One retry on 5xx / network error; no retry on 4xx
+- [ ] One retry on 5xx / network error; no retry on 4xx (where applicable)
 - [ ] `IdPTokenRevoked` thrown on 401
 - [ ] `IdPTransientError` thrown on 403 / 5xx / network
-- [ ] `listMemberships` returns LOWERCASE strings
+- [ ] If you return a signed token (id_token / SAML assertion / JWT
+      access token), verify its signature against the IdP's public keys
+      and pin the algorithm. Mirror the `GoogleProvider` or `OIDCProvider`
+      pattern (jose `createRemoteJWKSet` + `jwtVerify` with
+      `algorithms: ["RS256"]`)
+- [ ] `listMemberships` returns LOWERCASE strings (or throws fail-fast
+      if your IdP has no portable group model)
 - [ ] SSRF guard on any paginated `Link: rel="next"` (or equivalent)
 - [ ] Self-hosted variant override (GHES / Azure Gov / etc.) via
       constructor params
 - [ ] Conditional registration in `bootPhase2` based on env vars
-- [ ] Unit tests with mocked fetch (follow `tests/auth/providers/github.test.ts`
-      pattern); per-file 100% branch coverage enforced via vitest
-      threshold
-- [ ] Integration test for the OAuth callback happy path
+- [ ] Unit tests with mocked fetch (follow `tests/unit/google-provider.test.ts`
+      or `tests/unit/oidc-provider.test.ts` for the JWKS + signed-token
+      verification pattern). 100% branch coverage enforced via vitest
+      thresholds.
 - [ ] Audit-log events use the existing `audit()` API; no new tier
       categories required
-
-Out-of-scope for v0.8.0; planned for Phase 4. The IdPProvider interface
-(T02) and GitHubProvider (T05) are production-ready and serve as the
-foundation.
+- [ ] Provider label rendered by the picker comes from
+      `src/auth/pages/login-picker.html.ts`. Either pick a registry
+      name whose title-case rendering looks right ("okta" -> "Okta") or
+      patch `providerLabel()` to add a friendly mapping.

@@ -2,7 +2,7 @@
 
 # mcp-coordinator
 
-**Embedded MQTT broker + MCP server for multi-agent coordination. Zero conflicts, everyone aligned. Optional OAuth 2.1 + device flow (Phase 2, v0.8.0).**
+**Embedded MQTT broker + MCP server for multi-agent coordination. Zero conflicts, everyone aligned. Optional OAuth 2.1 + device flow with multi-IdP (GitHub, Google, generic OIDC) -- v0.9.0.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![npm](https://img.shields.io/npm/v/mcp-coordinator.svg)](https://www.npmjs.com/package/mcp-coordinator)
@@ -267,6 +267,55 @@ Released 2026-05-14. Feature-flagged behind `COORDINATOR_OAUTH_ENABLED=true`. Ph
 
 ---
 
+## What's New in v0.9.0 (Multi-IdP)
+
+Released 2026-05-15. Single-provider GitHub-only deployments stay behaviour-compatible — every change is opt-in via new env vars or a no-op when only one IdP is registered.
+
+### A. Provider registry
+
+- `ProviderRegistry` class attached to `AuthHandlerContext.providers` (T45). First registration becomes the implicit default.
+- Every OAuth handler resolves the IdP through `ctx.providers.get(...)` rather than the removed `ctx.githubProvider` alias (T46). Refresh-rotation reads `users.idp_provider` so multi-provider users get re-validated against the IdP they actually signed in with.
+
+### B. Google OAuth / OIDC
+
+- First-class `GoogleProvider` (T47) with **mandatory** id_token signature verification: jose `createRemoteJWKSet` + RS256 + `iss=https://accounts.google.com` + `aud=client_id`.
+- Identity claims read straight from the verified id_token (no extra `/userinfo` round-trip).
+- Workspace `hd` claim surfaces as `idp_org_id` for hd-based allowlist deployments.
+- Opt-in via `COORDINATOR_GOOGLE_CLIENT_ID` + `COORDINATOR_GOOGLE_CLIENT_SECRET` (both required or neither — fail-closed at boot).
+
+### C. Generic OpenID Connect
+
+- `OIDCProvider` (T48) for Okta / Auth0 / Azure AD / Keycloak / Authentik / any conformant OIDC issuer.
+- Auto-discovers `authorization_endpoint`, `token_endpoint`, and `jwks_uri` from `<issuer>/.well-known/openid-configuration`.
+- Discovery doc's own `issuer` field is cross-checked against config — catches redirect attacks on the discovery URL.
+- Email-claim fallback chain: `email` → `preferred_username` → `sub` (OIDC core makes `email` optional).
+- Opt-in via `COORDINATOR_OIDC_ISSUER_URL` + `COORDINATOR_OIDC_CLIENT_ID` + `COORDINATOR_OIDC_CLIENT_SECRET` (all three required together).
+
+### D. Login picker UI
+
+- `GET /auth/login` renders an HTML picker when `ctx.providers.size() > 1` (T49). Each button is a top-level GET to `/auth/login?provider=<name>`; the underlying PKCE + state-cookie + 302 flow is unchanged.
+- Friendly built-in labels for `github` / `google` / `oidc`; title-cased fallback for custom provider names.
+- Unknown `?provider=X` → 400 `UNKNOWN_PROVIDER` (no silent fallback to the default).
+- Single-provider deployments skip the picker entirely.
+
+### Breaking changes (internal embedding APIs)
+
+| Surface | Change | Migration |
+|---------|--------|-----------|
+| `AuthHandlerContext.githubProvider` | Removed | Use `ctx.providers.get("github")` or `ctx.providers.getDefault()` |
+| `IdPProvider.buildAuthUrl` return type | `string` → `string \| Promise<string>` | `await` the result; built-in providers stay synchronous |
+| `provisionUser(...)` | Required 6th arg `providerName: string` | Pass `"github"` for existing call sites; the resolved `provider.name` for new ones |
+| `auth.state.mixup` audit metadata | `{ expected_provider: "github" }` → `{ registered_providers: string[] }` | Log-pipeline consumers parsing `expected_provider` need to update |
+
+### Testing
+
+- **1623 tests** passing (+61 vs v0.8.1). 100% branch coverage on `auth/providers/{registry,github,google,oidc}.ts`.
+- 16 GoogleProvider tests covering happy path, id_token verification (wrong issuer / audience / expired / unknown kid), JWKS unreachable transient errors, token-endpoint 401 / 502 / 4xx mapping.
+- 21 OIDCProvider tests covering discovery-URL validation, issuer cross-check, the same id_token verification matrix, and email-claim fallback chain.
+- 8 login-picker rendering tests + 6 picker integration tests (1 vs N provider behaviour, unknown-name 400, rate-limit, state row provider field).
+
+---
+
 ## What's New in v0.5.0
 
 Released 2026-05-10.
@@ -327,14 +376,18 @@ See [CHANGELOG.md](./CHANGELOG.md) for the full list.
 
 JWT key rotation overlap (prev-secret support) + GHES env vars wiring.
 
+### v0.9.0 (shipped 2026-05-15)
+
+Multi-IdP: `ProviderRegistry` class + first-class `GoogleProvider` (id_token verification with JWKS) + generic `OIDCProvider` (discovery + JWKS) for Okta / Auth0 / Azure AD / Keycloak / Authentik + `/auth/login` picker UI when 2+ providers are registered. Single-provider deployments stay behaviour-compatible. 1623 tests.
+
 ### v0.5.0 (shipped 2026-05-10)
 
 Working-files in-flight tracking, tree-sitter symbol annotations across 15 languages, git co-change Layer 4 scoring, dashboard Conflict signals panel, schema downgrade guard, 5 new Prometheus metrics.
 
 ### Planned
 
-- **v0.8.x** — Performance bench + chaos suite (T33), Grafana dashboards (T37b is shipped but iterative refinement), GitHub App flow (vs OAuth App), Postgres backend for SOC 2 Type II regulated workloads (Phase 4).
-- **v0.9.0** — Multi-IdP registry activation (Google + generic OIDC + Azure AD) per [`docs/idp-providers.md`](./docs/idp-providers.md).
+- **v0.9.x** — GitHub App flow (separate from OAuth App, uses installation tokens), audit log hash chain for SOC 2 Type II tamper-evidence, automated rotation tooling for `JWT_SECRET`.
+- **v0.10** — Postgres adapter for regulated multi-instance workloads (Phase 4); native hd-based allowlist column so Google Workspace deployments don't have to overload `allowlist_github_org`.
 - **v1.0** — Phase 5 multi-instance (Redis pub/sub for membership cache invalidation + token_epoch reads + rate-limit + sweeper leader election).
 
 ### Open items / known issues
@@ -969,6 +1022,21 @@ mcp-coordinator server start
 ```
 
 The first user to sign in via `${PUBLIC_URL}/auth/login` becomes the bootstrap admin atomically.
+
+**Multiple IdPs (v0.9.0+).** GitHub is always registered. Add Google or a generic OIDC issuer via additional env vars and `/auth/login` automatically renders a picker:
+
+```bash
+# Google
+export COORDINATOR_GOOGLE_CLIENT_ID=<from-google-cloud-console>
+export COORDINATOR_GOOGLE_CLIENT_SECRET=<from-google-cloud-console>
+
+# Generic OIDC (Okta / Auth0 / Azure AD / Keycloak / Authentik / ...)
+export COORDINATOR_OIDC_ISSUER_URL=https://your-tenant.example.com
+export COORDINATOR_OIDC_CLIENT_ID=<client-id>
+export COORDINATOR_OIDC_CLIENT_SECRET=<client-secret>
+```
+
+Both `_ID`+`_SECRET` are required together; partial config fails closed at boot. See [`docs/idp-providers.md`](./docs/idp-providers.md) for setup walkthroughs.
 
 **Service tokens for CI/CD:**
 
