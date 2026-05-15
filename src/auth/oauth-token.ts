@@ -221,6 +221,7 @@ async function handleAuthorizationCodeGrant(
         org_name: allowlistMatch.org_name,
       },
       provider.name,
+      exchange.refreshToken,
     );
   });
   const provisionResult = tx();

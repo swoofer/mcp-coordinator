@@ -233,6 +233,99 @@ exists, their provider is sticky -- subsequent refresh-rotation
 re-checks always go back through the IdP that originally provisioned
 them, even if the deployment later adds or removes other providers.
 
+## Configuring GitHub App
+
+Built-in as of v0.10.0. Sibling to the OAuth App `GitHubProvider` --
+both can be registered simultaneously under different names. Wire it
+on with two env vars:
+
+```sh
+export COORDINATOR_GITHUB_APP_CLIENT_ID=Iv1.0123456789abcdef
+export COORDINATOR_GITHUB_APP_CLIENT_SECRET=<from-app-settings>
+# Optional: registry key (default "github-app")
+export COORDINATOR_GITHUB_APP_NAME=acme-app
+```
+
+Setting only one of `_CLIENT_ID` / `_CLIENT_SECRET` is a fail-closed
+boot error. GHES base URLs are shared with the OAuth App provider
+(`COORDINATOR_GITHUB_AUTH_BASE_URL` + `_API_BASE_URL`).
+
+### Setup
+
+1. GitHub -> Settings -> Developer settings -> GitHub Apps -> New GitHub App
+2. **Identifying and authorizing users**:
+   - Callback URL: `${COORDINATOR_PUBLIC_URL}/api/auth/oauth/callback`
+   - Tick "Request user authorization (OAuth) during installation"
+3. **Permissions -> Organization permissions -> Members: Read-only**
+   (needed for the allowlist check via `/user/orgs`)
+4. **Where can this GitHub App be installed?** Set to "Any account" if
+   you want users from other orgs to be able to authenticate; otherwise
+   "Only on this account".
+5. After creating, install the App in the orgs you want as the
+   allowlist surface.
+6. Copy the App's **Client ID** (the `Iv1.` prefix is conventional but
+   not required) + a freshly generated **Client secret** into the env
+   vars above.
+
+### Key differences from the OAuth App provider
+
+| | OAuth App (`github`) | GitHub App (`github-app`) |
+|---|---|---|
+| Permissions model | Coarse OAuth scopes (`read:org` etc.) | Fine-grained App permissions |
+| Allowlist control | All orgs the user is a member of | Only orgs where the App is installed |
+| Access token TTL | No expiry | 8 hours |
+| Refresh token | Not issued | Issued; 6mo TTL; auto-rotates |
+| listMemberships endpoint | `/user/orgs` | `/user/orgs` (same; results gated by App permissions) |
+| Device flow (RFC 8628) | Yes | No (GitHub Apps don't support it) |
+
+### Refresh-token recovery
+
+On a `401` from `/user/orgs` at refresh-rotation time, the coordinator
+calls `GitHubAppProvider.refreshIdpToken(refresh_token)` to mint a
+fresh access token + rotated refresh token, persists both to
+`users.idp_access_token` / `users.idp_refresh_token`, and retries the
+membership check. A Tier 2 `auth.idp.token_refreshed` audit row
+records the successful recovery.
+
+If refresh also fails (refresh token expired after 6mo, App
+uninstalled, App revoked), the coordinator emits Tier 1
+`auth.idp.token_revoked` and returns 401 to the caller -- the user
+will need to re-authorize from scratch.
+
+### Coexistence + migration
+
+Register both `GitHubProvider` (OAuth App) and `GitHubAppProvider`
+(GitHub App) and the picker UI shows two entry points. Users keep
+their original `users.idp_provider`; existing OAuth App users will
+NOT be auto-migrated to the App flow even if they re-sign-in via the
+picker (they'd be treated as a new identity because of the
+`UNIQUE(idp_provider, idp_user_id)` constraint).
+
+For a clean migration, plan a one-shot reconciliation against your
+`users` table after every active user has signed in through the new
+provider at least once.
+
+### Gotchas
+
+- **The App must be installed in the user's org** for that org to
+  appear in `listMemberships`. Removing the App from an org acts as a
+  hard revoke for all users authenticating against that org -- existing
+  sessions stay alive for up to 8h until their next refresh-rotation,
+  at which point the App's user-to-server token returns an empty
+  `/user/orgs` and the allowlist check fails.
+- **IdP refresh-token replay detection is NOT implemented** in v0.10.0.
+  If the same `users.idp_refresh_token` is used twice concurrently,
+  both `refreshIdpToken` calls may succeed and GitHub silently
+  revokes at its own discretion. The coordinator's reuse-detection
+  logic covers ITS OWN refresh family only -- the IdP's refresh
+  token is treated as a long-lived secret. Tracked as residual risk
+  in `docs/security/threat-model.md`.
+- **No App-as-itself installation token flow** in v0.10.0. The
+  coordinator does NOT mint installation tokens via the App's
+  private key. Membership queries always use the user's
+  user-to-server token (same as OAuth App). The App's private key is
+  not needed for v0.10.0; only `client_id` + `client_secret`.
+
 ## Configuring Google
 
 Built-in. Wire it on with two env vars:

@@ -544,11 +544,18 @@ export async function refreshTokenGrant(
   //    untouched and will fail their own allowlist check on next refresh
   //    (or simply expire after token_epoch bump if admin chooses).
   const userRow = ctx.db
-    .prepare("SELECT idp_access_token, idp_provider FROM users WHERE id = ?")
+    .prepare(
+      "SELECT idp_access_token, idp_refresh_token, idp_provider FROM users WHERE id = ?",
+    )
     .get(row.user_id) as
-    | { idp_access_token: string | null; idp_provider: string }
+    | {
+        idp_access_token: string | null;
+        idp_refresh_token: string | null;
+        idp_provider: string;
+      }
     | undefined;
   const idpAccessToken = userRow?.idp_access_token ?? null;
+  const idpRefreshToken = userRow?.idp_refresh_token ?? null;
   const idpProviderName = userRow?.idp_provider ?? null;
 
   // T46: look up the IdP via the registry using the user's stored
@@ -561,15 +568,67 @@ export async function refreshTokenGrant(
   let allowlistRecheckPerformed = false;
   if (idpAccessToken && idpProvider) {
     allowlistRecheckPerformed = true;
+    let memberships: string[] | null = null;
+    let firstErr: unknown = null;
+
     try {
-      const memberships = await ctx.membershipCache.getMemberships(
+      memberships = await ctx.membershipCache.getMemberships(
         claims.sub,
         idpProvider,
         idpAccessToken,
       );
-      allowlistMatch = resolveOrgFromMemberships(ctx.db, memberships);
     } catch (err) {
-      if (err instanceof IdPTokenRevoked) {
+      firstErr = err;
+    }
+
+    // T54: on IdP-token-revoked AND the provider supports refresh
+    // token exchange AND we have a refresh token stored, try the
+    // refresh flow before giving up on the row. The cache was keyed
+    // on the old access token, so we go directly to listMemberships
+    // with the new one.
+    if (
+      memberships === null &&
+      firstErr instanceof IdPTokenRevoked &&
+      idpRefreshToken !== null &&
+      typeof idpProvider.refreshIdpToken === "function"
+    ) {
+      try {
+        const refreshed = await idpProvider.refreshIdpToken(idpRefreshToken);
+        ctx.db
+          .prepare(
+            "UPDATE users SET idp_access_token = ?, idp_refresh_token = ? WHERE id = ?",
+          )
+          .run(
+            refreshed.accessToken,
+            refreshed.refreshToken ?? idpRefreshToken,
+            row.user_id,
+          );
+        audit("auth.idp.token_refreshed", {
+          tier: 2,
+          metadata: {
+            user_id: row.user_id,
+            phase: "refresh_membership_check",
+          },
+        });
+        // listMemberships is optional on the IdPProvider interface but
+        // every concrete impl that also implements refreshIdpToken
+        // also implements listMemberships. Guard anyway so a misshapen
+        // custom provider can't NPE.
+        if (typeof idpProvider.listMemberships !== "function") {
+          firstErr = new Error(
+            `Provider ${idpProvider.name} implements refreshIdpToken but not listMemberships`,
+          );
+        } else {
+          memberships = await idpProvider.listMemberships(refreshed.accessToken);
+        }
+      } catch (refreshErr) {
+        // Refresh itself failed -- this is a fresh revocation signal.
+        firstErr = refreshErr;
+      }
+    }
+
+    if (memberships === null) {
+      if (firstErr instanceof IdPTokenRevoked) {
         audit("auth.idp.token_revoked", {
           tier: 1,
           metadata: {
@@ -591,7 +650,7 @@ export async function refreshTokenGrant(
         );
         return;
       }
-      if (err instanceof IdPTransientError) {
+      if (firstErr instanceof IdPTransientError) {
         res.writeHead(503, {
           "Content-Type": "application/json; charset=utf-8",
         });
@@ -602,8 +661,10 @@ export async function refreshTokenGrant(
         );
         return;
       }
-      throw err;
+      throw firstErr;
     }
+
+    allowlistMatch = resolveOrgFromMemberships(ctx.db, memberships);
 
     // If the row is already revoked, defer allowlist denial to the
     // reuse-detection branch — it has the policy context (grace-window,

@@ -653,6 +653,11 @@ export function initDatabase(dataDir: string): void {
     // idp_access_token: stores GitHub access token for refresh-time membership re-check.
     // Plaintext in v0.8; encrypted at-rest in v0.7.5 (SQLCipher whole-DB). NEVER in JWT/cookie/logs.
     try { db.exec("ALTER TABLE users ADD COLUMN idp_access_token TEXT"); } catch { /* already exists */ }
+    // idp_refresh_token: T54 (v0.10.0) -- GitHub App user-to-server tokens
+    // expire (8h), so the App provider stores the refresh token here.
+    // OAuth App users keep this column NULL forever. Same plaintext +
+    // never-in-logs posture as idp_access_token.
+    try { db.exec("ALTER TABLE users ADD COLUMN idp_refresh_token TEXT"); } catch { /* already exists */ }
 
     // --- orgs: allowlist_github_org column (B-NEW-4 Phase 5 readiness) --------
     try { db.exec("ALTER TABLE orgs ADD COLUMN allowlist_github_org TEXT"); } catch { /* already exists */ }
