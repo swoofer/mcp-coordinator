@@ -45,14 +45,16 @@ describe("orgs table", () => {
 });
 
 describe("users table", () => {
-  it("exists with expected columns (v0.8: primary_org_id + token_epoch + idp_access_token)", () => {
+  it("exists with expected columns (v0.10: + idp_refresh_token for GitHub App T54)", () => {
     const db = getDb();
     const cols = db.prepare("PRAGMA table_info(users)").all() as { name: string; notnull: number }[];
     const names = cols.map((c) => c.name).sort();
     // v0.8: org_id → primary_org_id (renamed); + token_epoch (NR12 + Q8), idp_access_token (V4 FIX 4)
+    // v0.10.0: + idp_refresh_token (T54, GitHub App user-to-server refresh)
     expect(names).toEqual([
-      "created_at", "email", "id", "idp_access_token", "idp_provider", "idp_user_id",
-      "last_login_at", "name", "primary_org_id", "role", "token_epoch",
+      "created_at", "email", "id", "idp_access_token", "idp_provider",
+      "idp_refresh_token", "idp_user_id", "last_login_at", "name",
+      "primary_org_id", "role", "token_epoch",
     ]);
   });
 

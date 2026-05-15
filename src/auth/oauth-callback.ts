@@ -345,6 +345,7 @@ async function finalizeBrowserOAuth(
           org_name: allowlistMatch.org_name,
         },
         provider.name,
+        exchange.refreshToken,
       );
     });
     provisionResult = tx.immediate();

@@ -3,6 +3,7 @@ import { assertSecretEntropy } from "./auth/entropy.js";
 import { deriveStateBindingKey } from "./auth/crypto-keys.js";
 import { buildJwtKeyRegistry } from "./auth/jwt-keys.js";
 import { GitHubProvider } from "./auth/providers/github.js";
+import { GitHubAppProvider } from "./auth/providers/github-app.js";
 import { GoogleProvider } from "./auth/providers/google.js";
 import { OIDCProvider } from "./auth/providers/oidc.js";
 import { ProviderRegistry } from "./auth/providers/registry.js";
@@ -138,6 +139,30 @@ export function bootPhase2(opts: Phase2BootOptions): Phase2Bootstrap | null {
       new GoogleProvider({
         clientId: googleClientId,
         clientSecret: googleClientSecret,
+      }),
+    );
+  }
+
+  // T54 (v0.10.0): GitHubAppProvider. Opt-in via env; both client_id +
+  // client_secret required together, same fail-closed pattern as Google.
+  // GHES base URLs are SHARED with GitHubProvider since GitHub Apps and
+  // OAuth Apps live at the same hostnames in GHES.
+  const githubAppClientId = process.env.COORDINATOR_GITHUB_APP_CLIENT_ID?.trim();
+  const githubAppClientSecret = process.env.COORDINATOR_GITHUB_APP_CLIENT_SECRET?.trim();
+  const githubAppName = process.env.COORDINATOR_GITHUB_APP_NAME?.trim();
+  if (githubAppClientId || githubAppClientSecret) {
+    if (!githubAppClientId || !githubAppClientSecret) {
+      throw new BootValidationError(
+        "COORDINATOR_GITHUB_APP_CLIENT_ID and COORDINATOR_GITHUB_APP_CLIENT_SECRET must both be set, or both unset",
+      );
+    }
+    providers.register(
+      new GitHubAppProvider({
+        clientId: githubAppClientId,
+        clientSecret: githubAppClientSecret,
+        ...(githubAuthBaseUrl ? { authBaseUrl: githubAuthBaseUrl } : {}),
+        ...(githubApiBaseUrl ? { apiBaseUrl: githubApiBaseUrl } : {}),
+        ...(githubAppName ? { name: githubAppName } : {}),
       }),
     );
   }

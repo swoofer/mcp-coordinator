@@ -65,7 +65,12 @@ export function provisionUser(
   accessToken: string,
   allowlistOrg: AllowlistOrg,
   providerName: string,
+  /** T54: optional IdP refresh token. GitHub App user-to-server tokens
+   *  carry one (8h access + 6mo refresh); OAuth App / Google / OIDC
+   *  do not and pass undefined. Stored in users.idp_refresh_token. */
+  idpRefreshToken?: string | null,
 ): ProvisionResult {
+  const refreshTokenValue = idpRefreshToken ?? null;
   const existing = db
     .prepare(
       `SELECT id, primary_org_id, role
@@ -77,12 +82,12 @@ export function provisionUser(
     | undefined;
 
   if (existing) {
-    // Returning user — update idp_access_token + last_login_at.
+    // Returning user — update idp_access_token + idp_refresh_token + last_login_at.
     db.prepare(
       `UPDATE users
-       SET idp_access_token = ?, last_login_at = ?
+       SET idp_access_token = ?, idp_refresh_token = ?, last_login_at = ?
        WHERE id = ?`,
-    ).run(accessToken, String(clock.now()), existing.id);
+    ).run(accessToken, refreshTokenValue, String(clock.now()), existing.id);
 
     return {
       user: {
@@ -102,8 +107,8 @@ export function provisionUser(
   db.prepare(
     `INSERT INTO users
        (id, primary_org_id, email, name, idp_provider, idp_user_id,
-        idp_access_token, role, last_login_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        idp_access_token, idp_refresh_token, role, last_login_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     userId,
     allowlistOrg.org_id,
@@ -112,6 +117,7 @@ export function provisionUser(
     providerName,
     idpUser.idp_user_id,
     accessToken,
+    refreshTokenValue,
     "member", // start as member; bootstrap check may promote
     now,
   );

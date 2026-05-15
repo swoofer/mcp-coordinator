@@ -134,22 +134,25 @@ function seedUser(
     orgId?: string;
     tokenEpoch?: number;
     idpAccessToken?: string | null;
+    idpRefreshToken?: string | null;
+    idpProvider?: string;
   } = {},
 ): void {
   getDb()
     .prepare(
       `INSERT INTO users
          (id, primary_org_id, email, idp_provider, idp_user_id,
-          idp_access_token, role, last_login_at, token_epoch)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          idp_access_token, idp_refresh_token, role, last_login_at, token_epoch)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       opts.id ?? "u-alice",
       opts.orgId ?? "org-acme",
       "alice@example.com",
-      "github",
+      opts.idpProvider ?? "github",
       "gh-100",
       opts.idpAccessToken === undefined ? "idp-tok" : opts.idpAccessToken,
+      opts.idpRefreshToken ?? null,
       "member",
       "0",
       opts.tokenEpoch ?? 0,
@@ -515,6 +518,206 @@ describe("refreshTokenGrant — IdP errors", () => {
         makeCtx({ providers: singleProviderRegistry(provider) }),
       ),
     ).rejects.toThrow(/unexpected boom/);
+  });
+});
+
+// ===========================================================================
+// T54: IdP refresh-token recovery (GitHub App refresh flow)
+// ===========================================================================
+describe("refreshTokenGrant — IdP refresh-token recovery (T54)", () => {
+  function makeProviderWithRefresh(opts: {
+    listOk?: string[];
+    listFails?: () => Promise<never>;
+    refreshReturns?: { accessToken: string; refreshToken?: string };
+    refreshThrows?: Error;
+  }): IdPProvider {
+    let listCalls = 0;
+    return {
+      name: "github-app",
+      buildAuthUrl: () => "https://example/unused",
+      exchangeCode: async (): Promise<ExchangeCodeResult> => {
+        throw new Error("exchangeCode not used");
+      },
+      listMemberships: async (_token: string): Promise<string[]> => {
+        listCalls += 1;
+        if (listCalls === 1) {
+          if (opts.listFails) return opts.listFails();
+          return opts.listOk ?? ["acme"];
+        }
+        // Second call (post-refresh) -- succeeds.
+        return opts.listOk ?? ["acme"];
+      },
+      refreshIdpToken: async () => {
+        if (opts.refreshThrows) throw opts.refreshThrows;
+        const r = opts.refreshReturns ?? { accessToken: "new-tok", refreshToken: "new-refresh" };
+        return r;
+      },
+    } as IdPProvider;
+  }
+
+  it("401 → refresh succeeds → listMemberships re-tried with new token → rotation continues", async () => {
+    seedOrg("org-acme", "acme");
+    seedUser({
+      idpProvider: "github-app",
+      idpAccessToken: "stale",
+      idpRefreshToken: "ghr-old",
+    });
+    const token = await mintRefresh({ jti: "jti-app-refresh-ok" });
+    seedRefreshRow({ jti: "jti-app-refresh-ok" });
+
+    const provider = makeProviderWithRefresh({
+      listFails: async () => { throw new IdPTokenRevoked(); },
+      refreshReturns: { accessToken: "ghu-new", refreshToken: "ghr-rotated" },
+    });
+
+    const req = mockRequest({ refresh_token: token });
+    const res = mockResponse();
+    await refreshTokenGrant(
+      req,
+      res as unknown as ServerResponse,
+      makeCtx({ providers: singleProviderRegistry(provider) }),
+    );
+
+    expect(res.statusCode).toBe(200);
+    // user row was updated with both new tokens
+    const user = getDb()
+      .prepare("SELECT idp_access_token, idp_refresh_token FROM users WHERE id = ?")
+      .get("u-alice") as { idp_access_token: string; idp_refresh_token: string };
+    expect(user.idp_access_token).toBe("ghu-new");
+    expect(user.idp_refresh_token).toBe("ghr-rotated");
+
+    const audits = findAuditRows("auth.idp.token_refreshed");
+    expect(audits).toHaveLength(1);
+    const meta = JSON.parse(audits[0].metadata_json as string);
+    expect(meta.user_id).toBe("u-alice");
+    expect(meta.phase).toBe("refresh_membership_check");
+  });
+
+  it("provider rotates only access token (no new refresh_token returned) → old refresh stays", async () => {
+    seedOrg("org-acme", "acme");
+    seedUser({
+      idpProvider: "github-app",
+      idpAccessToken: "stale",
+      idpRefreshToken: "ghr-keep",
+    });
+    const token = await mintRefresh({ jti: "jti-app-refresh-stays" });
+    seedRefreshRow({ jti: "jti-app-refresh-stays" });
+
+    const provider = makeProviderWithRefresh({
+      listFails: async () => { throw new IdPTokenRevoked(); },
+      refreshReturns: { accessToken: "ghu-new" }, // no refreshToken in response
+    });
+
+    const req = mockRequest({ refresh_token: token });
+    const res = mockResponse();
+    await refreshTokenGrant(
+      req,
+      res as unknown as ServerResponse,
+      makeCtx({ providers: singleProviderRegistry(provider) }),
+    );
+
+    expect(res.statusCode).toBe(200);
+    const user = getDb()
+      .prepare("SELECT idp_access_token, idp_refresh_token FROM users WHERE id = ?")
+      .get("u-alice") as { idp_access_token: string; idp_refresh_token: string };
+    expect(user.idp_access_token).toBe("ghu-new");
+    expect(user.idp_refresh_token).toBe("ghr-keep"); // unchanged
+  });
+
+  it("401 → refresh ALSO fails → 401 + Tier 1 auth.idp.token_revoked (no recovery)", async () => {
+    seedOrg("org-acme", "acme");
+    seedUser({
+      idpProvider: "github-app",
+      idpAccessToken: "stale",
+      idpRefreshToken: "ghr-expired",
+    });
+    const token = await mintRefresh({ jti: "jti-app-refresh-expired" });
+    seedRefreshRow({ jti: "jti-app-refresh-expired" });
+
+    const provider = makeProviderWithRefresh({
+      listFails: async () => { throw new IdPTokenRevoked(); },
+      refreshThrows: new IdPTokenRevoked(),
+    });
+
+    const req = mockRequest({ refresh_token: token });
+    const res = mockResponse();
+    await refreshTokenGrant(
+      req,
+      res as unknown as ServerResponse,
+      makeCtx({ providers: singleProviderRegistry(provider) }),
+    );
+
+    expect(res.statusCode).toBe(401);
+    const body = JSON.parse(res.body!);
+    expect(body.error).toBe("invalid_grant");
+    const audits = findAuditRows("auth.idp.token_revoked");
+    expect(audits).toHaveLength(1);
+    // The auth.idp.token_refreshed audit must NOT have been written.
+    expect(findAuditRows("auth.idp.token_refreshed")).toHaveLength(0);
+  });
+
+  it("401 but no idp_refresh_token stored → no refresh attempted → 401 (legacy users)", async () => {
+    seedOrg("org-acme", "acme");
+    // User provisioned via the App flow (provider name matches the
+    // registered one) but stored no refresh token. This shouldn't
+    // happen for a fresh App sign-in but might appear for a row
+    // backfilled from an OAuth App migration -- in that case the
+    // refresh recovery is unavailable and the 401 must surface.
+    seedUser({
+      idpProvider: "github-app",
+      idpAccessToken: "stale",
+      idpRefreshToken: null,
+    });
+    const token = await mintRefresh({ jti: "jti-no-refresh-token" });
+    seedRefreshRow({ jti: "jti-no-refresh-token" });
+
+    const provider = makeProviderWithRefresh({
+      listFails: async () => { throw new IdPTokenRevoked(); },
+      refreshReturns: { accessToken: "should-not-be-used" },
+    });
+
+    const req = mockRequest({ refresh_token: token });
+    const res = mockResponse();
+    await refreshTokenGrant(
+      req,
+      res as unknown as ServerResponse,
+      makeCtx({ providers: singleProviderRegistry(provider) }),
+    );
+
+    expect(res.statusCode).toBe(401);
+    expect(findAuditRows("auth.idp.token_refreshed")).toHaveLength(0);
+  });
+
+  it("401 but provider has no refreshIdpToken method → no refresh attempted → 401", async () => {
+    seedOrg("org-acme", "acme");
+    seedUser({
+      idpProvider: "github",
+      idpAccessToken: "stale",
+      idpRefreshToken: "ghr-irrelevant", // OAuth App users can't use it
+    });
+    const token = await mintRefresh({ jti: "jti-no-refresh-method" });
+    seedRefreshRow({ jti: "jti-no-refresh-method" });
+
+    // Plain GitHubProvider stub -- no refreshIdpToken method.
+    const provider: IdPProvider = {
+      name: "github",
+      buildAuthUrl: () => "https://example",
+      exchangeCode: async (): Promise<ExchangeCodeResult> => {
+        throw new Error("not used");
+      },
+      listMemberships: async () => { throw new IdPTokenRevoked(); },
+    };
+
+    const req = mockRequest({ refresh_token: token });
+    const res = mockResponse();
+    await refreshTokenGrant(
+      req,
+      res as unknown as ServerResponse,
+      makeCtx({ providers: singleProviderRegistry(provider) }),
+    );
+
+    expect(res.statusCode).toBe(401);
+    expect(findAuditRows("auth.idp.token_refreshed")).toHaveLength(0);
   });
 });
 

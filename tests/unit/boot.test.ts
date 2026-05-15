@@ -44,6 +44,9 @@ const ENV_KEYS = [
   "COORDINATOR_OIDC_ISSUER_URL",
   "COORDINATOR_OIDC_CLIENT_ID",
   "COORDINATOR_OIDC_CLIENT_SECRET",
+  "COORDINATOR_GITHUB_APP_CLIENT_ID",
+  "COORDINATOR_GITHUB_APP_CLIENT_SECRET",
+  "COORDINATOR_GITHUB_APP_NAME",
 ];
 
 // 32 random bytes (high entropy, no dictionary words) — passes
@@ -864,6 +867,102 @@ describe("bootPhase2 — generic OIDC wiring (v0.9.0 T48)", () => {
     const result = bootPhase2({ enabled: true, db, clock });
     expect(result).not.toBeNull();
     expect(result!.context.providers.names()).toEqual(["github", "google", "oidc"]);
+    expect(result!.context.providers.getDefault()!.name).toBe("github");
+    void result!.shutdown();
+  });
+});
+
+describe("bootPhase2 — GitHub App wiring (v0.10.0 T54)", () => {
+  it("no GitHub App env vars set: registry contains only github (OAuth App)", () => {
+    applyValidEnv();
+    delete process.env.COORDINATOR_GITHUB_APP_CLIENT_ID;
+    delete process.env.COORDINATOR_GITHUB_APP_CLIENT_SECRET;
+
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+    expect(result!.context.providers.names()).toEqual(["github"]);
+    void result!.shutdown();
+  });
+
+  it("both env vars set: registers github-app as a second provider", () => {
+    applyValidEnv();
+    process.env.COORDINATOR_GITHUB_APP_CLIENT_ID = "Iv1.0123456789abcdef";
+    process.env.COORDINATOR_GITHUB_APP_CLIENT_SECRET = "github_pat_app-secret";
+
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+    expect(result!.context.providers.names()).toEqual(["github", "github-app"]);
+    expect(result!.context.providers.getDefault()!.name).toBe("github");
+    void result!.shutdown();
+  });
+
+  it("only client_id set: throws BootValidationError", () => {
+    applyValidEnv();
+    process.env.COORDINATOR_GITHUB_APP_CLIENT_ID = "Iv1.xxxxxxxxxxxxxxxx";
+    delete process.env.COORDINATOR_GITHUB_APP_CLIENT_SECRET;
+
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
+      BootValidationError,
+    );
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
+      /both be set, or both unset/,
+    );
+  });
+
+  it("only client_secret set: throws BootValidationError", () => {
+    applyValidEnv();
+    delete process.env.COORDINATOR_GITHUB_APP_CLIENT_ID;
+    process.env.COORDINATOR_GITHUB_APP_CLIENT_SECRET = "secret";
+
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
+      /both be set, or both unset/,
+    );
+  });
+
+  it("custom NAME overrides registry key", () => {
+    applyValidEnv();
+    process.env.COORDINATOR_GITHUB_APP_CLIENT_ID = "Iv1.xxxx";
+    process.env.COORDINATOR_GITHUB_APP_CLIENT_SECRET = "secret";
+    process.env.COORDINATOR_GITHUB_APP_NAME = "acme-app";
+
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+    expect(result!.context.providers.names()).toEqual(["github", "acme-app"]);
+    void result!.shutdown();
+  });
+
+  it("GHES base URL flows through to GitHubAppProvider", async () => {
+    applyValidEnv();
+    process.env.COORDINATOR_GITHUB_APP_CLIENT_ID = "Iv1.xxxx";
+    process.env.COORDINATOR_GITHUB_APP_CLIENT_SECRET = "secret";
+    process.env.COORDINATOR_GITHUB_AUTH_BASE_URL = "https://ghe.example.com";
+
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+
+    const authUrl = await result!.context.providers
+      .get("github-app")!
+      .buildAuthUrl("state-x", "https://coordinator.example.com/cb");
+    expect(authUrl.startsWith("https://ghe.example.com/login/oauth/authorize"))
+      .toBe(true);
+    void result!.shutdown();
+  });
+
+  it("all four providers configured: github + google + github-app + oidc", () => {
+    applyValidEnv();
+    process.env.COORDINATOR_GOOGLE_CLIENT_ID = "google-cid";
+    process.env.COORDINATOR_GOOGLE_CLIENT_SECRET = "google-secret";
+    process.env.COORDINATOR_GITHUB_APP_CLIENT_ID = "Iv1.xxxx";
+    process.env.COORDINATOR_GITHUB_APP_CLIENT_SECRET = "app-secret";
+    process.env.COORDINATOR_OIDC_ISSUER_URL = "https://idp.example.test/realms/main";
+    process.env.COORDINATOR_OIDC_CLIENT_ID = "oidc-cid";
+    process.env.COORDINATOR_OIDC_CLIENT_SECRET = "oidc-secret";
+
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+    expect(result!.context.providers.names()).toEqual([
+      "github", "google", "github-app", "oidc",
+    ]);
     expect(result!.context.providers.getDefault()!.name).toBe("github");
     void result!.shutdown();
   });

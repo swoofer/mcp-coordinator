@@ -77,17 +77,18 @@ function setupSchema(db: Database.Database): void {
       created_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
     CREATE TABLE users (
-      id               TEXT PRIMARY KEY,
-      primary_org_id   TEXT NOT NULL REFERENCES orgs(id),
-      email            TEXT NOT NULL,
-      name             TEXT,
-      idp_provider     TEXT NOT NULL,
-      idp_user_id      TEXT NOT NULL,
-      idp_access_token TEXT,
-      role             TEXT NOT NULL DEFAULT 'member',
-      token_epoch      INTEGER NOT NULL DEFAULT 0,
-      created_at       TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      last_login_at    TEXT,
+      id                TEXT PRIMARY KEY,
+      primary_org_id    TEXT NOT NULL REFERENCES orgs(id),
+      email             TEXT NOT NULL,
+      name              TEXT,
+      idp_provider      TEXT NOT NULL,
+      idp_user_id       TEXT NOT NULL,
+      idp_access_token  TEXT,
+      idp_refresh_token TEXT,
+      role              TEXT NOT NULL DEFAULT 'member',
+      token_epoch       INTEGER NOT NULL DEFAULT 0,
+      created_at        TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      last_login_at     TEXT,
       UNIQUE(idp_provider, idp_user_id)
     );
     CREATE TABLE user_orgs (
