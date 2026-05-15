@@ -1,6 +1,10 @@
 import { Command } from "commander";
-import { writeFileSync, existsSync, readFileSync, statSync } from "fs";
+import { writeFileSync, existsSync, readFileSync, statSync, chmodSync } from "fs";
 import { join, resolve } from "path";
+import { randomBytes } from "node:crypto";
+import readline from "node:readline";
+import Database from "better-sqlite3";
+import { bootPhase2 } from "../src/boot.js";
 import { ensureConfigDir, loadConfig, saveConfig } from "./config.js";
 
 const CLAUDE_MD_TEMPLATE = `## Coordination via mcp-coordinator
@@ -85,7 +89,7 @@ broker and injects events into your turn flow automatically.
 `;
 
 export function createInitCommand(): Command {
-  return new Command("init")
+  const cmd = new Command("init")
     .description(
       "First-time setup: create the config dir, write a default config.json, and print a .mcp.json snippet for your MCP client",
     )
@@ -216,6 +220,434 @@ export function createInitCommand(): Command {
 
       if (exitCode !== 0) {
         process.exit(exitCode);
+      }
+    });
+
+  cmd.addCommand(createInitPhase2Command());
+  return cmd;
+}
+
+// ---------------------------------------------------------------------------
+// T41: `mcp-coordinator init phase2` — OAuth setup wizard
+// ---------------------------------------------------------------------------
+//
+// Guides operators through the COORDINATOR_* env vars required to flip
+// COORDINATOR_OAUTH_ENABLED=true (Phase 2). Writes a `.env` file at the
+// target path (chmod 0600 on POSIX) and dry-run-validates the result via
+// bootPhase2() so weak/invalid configs are caught here, not on first boot.
+//
+// The wizard logic is factored into runInitPhase2(io) so tests can inject a
+// stubbed WizardIO; the CLI wrapper constructs a real IO from readline + fs.
+
+export interface WizardIO {
+  prompt: (question: string, opts?: { default?: string; mask?: boolean }) => Promise<string>;
+  confirm: (question: string, opts?: { default?: boolean }) => Promise<boolean>;
+  print: (msg: string) => void;
+  printError: (msg: string) => void;
+  fileExists: (path: string) => boolean;
+  writeFile: (path: string, contents: string) => void;
+  chmod: (path: string, mode: number) => void;
+  // Allows tests to override JWT secret generation deterministically.
+  generateJwtSecret: () => string;
+  // Allows tests to inject a fake validator (avoids spinning up a real DB
+  // for the dry-run boot check). Returns null on success or an error message.
+  validateConfig: (env: Record<string, string>) => string | null;
+  // Allows tests to assert on exit codes without actually killing the process.
+  exit: (code: number) => never;
+  isPosix: boolean;
+}
+
+export interface Phase2WizardOptions {
+  envFile?: string;
+  nonInteractive?: boolean;
+  publicUrl?: string;
+  githubClientId?: string;
+  githubClientSecret?: string;
+  githubOrg?: string;
+}
+
+/**
+ * Number of times we re-prompt for PUBLIC_URL on invalid input before
+ * giving up. Keeps the wizard from spinning forever in a malformed-stdin
+ * loop; 3 is empirically enough for typos.
+ */
+const PUBLIC_URL_MAX_RETRIES = 3;
+
+const REQUIRED_NONINTERACTIVE_FLAGS: Array<[keyof Phase2WizardOptions, string]> = [
+  ["publicUrl", "--public-url"],
+  ["githubClientId", "--github-client-id"],
+  ["githubClientSecret", "--github-client-secret"],
+  ["githubOrg", "--github-org"],
+];
+
+export async function runInitPhase2(
+  io: WizardIO,
+  opts: Phase2WizardOptions,
+): Promise<void> {
+  const envPath = resolve(opts.envFile ?? ".env");
+
+  // 1. Pre-check: existing .env?
+  if (io.fileExists(envPath)) {
+    if (opts.nonInteractive) {
+      io.printError(
+        `[FAIL] ${envPath} already exists. Refusing to overwrite in --non-interactive mode.`,
+      );
+      io.printError(
+        "       Delete or move the file, or omit --non-interactive to be prompted.",
+      );
+      io.exit(1);
+    }
+    const overwrite = await io.confirm(
+      `${envPath} already exists. Overwrite?`,
+      { default: false },
+    );
+    if (!overwrite) {
+      io.printError("[FAIL] Aborting — existing .env left untouched.");
+      io.exit(1);
+    }
+  }
+
+  // 2. GitHub OAuth app pre-instructions.
+  io.print("");
+  io.print("=== mcp-coordinator Phase 2 OAuth setup ===");
+  io.print("");
+  io.print("Step 1: Create a GitHub OAuth App at:");
+  io.print("  https://github.com/settings/applications/new");
+  io.print("");
+  io.print(
+    "  Your callback URL will be `${PUBLIC_URL}/api/auth/oauth/callback` " +
+      "— but you need to set PUBLIC_URL first; you'll come back to this.",
+  );
+  io.print("");
+
+  // 3-4. Resolve PUBLIC_URL (interactive or flag).
+  let publicUrl: string;
+  if (opts.nonInteractive) {
+    publicUrl = opts.publicUrl ?? "";
+    const validateMsg = validatePublicUrlString(publicUrl);
+    if (validateMsg !== null) {
+      io.printError(`[FAIL] --public-url invalid: ${validateMsg}`);
+      io.exit(1);
+    }
+    // Non-interactive http://non-localhost requires the caller to have
+    // exported COORDINATOR_INSECURE_COOKIES=true beforehand; we won't
+    // prompt for confirmation. We still warn so it shows up in logs.
+    if (isInsecurePublicUrl(publicUrl)) {
+      io.print(
+        "[WARN] PUBLIC_URL uses http:// for a non-localhost host. " +
+          "COORDINATOR_INSECURE_COOKIES=true will be required at runtime.",
+      );
+    }
+  } else {
+    publicUrl = await promptForValidPublicUrl(io);
+  }
+
+  // 4. Print the callback URL the user should paste into the GitHub form.
+  const callbackUrl = buildCallbackUrl(publicUrl);
+  io.print("");
+  io.print("Step 2: Paste this exact URL into the GitHub OAuth app's");
+  io.print("        \"Authorization callback URL\" field:");
+  io.print("");
+  io.print(`  ${callbackUrl}`);
+  io.print("");
+
+  // 5-7. Collect remaining credentials.
+  let githubClientId: string;
+  let githubClientSecret: string;
+  let githubOrg: string;
+
+  if (opts.nonInteractive) {
+    const missing: string[] = [];
+    for (const [key, flag] of REQUIRED_NONINTERACTIVE_FLAGS) {
+      if (!opts[key] || (opts[key] as string).trim() === "") missing.push(flag);
+    }
+    if (missing.length > 0) {
+      io.printError(
+        `[FAIL] --non-interactive requires: ${missing.join(", ")}`,
+      );
+      io.exit(1);
+    }
+    githubClientId = (opts.githubClientId as string).trim();
+    githubClientSecret = (opts.githubClientSecret as string).trim();
+    githubOrg = (opts.githubOrg as string).trim();
+  } else {
+    githubClientId = await promptNonEmpty(io, "COORDINATOR_GITHUB_CLIENT_ID");
+    githubClientSecret = await promptNonEmpty(io, "COORDINATOR_GITHUB_CLIENT_SECRET", {
+      mask: true,
+    });
+    githubOrg = await promptNonEmpty(io, "COORDINATOR_GITHUB_ORG");
+  }
+
+  // 8. Generate JWT secret. crypto.randomBytes(32).toString("base64url")
+  //    produces a 43-character URL-safe string (256 bits).
+  const jwtSecret = io.generateJwtSecret();
+  io.print("");
+  io.print("=== GENERATED JWT_SECRET (save this; you won't see it again) ===");
+  io.print(`  ${jwtSecret}`);
+  io.print("================================================================");
+  io.print("");
+
+  // 9. Assemble env file. COORDINATOR_INSECURE_COOKIES is intentionally NOT
+  //    written automatically — operators must set it explicitly to make the
+  //    insecure choice an obvious manual decision.
+  const env: Record<string, string> = {
+    COORDINATOR_OAUTH_ENABLED: "true",
+    COORDINATOR_PUBLIC_URL: publicUrl,
+    COORDINATOR_GITHUB_CLIENT_ID: githubClientId,
+    COORDINATOR_GITHUB_CLIENT_SECRET: githubClientSecret,
+    COORDINATOR_GITHUB_ORG: githubOrg,
+    COORDINATOR_JWT_SECRET: jwtSecret,
+  };
+
+  // 10. Dry-run validation. validateConfig either returns null (OK) or an
+  //     error string. We do this BEFORE writing so a bad config doesn't
+  //     leave a stale .env on disk.
+  const validationError = io.validateConfig(env);
+  if (validationError !== null) {
+    io.printError(`[FAIL] Generated config failed validation: ${validationError}`);
+    io.printError("       No .env file was written.");
+    io.exit(1);
+  }
+
+  // 11. Write the file.
+  const lines = Object.entries(env).map(([k, v]) => `${k}=${v}`);
+  const contents = lines.join("\n") + "\n";
+  io.writeFile(envPath, contents);
+  if (io.isPosix) {
+    io.chmod(envPath, 0o600);
+  }
+
+  io.print(`[OK] Wrote ${envPath} (${lines.length} variables)${io.isPosix ? " with mode 0600" : ""}`);
+  io.print("");
+  io.print("=== Next steps ===");
+  io.print("  1. Start coordinator: `mcp-coordinator server start`");
+  io.print(`  2. Visit ${publicUrl}/auth/login in a browser to sign in via GitHub.`);
+  io.print("     The FIRST user to sign in becomes admin.");
+  io.print("");
+}
+
+/**
+ * Build the OAuth callback URL from PUBLIC_URL, handling trailing slashes
+ * idempotently. Tested standalone in init-phase2.test.ts (case 10).
+ */
+export function buildCallbackUrl(publicUrl: string): string {
+  const trimmed = publicUrl.replace(/\/+$/, "");
+  return `${trimmed}/api/auth/oauth/callback`;
+}
+
+/**
+ * Returns null on valid PUBLIC_URL, or a human-readable error string. Mirrors
+ * validatePublicUrl() in src/boot.ts but defers the insecure-cookies check
+ * to the caller (interactive mode prompts to confirm; non-interactive warns).
+ */
+export function validatePublicUrlString(url: string): string | null {
+  if (!url || url.trim() === "") return "value is empty";
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return `not a valid URL: ${url}`;
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return `must be http:// or https://, got ${parsed.protocol}`;
+  }
+  return null;
+}
+
+/**
+ * True if scheme is http and host is not localhost. Triggers the
+ * COORDINATOR_INSECURE_COOKIES confirmation flow.
+ */
+export function isInsecurePublicUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:") return false;
+    const host = parsed.hostname;
+    return (
+      host !== "localhost" &&
+      host !== "127.0.0.1" &&
+      host !== "::1" &&
+      host !== "[::1]"
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function promptForValidPublicUrl(io: WizardIO): Promise<string> {
+  for (let attempt = 0; attempt < PUBLIC_URL_MAX_RETRIES; attempt++) {
+    const raw = await io.prompt("COORDINATOR_PUBLIC_URL (e.g., http://localhost:3100 or https://coord.acme.example)");
+    const err = validatePublicUrlString(raw);
+    if (err !== null) {
+      io.printError(`[WARN] ${err}`);
+      continue;
+    }
+    if (isInsecurePublicUrl(raw)) {
+      io.print(
+        "[WARN] You used http:// for a non-localhost host. Cookies cannot be Secure-flagged,",
+      );
+      io.print(
+        "       which means session cookies will be visible to network attackers (MITM).",
+      );
+      io.print(
+        "       You MUST set COORDINATOR_INSECURE_COOKIES=true in your environment for boot to succeed.",
+      );
+      const ok = await io.confirm("Proceed anyway?", { default: false });
+      if (!ok) continue;
+    }
+    return raw;
+  }
+  io.printError(
+    `[FAIL] PUBLIC_URL still invalid after ${PUBLIC_URL_MAX_RETRIES} attempts; aborting.`,
+  );
+  io.exit(1);
+}
+
+async function promptNonEmpty(
+  io: WizardIO,
+  label: string,
+  opts: { mask?: boolean } = {},
+): Promise<string> {
+  for (let attempt = 0; attempt < PUBLIC_URL_MAX_RETRIES; attempt++) {
+    const val = await io.prompt(label, { mask: opts.mask });
+    if (val.trim() !== "") return val.trim();
+    io.printError(`[WARN] ${label} cannot be empty.`);
+  }
+  io.printError(`[FAIL] ${label} not provided after ${PUBLIC_URL_MAX_RETRIES} attempts; aborting.`);
+  io.exit(1);
+}
+
+/**
+ * Build the production WizardIO from readline + fs + a real dry-run boot.
+ */
+export function makeDefaultWizardIO(): WizardIO {
+  return {
+    prompt: defaultPrompt,
+    confirm: defaultConfirm,
+    print: (msg) => {
+      console.log(msg);
+    },
+    printError: (msg) => {
+      console.error(msg);
+    },
+    fileExists: (p) => existsSync(p),
+    writeFile: (p, c) => writeFileSync(p, c),
+    chmod: (p, m) => {
+      chmodSync(p, m);
+    },
+    generateJwtSecret: () => randomBytes(32).toString("base64url"),
+    validateConfig: defaultValidateConfig,
+    exit: (code) => {
+      process.exit(code);
+    },
+    isPosix: process.platform !== "win32",
+  };
+}
+
+async function defaultPrompt(
+  question: string,
+  opts?: { default?: string; mask?: boolean },
+): Promise<string> {
+  // Password masking via stdin is not portable across platforms (tty raw mode
+  // is needed and breaks under non-tty harnesses). MVP echoes input
+  // regardless; operators paste from a secure source.
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+  try {
+    return await new Promise<string>((resolveP) => {
+      const display = opts?.default ? `${question} [${opts.default}]: ` : `${question}: `;
+      rl.question(display, (answer) => {
+        resolveP(answer.trim() || opts?.default || "");
+      });
+    });
+  } finally {
+    rl.close();
+  }
+}
+
+async function defaultConfirm(
+  question: string,
+  opts?: { default?: boolean },
+): Promise<boolean> {
+  const def = opts?.default ?? false;
+  const suffix = def ? "[Y/n]" : "[y/N]";
+  const ans = await defaultPrompt(`${question} ${suffix}`);
+  if (ans === "") return def;
+  const lower = ans.toLowerCase();
+  if (lower === "y" || lower === "yes") return true;
+  if (lower === "n" || lower === "no") return false;
+  return def;
+}
+
+/**
+ * Default validator: spins up an in-memory DB, copies env into process.env
+ * temporarily, calls bootPhase2() to leverage the production validation
+ * surface (entropy check, URL format, NR12 logic). Restores env on return.
+ */
+function defaultValidateConfig(env: Record<string, string>): string | null {
+  // Spins up an in-memory better-sqlite3 with the minimal schema bootPhase2
+  // touches, then re-uses the production validation surface. Tests inject a
+  // stub validator and skip this code path entirely.
+  try {
+    const db = new Database(":memory:");
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS orgs (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        allowlist_github_org TEXT
+      );
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        email TEXT,
+        token_epoch INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE TABLE IF NOT EXISTS audit_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        action TEXT NOT NULL,
+        metadata_json TEXT,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now'))
+      );
+    `);
+    const snapshot: Record<string, string | undefined> = {};
+    for (const k of Object.keys(env)) snapshot[k] = process.env[k];
+    try {
+      for (const [k, v] of Object.entries(env)) process.env[k] = v;
+      bootPhase2({ enabled: true, db });
+      return null;
+    } finally {
+      for (const [k, v] of Object.entries(snapshot)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+      try {
+        db.close();
+      } catch {
+        /* ignore */
+      }
+    }
+  } catch (e) {
+    return e instanceof Error ? e.message : String(e);
+  }
+}
+
+export function createInitPhase2Command(): Command {
+  return new Command("phase2")
+    .description("Bootstrap a Phase 2 OAuth deployment (writes .env, validates, prints next steps)")
+    .option("--env-file <path>", "Output env file path (default: .env)", ".env")
+    .option("--non-interactive", "Use flags instead of interactive prompts")
+    .option("--public-url <url>", "COORDINATOR_PUBLIC_URL value (required in --non-interactive)")
+    .option("--github-client-id <id>", "COORDINATOR_GITHUB_CLIENT_ID value")
+    .option("--github-client-secret <secret>", "COORDINATOR_GITHUB_CLIENT_SECRET value")
+    .option("--github-org <org>", "COORDINATOR_GITHUB_ORG value")
+    .action(async (opts: Phase2WizardOptions) => {
+      const io = makeDefaultWizardIO();
+      try {
+        await runInitPhase2(io, opts);
+      } catch (e) {
+        io.printError(`[FAIL] ${e instanceof Error ? e.message : String(e)}`);
+        process.exit(1);
       }
     });
 }

@@ -4,12 +4,15 @@ import { join } from "path";
 import { createConnection } from "net";
 import { request } from "http";
 import { getConfigDir, loadConfig } from "./config.js";
+import { assertSecretEntropy } from "../src/auth/entropy.js";
 
-interface CheckResult {
+export interface CheckResult {
   name: string;
   ok: boolean;
   detail: string;
   hint?: string;
+  // Phase 2 probes distinguish warn from fail. Phase 1 uses ok=true/false only.
+  severity?: "ok" | "warn" | "fail";
 }
 
 async function tcpReachable(host: string, port: number, timeoutMs = 1500): Promise<boolean> {
@@ -90,13 +93,619 @@ async function mcpInitialize(host: string, port: number, timeoutMs = 2500): Prom
   });
 }
 
+// ============================================================================
+// Phase 2 probes (T42). Each returns a CheckResult with `severity` populated.
+// They use globalThis.fetch (Node 20+) so tests can stub it cleanly.
+// ============================================================================
+
+type FetchLike = typeof fetch;
+
+/**
+ * Strip a trailing slash from a URL. Matches buildDiscoveryDoc's behaviour so
+ * issuer comparisons are stable across `http://x` vs `http://x/`.
+ */
+function stripTrailingSlash(u: string): string {
+  return u.endsWith("/") ? u.slice(0, -1) : u;
+}
+
+/**
+ * Probe 1: HEAD ${publicUrl}/healthz. Validates the URL is well-formed and
+ * that the deployment we *think* is at PUBLIC_URL actually answers.
+ */
+export async function probePublicUrl(
+  publicUrl: string | undefined,
+  fetchImpl: FetchLike = fetch,
+): Promise<CheckResult> {
+  if (!publicUrl) {
+    return {
+      name: "phase2.public_url",
+      ok: false,
+      severity: "fail",
+      detail: "COORDINATOR_PUBLIC_URL not set",
+      hint: "Set COORDINATOR_PUBLIC_URL=https://your.coordinator.example",
+    };
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(publicUrl);
+  } catch {
+    return {
+      name: "phase2.public_url",
+      ok: false,
+      severity: "fail",
+      detail: `malformed URL: ${publicUrl}`,
+      hint: "Must be a full URL with http/https scheme",
+    };
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return {
+      name: "phase2.public_url",
+      ok: false,
+      severity: "fail",
+      detail: `unsupported scheme: ${parsed.protocol}`,
+      hint: "Only http:// and https:// are supported",
+    };
+  }
+  const base = stripTrailingSlash(publicUrl);
+  try {
+    const res = await fetchImpl(`${base}/healthz`, { method: "HEAD" });
+    if (res.status === 200) {
+      return {
+        name: "phase2.public_url",
+        ok: true,
+        severity: "ok",
+        detail: `HEAD ${base}/healthz -> 200`,
+      };
+    }
+    return {
+      name: "phase2.public_url",
+      ok: false,
+      severity: "warn",
+      detail: `HEAD ${base}/healthz -> ${res.status} (expected 200)`,
+      hint: "URL is valid but /healthz did not return 200 — confirm this is the running coordinator",
+    };
+  } catch (e) {
+    return {
+      name: "phase2.public_url",
+      ok: false,
+      severity: "warn",
+      detail: `HEAD ${base}/healthz failed: ${(e as Error).message}`,
+      hint: "URL parses but is unreachable — possibly the running coordinator is on a different host",
+    };
+  }
+}
+
+interface DiscoveryDoc {
+  issuer?: string;
+  token_endpoint_auth_methods_supported?: string[];
+  code_challenge_methods_supported?: string[];
+}
+
+/**
+ * Probe 2: GET /.well-known/oauth-authorization-server. Verifies issuer
+ * matches publicUrl + V4 FIX 12 (auth methods = ["none"]) + S256-only.
+ */
+export async function probeDiscoveryDoc(
+  publicUrl: string | undefined,
+  fetchImpl: FetchLike = fetch,
+): Promise<CheckResult> {
+  if (!publicUrl) {
+    return {
+      name: "phase2.discovery_doc",
+      ok: false,
+      severity: "fail",
+      detail: "COORDINATOR_PUBLIC_URL not set",
+    };
+  }
+  const base = stripTrailingSlash(publicUrl);
+  const target = `${base}/.well-known/oauth-authorization-server`;
+  let body: string;
+  try {
+    const res = await fetchImpl(target, { method: "GET" });
+    if (!res.ok) {
+      return {
+        name: "phase2.discovery_doc",
+        ok: false,
+        severity: "fail",
+        detail: `${target} -> HTTP ${res.status}`,
+        hint: "Discovery endpoint must return 200 OK with JSON body",
+      };
+    }
+    body = await res.text();
+  } catch (e) {
+    return {
+      name: "phase2.discovery_doc",
+      ok: false,
+      severity: "fail",
+      detail: `${target} unreachable: ${(e as Error).message}`,
+      hint: "Coordinator not serving discovery endpoint",
+    };
+  }
+  let doc: DiscoveryDoc;
+  try {
+    doc = JSON.parse(body) as DiscoveryDoc;
+  } catch {
+    return {
+      name: "phase2.discovery_doc",
+      ok: false,
+      severity: "fail",
+      detail: `discovery body is not valid JSON`,
+      hint: "Body returned by /.well-known/oauth-authorization-server is malformed",
+    };
+  }
+
+  if (doc.issuer !== base) {
+    return {
+      name: "phase2.discovery_doc",
+      ok: false,
+      severity: "warn",
+      detail: `issuer=${doc.issuer ?? "<missing>"} but PUBLIC_URL=${base}`,
+      hint: "Issuer drift — env vs deployment mismatch; tokens may reject when validated by clients",
+    };
+  }
+  const auth = doc.token_endpoint_auth_methods_supported;
+  if (!Array.isArray(auth) || auth.length !== 1 || auth[0] !== "none") {
+    return {
+      name: "phase2.discovery_doc",
+      ok: false,
+      severity: "fail",
+      detail: `token_endpoint_auth_methods_supported=${JSON.stringify(auth)} (expected ["none"], V4 FIX 12)`,
+      hint: "Discovery doc must advertise public clients only — see V4 FIX 12",
+    };
+  }
+  const pkce = doc.code_challenge_methods_supported;
+  if (!Array.isArray(pkce) || pkce.length !== 1 || pkce[0] !== "S256") {
+    return {
+      name: "phase2.discovery_doc",
+      ok: false,
+      severity: "fail",
+      detail: `code_challenge_methods_supported=${JSON.stringify(pkce)} (expected ["S256"])`,
+      hint: "PKCE 'plain' is rejected — only S256 is supported",
+    };
+  }
+  return {
+    name: "phase2.discovery_doc",
+    ok: true,
+    severity: "ok",
+    detail: `issuer + ["none"] + ["S256"] all correct`,
+  };
+}
+
+/**
+ * Probe 3: verify GitHub OAuth client creds. If creds are set, smoke-test
+ * against the GitHub token endpoint with a fake code: a valid client_id
+ * + secret yields `bad_verification_code`; bad creds yield
+ * `incorrect_client_credentials`.
+ */
+export async function probeGitHubCreds(
+  clientId: string | undefined,
+  clientSecret: string | undefined,
+  fetchImpl: FetchLike = fetch,
+  smoke: boolean = true,
+): Promise<CheckResult> {
+  if (!clientId || !clientSecret) {
+    return {
+      name: "phase2.github_creds",
+      ok: false,
+      severity: "fail",
+      detail: `COORDINATOR_GITHUB_CLIENT_ID/SECRET missing`,
+      hint: "Set both COORDINATOR_GITHUB_CLIENT_ID and COORDINATOR_GITHUB_CLIENT_SECRET",
+    };
+  }
+  if (!smoke) {
+    return {
+      name: "phase2.github_creds",
+      ok: true,
+      severity: "ok",
+      detail: "credentials present (smoke skipped)",
+    };
+  }
+  try {
+    const body = new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      code: "doctor-fake-code-for-smoke-test",
+    });
+    const res = await fetchImpl("https://github.com/login/oauth/access_token", {
+      method: "POST",
+      headers: {
+        "Accept": "application/json",
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: body.toString(),
+    });
+    const text = await res.text();
+    let parsed: { error?: string } = {};
+    try {
+      parsed = JSON.parse(text) as { error?: string };
+    } catch {
+      // GitHub may return form-encoded on rare errors; do a substring check
+      if (text.includes("bad_verification_code")) parsed = { error: "bad_verification_code" };
+      else if (text.includes("incorrect_client_credentials")) parsed = { error: "incorrect_client_credentials" };
+    }
+    if (parsed.error === "bad_verification_code") {
+      return {
+        name: "phase2.github_creds",
+        ok: true,
+        severity: "ok",
+        detail: "credentials accepted by GitHub (smoke: bad_verification_code as expected)",
+      };
+    }
+    if (parsed.error === "incorrect_client_credentials") {
+      return {
+        name: "phase2.github_creds",
+        ok: false,
+        severity: "warn",
+        detail: "GitHub rejected client credentials (incorrect_client_credentials)",
+        hint: "CLIENT_ID/SECRET pair is wrong — re-issue OAuth app credentials",
+      };
+    }
+    return {
+      name: "phase2.github_creds",
+      ok: false,
+      severity: "warn",
+      detail: `unexpected GitHub response: ${parsed.error ?? text.slice(0, 80)}`,
+      hint: "Inconclusive smoke — check GitHub OAuth app status manually",
+    };
+  } catch (e) {
+    return {
+      name: "phase2.github_creds",
+      ok: false,
+      severity: "warn",
+      detail: `GitHub smoke failed: ${(e as Error).message}`,
+      hint: "Network unreachable or GitHub down — creds may still be valid",
+    };
+  }
+}
+
+interface SqlitePragmaDb {
+  pragma(sql: string, opts?: { simple?: boolean }): unknown;
+  prepare(sql: string): { get(): unknown };
+  close?(): void;
+}
+
+interface SqliteOpener {
+  (dbPath: string): SqlitePragmaDb;
+}
+
+function defaultSqliteOpener(dbPath: string): SqlitePragmaDb {
+  // require() keeps the optional native dep out of the import graph when
+  // tests inject a fake.
+  const Database = require("better-sqlite3");
+  return new Database(dbPath, { readonly: false, fileMustExist: true }) as SqlitePragmaDb;
+}
+
+/**
+ * Probe 4: PRAGMA journal_mode/foreign_keys/busy_timeout/user_version and
+ * sqlite_version sanity. Any mismatch is FAIL.
+ */
+export async function probeSqlite(
+  dbPath: string,
+  opener: SqliteOpener = defaultSqliteOpener,
+): Promise<CheckResult> {
+  let db: SqlitePragmaDb;
+  try {
+    db = opener(dbPath);
+  } catch (e) {
+    return {
+      name: "phase2.sqlite",
+      ok: false,
+      severity: "fail",
+      detail: `cannot open DB: ${(e as Error).message}`,
+      hint: `Verify ${dbPath} exists and is readable`,
+    };
+  }
+  try {
+    const journalMode = String(db.pragma("journal_mode", { simple: true }) ?? "").toLowerCase();
+    const fkRaw = db.pragma("foreign_keys", { simple: true });
+    const fk = String(fkRaw);
+    const busyTimeout = Number(db.pragma("busy_timeout", { simple: true }) ?? 0);
+    const userVersion = Number(db.pragma("user_version", { simple: true }) ?? 0);
+    const sqliteVerStr = String(
+      (db.prepare("SELECT sqlite_version() AS v").get() as { v?: string } | undefined)?.v ?? "0.0.0",
+    );
+    const [major, minor] = sqliteVerStr.split(".").map((x) => parseInt(x, 10));
+    const sqliteVerOk = major > 3 || (major === 3 && minor >= 25);
+
+    const problems: string[] = [];
+    if (journalMode !== "wal") problems.push(`journal_mode=${journalMode} (expected wal)`);
+    if (fk !== "1") problems.push(`foreign_keys=${fk} (expected 1)`);
+    if (busyTimeout < 5000) problems.push(`busy_timeout=${busyTimeout} (expected >=5000)`);
+    if (userVersion < 8) problems.push(`user_version=${userVersion} (expected >=8, Phase 2 migration)`);
+    if (!sqliteVerOk) problems.push(`sqlite_version=${sqliteVerStr} (expected >=3.25)`);
+
+    if (problems.length > 0) {
+      return {
+        name: "phase2.sqlite",
+        ok: false,
+        severity: "fail",
+        detail: problems.join("; "),
+        hint: "Re-run migrations or upgrade sqlite",
+      };
+    }
+    return {
+      name: "phase2.sqlite",
+      ok: true,
+      severity: "ok",
+      detail: `journal=wal, fk=on, busy=${busyTimeout}ms, user_version=${userVersion}, sqlite=${sqliteVerStr}`,
+    };
+  } finally {
+    try {
+      db.close?.();
+    } catch {}
+  }
+}
+
+/**
+ * Probe 5: invokes assertSecretEntropy on the configured JWT secret. The
+ * entropy module already produces specific failure messages.
+ */
+export async function probeJwtSecretEntropy(secret: string | undefined): Promise<CheckResult> {
+  if (!secret) {
+    return {
+      name: "phase2.jwt_secret_entropy",
+      ok: false,
+      severity: "fail",
+      detail: "COORDINATOR_JWT_SECRET not set",
+      hint: "Generate with: openssl rand -base64 32",
+    };
+  }
+  try {
+    assertSecretEntropy(Buffer.from(secret, "utf8"), 128);
+    return {
+      name: "phase2.jwt_secret_entropy",
+      ok: true,
+      severity: "ok",
+      detail: "secret passes entropy gate (>=128 bits)",
+    };
+  } catch (e) {
+    return {
+      name: "phase2.jwt_secret_entropy",
+      ok: false,
+      severity: "fail",
+      detail: (e as Error).message,
+      hint: "Regenerate JWT secret with sufficient entropy (e.g. openssl rand -base64 32)",
+    };
+  }
+}
+
+interface HealthReady {
+  checks?: {
+    audit_queue?: { depth?: number; threshold_percent?: number };
+    sweeper?: { ok?: boolean; circuit_open?: boolean };
+  };
+}
+
+/**
+ * Probe 6: scrape /health/ready and check audit queue depth.
+ */
+export async function probeAuditQueueDepth(
+  publicUrl: string | undefined,
+  fetchImpl: FetchLike = fetch,
+): Promise<CheckResult> {
+  if (!publicUrl) {
+    return {
+      name: "phase2.audit_queue",
+      ok: false,
+      severity: "fail",
+      detail: "COORDINATOR_PUBLIC_URL not set",
+    };
+  }
+  const base = stripTrailingSlash(publicUrl);
+  let doc: HealthReady;
+  try {
+    const res = await fetchImpl(`${base}/health/ready`, { method: "GET" });
+    const text = await res.text();
+    doc = JSON.parse(text) as HealthReady;
+  } catch (e) {
+    return {
+      name: "phase2.audit_queue",
+      ok: false,
+      severity: "fail",
+      detail: `/health/ready unreachable: ${(e as Error).message}`,
+      hint: "Coordinator must expose /health/ready in Phase 2",
+    };
+  }
+  const q = doc.checks?.audit_queue;
+  if (!q || typeof q.depth !== "number" || typeof q.threshold_percent !== "number") {
+    return {
+      name: "phase2.audit_queue",
+      ok: false,
+      severity: "warn",
+      detail: "audit_queue check missing from /health/ready payload",
+      hint: "Coordinator version may predate audit-queue health reporting",
+    };
+  }
+  if (q.depth >= q.threshold_percent) {
+    return {
+      name: "phase2.audit_queue",
+      ok: false,
+      severity: "warn",
+      detail: `audit_queue depth=${q.depth} >= threshold ${q.threshold_percent}`,
+      hint: "Audit pipeline is backing up — investigate writer throughput",
+    };
+  }
+  return {
+    name: "phase2.audit_queue",
+    ok: true,
+    severity: "ok",
+    detail: `audit_queue depth=${q.depth} < ${q.threshold_percent}`,
+  };
+}
+
+/**
+ * Probe 7: scrape /health/ready and check sweeper circuit.
+ */
+export async function probeSweeperStatus(
+  publicUrl: string | undefined,
+  fetchImpl: FetchLike = fetch,
+): Promise<CheckResult> {
+  if (!publicUrl) {
+    return {
+      name: "phase2.sweeper",
+      ok: false,
+      severity: "fail",
+      detail: "COORDINATOR_PUBLIC_URL not set",
+    };
+  }
+  const base = stripTrailingSlash(publicUrl);
+  let doc: HealthReady;
+  try {
+    const res = await fetchImpl(`${base}/health/ready`, { method: "GET" });
+    const text = await res.text();
+    doc = JSON.parse(text) as HealthReady;
+  } catch (e) {
+    return {
+      name: "phase2.sweeper",
+      ok: false,
+      severity: "warn",
+      detail: `/health/ready unreachable: ${(e as Error).message}`,
+      hint: "Cannot determine sweeper status without /health/ready",
+    };
+  }
+  const s = doc.checks?.sweeper;
+  if (!s) {
+    return {
+      name: "phase2.sweeper",
+      ok: false,
+      severity: "warn",
+      detail: "sweeper check missing from /health/ready payload",
+    };
+  }
+  if (s.ok === true && s.circuit_open !== true) {
+    return {
+      name: "phase2.sweeper",
+      ok: true,
+      severity: "ok",
+      detail: "sweeper circuit closed",
+    };
+  }
+  return {
+    name: "phase2.sweeper",
+    ok: false,
+    severity: "fail",
+    detail: `sweeper circuit open${s.circuit_open === true ? "" : " (ok=false)"}`,
+    hint: "Sweeper failed too many times — investigate timeout-sweeper logs",
+  };
+}
+
+interface AuditOpener {
+  (dbPath: string): {
+    prepare(sql: string): { get(...params: unknown[]): unknown; all?(...params: unknown[]): unknown[] };
+    close?(): void;
+  };
+}
+
+function defaultAuditOpener(dbPath: string): ReturnType<AuditOpener> {
+  const Database = require("better-sqlite3");
+  return new Database(dbPath, { readonly: true, fileMustExist: true });
+}
+
+// Actions emitted only by Phase 2 (auth/oauth/device-flow/etc.). Presence of
+// any of these in the last 24h means the coordinator has issued Phase 2
+// traffic.
+const PHASE2_ACTIONS = [
+  "auth.login.success",
+  "auth.login.failure",
+  "auth.refresh",
+  "auth.token_revoke",
+  "auth.logout",
+  "config.boot",
+  "device.approve",
+  "service_token.issue",
+];
+
+/**
+ * Probe 8: confirm at least one Phase 2 audit event exists in the last 24h.
+ * If only Phase 1 events exist, the coordinator hasn't issued Phase 2
+ * tokens yet (warn — typical on first boot).
+ */
+export async function probePhase2AuditEvents(
+  dbPath: string,
+  opener: AuditOpener = defaultAuditOpener,
+): Promise<CheckResult> {
+  let db: ReturnType<AuditOpener>;
+  try {
+    db = opener(dbPath);
+  } catch (e) {
+    return {
+      name: "phase2.audit_events",
+      ok: false,
+      severity: "fail",
+      detail: `cannot open DB: ${(e as Error).message}`,
+    };
+  }
+  try {
+    const placeholders = PHASE2_ACTIONS.map(() => "?").join(",");
+    const stmt = db.prepare(
+      `SELECT COUNT(*) AS n FROM audit_log
+         WHERE action IN (${placeholders})
+           AND datetime(created_at) >= datetime('now', '-1 day')`,
+    );
+    const row = stmt.get(...PHASE2_ACTIONS) as { n?: number } | undefined;
+    const n = row?.n ?? 0;
+    if (n > 0) {
+      return {
+        name: "phase2.audit_events",
+        ok: true,
+        severity: "ok",
+        detail: `${n} Phase 2 audit event(s) in last 24h`,
+      };
+    }
+    return {
+      name: "phase2.audit_events",
+      ok: false,
+      severity: "warn",
+      detail: "no Phase 2 audit events in last 24h",
+      hint: "Expected if Phase 2 was just enabled and no clients have authenticated yet",
+    };
+  } catch (e) {
+    return {
+      name: "phase2.audit_events",
+      ok: false,
+      severity: "fail",
+      detail: `audit_log query failed: ${(e as Error).message}`,
+      hint: "audit_log table may be missing or schema-incompatible",
+    };
+  } finally {
+    try {
+      db.close?.();
+    } catch {}
+  }
+}
+
+export interface Phase2Env {
+  publicUrl?: string;
+  githubClientId?: string;
+  githubClientSecret?: string;
+  jwtSecret?: string;
+  dbPath: string;
+}
+
+/**
+ * Runs probes 1-8 in parallel and returns the result array.
+ */
+export async function runPhase2Probes(env: Phase2Env): Promise<CheckResult[]> {
+  return Promise.all([
+    probePublicUrl(env.publicUrl),
+    probeDiscoveryDoc(env.publicUrl),
+    probeGitHubCreds(env.githubClientId, env.githubClientSecret),
+    probeSqlite(env.dbPath),
+    probeJwtSecretEntropy(env.jwtSecret),
+    probeAuditQueueDepth(env.publicUrl),
+    probeSweeperStatus(env.publicUrl),
+    probePhase2AuditEvents(env.dbPath),
+  ]);
+}
+
 export function createDoctorCommand(): Command {
   return new Command("doctor")
     .description("Run a health check: config, server liveness, MCP endpoint, MQTT broker, dashboard")
     .option("--host <host>", "Hostname to probe", "127.0.0.1")
     .option("--port <port>", "HTTP port", "")
     .option("--mqtt-port <port>", "MQTT TCP port", "")
-    .action(async (opts: { host: string; port: string; mqttPort: string }) => {
+    .option("--phase2", "Force-run Phase 2 OAuth/audit probes regardless of env", false)
+    .action(async (opts: { host: string; port: string; mqttPort: string; phase2: boolean }) => {
       const results: CheckResult[] = [];
       const host = opts.host;
 
@@ -215,23 +824,59 @@ export function createDoctorCommand(): Command {
         hint: mqttUp ? undefined : `MQTT broker not listening on port ${mqttPort}; check COORDINATOR_MQTT_TCP_PORT and server logs`,
       });
 
-      // Print
-      let allOk = true;
+      // ---- Phase 2 probes (T42) ----
+      const phase2Enabled =
+        opts.phase2 === true ||
+        process.env.COORDINATOR_OAUTH_ENABLED === "true";
+      let phase2Results: CheckResult[] = [];
+      if (phase2Enabled) {
+        const dbPath = join(parsedConfig?.server.data_dir ?? join(configDir, "data"), "coordinator.db");
+        phase2Results = await runPhase2Probes({
+          publicUrl: process.env.COORDINATOR_PUBLIC_URL,
+          githubClientId: process.env.COORDINATOR_GITHUB_CLIENT_ID,
+          githubClientSecret: process.env.COORDINATOR_GITHUB_CLIENT_SECRET,
+          jwtSecret: process.env.COORDINATOR_JWT_SECRET,
+          dbPath,
+        });
+      }
+
+      // Print Phase 1
+      let anyFail = false;
+      let anyWarn = false;
       console.log("");
       for (const r of results) {
         const prefix = r.ok ? "[ OK ]" : "[FAIL]";
         console.log(`${prefix}  ${r.name.padEnd(20)} ${r.detail}`);
         if (!r.ok) {
-          allOk = false;
+          anyFail = true;
           if (r.hint) console.log(`        hint: ${r.hint}`);
         }
       }
-      console.log("");
-      if (allOk) {
-        console.log("All checks passed. Coordinator is healthy.");
-      } else {
-        console.log("Some checks failed. See hints above.");
-        process.exit(1);
+
+      // Print Phase 2
+      if (phase2Enabled) {
+        console.log("");
+        console.log("-- Phase 2 probes (COORDINATOR_OAUTH_ENABLED=true) --");
+        for (const r of phase2Results) {
+          const sev = r.severity ?? (r.ok ? "ok" : "fail");
+          const prefix = sev === "ok" ? "[ OK ]" : sev === "warn" ? "[WARN]" : "[FAIL]";
+          const hintStr = r.hint ? ` (${r.hint})` : "";
+          console.log(`${prefix}  ${r.name.padEnd(28)} ${r.detail}${sev === "ok" ? "" : hintStr}`);
+          if (sev === "warn") anyWarn = true;
+          if (sev === "fail") anyFail = true;
+        }
       }
+
+      console.log("");
+      if (!anyFail && !anyWarn) {
+        console.log("All checks passed. Coordinator is healthy.");
+        return;
+      }
+      if (anyFail) {
+        console.log("Some checks failed. See hints above.");
+        process.exit(2);
+      }
+      console.log("Checks passed with warnings. See hints above.");
+      process.exit(1);
     });
 }

@@ -1,0 +1,17 @@
+{$COORDINATOR_PUBLIC_DOMAIN} {
+    reverse_proxy coordinator:3000 {
+        # SSE + WebSocket: disable buffering so server-sent events stream
+        # to clients in real time instead of being chunked by Caddy.
+        flush_interval -1
+    }
+
+    # Static-resource caching is OFF for auth pages. The coordinator
+    # already sets Cache-Control: no-store on /auth/* responses; we
+    # only add gzip/zstd for everything else.
+    encode gzip zstd
+
+    log {
+        output stderr
+        format json
+    }
+}

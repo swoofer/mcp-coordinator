@@ -1,0 +1,373 @@
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import crypto from "node:crypto";
+import Database from "better-sqlite3";
+import { handleAuthLogin } from "../../src/auth/oauth-login.js";
+import type { AuthHandlerContext } from "../../src/auth/context.js";
+import { FakeClock } from "../helpers/clock.js";
+import { RateLimiter } from "../../src/auth/rate-limit.js";
+import { buildJwtKeyRegistry } from "../../src/auth/jwt-keys.js";
+import { MembershipCache } from "../../src/auth/membership-cache.js";
+import type { IdPProvider } from "../../src/auth/providers/types.js";
+
+/**
+ * T15 — GET /auth/login handler.
+ *
+ * Coverage targets:
+ *   - 302 redirect to GitHub authorize URL with state + PKCE S256
+ *   - HMAC-bound state cookie (V4 FIX 19 canonical construction)
+ *   - Rate-limit (30/min/IP) + 429 with Retry-After
+ *   - Trailing-slash normalization on publicUrl → redirect_uri
+ *   - PKCE verifier persisted in oauth_state matches the code_challenge
+ */
+
+interface MockResponse {
+  statusCode: number | null;
+  headers: Record<string, string | string[]>;
+  body: string | null;
+  writeHead(status: number, headers?: Record<string, string>): MockResponse;
+  setHeader(name: string, value: string | string[]): void;
+  getHeader(name: string): string | string[] | undefined;
+  end(payload?: string): void;
+}
+
+function mockResponse(): MockResponse {
+  const res: MockResponse = {
+    statusCode: null,
+    headers: {},
+    body: null,
+    writeHead(status: number, headers?: Record<string, string>) {
+      this.statusCode = status;
+      if (headers) this.headers = { ...this.headers, ...headers };
+      return this;
+    },
+    setHeader(name: string, value: string | string[]) {
+      this.headers[name] = value;
+    },
+    getHeader(name: string) {
+      return this.headers[name];
+    },
+    end(payload?: string) {
+      this.body = payload ?? null;
+    },
+  };
+  return res;
+}
+
+function mockReq(remoteAddress: string | undefined = "127.0.0.1"): IncomingMessage {
+  // Cast a minimal duck-typed object as IncomingMessage. The handler only
+  // reads req.socket?.remoteAddress; everything else stays undefined.
+  const socket = remoteAddress === undefined ? undefined : { remoteAddress };
+  return { method: "GET", url: "/auth/login", socket } as unknown as IncomingMessage;
+}
+
+function setCookieEntries(res: MockResponse): string[] {
+  const sc = res.headers["Set-Cookie"];
+  if (Array.isArray(sc)) return sc;
+  if (typeof sc === "string") return [sc];
+  return [];
+}
+
+/** Parse a single Set-Cookie line into { value, attrs }. */
+function parseSetCookie(raw: string): { value: string; attrs: Record<string, string | boolean> } {
+  const parts = raw.split(";").map((p) => p.trim());
+  const [first, ...rest] = parts;
+  const eq = first.indexOf("=");
+  const value = first.slice(eq + 1);
+  const attrs: Record<string, string | boolean> = {};
+  for (const p of rest) {
+    const i = p.indexOf("=");
+    if (i === -1) attrs[p.toLowerCase()] = true;
+    else attrs[p.slice(0, i).toLowerCase()] = p.slice(i + 1);
+  }
+  return { value, attrs };
+}
+
+const STUB_PROVIDER: IdPProvider = {
+  name: "github",
+  buildAuthUrl: (state, redirectUri, codeChallenge) => {
+    const u = new URL("https://github.com/login/oauth/authorize");
+    u.searchParams.set("client_id", "TEST");
+    u.searchParams.set("redirect_uri", redirectUri);
+    u.searchParams.set("state", state);
+    if (codeChallenge) {
+      u.searchParams.set("code_challenge", codeChallenge);
+      u.searchParams.set("code_challenge_method", "S256");
+    }
+    return u.toString();
+  },
+  exchangeCode: async () => {
+    throw new Error("not used");
+  },
+};
+
+const STATE_BINDING_KEY = Buffer.alloc(32, 0x01);
+
+function bindStateExpected(state: string, key: Buffer): string {
+  const message = Buffer.concat([
+    Buffer.from("state-v1", "utf8"),
+    Buffer.from([0]),
+    Buffer.from(state, "utf8"),
+  ]);
+  return crypto.createHmac("sha256", key).update(message).digest("base64url");
+}
+
+let db: Database.Database;
+let clock: FakeClock;
+let ctx: AuthHandlerContext;
+
+function makeCtx(overrides: Partial<AuthHandlerContext> = {}): AuthHandlerContext {
+  return {
+    db,
+    clock,
+    githubProvider: STUB_PROVIDER,
+    rateLimiter: new RateLimiter(clock),
+    publicUrl: "http://localhost:3000",
+    stateBindingKey: STATE_BINDING_KEY,
+    signingKeys: buildJwtKeyRegistry(Buffer.alloc(32, 0x01)),
+    membershipCache: new MembershipCache(clock),
+    ...overrides,
+  };
+}
+
+beforeEach(() => {
+  db = new Database(":memory:");
+  db.exec(`
+    CREATE TABLE oauth_state (
+      state           TEXT PRIMARY KEY,
+      code_verifier   TEXT NOT NULL,
+      redirect_uri    TEXT NOT NULL,
+      provider        TEXT NOT NULL,
+      org_id          TEXT,
+      created_at      INTEGER NOT NULL,
+      expires_at      INTEGER NOT NULL,
+      consumed_at     INTEGER
+    );
+  `);
+  clock = new FakeClock();
+  ctx = makeCtx();
+});
+
+afterEach(() => {
+  db.close();
+});
+
+describe("handleAuthLogin — happy path", () => {
+  it("returns 302 with Location header pointing to GitHub authorize", async () => {
+    const res = mockResponse();
+    await handleAuthLogin(mockReq(), res as unknown as ServerResponse, ctx);
+    expect(res.statusCode).toBe(302);
+    const loc = res.headers.Location;
+    expect(typeof loc).toBe("string");
+    expect(loc as string).toMatch(/^https:\/\/github\.com\/login\/oauth\/authorize\?/);
+  });
+
+  it("Location URL includes state matching the persisted row", async () => {
+    const res = mockResponse();
+    await handleAuthLogin(mockReq(), res as unknown as ServerResponse, ctx);
+    const loc = new URL(res.headers.Location as string);
+    const state = loc.searchParams.get("state");
+    expect(state).not.toBeNull();
+    const row = db
+      .prepare("SELECT * FROM oauth_state WHERE state = ?")
+      .get(state) as { state: string } | undefined;
+    expect(row).toBeDefined();
+    expect(row?.state).toBe(state);
+  });
+
+  it("Location URL includes code_challenge = SHA-256(code_verifier).base64url", async () => {
+    const res = mockResponse();
+    await handleAuthLogin(mockReq(), res as unknown as ServerResponse, ctx);
+    const loc = new URL(res.headers.Location as string);
+    const state = loc.searchParams.get("state")!;
+    const challenge = loc.searchParams.get("code_challenge");
+    expect(challenge).not.toBeNull();
+
+    const row = db
+      .prepare("SELECT code_verifier FROM oauth_state WHERE state = ?")
+      .get(state) as { code_verifier: string };
+    const expectedChallenge = crypto
+      .createHash("sha256")
+      .update(row.code_verifier, "ascii")
+      .digest("base64url");
+    expect(challenge).toBe(expectedChallenge);
+  });
+
+  it("Location URL includes code_challenge_method=S256", async () => {
+    const res = mockResponse();
+    await handleAuthLogin(mockReq(), res as unknown as ServerResponse, ctx);
+    const loc = new URL(res.headers.Location as string);
+    expect(loc.searchParams.get("code_challenge_method")).toBe("S256");
+  });
+
+  it("response body is empty (302 has no body)", async () => {
+    const res = mockResponse();
+    await handleAuthLogin(mockReq(), res as unknown as ServerResponse, ctx);
+    expect(res.body).toBeNull();
+  });
+});
+
+describe("handleAuthLogin — state cookie attributes", () => {
+  it("sets __Host-coordinator_oauth_state with SameSite=Lax + HttpOnly + Secure + Path=/ + Max-Age=600", async () => {
+    const res = mockResponse();
+    await handleAuthLogin(mockReq(), res as unknown as ServerResponse, ctx);
+    const cookies = setCookieEntries(res);
+    expect(cookies).toHaveLength(1);
+    const raw = cookies[0];
+    expect(raw.startsWith("__Host-coordinator_oauth_state=")).toBe(true);
+    const { attrs } = parseSetCookie(raw);
+    expect(attrs.httponly).toBe(true);
+    expect(attrs.secure).toBe(true);
+    expect(attrs.path).toBe("/");
+    expect(String(attrs.samesite).toLowerCase()).toBe("lax");
+    expect(attrs["max-age"]).toBe("600");
+    expect(attrs.domain).toBeUndefined();
+  });
+
+  it("cookie value is HMAC-SHA-256 over 'state-v1' || 0x00 || state, base64url-encoded", async () => {
+    const res = mockResponse();
+    await handleAuthLogin(mockReq(), res as unknown as ServerResponse, ctx);
+    const cookies = setCookieEntries(res);
+    const { value: cookieValue } = parseSetCookie(cookies[0]);
+    const loc = new URL(res.headers.Location as string);
+    const state = loc.searchParams.get("state")!;
+    const expected = bindStateExpected(state, STATE_BINDING_KEY);
+    expect(cookieValue).toBe(expected);
+    // Sanity: also verifiable with crypto.timingSafeEqual semantics.
+    expect(
+      crypto.timingSafeEqual(
+        Buffer.from(cookieValue, "base64url"),
+        Buffer.from(expected, "base64url"),
+      ),
+    ).toBe(true);
+  });
+});
+
+describe("handleAuthLogin — PKCE persistence", () => {
+  it("oauth_state row's code_verifier hashes to the URL's code_challenge", async () => {
+    const res = mockResponse();
+    await handleAuthLogin(mockReq(), res as unknown as ServerResponse, ctx);
+    const loc = new URL(res.headers.Location as string);
+    const state = loc.searchParams.get("state")!;
+    const challenge = loc.searchParams.get("code_challenge")!;
+    const row = db
+      .prepare("SELECT code_verifier FROM oauth_state WHERE state = ?")
+      .get(state) as { code_verifier: string };
+    const recomputed = crypto
+      .createHash("sha256")
+      .update(row.code_verifier, "ascii")
+      .digest("base64url");
+    expect(recomputed).toBe(challenge);
+  });
+
+  it("state entropy >= 256 bits (43-char base64url)", async () => {
+    const res = mockResponse();
+    await handleAuthLogin(mockReq(), res as unknown as ServerResponse, ctx);
+    const loc = new URL(res.headers.Location as string);
+    const state = loc.searchParams.get("state")!;
+    expect(state).toHaveLength(43);
+    expect(state).toMatch(/^[A-Za-z0-9_-]{43}$/);
+  });
+
+  it("code_verifier entropy >= 256 bits (43-char base64url)", async () => {
+    const res = mockResponse();
+    await handleAuthLogin(mockReq(), res as unknown as ServerResponse, ctx);
+    const loc = new URL(res.headers.Location as string);
+    const state = loc.searchParams.get("state")!;
+    const row = db
+      .prepare("SELECT code_verifier FROM oauth_state WHERE state = ?")
+      .get(state) as { code_verifier: string };
+    expect(row.code_verifier).toHaveLength(43);
+    expect(row.code_verifier).toMatch(/^[A-Za-z0-9_-]{43}$/);
+  });
+});
+
+describe("handleAuthLogin — redirect URI normalization", () => {
+  it("redirectUri matches publicUrl + /api/auth/oauth/callback", async () => {
+    const res = mockResponse();
+    await handleAuthLogin(mockReq(), res as unknown as ServerResponse, ctx);
+    const loc = new URL(res.headers.Location as string);
+    expect(loc.searchParams.get("redirect_uri")).toBe(
+      "http://localhost:3000/api/auth/oauth/callback",
+    );
+    // And the persisted row carries the same URI.
+    const state = loc.searchParams.get("state")!;
+    const row = db
+      .prepare("SELECT redirect_uri FROM oauth_state WHERE state = ?")
+      .get(state) as { redirect_uri: string };
+    expect(row.redirect_uri).toBe("http://localhost:3000/api/auth/oauth/callback");
+  });
+
+  it("publicUrl with trailing slash → redirectUri has no double slash", async () => {
+    const slashedCtx = makeCtx({ publicUrl: "http://localhost:3000/" });
+    const res = mockResponse();
+    await handleAuthLogin(mockReq(), res as unknown as ServerResponse, slashedCtx);
+    const loc = new URL(res.headers.Location as string);
+    expect(loc.searchParams.get("redirect_uri")).toBe(
+      "http://localhost:3000/api/auth/oauth/callback",
+    );
+    expect(loc.searchParams.get("redirect_uri")).not.toContain("//api");
+  });
+});
+
+describe("handleAuthLogin — rate limiting", () => {
+  it("31st request from same IP returns 429 with Retry-After + RATE_LIMITED envelope", async () => {
+    const sharedCtx = makeCtx();
+    // 30 allowed
+    for (let i = 0; i < 30; i++) {
+      const res = mockResponse();
+      await handleAuthLogin(mockReq("1.2.3.4"), res as unknown as ServerResponse, sharedCtx);
+      expect(res.statusCode).toBe(302);
+    }
+    // 31st blocked
+    const blocked = mockResponse();
+    await handleAuthLogin(mockReq("1.2.3.4"), blocked as unknown as ServerResponse, sharedCtx);
+    expect(blocked.statusCode).toBe(429);
+    expect(blocked.headers["Retry-After"]).toBeDefined();
+    expect(Number(blocked.headers["Retry-After"])).toBeGreaterThanOrEqual(1);
+    const ct = blocked.headers["Content-Type"];
+    expect(typeof ct).toBe("string");
+    expect(ct as string).toContain("application/json");
+    const body = JSON.parse(blocked.body!) as { code: string; message: string };
+    expect(body.code).toBe("RATE_LIMITED");
+  });
+
+  it("rate limit is independent per IP (two IPs each get 30 allowed)", async () => {
+    const sharedCtx = makeCtx();
+    for (let i = 0; i < 30; i++) {
+      const a = mockResponse();
+      await handleAuthLogin(mockReq("10.0.0.1"), a as unknown as ServerResponse, sharedCtx);
+      expect(a.statusCode).toBe(302);
+      const b = mockResponse();
+      await handleAuthLogin(mockReq("10.0.0.2"), b as unknown as ServerResponse, sharedCtx);
+      expect(b.statusCode).toBe(302);
+    }
+    // 31st on either IP blocks for THAT IP only.
+    const a31 = mockResponse();
+    await handleAuthLogin(mockReq("10.0.0.1"), a31 as unknown as ServerResponse, sharedCtx);
+    expect(a31.statusCode).toBe(429);
+    const b31 = mockResponse();
+    await handleAuthLogin(mockReq("10.0.0.2"), b31 as unknown as ServerResponse, sharedCtx);
+    expect(b31.statusCode).toBe(429);
+    // A fresh IP still works.
+    const fresh = mockResponse();
+    await handleAuthLogin(mockReq("10.0.0.3"), fresh as unknown as ServerResponse, sharedCtx);
+    expect(fresh.statusCode).toBe(302);
+  });
+
+  it("missing req.socket falls back to the 'unknown' bucket", async () => {
+    const sharedCtx = makeCtx();
+    const res = mockResponse();
+    // Provide a request with NO socket field at all → optional chain returns undefined.
+    const req = { method: "GET", url: "/auth/login" } as unknown as IncomingMessage;
+    await handleAuthLogin(req, res as unknown as ServerResponse, sharedCtx);
+    expect(res.statusCode).toBe(302);
+  });
+
+  it("missing socket.remoteAddress falls back to the 'unknown' bucket", async () => {
+    const sharedCtx = makeCtx();
+    const res = mockResponse();
+    await handleAuthLogin(mockReq(undefined), res as unknown as ServerResponse, sharedCtx);
+    expect(res.statusCode).toBe(302);
+  });
+});

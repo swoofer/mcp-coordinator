@@ -1,0 +1,165 @@
+import type { IncomingMessage, ServerResponse } from "node:http";
+import type { AuthHandlerContext } from "../auth/context.js";
+import { handleAuthLogin } from "../auth/oauth-login.js";
+import { handleOAuthCallback } from "../auth/oauth-callback.js";
+import { handleOAuthToken } from "../auth/oauth-token.js";
+import { handleDeviceAuthorization, handleDeviceApprove } from "../auth/device-flow.js";
+import { handleLogout, handleLogoutAll, handleRevoke } from "../auth/logout.js";
+import { handleUserinfo } from "../auth/userinfo.js";
+import {
+  handleIssueServiceToken,
+  handleListServiceTokens,
+  handleRevokeServiceToken,
+} from "../admin/handle-service-tokens.js";
+import { handleDevicePage } from "../auth/pages/device.html.js";
+import { handleDeviceConfirmPage } from "../auth/pages/device-confirm.html.js";
+import { handleSuccessPage } from "../auth/pages/success.html.js";
+import { appError } from "./response-contract.js";
+
+/**
+ * Phase 2 auth-route dispatcher. Returns true if the URL matched an
+ * auth route (and the handler was invoked); false if the caller should
+ * fall through to handleRest (Phase 1 routes).
+ *
+ * Route table (Phase 2):
+ *   GET  /auth/login                              → handleAuthLogin (T15)
+ *   GET  /auth/device                             → handleDevicePage (T21)
+ *   GET  /auth/device/confirm                     → handleDeviceConfirmPage (T21)
+ *   GET  /auth/success                            → handleSuccessPage (T21)
+ *   GET  /api/auth/oauth/callback                 → handleOAuthCallback (T16)
+ *   POST /api/auth/oauth/token                    → handleOAuthToken (T18)
+ *   POST /api/auth/oauth/device_authorization     → handleDeviceAuthorization (T17)
+ *   POST /auth/device/approve                     → handleDeviceApprove (T20)
+ *   POST /api/auth/logout                         → handleLogout (T23)
+ *   POST /api/auth/logout-all                     → handleLogoutAll (T23)
+ *   POST /api/auth/revoke                         → handleRevoke (T23)
+ *   GET  /api/auth/me                             → handleUserinfo (T24)
+ *   POST /api/admin/service-tokens                → handleIssueServiceToken (T25)
+ *   GET  /api/admin/service-tokens                → handleListServiceTokens (T25)
+ *   POST /api/admin/service-tokens/<jti>/revoke   → handleRevokeServiceToken (T25)
+ *
+ * Discovery doc (T14) is wired separately by serve-http.ts at boot —
+ * it doesn't flow through this dispatcher.
+ */
+export async function dispatchAuthRoutes(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: AuthHandlerContext,
+): Promise<boolean> {
+  const url = (req.url ?? "").split("?")[0];
+  const method = req.method ?? "GET";
+
+  // Strict method matching — wrong method on a known auth path returns 405.
+  if (url === "/auth/login" && method === "GET") {
+    await handleAuthLogin(req, res, ctx);
+    return true;
+  }
+  if (url === "/auth/device" && method === "GET") {
+    await handleDevicePage(req, res, ctx);
+    return true;
+  }
+  if (url === "/auth/device/confirm" && method === "GET") {
+    await handleDeviceConfirmPage(req, res, ctx);
+    return true;
+  }
+  if (url === "/auth/success" && method === "GET") {
+    await handleSuccessPage(req, res, ctx);
+    return true;
+  }
+  if (url === "/api/auth/oauth/callback" && method === "GET") {
+    await handleOAuthCallback(req, res, ctx);
+    return true;
+  }
+  if (url === "/api/auth/oauth/token" && method === "POST") {
+    await handleOAuthToken(req, res, ctx);
+    return true;
+  }
+  if (url === "/api/auth/oauth/device_authorization" && method === "POST") {
+    await handleDeviceAuthorization(req, res, ctx);
+    return true;
+  }
+  if (url === "/auth/device/approve" && method === "POST") {
+    await handleDeviceApprove(req, res, ctx);
+    return true;
+  }
+  if (url === "/api/auth/logout" && method === "POST") {
+    await handleLogout(req, res, ctx);
+    return true;
+  }
+  if (url === "/api/auth/logout-all" && method === "POST") {
+    await handleLogoutAll(req, res, ctx);
+    return true;
+  }
+  if (url === "/api/auth/revoke" && method === "POST") {
+    await handleRevoke(req, res, ctx);
+    return true;
+  }
+  if (url === "/api/auth/me" && method === "GET") {
+    await handleUserinfo(req, res, ctx);
+    return true;
+  }
+  if (url === "/api/admin/service-tokens" && method === "POST") {
+    await handleIssueServiceToken(req, res, ctx);
+    return true;
+  }
+  if (url === "/api/admin/service-tokens" && method === "GET") {
+    await handleListServiceTokens(req, res, ctx);
+    return true;
+  }
+
+  // Service-token revoke is parameterized (jti in URL). Match via regex
+  // before the KNOWN_AUTH_PATHS check; non-POST methods on this path fall
+  // through to the dispatcher's return false (handleRest will 404). This
+  // skips the 405 branch for parameterized paths -- acceptable trade-off.
+  const revokeMatch = url.match(
+    /^\/api\/admin\/service-tokens\/([^/]+)\/revoke$/,
+  );
+  if (revokeMatch && method === "POST") {
+    const jti = decodeURIComponent(revokeMatch[1]!);
+    await handleRevokeServiceToken(req, res, ctx, jti);
+    return true;
+  }
+
+  // Known auth path but wrong method → 405. Match the URL ignoring method.
+  if (KNOWN_AUTH_PATHS.has(url)) {
+    res.writeHead(405, {
+      "Content-Type": "application/json; charset=utf-8",
+      Allow: methodForPath(url),
+    });
+    res.end(JSON.stringify(appError("METHOD_NOT_ALLOWED", `${method} not allowed on ${url}`)));
+    return true;
+  }
+
+  return false;
+}
+
+const KNOWN_AUTH_PATHS = new Set([
+  "/auth/login",
+  "/auth/device",
+  "/auth/device/confirm",
+  "/auth/success",
+  "/api/auth/oauth/callback",
+  "/api/auth/oauth/token",
+  "/api/auth/oauth/device_authorization",
+  "/auth/device/approve",
+  "/api/auth/logout",
+  "/api/auth/logout-all",
+  "/api/auth/revoke",
+  "/api/auth/me",
+  "/api/admin/service-tokens",
+]);
+
+function methodForPath(url: string): string {
+  if (url === "/api/admin/service-tokens") return "GET, POST";
+  if (
+    url === "/auth/login" ||
+    url === "/auth/device" ||
+    url === "/auth/device/confirm" ||
+    url === "/auth/success" ||
+    url === "/api/auth/oauth/callback" ||
+    url === "/api/auth/me"
+  ) {
+    return "GET";
+  }
+  return "POST";
+}

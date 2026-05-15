@@ -25,6 +25,11 @@ import type { CoordinatorEvent } from "./types.js";
 import { getVersion } from "../cli/version.js";
 const VERSION = getVersion();
 import { startEmbeddedMqttBroker, type MqttAuthResult } from "./mqtt-broker.js";
+import { withRequestId, resolveRequestId } from "./auth/request-id.js";
+import { bootPhase2, type Phase2Bootstrap } from "./boot.js";
+import { dispatchAuthRoutes } from "./http/auth-routes.js";
+import { getDb } from "./database.js";
+import type DatabaseT from "better-sqlite3";
 
 const SERVER_FILE_DIR = path.dirname(__filename);
 
@@ -386,6 +391,20 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
     log.info("Auth enabled (JWT HS256)");
   }
 
+  // T29: Phase 2 init. Gated on COORDINATOR_OAUTH_ENABLED=true. When unset
+  // or "false" (Phase 1 deployments), bootPhase2 returns null and none of
+  // the Phase 2 wiring activates — request handler bypasses dispatchAuthRoutes,
+  // SIGTERM skips the Phase 2 shutdown branch. Throws BootValidationError on
+  // misconfiguration; we let it propagate so startup fails loudly rather than
+  // silently degrading to Phase 1.
+  const phase2Bootstrap: Phase2Bootstrap | null = bootPhase2({
+    enabled: process.env.COORDINATOR_OAUTH_ENABLED === "true",
+    db: getDb() as unknown as DatabaseT.Database,
+  });
+  if (phase2Bootstrap) {
+    log.info("Phase 2 OAuth enabled (dispatchAuthRoutes wired, sweeper running)");
+  }
+
   // Multi-session: one transport+server per MCP client session
   const sessions = new Map<string, StreamableHTTPServerTransport>();
   // Task 23.5: per-session claims map. Populated when a session is opened or
@@ -393,6 +412,9 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
   const sessionClaims = new Map<string, AuthClaims>();
 
   const httpServer = createServer(async (req, res) => {
+    const requestId = resolveRequestId(req.headers["x-request-id"]);
+    res.setHeader("X-Request-Id", requestId);
+    return withRequestId(requestId, async () => {
     const url = req.url || "";
 
     // CORS preflight
@@ -404,6 +426,24 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
       });
       res.end();
       return;
+    }
+
+    // T29: Phase 2 auth-route dispatch. Only active when Phase 2 was composed
+    // (COORDINATOR_OAUTH_ENABLED=true). Runs BEFORE the Phase 1 route checks so
+    // OAuth endpoints (/auth/login, /api/auth/oauth/*, /auth/device/*, etc.) are
+    // owned by the dispatcher. Returns true if the URL was an auth route and the
+    // handler ran; we then short-circuit. False means "not my URL — fall through".
+    if (phase2Bootstrap) {
+      try {
+        const handled = await dispatchAuthRoutes(req, res, phase2Bootstrap.context);
+        if (handled) return;
+      } catch (err) {
+        httpLog.error({ err, url: req.url }, "Phase 2 auth route error");
+        if (!res.headersSent) {
+          json(res, { error: (err as Error).message }, 500);
+        }
+        return;
+      }
     }
 
     try {
@@ -535,6 +575,7 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
       httpLog.error({ err }, "HTTP request error");
       json(res, { error: (err as Error).message }, 500);
     }
+    });
   });
 
   // Start the embedded MQTT broker (TCP + WebSocket on HTTP upgrade).
@@ -623,6 +664,16 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
     if (stopped) return;
     stopped = true;
     log.info("Coordinator shutting down...");
+    // T29: Phase 2 shutdown — stop sweeper + drain audit queue BEFORE closing
+    // the HTTP server, so any final Tier 2 audit emissions from in-flight
+    // requests land before the DB closes. shutdown() is idempotent.
+    if (phase2Bootstrap) {
+      try {
+        await phase2Bootstrap.shutdown();
+      } catch (err) {
+        log.warn({ err }, "Error during Phase 2 shutdown");
+      }
+    }
     try {
       await new Promise<void>((resolve) => httpServer.close(() => resolve()));
     } catch (err) {

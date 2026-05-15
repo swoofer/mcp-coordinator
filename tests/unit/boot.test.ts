@@ -1,0 +1,490 @@
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import Database from "better-sqlite3";
+import { bootPhase2, BootValidationError } from "../../src/boot.js";
+import { FakeClock } from "../helpers/clock.js";
+import { resetAuditQueue } from "../../src/security/audit.js";
+import { resetPhase2Auth } from "../../src/auth.js";
+import {
+  initDatabase as initGlobalDatabase,
+  getDb as getGlobalDb,
+  closeDb as closeGlobalDb,
+} from "../../src/database.js";
+import fs from "node:fs";
+
+/**
+ * T29 boot validation tests.
+ *
+ * Strategy: each test spins up a fresh in-memory better-sqlite3 instance with
+ * the minimal schema bootPhase2 touches (orgs, users, audit_log). The Tier 1
+ * `config.boot` + `recovery.*` audits emitted by bootPhase2 route through
+ * `audit()`, which reads `getDb()` (the global singleton). To make those
+ * writes go to our test DB, we initialize the global DB on disk once
+ * per suite and use SAVEPOINT-style cleanup between tests.
+ *
+ * Env var management: every test that mutates COORDINATOR_* keys must
+ * restore them in afterEach. We snapshot the originals before any test and
+ * restore them after the suite.
+ */
+
+const ENV_KEYS = [
+  "COORDINATOR_OAUTH_ENABLED",
+  "COORDINATOR_JWT_SECRET",
+  "COORDINATOR_GITHUB_CLIENT_ID",
+  "COORDINATOR_GITHUB_CLIENT_SECRET",
+  "COORDINATOR_PUBLIC_URL",
+  "COORDINATOR_GITHUB_ORG",
+  "COORDINATOR_INSECURE_COOKIES",
+  "COORDINATOR_ALLOW_RESTORE",
+];
+
+// 32 random bytes (high entropy, no dictionary words) — passes
+// assertSecretEntropy(128).
+const STRONG_SECRET = "ZGVhZGJlZWZjYWZlYmFiZTAxMjM0NTY3ODlhYmNkZWY=xY9q";
+
+const SCHEMA = `
+  CREATE TABLE IF NOT EXISTS orgs (
+    id                    TEXT PRIMARY KEY,
+    name                  TEXT NOT NULL,
+    allowlist_github_org  TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS users (
+    id           TEXT PRIMARY KEY,
+    email        TEXT,
+    token_epoch  INTEGER NOT NULL DEFAULT 0
+  );
+
+  CREATE TABLE IF NOT EXISTS audit_log (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    actor_user_id     TEXT,
+    actor_org_id      TEXT,
+    action            TEXT NOT NULL,
+    target            TEXT,
+    actor_ip          TEXT,
+    actor_user_agent  TEXT,
+    request_id        TEXT,
+    outcome           TEXT,
+    metadata_json     TEXT,
+    created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%d %H:%M:%S','now'))
+  );
+`;
+
+const DATA_DIR = "data-test-boot";
+let envSnapshot: Record<string, string | undefined>;
+let db: Database.Database;
+let clock: FakeClock;
+
+function setEnv(overrides: Record<string, string | undefined>): void {
+  for (const [k, v] of Object.entries(overrides)) {
+    if (v === undefined) {
+      delete process.env[k];
+    } else {
+      process.env[k] = v;
+    }
+  }
+}
+
+function applyValidEnv(): void {
+  setEnv({
+    COORDINATOR_OAUTH_ENABLED: "true",
+    COORDINATOR_JWT_SECRET: STRONG_SECRET,
+    COORDINATOR_GITHUB_CLIENT_ID: "test-client-id",
+    COORDINATOR_GITHUB_CLIENT_SECRET: "test-client-secret",
+    COORDINATOR_PUBLIC_URL: "http://localhost:3100",
+    COORDINATOR_GITHUB_ORG: "acme",
+    COORDINATOR_INSECURE_COOKIES: undefined,
+    COORDINATOR_ALLOW_RESTORE: undefined,
+  });
+}
+
+beforeEach(() => {
+  // Snapshot env keys this suite touches.
+  envSnapshot = {};
+  for (const k of ENV_KEYS) envSnapshot[k] = process.env[k];
+
+  // Reset module-level singletons so prior tests don't leak.
+  resetAuditQueue();
+  resetPhase2Auth();
+
+  // Initialize the global DB used by audit() (writes config.boot Tier 1).
+  // The global DB owns the audit_log table for these tests; the `db`
+  // injected into bootPhase2 IS the same instance for restore-check + orgs
+  // table operations.
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  initGlobalDatabase(DATA_DIR);
+  // Cast adapter to better-sqlite3 surface (structurally compatible).
+  db = getGlobalDb() as unknown as Database.Database;
+  // Clear test-relevant tables to isolate cases. The real DB schema has
+  // many more columns than our minimal SCHEMA above, but the orgs +
+  // audit_log + users surface bootPhase2 reads/writes is a strict subset.
+  db.exec("DELETE FROM audit_log");
+  db.exec("DELETE FROM users");
+  db.exec("DELETE FROM orgs");
+
+  clock = new FakeClock(1_700_000_000);
+});
+
+afterEach(() => {
+  // Restore env to suite-entry values.
+  for (const [k, v] of Object.entries(envSnapshot)) {
+    if (v === undefined) {
+      delete process.env[k];
+    } else {
+      process.env[k] = v;
+    }
+  }
+  resetAuditQueue();
+  resetPhase2Auth();
+  try {
+    closeGlobalDb();
+  } catch {
+    /* ignore */
+  }
+  try {
+    fs.rmSync(DATA_DIR, { recursive: true, force: true });
+  } catch {
+    /* Windows EBUSY ignored — vitest re-runs handle file locks */
+  }
+});
+
+describe("bootPhase2 — disabled path", () => {
+  it("returns null when enabled=false (Phase 1 compatibility)", () => {
+    const result = bootPhase2({ enabled: false, db, clock });
+    expect(result).toBeNull();
+  });
+});
+
+describe("bootPhase2 — required env validation", () => {
+  it("throws BootValidationError when COORDINATOR_JWT_SECRET is missing", () => {
+    applyValidEnv();
+    delete process.env.COORDINATOR_JWT_SECRET;
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
+      BootValidationError,
+    );
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
+      /COORDINATOR_JWT_SECRET is required/,
+    );
+  });
+
+  it("throws BootValidationError when COORDINATOR_GITHUB_CLIENT_ID is missing", () => {
+    applyValidEnv();
+    delete process.env.COORDINATOR_GITHUB_CLIENT_ID;
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
+      /COORDINATOR_GITHUB_CLIENT_ID is required/,
+    );
+  });
+
+  it("throws BootValidationError when COORDINATOR_GITHUB_CLIENT_SECRET is missing", () => {
+    applyValidEnv();
+    delete process.env.COORDINATOR_GITHUB_CLIENT_SECRET;
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
+      /COORDINATOR_GITHUB_CLIENT_SECRET is required/,
+    );
+  });
+
+  it("throws BootValidationError when COORDINATOR_PUBLIC_URL is missing", () => {
+    applyValidEnv();
+    delete process.env.COORDINATOR_PUBLIC_URL;
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
+      /COORDINATOR_PUBLIC_URL is required/,
+    );
+  });
+
+  it("throws BootValidationError when COORDINATOR_GITHUB_ORG is missing", () => {
+    applyValidEnv();
+    delete process.env.COORDINATOR_GITHUB_ORG;
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
+      /COORDINATOR_GITHUB_ORG is required/,
+    );
+  });
+
+  it("throws when a required env var is whitespace-only (treated as missing)", () => {
+    applyValidEnv();
+    process.env.COORDINATOR_GITHUB_ORG = "   ";
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
+      BootValidationError,
+    );
+  });
+});
+
+describe("bootPhase2 — PUBLIC_URL validation", () => {
+  it("throws when PUBLIC_URL is not a valid URL", () => {
+    applyValidEnv();
+    process.env.COORDINATOR_PUBLIC_URL = "not-a-url";
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
+      /is not a valid URL/,
+    );
+  });
+
+  it("throws when PUBLIC_URL uses an unsupported scheme (ftp://)", () => {
+    applyValidEnv();
+    process.env.COORDINATOR_PUBLIC_URL = "ftp://example.com";
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
+      /must be http:\/\/ or https:\/\//,
+    );
+  });
+
+  it("throws when PUBLIC_URL uses http:// with non-localhost host and no INSECURE_COOKIES override", () => {
+    applyValidEnv();
+    process.env.COORDINATOR_PUBLIC_URL = "http://example.com:3100";
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
+      /COORDINATOR_INSECURE_COOKIES=true to override/,
+    );
+  });
+
+  it("accepts http://localhost without INSECURE_COOKIES", () => {
+    applyValidEnv();
+    process.env.COORDINATOR_PUBLIC_URL = "http://localhost:3100";
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+    void result!.shutdown();
+  });
+
+  it("accepts http://127.0.0.1 without INSECURE_COOKIES", () => {
+    applyValidEnv();
+    process.env.COORDINATOR_PUBLIC_URL = "http://127.0.0.1:3100";
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+    void result!.shutdown();
+  });
+
+  it("accepts http:// non-localhost WITH COORDINATOR_INSECURE_COOKIES=true", () => {
+    applyValidEnv();
+    process.env.COORDINATOR_PUBLIC_URL = "http://example.com:3100";
+    process.env.COORDINATOR_INSECURE_COOKIES = "true";
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+    void result!.shutdown();
+  });
+
+  it("accepts https:// non-localhost without override", () => {
+    applyValidEnv();
+    process.env.COORDINATOR_PUBLIC_URL = "https://prod.example.com";
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+    void result!.shutdown();
+  });
+});
+
+describe("bootPhase2 — JWT secret entropy", () => {
+  it("rejects a dictionary-word secret (e.g. 'changeme')", () => {
+    applyValidEnv();
+    process.env.COORDINATOR_JWT_SECRET = "changeme";
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
+      /secret entropy/,
+    );
+  });
+
+  it("rejects an all-same-byte secret", () => {
+    applyValidEnv();
+    process.env.COORDINATOR_JWT_SECRET = "a".repeat(64);
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
+      /secret entropy/,
+    );
+  });
+
+  it("accepts a valid high-entropy secret", () => {
+    applyValidEnv();
+    // STRONG_SECRET already used; just confirm boot succeeds.
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+    void result!.shutdown();
+  });
+});
+
+describe("bootPhase2 — bootstrap orgs row (B-NEW-4)", () => {
+  it("INSERTs a row when no orgs.allowlist_github_org matches env", () => {
+    applyValidEnv();
+    const before = db.prepare("SELECT COUNT(*) AS n FROM orgs").get() as {
+      n: number;
+    };
+    expect(before.n).toBe(0);
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+    const rows = db
+      .prepare("SELECT allowlist_github_org FROM orgs")
+      .all() as Array<{ allowlist_github_org: string }>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0].allowlist_github_org).toBe("acme");
+    void result!.shutdown();
+  });
+
+  it("does NOT duplicate-INSERT when an orgs row already matches (case-insensitive)", () => {
+    applyValidEnv();
+    db.prepare(
+      "INSERT INTO orgs (id, name, allowlist_github_org) VALUES (?, ?, ?)",
+    ).run("org-existing", "ACME Corp", "ACME");
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+    const rows = db.prepare("SELECT COUNT(*) AS n FROM orgs").get() as {
+      n: number;
+    };
+    expect(rows.n).toBe(1);
+    void result!.shutdown();
+  });
+});
+
+describe("bootPhase2 — NR12 restore detection", () => {
+  it("empty audit_log: boot succeeds with no restore check failure", () => {
+    applyValidEnv();
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+    // No recovery audits should have been emitted.
+    const recoveryRows = db
+      .prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action LIKE 'recovery.%'")
+      .get() as { n: number };
+    expect(recoveryRows.n).toBe(0);
+    void result!.shutdown();
+  });
+
+  it("audit_log < 5min stale: boot succeeds, no recovery audit", () => {
+    applyValidEnv();
+    // Seed an audit row created "just now" relative to fake clock.
+    // Use SQL `datetime(?, 'unixepoch')` to convert epoch → ISO string matching
+    // the audit_log.created_at format strftime('%s', ...) parses back.
+    const recent = clock.now() - 60; // 1 min stale — well within threshold.
+    db.prepare(
+      `INSERT INTO audit_log (action, created_at)
+       VALUES (?, datetime(?, 'unixepoch'))`,
+    ).run("seed.recent", recent);
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+    const recoveryRows = db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM audit_log WHERE action LIKE 'recovery.%'",
+      )
+      .get() as { n: number };
+    expect(recoveryRows.n).toBe(0);
+    void result!.shutdown();
+  });
+
+  it("audit_log > 5min stale + ALLOW_RESTORE unset: throws BootValidationError", () => {
+    applyValidEnv();
+    const stale = clock.now() - 1000; // ~16 min stale.
+    db.prepare(
+      `INSERT INTO audit_log (action, created_at)
+       VALUES (?, datetime(?, 'unixepoch'))`,
+    ).run("seed.stale", stale);
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
+      /Restore suspected/,
+    );
+  });
+
+  it("audit_log > 5min stale + ALLOW_RESTORE=true: bumps token_epoch + emits recovery audits", () => {
+    applyValidEnv();
+    process.env.COORDINATOR_ALLOW_RESTORE = "true";
+    // Seed a user so bumpTokenEpochAllUsers has something to bump. The real
+    // users table has NOT NULL columns we satisfy by listing them explicitly.
+    // We pre-create the required parent org row to satisfy the FK on
+    // primary_org_id (B-NEW-4 bootstrap runs later in boot, so we'd race it).
+    db.prepare(
+      "INSERT OR IGNORE INTO orgs (id, name, allowlist_github_org) VALUES (?, ?, ?)",
+    ).run("org-seed", "seed", "acme");
+    db.prepare(
+      `INSERT INTO users (
+         id, primary_org_id, email, idp_provider, idp_user_id, role, token_epoch
+       ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).run("u-1", "org-seed", "u1@example.com", "github", "12345", "member", 0);
+    const stale = clock.now() - 2000; // ~33 min stale.
+    db.prepare(
+      `INSERT INTO audit_log (action, created_at)
+       VALUES (?, datetime(?, 'unixepoch'))`,
+    ).run("seed.stale.allowed", stale);
+
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+
+    // token_epoch should have been bumped (> 0 after bump).
+    const userRow = db
+      .prepare("SELECT token_epoch FROM users WHERE id = ?")
+      .get("u-1") as { token_epoch: number };
+    expect(userRow.token_epoch).toBeGreaterThan(0);
+
+    // Recovery audits should be present.
+    const tepoch = db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM audit_log WHERE action = ?",
+      )
+      .get("recovery.token_epoch_global_bump") as { n: number };
+    expect(tepoch.n).toBe(1);
+    const completed = db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM audit_log WHERE action = ?",
+      )
+      .get("recovery.completed") as { n: number };
+    expect(completed.n).toBe(1);
+
+    void result!.shutdown();
+  });
+});
+
+describe("bootPhase2 — success path", () => {
+  it("happy boot returns { context, sweeper, shutdown } with composed deps", () => {
+    applyValidEnv();
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+    const bs = result!;
+    expect(bs.context).toBeDefined();
+    expect(bs.context.db).toBe(db);
+    expect(bs.context.clock).toBe(clock);
+    expect(bs.context.publicUrl).toBe("http://localhost:3100");
+    expect(bs.context.stateBindingKey).toBeInstanceOf(Buffer);
+    expect(bs.context.stateBindingKey.length).toBe(32);
+    expect(bs.context.signingKeys.current.kid).toBe("hs256-v1");
+    expect(bs.context.rateLimiter).toBeDefined();
+    expect(bs.context.membershipCache).toBeDefined();
+    expect(bs.context.githubProvider).toBeDefined();
+    expect(bs.context.githubProvider.name).toBe("github");
+    expect(bs.sweeper).toBeDefined();
+    expect(typeof bs.shutdown).toBe("function");
+    void bs.shutdown();
+  });
+
+  it("emits config.boot Tier 1 audit with public_url + github_org metadata", () => {
+    applyValidEnv();
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+    const row = db
+      .prepare(
+        "SELECT metadata_json FROM audit_log WHERE action = ?",
+      )
+      .get("config.boot") as { metadata_json: string };
+    expect(row).toBeDefined();
+    const meta = JSON.parse(row.metadata_json);
+    expect(meta.public_url).toBe("http://localhost:3100");
+    expect(meta.github_org).toBe("acme");
+    void result!.shutdown();
+  });
+
+  it("shutdown() drains sweeper + audit queue idempotently", async () => {
+    applyValidEnv();
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+    await result!.shutdown();
+    // Calling shutdown twice should not throw — sweeper.stop is idempotent,
+    // audit queue.drain becomes a no-op once closed.
+    await result!.shutdown();
+  });
+
+  it("shutdown() handles missing audit queue gracefully (defensive null-guard)", async () => {
+    applyValidEnv();
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+    // Force-clear the audit queue singleton to exercise the `if (queue)`
+    // null branch in shutdown. In production the queue is always set when
+    // boot succeeds, but a test that resets between rapid restarts could
+    // race against this — defend in depth.
+    resetAuditQueue();
+    await result!.shutdown();
+  });
+
+  it("uses realClock when opts.clock is omitted", () => {
+    applyValidEnv();
+    const result = bootPhase2({ enabled: true, db });
+    expect(result).not.toBeNull();
+    // realClock.now() returns ~now in epoch seconds — verify the composed
+    // context uses something time-like.
+    expect(result!.context.clock.now()).toBeGreaterThan(1_600_000_000);
+    void result!.shutdown();
+  });
+});

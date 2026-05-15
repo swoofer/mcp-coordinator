@@ -385,11 +385,12 @@ describe("cross-tenant isolation defense-in-depth", () => {
   // ── Direct audit_log isolation (DB-level) ────────────────────────────────
   it("audit_log: writes from org A invisible in org B's reads (DB-level)", () => {
     const db = getDb();
-    db.prepare("INSERT INTO audit_log (org_id, action) VALUES ('org-a', 'auth.test')").run();
-    db.prepare("INSERT INTO audit_log (org_id, action) VALUES ('org-b', 'auth.test')").run();
+    // v0.8: audit_log.org_id renamed to actor_org_id per V4 FIX 1
+    db.prepare("INSERT INTO audit_log (actor_org_id, action) VALUES ('org-a', 'auth.test')").run();
+    db.prepare("INSERT INTO audit_log (actor_org_id, action) VALUES ('org-b', 'auth.test')").run();
 
-    const rowsForA = db.prepare("SELECT * FROM audit_log WHERE org_id = 'org-a'").all();
-    const rowsForB = db.prepare("SELECT * FROM audit_log WHERE org_id = 'org-b'").all();
+    const rowsForA = db.prepare("SELECT * FROM audit_log WHERE actor_org_id = 'org-a'").all();
+    const rowsForB = db.prepare("SELECT * FROM audit_log WHERE actor_org_id = 'org-b'").all();
     expect(rowsForA).toHaveLength(1);
     expect(rowsForB).toHaveLength(1);
   });

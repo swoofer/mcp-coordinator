@@ -1,8 +1,15 @@
 import { SignJWT, jwtVerify, errors } from "jose";
 import { randomUUID } from "crypto";
 import type { IncomingMessage } from "http";
+import type Database from "better-sqlite3";
 import { getDb } from "./database.js";
 import { silentLogger, type Logger } from "./logger.js";
+import { parseCookies } from "./auth/cookies.js";
+import { isAcceptedKid, type JwtKeyRegistry } from "./auth/jwt-keys.js";
+import { readTokenEpoch } from "./auth/token-epoch.js";
+import { verifyServiceTokenJti } from "./auth/service-tokens.js";
+import { audit } from "./security/audit.js";
+import { bearerAuthHeader } from "./http/response-contract.js";
 
 let signingKey: Uint8Array;
 let prevKey: Uint8Array | null = null;
@@ -13,7 +20,7 @@ export function setAuthLogger(logger: Logger): void {
   log = logger;
 }
 
-export type AuthRole = "agent" | "admin" | "member";
+export type AuthRole = "agent" | "admin" | "member" | "service";
 
 export interface AuthClaims {
   sub: string;
@@ -21,6 +28,12 @@ export interface AuthClaims {
   org: string;
   role: AuthRole;
   jti: string;
+  /** Phase 2 cookie/Bearer JWTs only — same as `org` when set. */
+  active_org_id?: string;
+  /** Phase 2 cookie/Bearer JWTs — refresh-token family identifier (T19). */
+  family_id?: string;
+  /** Phase 2 service-account marker (T25). */
+  service_account?: boolean;
 }
 
 export interface CreateTokenOptions {
@@ -194,6 +207,176 @@ export type AuthResult =
   | { ok: true; claims: AuthClaims }
   | { ok: false; status: 401 | 403; error: string; wwwAuthenticate?: string };
 
+// ---------------------------------------------------------------------------
+// Phase 2 cookie-based JWT auth (Scenario 5, spec §9.5)
+// ---------------------------------------------------------------------------
+//
+// authenticateRequest is a top-level helper not currently parameterized by
+// AuthHandlerContext. T29 boot will compose Phase 2 deps; for T27 we expose
+// initPhase2Auth({ db, signingKeys, publicUrl }) which stashes those refs in
+// a module-level variable. If the context is never wired (Phase 1 deploys),
+// the cookie path falls through silently — preserving Phase 1 semantics.
+
+const SESSION_COOKIE_NAME = "__Host-coordinator_session";
+const SESSION_CLOCK_TOLERANCE_S = 30;
+
+interface Phase2AuthContext {
+  db: Database.Database;
+  signingKeys: JwtKeyRegistry;
+  publicUrl: string;
+}
+
+let phase2Ctx: Phase2AuthContext | null = null;
+
+/** Wire Phase 2 dependencies. Called once at boot (T29). */
+export function initPhase2Auth(ctx: Phase2AuthContext): void {
+  phase2Ctx = ctx;
+}
+
+/** Test helper: clear Phase 2 wiring between tests so Scenario 5 doesn't
+ *  bleed into Phase 1 auth-test suites. Also exported for T29 reset paths. */
+export function resetPhase2Auth(): void {
+  phase2Ctx = null;
+}
+
+/**
+ * Verify a Phase 2 session cookie JWT. Per spec §9.5:
+ *   - HS256 pinned
+ *   - kid must be on the T08b ACCEPTED_KIDS allowlist
+ *   - iss must equal ctx.publicUrl (trailing slash stripped, mirroring T19)
+ *   - ±30s clock tolerance per RFC 7519 §4.1.4
+ *   - claims.iat >= user.token_epoch (T03 admin-force-revoke wins)
+ *
+ * Rejection paths emit Tier 2 audit auth.invalid_token with `reason` in the
+ * metadata (mirrors refresh-rotation.ts's pattern). On success the returned
+ * AuthClaims carry active_org_id + family_id + service_account so downstream
+ * handlers (T20/T23/T24) can use them.
+ */
+async function verifyPhase2SessionCookie(
+  token: string,
+  ctx: Phase2AuthContext,
+): Promise<AuthResult> {
+  try {
+    const { payload } = await jwtVerify(
+      token,
+      async (header) => {
+        const kid = header.kid;
+        if (!kid || !isAcceptedKid(kid)) {
+          throw new Error(`unknown_kid: ${String(kid)}`);
+        }
+        const key = ctx.signingKeys.getKey(kid);
+        // Unreachable when isAcceptedKid returned true and registry was built
+        // from ACCEPTED_KIDS, but the registry is an interface — defend in depth.
+        /* c8 ignore next */
+        if (!key) throw new Error(`no_key_for_kid: ${kid}`);
+        return key;
+      },
+      {
+        algorithms: ["HS256"],
+        issuer: ctx.publicUrl.replace(/\/$/, ""),
+        clockTolerance: `${SESSION_CLOCK_TOLERANCE_S}s`,
+      },
+    );
+
+    const claims = payload as unknown as {
+      sub?: string;
+      active_org_id?: string;
+      family_id?: string;
+      role?: string;
+      jti?: string;
+      iat?: number;
+      service_account?: boolean;
+    };
+
+    if (!claims.sub) {
+      audit("auth.invalid_token", { tier: 2, metadata: { reason: "missing_sub" } });
+      return {
+        ok: false, status: 401, error: "Invalid session cookie",
+        wwwAuthenticate: bearerAuthHeader("invalid_token", "Invalid session"),
+      };
+    }
+    if (typeof claims.iat !== "number") {
+      audit("auth.invalid_token", { tier: 2, metadata: { reason: "missing_iat" } });
+      return {
+        ok: false, status: 401, error: "Invalid session cookie",
+        wwwAuthenticate: bearerAuthHeader("invalid_token", "Invalid session"),
+      };
+    }
+
+    // T03: admin-force-revoke check — claims older than the bumped epoch fail.
+    const epoch = readTokenEpoch(ctx.db, claims.sub);
+    if (claims.iat < epoch) {
+      audit("auth.invalid_token", {
+        tier: 2,
+        metadata: { reason: "token_epoch_exceeded" },
+      });
+      return {
+        ok: false, status: 401, error: "Session invalidated",
+        wwwAuthenticate: bearerAuthHeader("invalid_token", "Session invalidated"),
+      };
+    }
+
+    // T25 / V4 §5.5: service-account override. Service tokens carry
+    // service_account=true; every request DB-validates the jti so admin
+    // force-revoke wins immediately (overrides §9.5 trust-signature).
+    if (claims.service_account === true) {
+      if (typeof claims.jti !== "string") {
+        audit("auth.invalid_token", {
+          tier: 2,
+          metadata: { reason: "service_token_missing_jti" },
+        });
+        return {
+          ok: false, status: 401, error: "Invalid service token",
+          wwwAuthenticate: bearerAuthHeader("invalid_token", "Invalid service token"),
+        };
+      }
+      if (!verifyServiceTokenJti(ctx.db, claims.jti)) {
+        audit("auth.invalid_token", {
+          tier: 2,
+          metadata: { reason: "service_token_revoked" },
+        });
+        return {
+          ok: false, status: 401, error: "Service token revoked",
+          wwwAuthenticate: bearerAuthHeader("invalid_token", "Service token revoked"),
+        };
+      }
+    }
+
+    // Default role per LEAST PRIVILEGE if the JWT omits it. Phase 2 access
+    // JWTs always set `role`, but the validator must be defensive.
+    const rawRole = claims.role;
+    const role: AuthRole =
+      rawRole === "admin" || rawRole === "member" || rawRole === "service" || rawRole === "agent"
+        ? rawRole
+        : "member";
+
+    return {
+      ok: true,
+      claims: {
+        sub: claims.sub,
+        user_id: claims.sub,
+        org: claims.active_org_id ?? "default",
+        role,
+        jti: typeof claims.jti === "string" ? claims.jti : randomUUID(),
+        active_org_id: claims.active_org_id,
+        family_id: claims.family_id,
+        service_account: claims.service_account,
+      },
+    };
+  } catch (err) {
+    audit("auth.invalid_token", {
+      tier: 2,
+      metadata: { reason: (err as Error).message },
+    });
+    return {
+      ok: false,
+      status: 401,
+      error: "Invalid session cookie",
+      wwwAuthenticate: bearerAuthHeader("invalid_token", "Invalid session"),
+    };
+  }
+}
+
 export async function authenticateRequest(req: IncomingMessage, options: AuthenticateOptions = { authEnabled: true }): Promise<AuthResult> {
   const { authEnabled } = options;
   const authHeader = req.headers.authorization;
@@ -215,6 +398,19 @@ export async function authenticateRequest(req: IncomingMessage, options: Authent
       }
     } catch {
       // Malformed URL — no fallback, fall through to scenario (b) 401.
+    }
+  }
+
+  // Scenario 5: __Host-coordinator_session cookie (Phase 2 browser flows).
+  // Only attempted when no Authorization / ?token= credential was presented
+  // (Bearer wins per spec §9.5 precedence) AND Phase 2 deps are wired. If
+  // initPhase2Auth() was never called (Phase 1 deployments), fall through
+  // to the no-auth branch below as if the cookie weren't present.
+  if (!effectiveAuthHeader && phase2Ctx) {
+    const cookies = parseCookies(req);
+    const sessionCookie = cookies[SESSION_COOKIE_NAME];
+    if (sessionCookie) {
+      return await verifyPhase2SessionCookie(sessionCookie, phase2Ctx);
     }
   }
 
@@ -249,6 +445,28 @@ export async function authenticateRequest(req: IncomingMessage, options: Authent
   try {
     ({ claims, wasLegacy } = await verifyTokenStrict(token));
   } catch (err) {
+    // T25: Phase 2 JWTs (incl. service tokens minted via mintAccessJWT) are
+    // signed with the Phase 2 signingKeys registry, NOT the Phase 1 HS256
+    // secret. When Phase 2 deps are wired and Bearer verify fails, try the
+    // Phase 2 cookie verifier — which also runs the service-account DB
+    // override per V4 §5.5.
+    if (phase2Ctx) {
+      const ph2 = await verifyPhase2SessionCookie(token, phase2Ctx);
+      if (ph2.ok) {
+        if (isRevoked(ph2.claims.sub)) {
+          return { ok: false, status: 403, error: "Agent has been revoked" };
+        }
+        const url = req.url || "";
+        const pathOnly = url.split(/[?#]/)[0];
+        if (
+          ADMIN_ONLY_ROUTES.some((r) => pathOnly === r) &&
+          ph2.claims.role !== "admin"
+        ) {
+          return { ok: false, status: 403, error: "Admin access required" };
+        }
+        return ph2;
+      }
+    }
     log.error({ err }, "JWT verification error");
     const isExpired = err instanceof errors.JWTExpired;
     return {

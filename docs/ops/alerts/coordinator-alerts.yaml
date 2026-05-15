@@ -1,0 +1,186 @@
+# mcp-coordinator Phase 2 Prometheus alert rules.
+#
+# Three groups by severity:
+#   - page:   immediate human action (paging system)
+#   - ticket: next business day (ticket queue)
+#   - log:    informational signal (log only / dashboard panel)
+#
+# Every expression below references a metric declared in
+# src/observability/metrics.ts (the dedicated Phase 2 registry served from
+# /metrics/auth). No fabricated metrics.
+#
+# Reference: V4 spec section 17.1; V2 patches B T37 deferred portion.
+---
+groups:
+  - name: mcp-coordinator-phase2-page
+    interval: 30s
+    rules:
+      - alert: RefreshChainRevocations
+        expr: increase(coordinator_auth_refresh_chain_revoked_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: page
+          team: security
+        annotations:
+          summary: "Refresh-token chain revoked: stolen-token signature detected"
+          description: |
+            {{ $value }} refresh-token family revocation(s) in the last 5 minutes.
+            A non-zero count here is the canonical stolen-token signal: detection
+            of refresh-token reuse triggers chain revocation per V4 spec §8.
+            Investigate via:
+              SELECT * FROM audit_log
+              WHERE action = 'auth.refresh.chain_revoked'
+                AND created_at > datetime('now', '-5 minutes');
+            Runbook: docs/ops/incident-refresh-leak.md
+          runbook_url: "docs/ops/incident-refresh-leak.md"
+
+      - alert: AuditDrops
+        expr: increase(coordinator_audit_drops_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: page
+          team: ops
+        annotations:
+          summary: "Tier 2 audit queue dropping events"
+          description: |
+            Audit queue capacity (10K) exceeded — the audit pipeline is shedding
+            load. Compliance evidence is being lost. Investigate write-rate
+            spike or expand worker throughput. See docs/ops/audit-queue-policy.md
+          runbook_url: "docs/ops/audit-queue-policy.md"
+
+      - alert: SweeperCircuitOpen
+        expr: coordinator_sweeper_circuit_open == 1
+        for: 1m
+        labels:
+          severity: page
+          team: ops
+        annotations:
+          summary: "Sweeper circuit-breaker tripped"
+          description: |
+            5 consecutive sweeper failures have tripped the circuit-breaker.
+            Expired-row reclamation is halted; auth_state / refresh_token /
+            device_code tables will accumulate stale rows.
+            Runbook: docs/ops/sweeper-circuit-recovery.md
+          runbook_url: "docs/ops/sweeper-circuit-recovery.md"
+
+      - alert: HealthReadyFailing
+        expr: probe_success{job="health-ready"} == 0
+        for: 2m
+        labels:
+          severity: page
+          team: ops
+        annotations:
+          summary: "/health/ready returning non-200 for >2 min"
+          description: |
+            Readiness probe failing. Check DB connectivity, sweeper circuit
+            state (coordinator_sweeper_circuit_open), and audit queue depth
+            (coordinator_audit_queue_depth). External blackbox-exporter
+            `probe_success{job="health-ready"}` is the canonical source.
+
+  - name: mcp-coordinator-phase2-ticket
+    interval: 1m
+    rules:
+      - alert: IdPLatencyP99High
+        expr: |
+          histogram_quantile(
+            0.99,
+            sum by (endpoint, le) (
+              rate(coordinator_auth_request_duration_seconds_bucket{endpoint=~"oauth_token|callback"}[10m])
+            )
+          ) > 5
+        for: 10m
+        labels:
+          severity: ticket
+          team: ops
+        annotations:
+          summary: "Auth endpoint p99 latency > 5s for 10 min ({{ $labels.endpoint }})"
+          description: |
+            p99 of /oauth/token or /callback exceeded 5s for 10 minutes.
+            Typical cause: IdP (GitHub) slowness. Cross-check
+            coordinator_idp_api_calls_total{outcome="timeout"} and
+            coordinator_idp_stale_served_total.
+
+      - alert: IdPStaleServed
+        expr: increase(coordinator_idp_stale_served_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: ticket
+          team: ops
+        annotations:
+          summary: "IdP membership cache serving stale entries"
+          description: |
+            GitHub transient errors have elevated to the point where the
+            stale-on-error fallback (10 min window) is triggering. New users
+            cannot log in; existing sessions degrade gracefully.
+
+      - alert: DeviceFlowInitVsApproveRatio
+        expr: |
+          rate(coordinator_auth_device_code_issued_total[1h])
+            /
+          (rate(coordinator_auth_device_approved_total[1h]) + 0.01)
+          > 5
+        for: 30m
+        labels:
+          severity: ticket
+          team: security
+        annotations:
+          summary: "Device-flow init/approve ratio > 5:1"
+          description: |
+            Issued-codes vs. approvals ratio elevated for 30 min. Possible
+            phishing campaign (many initiated, few approved) or stuck CLI
+            clients polling without approval. Cross-check
+            coordinator_auth_device_denied_total{reason="brute_force"}.
+
+      - alert: AuditQueueDepthHigh
+        expr: coordinator_audit_queue_depth > 8000
+        for: 5m
+        labels:
+          severity: ticket
+          team: ops
+        annotations:
+          summary: "Audit queue depth > 80% capacity"
+          description: |
+            Capacity is 10000 rows; sustained depth > 8000 for 5 min precedes
+            coordinator_audit_drops_total > 0 (which pages). Pre-emptively
+            investigate worker throughput before drops begin.
+
+  - name: mcp-coordinator-phase2-log
+    interval: 5m
+    rules:
+      - alert: IdPRateLimitLow
+        expr: coordinator_idp_rate_limit_remaining < 500
+        for: 15m
+        labels:
+          severity: log
+          team: ops
+        annotations:
+          summary: "GitHub API rate-limit remaining < 500 for 15 min"
+          description: |
+            Sustained low GitHub X-RateLimit-Remaining. Token-budget pressure;
+            cache hit ratio (coordinator_idp_cache_hits_total) should be
+            offsetting most reads. Investigate if it dips toward zero.
+
+      - alert: AuditQueueDepthModerate
+        expr: coordinator_audit_queue_depth > 5000
+        for: 15m
+        labels:
+          severity: log
+          team: ops
+        annotations:
+          summary: "Audit queue depth > 50% capacity for 15 min"
+          description: |
+            Informational drift signal. Capacity is 10000; sustained > 5000
+            is the early-warning band before the ticket-level alert at 8000.
+
+      - alert: SweeperLastRunStale
+        expr: time() - coordinator_sweeper_last_run_timestamp > 180
+        for: 0m
+        labels:
+          severity: log
+          team: ops
+        annotations:
+          summary: "Sweeper hasn't run in >3 minutes"
+          description: |
+            Expected cadence is 60s. >3 min without a run indicates scheduler
+            drift or event-loop saturation. If circuit is also open, the page
+            (SweeperCircuitOpen) takes precedence.

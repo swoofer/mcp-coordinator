@@ -1,0 +1,94 @@
+# Registering a custom IdP provider
+
+The provider registry (`src/auth/providers/registry.ts`) is a Map
+that the boot composer reads to discover available IdPs. To add a
+new provider:
+
+1. Copy `google-provider.ts` to `src/auth/providers/<name>.ts` in
+   your fork of mcp-coordinator. Update the relative imports so they
+   point at sibling files rather than the cross-tree `../../src/...`
+   paths used by the example.
+
+2. Modify `src/boot.ts` to import and register the provider. Inside
+   `bootPhase2`, after the existing GitHub registration:
+
+   ```ts
+   import { GoogleProvider } from "./auth/providers/google.js";
+   import { registerProvider } from "./auth/providers/registry.js";
+
+   // inside bootPhase2:
+   if (process.env.COORDINATOR_GOOGLE_CLIENT_ID) {
+     registerProvider(
+       new GoogleProvider({
+         clientId: process.env.COORDINATOR_GOOGLE_CLIENT_ID,
+         clientSecret: process.env.COORDINATOR_GOOGLE_CLIENT_SECRET!,
+       }),
+     );
+   }
+   ```
+
+   Use the existing pattern in `bootPhase2` -- env access goes
+   through the central config object, not direct `process.env`
+   reads scattered in feature modules. There's a lint rule
+   (`lint-no-direct-env-in-auth`) that will flag direct `process.env`
+   access inside `src/auth/`, so the registration must live in the
+   boot composer where env reads are concentrated.
+
+3. **Phase 2 single-provider constraint.** Only ONE provider can
+   serve `/auth/login` in Phase 2. If you register both GitHub and
+   Google, the dashboard's login button will only point at one of
+   them (whichever the composer wires to the login route).
+   Multi-provider login picker is on the Phase 4 roadmap.
+
+4. **Allowlist semantics.** Phase 2's `orgs.allowlist_github_org`
+   column is GitHub-specific by name. For a Google provider you
+   would either:
+   - reuse the column with hosted-domain values (`hd` claim), or
+   - add a new column / migration for the IdP-specific allowlist
+     and teach the login flow to select the right column based on
+     the active provider.
+
+   See `README.md` in this directory for the longer discussion.
+
+5. **Audit log shape.** The `auth.login.success` audit event
+   includes the provider name in its `idp_provider` field. Your
+   new provider's `name` property will appear there verbatim, so
+   pick a short, stable, lowercase identifier (`google`, `okta`,
+   `azure_ad`).
+
+6. **Tests.** Mirror `tests/unit/github-provider.test.ts` against
+   your new provider. The integration test in
+   `tests/integration/auth-flow.test.ts` is GitHub-specific and
+   would need to be parameterised or duplicated; for a vendor build,
+   forking the integration test is usually enough.
+
+## What you can't do without modifying src/
+
+Without a custom build:
+
+- Add new IdPs (this directory exists because of that)
+- Disable the GitHub provider entirely (the boot composer registers
+  it whenever the OAuth env vars are present)
+- Change the allowlist semantics
+
+What you CAN do without modifying src/:
+
+- Disable OAuth entirely by setting `COORDINATOR_OAUTH_ENABLED=false`
+  (this also disables the dashboard; only service tokens work)
+- Restrict to a single GitHub org via `COORDINATOR_GITHUB_ORG`
+- Add a reverse proxy that does its own auth in front (the
+  coordinator's session cookie path is documented in
+  `examples/nginx-reverse-proxy/`)
+
+## Operator expectations for vendored builds
+
+If you ship a fork to colleagues:
+
+1. Pin the upstream version you forked from. The IdPProvider
+   interface is not yet stable; minor versions may add required
+   methods.
+2. Rebuild and republish to your internal registry on each upstream
+   bump. There is no runtime override path.
+3. Document the env vars your custom provider reads, alongside the
+   stock `COORDINATOR_*` vars. The audit log will show your
+   provider's `name`; operators should know what it means.
