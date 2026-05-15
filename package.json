@@ -49,6 +49,7 @@
     "build": "tsc",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
     "cli": "tsx cli/index.ts",
     "start": "node dist/src/serve-http.js",
     "dev": "tsx src/serve-http.ts",
@@ -71,6 +72,7 @@
     "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.0.0",
     "@types/ws": "^8.18.1",
@@ -84,20 +86,20 @@
   },
   "optionalDependencies": {
     "tree-sitter": "^0.21.1",
-    "tree-sitter-typescript": "^0.21.2",
-    "tree-sitter-javascript": "^0.21.4",
-    "tree-sitter-python": "^0.21.0",
-    "tree-sitter-go": "^0.21.0",
-    "tree-sitter-rust": "^0.21.2",
-    "tree-sitter-java": "^0.21.0",
-    "tree-sitter-c-sharp": "^0.21.3",
+    "tree-sitter-bash": "^0.21.0",
     "tree-sitter-c": "^0.21.0",
+    "tree-sitter-c-sharp": "^0.21.3",
     "tree-sitter-cpp": "^0.22.0",
-    "tree-sitter-ruby": "^0.21.0",
-    "tree-sitter-php": "^0.22.0",
+    "tree-sitter-go": "^0.21.0",
+    "tree-sitter-java": "^0.21.0",
+    "tree-sitter-javascript": "^0.21.4",
     "tree-sitter-kotlin": "^0.3.0",
+    "tree-sitter-php": "^0.22.0",
+    "tree-sitter-python": "^0.21.0",
+    "tree-sitter-ruby": "^0.21.0",
+    "tree-sitter-rust": "^0.21.2",
     "tree-sitter-swift": "^0.6.0",
-    "tree-sitter-bash": "^0.21.0"
+    "tree-sitter-typescript": "^0.21.2"
   },
   "overrides": {
     "ip-address": "^10.2.0"
