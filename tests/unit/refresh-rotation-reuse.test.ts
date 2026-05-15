@@ -6,6 +6,7 @@ import { SignJWT } from "jose";
 import { refreshTokenGrant } from "../../src/auth/refresh-rotation.js";
 import type { AuthHandlerContext } from "../../src/auth/context.js";
 import { FakeClock } from "../helpers/clock.js";
+import { singleProviderRegistry } from "../helpers/index.js";
 import { RateLimiter } from "../../src/auth/rate-limit.js";
 import { buildJwtKeyRegistry } from "../../src/auth/jwt-keys.js";
 import { MembershipCache } from "../../src/auth/membership-cache.js";
@@ -85,17 +86,19 @@ let rateLimiter: RateLimiter;
 let membershipCache: MembershipCache;
 
 function makeCtx(overrides: Partial<AuthHandlerContext> = {}): AuthHandlerContext {
+  const defaultProvider: IdPProvider = {
+    name: "github",
+    buildAuthUrl: () => "https://example/unused",
+    exchangeCode: async (): Promise<ExchangeCodeResult> => {
+      throw new Error("exchangeCode not used in T19b tests");
+    },
+    listMemberships: async () => ["acme"],
+  };
   return {
     db: getDb() as unknown as AuthHandlerContext["db"],
     clock,
-    githubProvider: {
-      name: "github",
-      buildAuthUrl: () => "https://example/unused",
-      exchangeCode: async (): Promise<ExchangeCodeResult> => {
-        throw new Error("exchangeCode not used in T19b tests");
-      },
-      listMemberships: async () => ["acme"],
-    } as IdPProvider,
+    githubProvider: defaultProvider,
+    providers: singleProviderRegistry(defaultProvider),
     rateLimiter,
     publicUrl: ISSUER,
     stateBindingKey: STATE_BINDING_KEY,

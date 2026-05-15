@@ -4,6 +4,7 @@ import Database from "better-sqlite3";
 import { dispatchAuthRoutes } from "../../src/http/auth-routes.js";
 import type { AuthHandlerContext } from "../../src/auth/context.js";
 import { FakeClock } from "../helpers/clock.js";
+import { singleProviderRegistry } from "../helpers/index.js";
 import { RateLimiter } from "../../src/auth/rate-limit.js";
 import { buildJwtKeyRegistry } from "../../src/auth/jwt-keys.js";
 import { MembershipCache } from "../../src/auth/membership-cache.js";
@@ -110,6 +111,7 @@ beforeEach(() => {
     db,
     clock,
     githubProvider: stubProvider,
+    providers: singleProviderRegistry(stubProvider),
     rateLimiter: new RateLimiter(clock),
     publicUrl: "http://localhost:3000",
     stateBindingKey: Buffer.alloc(32, 0x01),

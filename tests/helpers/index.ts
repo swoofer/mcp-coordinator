@@ -4,4 +4,5 @@ export * from "./idp.js";
 export * from "./audit.js";
 export * from "./db.js";
 export * from "./fetch.js";
+export * from "./provider-registry.js";
 export * from "./seed.js";

@@ -56,6 +56,7 @@ import { mintAccessJWT } from "../../src/auth/jwt-mint.js";
 import { FakeClock } from "../helpers/clock.js";
 import { seedFourOrgs } from "../helpers/seed.js";
 import { findAuditRows } from "../helpers/audit.js";
+import { singleProviderRegistry } from "../helpers/index.js";
 import { RateLimiter } from "../../src/auth/rate-limit.js";
 import { MembershipCache } from "../../src/auth/membership-cache.js";
 import { refreshTokenGrant } from "../../src/auth/refresh-rotation.js";
@@ -345,6 +346,7 @@ function makeCtx(
     db: getDb() as unknown as AuthHandlerContext["db"],
     clock,
     githubProvider: makeProvider(),
+    providers: singleProviderRegistry(makeProvider()),
     rateLimiter,
     publicUrl: ISSUER,
     stateBindingKey: STATE_BINDING_KEY,
@@ -886,7 +888,10 @@ describe("D6 — allowlist removal mid-session via IdP refresh", () => {
         { ip: "10.0.0.6", userAgent: "ua/d6" },
       ),
       res as unknown as ServerResponse,
-      makeCtx({ githubProvider: makeProvider(async () => ["acme"]) }),
+      makeCtx((() => {
+        const p = makeProvider(async () => ["acme"]);
+        return { githubProvider: p, providers: singleProviderRegistry(p) };
+      })()),
     );
     expect(res.statusCode).toBe(401);
     const body = JSON.parse(res.body!) as {

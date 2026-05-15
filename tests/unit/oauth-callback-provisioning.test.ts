@@ -4,6 +4,7 @@ import fs from "node:fs";
 import { __finalizeBrowserOAuth } from "../../src/auth/oauth-callback.js";
 import type { AuthHandlerContext } from "../../src/auth/context.js";
 import { FakeClock } from "../helpers/clock.js";
+import { singleProviderRegistry } from "../helpers/index.js";
 import { RateLimiter } from "../../src/auth/rate-limit.js";
 import { buildJwtKeyRegistry } from "../../src/auth/jwt-keys.js";
 import { MembershipCache } from "../../src/auth/membership-cache.js";
@@ -118,10 +119,12 @@ let rateLimiter: RateLimiter;
 let membershipCache: MembershipCache;
 
 function makeCtx(overrides: Partial<AuthHandlerContext> = {}): AuthHandlerContext {
+  const provider = overrides.githubProvider ?? stubProvider();
   return {
     db: getDb() as unknown as AuthHandlerContext["db"],
     clock,
-    githubProvider: overrides.githubProvider ?? stubProvider(),
+    githubProvider: provider,
+    providers: overrides.providers ?? singleProviderRegistry(provider),
     rateLimiter,
     publicUrl: "http://localhost:3000",
     stateBindingKey: Buffer.alloc(32, 0x01),

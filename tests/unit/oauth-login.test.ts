@@ -5,6 +5,7 @@ import Database from "better-sqlite3";
 import { handleAuthLogin } from "../../src/auth/oauth-login.js";
 import type { AuthHandlerContext } from "../../src/auth/context.js";
 import { FakeClock } from "../helpers/clock.js";
+import { singleProviderRegistry } from "../helpers/index.js";
 import { RateLimiter } from "../../src/auth/rate-limit.js";
 import { buildJwtKeyRegistry } from "../../src/auth/jwt-keys.js";
 import { MembershipCache } from "../../src/auth/membership-cache.js";
@@ -121,6 +122,7 @@ function makeCtx(overrides: Partial<AuthHandlerContext> = {}): AuthHandlerContex
     db,
     clock,
     githubProvider: STUB_PROVIDER,
+    providers: singleProviderRegistry(STUB_PROVIDER),
     rateLimiter: new RateLimiter(clock),
     publicUrl: "http://localhost:3000",
     stateBindingKey: STATE_BINDING_KEY,
