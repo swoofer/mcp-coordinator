@@ -499,6 +499,50 @@ JWKS-fetch failure -> 503.
 | `name`              | `name` (optional)                                                      |
 | `idp_org_id`        | not set (generic OIDC has no portable org claim; see Gotchas)          |
 
+### Allowlist via id_token groups claim (T58, v0.10.4)
+
+If your IdP publishes group / role memberships in the id_token,
+set `COORDINATOR_OIDC_GROUPS_CLAIM` to the dot-notation path:
+
+| IdP | Typical value |
+|-----|---------------|
+| Okta, Auth0, Authentik | `groups` |
+| Keycloak | `realm_access.roles` |
+| Azure AD (App Roles) | `roles` |
+
+When set, `OIDCProvider.allowlistStrategy` switches from
+`"none"` (deny-by-default) to `"id_token_groups"`. The callback
+reads the configured path from the verified id_token, populates
+`IdpUserInfo.groups`, and matches each entry (lowercased) against
+`orgs.allowlist_github_org`.
+
+Provision orgs by group name:
+
+```sql
+INSERT INTO orgs (id, name, allowlist_github_org)
+VALUES ('org-eng', 'Engineering', 'engineers');
+```
+
+A user whose id_token contains `"groups": ["engineers"]` (or with
+nested-path equivalent) gets mapped to `org-eng`.
+
+The column name `allowlist_github_org` is historical; for OIDC
+deployments it stores group names. A future minor release may
+introduce a generic `allowlist_groups` column for clarity, but the
+current column works.
+
+**Gotchas:**
+
+- The id_token's groups claim is captured at sign-in only.
+  Refresh-rotation does NOT re-fetch groups from the IdP --
+  changes to a user's group memberships take effect on their next
+  full sign-in, not their next access-token refresh.
+- Group name match is case-insensitive. Operators wanting strict
+  case-sensitive matching must vendor a subclass.
+- Missing claim / non-array value at the configured path produces
+  `user.groups = undefined`, which the allowlist treats as
+  "no memberships" -> deny. Misconfigured deployments fail closed.
+
 ### Provider name in the picker
 
 The registry key is `"oidc"` and the picker label is `"Single
@@ -514,11 +558,12 @@ gives the user "Continue with Okta".
 
 ### Gotchas
 
-- **`listMemberships` throws** -- generic OIDC has no portable group
-  model. Some IdPs publish `groups`, others use
-  `realm_access.roles` (Keycloak) or App Role claims (Azure AD).
-  Deployments needing OIDC-driven allowlisting must vendor a subclass
-  that knows the issuer-specific claim shape.
+- **`listMemberships` throws** -- generic OIDC has no API surface
+  for re-fetching groups from an access token. Use the
+  `id_token_groups` strategy via `COORDINATOR_OIDC_GROUPS_CLAIM`
+  (T58, v0.10.4) for group-based allowlisting; that path reads from
+  the verified id_token at sign-in. See "Allowlist via id_token
+  groups claim" above.
 - **Device flow is not implemented**. RFC 8628 support is optional in
   OIDC core; a future PR will probe `device_authorization_endpoint`
   in the discovery doc and conditionally implement

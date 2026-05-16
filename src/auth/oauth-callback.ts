@@ -315,6 +315,14 @@ async function finalizeBrowserOAuth(
     }
     // memberships stays empty; the audit downstream uses it as a count
     // (will be 0 for idp_org_id deployments, which is informative).
+  } else if (strategy === "id_token_groups") {
+    // T58: OIDC groups from the id_token. Treats groups as
+    // memberships against allowlist_github_org -- operators put
+    // OIDC group names there.
+    if (exchange.user.groups && exchange.user.groups.length > 0) {
+      memberships = exchange.user.groups.map((g) => g.toLowerCase());
+      allowlistMatch = resolveOrgFromMemberships(ctx.db, memberships);
+    }
   }
   // strategy === "none": leave allowlistMatch as null -> denied below.
   if (!allowlistMatch) {

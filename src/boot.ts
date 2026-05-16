@@ -191,6 +191,9 @@ export function bootPhase2(opts: Phase2BootOptions): Phase2Bootstrap | null {
   const oidcIssuerUrl = process.env.COORDINATOR_OIDC_ISSUER_URL?.trim();
   const oidcClientId = process.env.COORDINATOR_OIDC_CLIENT_ID?.trim();
   const oidcClientSecret = process.env.COORDINATOR_OIDC_CLIENT_SECRET?.trim();
+  // T58: optional groups-claim path enables the "id_token_groups"
+  // allowlist strategy. Common values: "groups", "realm_access.roles".
+  const oidcGroupsClaim = process.env.COORDINATOR_OIDC_GROUPS_CLAIM?.trim();
   if (oidcIssuerUrl || oidcClientId || oidcClientSecret) {
     if (!oidcIssuerUrl || !oidcClientId || !oidcClientSecret) {
       throw new BootValidationError(
@@ -217,6 +220,7 @@ export function bootPhase2(opts: Phase2BootOptions): Phase2Bootstrap | null {
         clientId: oidcClientId,
         clientSecret: oidcClientSecret,
         issuerUrl: oidcIssuerUrl,
+        ...(oidcGroupsClaim ? { groupsClaim: oidcGroupsClaim } : {}),
       }),
     );
   }
