@@ -51,6 +51,19 @@ export interface OIDCProviderConfig {
   name?: string;
   /** Optional discovery doc override for tests; otherwise auto-fetched. */
   discoveryUrl?: string;
+  /** T58 (v0.10.4): dot-notation path into the id_token where group
+   *  / role memberships live. Common values:
+   *    - "groups"              (Okta, Auth0, Authentik)
+   *    - "realm_access.roles"  (Keycloak)
+   *
+   *  When set, OIDCProvider reads the array at this path from each
+   *  verified id_token and populates IdpUserInfo.groups. The
+   *  provider's allowlistStrategy switches to "id_token_groups"
+   *  so the callback matches against orgs.allowlist_github_org.
+   *
+   *  Leave unset (default) to keep the original "none" strategy
+   *  -- generic OIDC denies-by-default. */
+  groupsClaim?: string;
 }
 
 interface DiscoveryDoc {
@@ -90,19 +103,18 @@ const IdTokenClaimsSchema = z.object({
 
 export class OIDCProvider implements IdPProvider {
   readonly name: string;
-  /** T56: generic OIDC has no portable allowlist model. Deployments
-   *  needing OIDC-driven allowlisting must vendor a subclass that
-   *  overrides this with "idp_org_id" (and an exchangeCode that
-   *  populates IdpUserInfo.idp_org_id with the issuer-specific
-   *  group / tenant claim) or "memberships" (plus a
-   *  listMemberships impl). */
-  readonly allowlistStrategy = "none" as const;
+  /** T56 + T58: defaults to "none" (generic OIDC denies-by-default).
+   *  When `groupsClaim` is configured, switches to "id_token_groups"
+   *  so the callback matches IdpUserInfo.groups against
+   *  orgs.allowlist_github_org. */
+  readonly allowlistStrategy: "none" | "id_token_groups";
   private readonly discoveryUrl: string;
   private cachedDiscovery: DiscoveryDoc | null = null;
   private cachedJwks: ReturnType<typeof createRemoteJWKSet> | null = null;
 
   constructor(private readonly cfg: OIDCProviderConfig) {
     this.name = cfg.name ?? "oidc";
+    this.allowlistStrategy = cfg.groupsClaim ? "id_token_groups" : "none";
     // RFC: discovery doc lives at `<issuer>/.well-known/openid-configuration`.
     // Some issuers (Keycloak realms) terminate the issuer URL without a
     // trailing slash; normalize so concatenation is idempotent.
@@ -241,6 +253,21 @@ export class OIDCProvider implements IdPProvider {
       email,
       ...(claims.name !== undefined ? { name: claims.name } : {}),
     };
+
+    // T58: extract groups from the verified id_token payload when
+    // groupsClaim is configured. The path is dot-notation so
+    // "realm_access.roles" (Keycloak) and "groups" (Okta / Auth0 /
+    // Authentik) both work without per-IdP code branches. Missing
+    // path / non-array value -> empty groups list, which makes the
+    // allowlist match fail downstream -- caller is denied. That's
+    // the right behaviour for misconfigured deployments.
+    if (this.cfg.groupsClaim) {
+      const groups = extractGroupsFromClaims(payload, this.cfg.groupsClaim);
+      if (groups.length > 0) {
+        user.groups = groups;
+      }
+    }
+
     return { user, accessToken: token.access_token };
   }
 
@@ -304,4 +331,32 @@ export class OIDCProvider implements IdPProvider {
     this.cachedJwks = createRemoteJWKSet(new URL(disco.jwksUri));
     return this.cachedJwks;
   }
+}
+
+/**
+ * T58: walk dot-notation path through an id_token payload and
+ * extract a string[] of groups. Returns `[]` for any "not really a
+ * groups array" outcome (path missing, intermediate value not an
+ * object, terminal value not an array, array contains non-strings).
+ *
+ * Non-string array entries are filtered rather than the whole
+ * extraction failing -- this matches the "deny on misconfig"
+ * stance: a broken IdP response produces an empty groups list which
+ * fails the allowlist match downstream.
+ *
+ * Exported for unit-testing the path resolution independently of
+ * the OIDC provider lifecycle.
+ */
+export function extractGroupsFromClaims(
+  payload: unknown,
+  claimPath: string,
+): string[] {
+  if (typeof payload !== "object" || payload === null) return [];
+  let cursor: unknown = payload;
+  for (const segment of claimPath.split(".")) {
+    if (typeof cursor !== "object" || cursor === null) return [];
+    cursor = (cursor as Record<string, unknown>)[segment];
+  }
+  if (!Array.isArray(cursor)) return [];
+  return cursor.filter((g): g is string => typeof g === "string");
 }

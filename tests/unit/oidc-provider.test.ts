@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { SignJWT, exportJWK, generateKeyPair } from "jose";
-import { OIDCProvider } from "../../src/auth/providers/oidc.js";
+import { OIDCProvider, extractGroupsFromClaims } from "../../src/auth/providers/oidc.js";
 import { IdPTokenRevoked, IdPTransientError } from "../../src/auth/providers/errors.js";
 
 const ISSUER = "https://idp.example.test/realms/main";
@@ -60,6 +60,9 @@ interface IdTokenOverrides {
   expSeconds?: number;
   /** T55: nonce claim baked into the id_token. */
   nonce?: string;
+  /** T58: groups / role claims baked into the id_token at arbitrary
+   *  dot-paths. Keys may be like "groups" or "realm_access". */
+  extraClaims?: Record<string, unknown>;
 }
 
 async function makeIdToken(overrides: IdTokenOverrides = {}): Promise<string> {
@@ -70,6 +73,9 @@ async function makeIdToken(overrides: IdTokenOverrides = {}): Promise<string> {
     claims.preferred_username = overrides.preferred_username;
   }
   if (overrides.nonce !== undefined) claims.nonce = overrides.nonce;
+  if (overrides.extraClaims) {
+    for (const [k, v] of Object.entries(overrides.extraClaims)) claims[k] = v;
+  }
   return new SignJWT(claims)
     .setProtectedHeader({
       alg: overrides.alg ?? "RS256",
@@ -448,5 +454,177 @@ describe("OIDCProvider nonce (T55)", () => {
       "code-x", REDIRECT_URI, undefined, null,
     );
     expect(result.user.idp_user_id).toBe("user-7");
+  });
+});
+
+describe("OIDCProvider groups claim (T58)", () => {
+  function makeGroupsProvider(groupsClaim: string): OIDCProvider {
+    return new OIDCProvider({
+      clientId: CLIENT_ID,
+      clientSecret: CLIENT_SECRET,
+      issuerUrl: ISSUER,
+      groupsClaim,
+    });
+  }
+
+  it("allowlistStrategy is 'id_token_groups' when groupsClaim is set", () => {
+    expect(makeGroupsProvider("groups").allowlistStrategy).toBe("id_token_groups");
+  });
+
+  it("allowlistStrategy stays 'none' when groupsClaim is omitted", () => {
+    expect(makeProvider().allowlistStrategy).toBe("none");
+  });
+
+  it("exchangeCode populates user.groups from top-level 'groups' claim", async () => {
+    const idToken = await makeIdToken({
+      extraClaims: { groups: ["engineering", "platform-admins"] },
+    });
+    mountDiscoveryAndJwks();
+    server.use(
+      http.post(TOKEN_ENDPOINT, () =>
+        HttpResponse.json({
+          access_token: "oidc-a",
+          id_token: idToken,
+          token_type: "Bearer",
+        }),
+      ),
+    );
+    const result = await makeGroupsProvider("groups").exchangeCode(
+      "code-x", REDIRECT_URI,
+    );
+    expect(result.user.groups).toEqual(["engineering", "platform-admins"]);
+  });
+
+  it("exchangeCode resolves nested path (realm_access.roles for Keycloak)", async () => {
+    const idToken = await makeIdToken({
+      extraClaims: { realm_access: { roles: ["admin", "developer"] } },
+    });
+    mountDiscoveryAndJwks();
+    server.use(
+      http.post(TOKEN_ENDPOINT, () =>
+        HttpResponse.json({
+          access_token: "oidc-a",
+          id_token: idToken,
+          token_type: "Bearer",
+        }),
+      ),
+    );
+    const result = await makeGroupsProvider("realm_access.roles").exchangeCode(
+      "code-x", REDIRECT_URI,
+    );
+    expect(result.user.groups).toEqual(["admin", "developer"]);
+  });
+
+  it("missing groups claim -> user.groups undefined (deny by default)", async () => {
+    const idToken = await makeIdToken();
+    mountDiscoveryAndJwks();
+    server.use(
+      http.post(TOKEN_ENDPOINT, () =>
+        HttpResponse.json({
+          access_token: "oidc-a",
+          id_token: idToken,
+          token_type: "Bearer",
+        }),
+      ),
+    );
+    const result = await makeGroupsProvider("groups").exchangeCode(
+      "code-x", REDIRECT_URI,
+    );
+    expect(result.user.groups).toBeUndefined();
+  });
+
+  it("non-string entries in groups array are filtered out", async () => {
+    const idToken = await makeIdToken({
+      extraClaims: { groups: ["valid-group", 42, null, "another-group"] },
+    });
+    mountDiscoveryAndJwks();
+    server.use(
+      http.post(TOKEN_ENDPOINT, () =>
+        HttpResponse.json({
+          access_token: "oidc-a",
+          id_token: idToken,
+          token_type: "Bearer",
+        }),
+      ),
+    );
+    const result = await makeGroupsProvider("groups").exchangeCode(
+      "code-x", REDIRECT_URI,
+    );
+    expect(result.user.groups).toEqual(["valid-group", "another-group"]);
+  });
+
+  it("groups claim is a non-array value -> user.groups undefined", async () => {
+    const idToken = await makeIdToken({
+      extraClaims: { groups: "not-an-array" },
+    });
+    mountDiscoveryAndJwks();
+    server.use(
+      http.post(TOKEN_ENDPOINT, () =>
+        HttpResponse.json({
+          access_token: "oidc-a",
+          id_token: idToken,
+          token_type: "Bearer",
+        }),
+      ),
+    );
+    const result = await makeGroupsProvider("groups").exchangeCode(
+      "code-x", REDIRECT_URI,
+    );
+    expect(result.user.groups).toBeUndefined();
+  });
+});
+
+describe("extractGroupsFromClaims (T58)", () => {
+  it("top-level string array", () => {
+    expect(extractGroupsFromClaims({ groups: ["a", "b"] }, "groups")).toEqual(["a", "b"]);
+  });
+
+  it("nested path", () => {
+    expect(
+      extractGroupsFromClaims(
+        { realm_access: { roles: ["admin"] } },
+        "realm_access.roles",
+      ),
+    ).toEqual(["admin"]);
+  });
+
+  it("deeply nested path", () => {
+    expect(
+      extractGroupsFromClaims(
+        { a: { b: { c: ["x"] } } },
+        "a.b.c",
+      ),
+    ).toEqual(["x"]);
+  });
+
+  it("missing path returns empty array", () => {
+    expect(extractGroupsFromClaims({}, "groups")).toEqual([]);
+    expect(extractGroupsFromClaims({ other: "x" }, "groups")).toEqual([]);
+  });
+
+  it("path traversal through non-object returns empty array", () => {
+    expect(extractGroupsFromClaims({ realm_access: "broken" }, "realm_access.roles")).toEqual([]);
+  });
+
+  it("non-object payload returns empty array", () => {
+    expect(extractGroupsFromClaims(null, "groups")).toEqual([]);
+    expect(extractGroupsFromClaims("string", "groups")).toEqual([]);
+    expect(extractGroupsFromClaims(42, "groups")).toEqual([]);
+  });
+
+  it("non-array terminal value returns empty array", () => {
+    expect(extractGroupsFromClaims({ groups: "admin" }, "groups")).toEqual([]);
+    expect(extractGroupsFromClaims({ groups: 42 }, "groups")).toEqual([]);
+    expect(extractGroupsFromClaims({ groups: { admin: true } }, "groups")).toEqual([]);
+  });
+
+  it("non-string array entries are filtered", () => {
+    expect(
+      extractGroupsFromClaims({ groups: ["a", 1, null, "b", undefined, "c"] }, "groups"),
+    ).toEqual(["a", "b", "c"]);
+  });
+
+  it("empty array stays empty", () => {
+    expect(extractGroupsFromClaims({ groups: [] }, "groups")).toEqual([]);
   });
 });

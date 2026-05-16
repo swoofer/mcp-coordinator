@@ -3,6 +3,18 @@ export interface IdpUserInfo {
   email: string;
   name?: string;
   idp_org_id?: string;
+  /** T58 (v0.10.4): group / role memberships the IdP attests at
+   *  sign-in time, when the provider has been configured to extract
+   *  them. OIDCProvider reads this from the id_token's configured
+   *  groups claim; other providers leave it undefined.
+   *
+   *  Used by the "id_token_groups" allowlist strategy: each entry
+   *  is a candidate match against orgs.allowlist_github_org
+   *  (case-insensitive). The semantic re-purposes that column for
+   *  group names; operators wanting OIDC sign-in put their group
+   *  names there. See docs/idp-providers.md "Configuring generic
+   *  OIDC" -> "Allowlist via id_token groups claim". */
+  groups?: string[];
 }
 
 export interface ExchangeCodeResult {
@@ -66,7 +78,11 @@ export type DevicePollResult =
  *                    subclass that overrides the strategy (generic
  *                    OIDCProvider's default)
  */
-export type AllowlistStrategy = "memberships" | "idp_org_id" | "none";
+export type AllowlistStrategy =
+  | "memberships"
+  | "idp_org_id"
+  | "id_token_groups"
+  | "none";
 
 export interface IdPProvider {
   readonly name: string;

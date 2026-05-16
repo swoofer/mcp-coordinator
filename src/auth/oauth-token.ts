@@ -200,6 +200,11 @@ async function handleAuthorizationCodeGrant(
     if (exchange.user.idp_org_id) {
       allowlistMatch = resolveOrgFromIdpOrgId(ctx.db, exchange.user.idp_org_id);
     }
+  } else if (strategy === "id_token_groups") {
+    if (exchange.user.groups && exchange.user.groups.length > 0) {
+      memberships = exchange.user.groups.map((g) => g.toLowerCase());
+      allowlistMatch = resolveOrgFromMemberships(ctx.db, memberships);
+    }
   }
   // strategy === "none": allowlistMatch stays null -> denied below.
   if (!allowlistMatch) {
