@@ -90,6 +90,13 @@ const IdTokenClaimsSchema = z.object({
 
 export class OIDCProvider implements IdPProvider {
   readonly name: string;
+  /** T56: generic OIDC has no portable allowlist model. Deployments
+   *  needing OIDC-driven allowlisting must vendor a subclass that
+   *  overrides this with "idp_org_id" (and an exchangeCode that
+   *  populates IdpUserInfo.idp_org_id with the issuer-specific
+   *  group / tenant claim) or "memberships" (plus a
+   *  listMemberships impl). */
+  readonly allowlistStrategy = "none" as const;
   private readonly discoveryUrl: string;
   private cachedDiscovery: DiscoveryDoc | null = null;
   private cachedJwks: ReturnType<typeof createRemoteJWKSet> | null = null;

@@ -7,6 +7,39 @@ export interface AllowlistMatch {
 }
 
 /**
+ * Resolve the coordinator org for a user given the IdP-supplied org
+ * identifier (T56, v0.10.2). Used by providers whose allowlist model
+ * is "the IdP tells us which tenant the user belongs to" rather than
+ * "the user can enumerate their memberships" -- GoogleProvider's `hd`
+ * (hosted domain) claim is the canonical example.
+ *
+ * Match is case-insensitive against `orgs.allowlist_idp_org_id`.
+ * Returns null when no row matches.
+ */
+export function resolveOrgFromIdpOrgId(
+  db: Database.Database,
+  idpOrgId: string,
+): AllowlistMatch | null {
+  const row = db
+    .prepare(`
+      SELECT id, name, allowlist_idp_org_id
+      FROM orgs
+      WHERE LOWER(allowlist_idp_org_id) = LOWER(?)
+      ORDER BY allowlist_idp_org_id ASC
+      LIMIT 1
+    `)
+    .get(idpOrgId) as
+    | { id: string; name: string; allowlist_idp_org_id: string }
+    | undefined;
+  if (!row) return null;
+  return {
+    org_id: row.id,
+    org_name: row.name,
+    matched_org_login: row.allowlist_idp_org_id,
+  };
+}
+
+/**
  * Resolve the coordinator org for a user given their lowercase GitHub
  * org memberships. Returns null when none of the user's memberships
  * matches an `orgs.allowlist_github_org` entry.

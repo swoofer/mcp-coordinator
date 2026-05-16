@@ -566,7 +566,15 @@ export async function refreshTokenGrant(
 
   let allowlistMatch: AllowlistMatch | null = null;
   let allowlistRecheckPerformed = false;
-  if (idpAccessToken && idpProvider) {
+  // T56: only providers using the "memberships" strategy support a
+  // refresh-time allowlist recheck. idp_org_id-strategy providers
+  // (Google) have no API surface for querying the hd claim
+  // independently of the user-sign-in flow, so the at-sign-in match
+  // is the authoritative one and token_epoch is the manual kill
+  // switch. "none" providers similarly skip.
+  const recheckSupported =
+    !!idpProvider && (idpProvider.allowlistStrategy ?? "memberships") === "memberships";
+  if (idpAccessToken && idpProvider && recheckSupported) {
     allowlistRecheckPerformed = true;
     let memberships: string[] | null = null;
     let firstErr: unknown = null;

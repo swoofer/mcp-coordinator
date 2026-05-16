@@ -82,6 +82,11 @@ const IdTokenClaimsSchema = z.object({
 
 export class GoogleProvider implements IdPProvider {
   readonly name = "google";
+  /** T56: Google's allowlist is driven by the Workspace `hd` claim
+   *  surfaced as `IdpUserInfo.idp_org_id`. listMemberships throws on
+   *  this provider because Google has no GitHub-org equivalent, so
+   *  the strategy MUST be "idp_org_id" for sign-in to work. */
+  readonly allowlistStrategy = "idp_org_id" as const;
   private readonly issuer: string;
   private readonly authorizeUrl: string;
   private readonly tokenUrl: string;

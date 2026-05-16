@@ -51,8 +51,29 @@ export type DevicePollResult =
   | { status: "access_denied" }
   | ({ status: "granted" } & ExchangeCodeResult);
 
+/**
+ * How the coordinator should look up the user's org allowlist match.
+ *
+ *   "memberships" -- call provider.listMemberships(accessToken), match
+ *                    against orgs.allowlist_github_org (the default;
+ *                    GitHub OAuth App + GitHub App)
+ *   "idp_org_id"  -- skip the memberships round-trip; match
+ *                    IdpUserInfo.idp_org_id directly against
+ *                    orgs.allowlist_idp_org_id (T56, v0.10.2;
+ *                    GoogleProvider's `hd` claim is the canonical case)
+ *   "none"        -- the provider has no portable allowlist model;
+ *                    deployments wanting to use it must vendor a
+ *                    subclass that overrides the strategy (generic
+ *                    OIDCProvider's default)
+ */
+export type AllowlistStrategy = "memberships" | "idp_org_id" | "none";
+
 export interface IdPProvider {
   readonly name: string;
+  /** T56: declares how the callback should look up the org allowlist
+   *  match for users from this provider. Default behaviour (when
+   *  omitted) is "memberships" -- matches the Phase 2 semantics. */
+  readonly allowlistStrategy?: AllowlistStrategy;
   /** Build the IdP's authorize URL. `nonce` (T55, v0.10.1) is OIDC's
    *  defence-in-depth against id_token replay; OIDC providers MUST
    *  include it in the URL and verify it at exchangeCode time.

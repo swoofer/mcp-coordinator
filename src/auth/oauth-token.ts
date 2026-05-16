@@ -8,7 +8,7 @@ import {
   mintTokenPair,
   computeFingerprint,
 } from "./oauth-finalize.js";
-import { resolveOrgFromMemberships } from "./allowlist.js";
+import { resolveOrgFromMemberships, resolveOrgFromIdpOrgId } from "./allowlist.js";
 import { IdPTokenRevoked, IdPTransientError } from "./providers/errors.js";
 import { hashIdpUserId } from "./audit-helpers.js";
 
@@ -162,36 +162,46 @@ async function handleAuthorizationCodeGrant(
     throw err;
   }
 
-  // 2. List memberships via T04 cache and resolve allowlist.
-  let memberships: string[];
-  try {
-    memberships = await ctx.membershipCache.getMemberships(
-      exchange.user.idp_user_id,
-      provider,
-      exchange.accessToken,
-    );
-  } catch (err) {
-    if (err instanceof IdPTokenRevoked) {
-      audit("auth.idp.token_revoked", {
-        tier: 1,
-        metadata: { phase: "auth_code_membership" },
-      });
-      emitOAuthError(res, 401, "invalid_grant", "IdP rejected the token");
-      return;
-    }
-    if (err instanceof IdPTransientError) {
-      emitOAuthError(
-        res,
-        503,
-        "temporarily_unavailable",
-        "Identity provider unavailable",
-      );
-      return;
-    }
-    throw err;
-  }
+  // 2. Resolve allowlist match. T56: per-provider strategy
+  //    (see oauth-callback.ts for the rationale).
+  const strategy = provider.allowlistStrategy ?? "memberships";
+  let memberships: string[] = [];
+  let allowlistMatch: ReturnType<typeof resolveOrgFromMemberships> = null;
 
-  const allowlistMatch = resolveOrgFromMemberships(ctx.db, memberships);
+  if (strategy === "memberships") {
+    try {
+      memberships = await ctx.membershipCache.getMemberships(
+        exchange.user.idp_user_id,
+        provider,
+        exchange.accessToken,
+      );
+    } catch (err) {
+      if (err instanceof IdPTokenRevoked) {
+        audit("auth.idp.token_revoked", {
+          tier: 1,
+          metadata: { phase: "auth_code_membership" },
+        });
+        emitOAuthError(res, 401, "invalid_grant", "IdP rejected the token");
+        return;
+      }
+      if (err instanceof IdPTransientError) {
+        emitOAuthError(
+          res,
+          503,
+          "temporarily_unavailable",
+          "Identity provider unavailable",
+        );
+        return;
+      }
+      throw err;
+    }
+    allowlistMatch = resolveOrgFromMemberships(ctx.db, memberships);
+  } else if (strategy === "idp_org_id") {
+    if (exchange.user.idp_org_id) {
+      allowlistMatch = resolveOrgFromIdpOrgId(ctx.db, exchange.user.idp_org_id);
+    }
+  }
+  // strategy === "none": allowlistMatch stays null -> denied below.
   if (!allowlistMatch) {
     audit("auth.login.denied.not_in_org", {
       tier: 1,

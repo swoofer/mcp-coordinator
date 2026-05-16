@@ -374,20 +374,44 @@ failures map to `IdPTransientError` (503).
 | `name`              | `name` (optional)     |
 | `idp_org_id`        | `hd` (Workspace hosted domain, optional) |
 
+### Allowlist via Workspace hosted domain (T56, v0.10.2)
+
+`GoogleProvider.allowlistStrategy = "idp_org_id"`. The callback
+matches the user's `hd` claim against `orgs.allowlist_idp_org_id`
+(case-insensitive) instead of going through `listMemberships` /
+`allowlist_github_org`. Provision an `orgs` row for each Workspace
+tenant you want to allow:
+
+```sql
+INSERT INTO orgs (id, name, allowlist_idp_org_id)
+VALUES ('org-acme', 'Acme Workspace', 'acme.com');
+```
+
+The match is exact (no subdomain semantics) and case-insensitive.
+Users with no `hd` claim (consumer `@gmail.com`) are denied because
+`idp_org_id` is undefined.
+
 ### Gotchas
 
-- **`hd` claim for org allowlist**. The `hd` claim only appears for
-  Workspace accounts. A consumer Gmail user (`@gmail.com`) will produce
-  an `IdpUserInfo` with `idp_org_id` undefined -- the allowlist code
-  treats them as un-allowlisted.
-- **Device flow**. `GoogleProvider.requestDeviceCode` / `pollDeviceToken`
-  are not implemented yet. Google's RFC 8628 endpoint
-  (`https://oauth2.googleapis.com/device/code`) is limited to installed
-  app clients, which the coordinator's web-app client registration
-  cannot satisfy.
-- **`listMemberships` throws** -- Google has no GitHub-org equivalent.
-  Allowlist deployments must drive off the `hd` claim instead;
-  schema-level hd allowlist is planned for v0.10.
+- **`hd` claim only appears for Workspace accounts.** Consumer Gmail
+  users have no recognized tenant and are denied by the
+  `idp_org_id` strategy.
+- **Refresh-rotation does NOT re-check the hd claim.** The at-sign-in
+  match is authoritative; if you remove a Workspace tenant from
+  `orgs.allowlist_idp_org_id` after a user has signed in, their
+  existing session keeps working until `token_epoch` is bumped
+  (`mcp-coordinator user revoke-all` or admin SQL UPDATE on
+  `users.token_epoch`). Only "memberships" strategy providers
+  (GitHub OAuth App, GitHub App) re-check at refresh time.
+- **Device flow**. `GoogleProvider.requestDeviceCode` /
+  `pollDeviceToken` are not implemented yet. Google's RFC 8628
+  endpoint (`https://oauth2.googleapis.com/device/code`) is limited
+  to installed app clients, which the coordinator's web-app client
+  registration cannot satisfy.
+- **`listMemberships` throws** -- Google has no GitHub-org
+  equivalent. The `idp_org_id` allowlist strategy bypasses the
+  memberships path; calling `listMemberships` on `GoogleProvider`
+  directly still throws for that reason.
 
 ## Configuring generic OIDC
 
