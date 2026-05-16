@@ -2,16 +2,40 @@
 
 # mcp-coordinator
 
-**Embedded MQTT broker + MCP server for multi-agent coordination. Zero conflicts, everyone aligned. Optional OAuth 2.1 + device flow with multi-IdP (GitHub OAuth App + GitHub App, Google, generic OIDC) -- v0.10.0.**
+**Embedded MQTT broker + MCP server for multi-agent coordination. Zero conflicts, everyone aligned.**
+
+**Latest: v0.10.4.** Optional OAuth 2.1 + RFC 8628 device flow + 4 IdP providers (GitHub OAuth App, GitHub App, Google, generic OIDC) + 4 allowlist strategies + SHA-256 audit log hash chain (SOC 2 tamper-evidence) + `rotate-jwt-secret` CLI. Single-user / dev local mode requires **zero configuration** — run `mcp-coordinator server start` and you're done.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![npm](https://img.shields.io/npm/v/mcp-coordinator.svg)](https://www.npmjs.com/package/mcp-coordinator)
 [![Tests](https://github.com/swoofer/mcp-coordinator/actions/workflows/test.yml/badge.svg)](https://github.com/swoofer/mcp-coordinator/actions)
 [![E2E](https://github.com/swoofer/mcp-coordinator/actions/workflows/e2e.yml/badge.svg)](https://github.com/swoofer/mcp-coordinator/actions/workflows/e2e.yml)
 
-[Getting started](#getting-started) · [Problem](#the-problem) · [How It Works](#how-it-works) · [MQTT Layer](#mqtt-communication-layer) · [Scoring](#impact-scoring) · [MCP Tools](#mcp-tools) · [CLI](#cli) · [Standalone use](#standalone-use--without-an-orchestrator) · [Quota](#anthropic-quota-pre-flight) · [Dashboard](#dashboard) · [Config](#configuration) · [Auth](#authentication) · [Phase 2 OAuth](#phase-2-v080--full-oauth-flow) · [SDK](#sdk)
+[Getting started](#getting-started) · [Problem](#the-problem) · [How It Works](#how-it-works) · [MQTT Layer](#mqtt-communication-layer) · [Scoring](#impact-scoring) · [MCP Tools](#mcp-tools) · [CLI](#cli) · [Standalone use](#standalone-use--without-an-orchestrator) · [Quota](#anthropic-quota-pre-flight) · [Dashboard](#dashboard) · [Config](#configuration) · [Auth](#authentication) · [SDK](#sdk)
 
 </div>
+
+---
+
+## Capabilities at a glance (v0.10.4)
+
+| Concern | Out of the box | Opt-in |
+|---------|----------------|--------|
+| **Run the coordinator** | `mcp-coordinator server start` -- zero config | — |
+| **Conflict detection** | 4-layer impact scoring (announce / file / module / co-change), MQTT push | — |
+| **Authentication** | Open mode (synthetic legacy claims) | Phase 1 JWT (`COORDINATOR_AUTH_ENABLED`) OR Phase 2 OAuth (`COORDINATOR_OAUTH_ENABLED`) |
+| **Identity providers** | — | GitHub OAuth App + GitHub App + Google + generic OIDC; up to 4 in parallel via picker UI |
+| **Allowlist strategies** | — | 4 strategies (`memberships` / `idp_org_id` / `id_token_groups` / `none`); auto-selected per provider |
+| **Session model** | — | Cookie sessions (`__Host-coordinator_session`) + Bearer JWT for MCP transport + service tokens for CI/CD |
+| **Refresh-token rotation** | — | Reuse detection with 10s grace + family revoke; GitHub App auto-refreshes IdP access tokens on 401 |
+| **Audit log** | — | Tier-1 (never-drop) + Tier-2 (batched) + SHA-256 hash chain (`prev_hash` + `row_hash`) for tamper-evidence |
+| **Operational tooling** | — | `init phase2` wizard, `doctor --phase2`, `service-token {issue,list,revoke}`, `rotate-jwt-secret`, `verify-audit-chain.ts` |
+| **Compliance posture** | — | SOC 2 Type II audit-chain runbook, GDPR Art. 17 procedures, threat model with 10 documented residual risks |
+| **Observability** | Pino logs, MQTT broker stats | 29 Prometheus metrics on `/metrics/auth`, Grafana dashboard JSON, alert rules YAML |
+| **Multi-instance** | — | (Planned v1.0) Redis-backed cache invalidation + leader election |
+| **Database backend** | SQLite (better-sqlite3 / Bun:sqlite) | Postgres (planned v0.11, see [design spec](./docs/superpowers/specs/2026-05-16-postgres-adapter-design.md)) |
+
+**1740 tests passing.** Phase 2 features ship feature-flagged so Phase 1 deployments stay byte-identical (proven by the `tests/backcompat/` suite).
 
 ---
 
@@ -359,6 +383,22 @@ On `IdPTokenRevoked` from `/user/orgs` at refresh-rotation time, the coordinator
 
 - **1700 tests passing** (+45 vs v0.9.2)
 - 19 `GitHubAppProvider` unit tests, 5 refresh-rotation recovery tests, 7 boot wiring tests, plus the shared HTTP transport refactor exercised by the 35 existing OAuth App tests
+
+### v0.10.1 follow-up (2026-05-16) — OIDC nonce verification
+
+OpenID Connect Core 1.0 §3.1.2.1 nonce verification. `OIDCProvider` generates a 256-bit nonce per authorize request, persists it in `oauth_state`, and verifies the returned `id_token`'s `nonce` claim against it. Guards against `id_token` replay across authorize requests issued for the same client. New nullable `oauth_state.nonce` column (idempotent migration). 1708 tests; +8 vs v0.10.0. Other providers unaffected; CLI auth-code grant path skips the check (PKCE + state binding still apply).
+
+### v0.10.2 follow-up (2026-05-16) — Google Workspace `hd` allowlist
+
+New `orgs.allowlist_idp_org_id` column + per-provider `IdPProvider.allowlistStrategy` field. `GoogleProvider` switches to the `"idp_org_id"` strategy and matches the user's Workspace `hd` (hosted domain) claim against the new column. The previous behaviour (where Google sign-in didn't work end-to-end because `listMemberships` threw) is now fixed. GitHub OAuth App + GitHub App keep the existing `"memberships"` strategy. Allowlist is now per-provider: 4 strategies total — `memberships` / `idp_org_id` / `id_token_groups` / `none`. 1714 tests; +6.
+
+### v0.10.3 follow-up (2026-05-16) — GitHub App installation-footprint allowlist
+
+`GitHubAppProvider` gains opt-in `COORDINATOR_GITHUB_APP_ALLOWLIST_SOURCE=user_installations` mode. Calls `GET /user/installations` instead of `/user/orgs` and matches against `orgs.allowlist_github_org`. The App's installation footprint IS the allowlist — uninstalling the App from an org is an immediate hard revoke (within 8h of next refresh-rotation) with no coordinator config change required. No App RSA private key needed; the user's user-to-server token is sufficient. Default remains `user_orgs` (mirrors OAuth App behaviour). 1724 tests; +10.
+
+### v0.10.4 follow-up (2026-05-16) — OIDC group-claim allowlist
+
+`OIDCProvider` learns to read group / role memberships from a configurable id_token claim path. New `COORDINATOR_OIDC_GROUPS_CLAIM` env var (typical values: `groups` for Okta/Auth0/Authentik, `realm_access.roles` for Keycloak, `roles` for Azure AD App Roles). When set, `allowlistStrategy` switches from `"none"` (deny-by-default) to `"id_token_groups"`; the callback matches `IdpUserInfo.groups` (lowercased) against `orgs.allowlist_github_org`. Misconfig (wrong path, non-array value, non-string entries) fails closed. Groups captured at sign-in only — refresh-rotation does not re-fetch. 1740 tests; +16.
 
 ---
 
@@ -988,6 +1028,61 @@ Resolution priority (highest to lowest): CLI flag → env var → config.json �
 | `COORDINATOR_WORKING_FILES_TTL_MIN` | `30` | working_files claim TTL |
 | `COORDINATOR_WORKING_FILES_SWEEP_INTERVAL_MS` | `60000` | TTL sweeper tick |
 
+### Phase 2 OAuth env vars (v0.8.0+)
+
+All Phase 2 vars are inert when `COORDINATOR_OAUTH_ENABLED` is unset. Setting OAuth on requires the **required** rows; everything else is opt-in. The canonical source-of-truth is [`.env.example`](./.env.example) (annotated, copy-pasteable).
+
+**Required when `COORDINATOR_OAUTH_ENABLED=true`** (5 vars):
+
+| Variable | Effect |
+|----------|--------|
+| `COORDINATOR_OAUTH_ENABLED` | Master feature flag. Set to `true` to enable Phase 2. |
+| `COORDINATOR_JWT_SECRET` | HS256 signing key for issued tokens. Min 128 bits of entropy (rejected at boot otherwise). Generate via `mcp-coordinator rotate-jwt-secret --format secret-only`. |
+| `COORDINATOR_PUBLIC_URL` | Externally-visible URL of the coordinator (`https://...`). Used to build OAuth `redirect_uri`. Validated http(s) and non-localhost-requires-https unless `COORDINATOR_INSECURE_COOKIES=true`. |
+| `COORDINATOR_GITHUB_CLIENT_ID` | GitHub OAuth App client ID. |
+| `COORDINATOR_GITHUB_CLIENT_SECRET` | GitHub OAuth App client secret. |
+| `COORDINATOR_GITHUB_ORG` | Allowlisted GitHub org slug; bootstrapped into `orgs.allowlist_github_org`. |
+
+**Optional v0.8 hardening / GHES:**
+
+| Variable | Effect |
+|----------|--------|
+| `COORDINATOR_GITHUB_AUTH_BASE_URL` | GHES OAuth host override (default `https://github.com`). |
+| `COORDINATOR_GITHUB_API_BASE_URL` | GHES REST API host override (default `https://api.github.com`). |
+| `COORDINATOR_INSECURE_COOKIES` | `true` to drop `Secure` cookie flag for HTTP non-localhost (NOT recommended for prod). |
+| `COORDINATOR_ALLOW_RESTORE` | `true` after restoring from backup (NR12) to authorize `token_epoch` global bump. Unset after first boot. |
+| `COORDINATOR_JWT_SECRET_PREV` | Previous JWT signing secret for rotation overlap (v0.8.1). Verify-only under kid `hs256-v0`. |
+| `COORDINATOR_JWT_SECRET_PREV_ROTATED_AT` | ISO timestamp recorded in the `config.key_rotation` Tier 1 audit. |
+| `COORDINATOR_JWT_ACCESS_TTL` | Access token TTL. Default `15m`, max `60m`. |
+| `COORDINATOR_JWT_REFRESH_TTL` | Refresh token TTL. Default `30d`, max `90d`. |
+| `COORDINATOR_AUTO_PROVISION` | `false` to require admin pre-creation of users before first sign-in. Default `true`. |
+| `COORDINATOR_METRICS_BEARER` | Bearer token gating `/metrics/auth` for remote Prometheus. Unset = localhost-only. |
+
+**Multi-IdP — Google (v0.9.0+, v0.10.2 hd allowlist):**
+
+| Variable | Effect |
+|----------|--------|
+| `COORDINATOR_GOOGLE_CLIENT_ID` | Google OAuth client ID. Enables Google sign-in. Match against Workspace `hd` claim in `orgs.allowlist_idp_org_id`. |
+| `COORDINATOR_GOOGLE_CLIENT_SECRET` | Google OAuth client secret. Both required together; fail-closed at boot. |
+
+**Multi-IdP — generic OIDC (v0.9.0+, v0.10.1 nonce, v0.10.4 groups):**
+
+| Variable | Effect |
+|----------|--------|
+| `COORDINATOR_OIDC_ISSUER_URL` | Issuer URL; drives discovery via `/.well-known/openid-configuration`. |
+| `COORDINATOR_OIDC_CLIENT_ID` | OIDC client ID. |
+| `COORDINATOR_OIDC_CLIENT_SECRET` | OIDC client secret. All three required together. |
+| `COORDINATOR_OIDC_GROUPS_CLAIM` | (v0.10.4, optional) Dot-notation path to groups in id_token. Common: `groups`, `realm_access.roles`, `roles`. When set, switches allowlist strategy to `id_token_groups`. Without it, OIDC stays deny-by-default. |
+
+**Multi-IdP — GitHub App (v0.10.0+, v0.10.3 installation allowlist):**
+
+| Variable | Effect |
+|----------|--------|
+| `COORDINATOR_GITHUB_APP_CLIENT_ID` | GitHub App client ID (usually `Iv1.` prefix). Sibling to OAuth App; both can run simultaneously. |
+| `COORDINATOR_GITHUB_APP_CLIENT_SECRET` | GitHub App client secret. |
+| `COORDINATOR_GITHUB_APP_NAME` | (optional) Registry key for picker UI; default `github-app`. |
+| `COORDINATOR_GITHUB_APP_ALLOWLIST_SOURCE` | (v0.10.3, optional) `user_orgs` (default) or `user_installations`. The latter drives allowlist off App installation footprint instead of user's GitHub-org memberships. |
+
 ---
 
 ## Structured Logging
@@ -1013,124 +1108,183 @@ Levels controlled via `LOG_LEVEL`.
 
 ## Authentication
 
-Opt-in JWT (HS256 via [jose](https://github.com/panva/jose)). Set `COORDINATOR_AUTH_ENABLED=true` plus the required secrets to enable.
+The coordinator runs in one of three modes, selected by env-var configuration. **Single-user / dev local stays zero-config**; multi-user deployments opt in to Phase 2 OAuth via a single feature flag.
 
-### Setup
+### Mode 1 — Open (default, no auth)
+
+```bash
+mcp-coordinator server start
+```
+
+No env vars, no setup, no `/auth/login`. All requests get synthetic legacy claims (`sub="legacy"`, `user_id="legacy"`, `org="default"`, `role="admin"`). MCP tools work unchanged. This is byte-identical to v0.7.x; a 31-case `tests/backcompat/` suite proves the non-regression on every release.
+
+### Mode 2 — JWT (Phase 1, v0.7.x)
+
+Opt-in symmetric JWTs (HS256 via [jose](https://github.com/panva/jose)) without OAuth. Agents self-register against a shared secret; admins revoke via a separate secret.
 
 ```bash
 export COORDINATOR_AUTH_ENABLED=true
-export COORDINATOR_JWT_SECRET="your-secret-at-least-32-characters-long"
+export COORDINATOR_JWT_SECRET="$(openssl rand -base64 32)"
 export COORDINATOR_REGISTRATION_SECRET="team-shared-secret"
 export COORDINATOR_ADMIN_SECRET="admin-only-secret"
 ```
 
-### Agent self-register
-
 ```bash
+# Agent self-register
 curl -X POST http://localhost:3100/api/auth/register \
   -H "Content-Type: application/json" \
   -d '{"agent_name":"my-agent","registration_secret":"team-shared-secret"}'
 # → { agent_id, token, expires_at, role }
-```
 
-### Refresh
-
-```bash
+# Refresh
 curl -X POST http://localhost:3100/api/auth/refresh \
   -H "Authorization: Bearer <current-token>"
-```
 
-### Revoke (admin)
-
-```bash
+# Admin revoke
 curl -X POST http://localhost:3100/api/auth/revoke \
   -H "Authorization: Bearer <admin-token>" \
   -H "Content-Type: application/json" \
   -d '{"agent_id":"agent-to-revoke"}'
 ```
 
-### Exempt routes
+Exempt routes: `GET /health`, `POST /api/auth/register`, `POST /api/auth/refresh`, `GET /api/events` (SSE).
 
-`GET /health`, `POST /api/auth/register`, `POST /api/auth/refresh`, `GET /api/events` (SSE).
+### Mode 3 — Phase 2 OAuth (v0.8.0+, the modern path)
 
-### Migration to v0.7.0
+Full OAuth 2.1 + RFC 8628 device flow + cookie sessions + service tokens + audit-chain tamper-evidence + multi-IdP picker. Activate by setting `COORDINATOR_OAUTH_ENABLED=true`; Phase 1 deployments are unaffected when the flag is unset.
 
-v0.7.0 reworks auth foundation: schema gains `org_id` everywhere, JWTs gain `user_id`/`org` claims, MQTT topics gain an org prefix.
-
-**Steps for an existing v0.6.x deployment**:
-
-1. Backup `coordinator.db`.
-2. Set `COORDINATOR_JWT_SECRET` explicitly (32+ chars). Without it the coordinator generates a random secret per boot — every restart invalidates all sessions.
-3. Deploy v0.7.0. Migration runs on first boot (~30-60s of locked writes on a large DB while `ALTER TABLE` runs).
-4. Existing clients keep working unchanged under `AUTH_ENABLED=false` (the default).
-5. External MQTT subscribers: update topic patterns from `coordinator/agents/...` to `coordinator/default/agents/...`.
-
-**Rolling JWT secrets without downtime**:
-
-```bash
-# In prod env config:
-export COORDINATOR_JWT_SECRET=new-secret-here
-export COORDINATOR_JWT_PREV_SECRET=old-secret-here
-# Restart coordinator. Wait for one JWT TTL (24h default).
-# Then remove COORDINATOR_JWT_PREV_SECRET and restart again.
-```
-
-**Rolling back to v0.6**: requires restoring from backup. The v0.6 binary refuses to boot a v0.7 DB (PRAGMA user_version guard).
-
-### Phase 2 (v0.8.0+) — full OAuth flow
-
-Phase 2 adds OAuth 2.1 + RFC 8628 device flow + cookie sessions + service tokens on top of the v0.7 foundation. Activate by setting `COORDINATOR_OAUTH_ENABLED=true` plus the 5 required env vars; Phase 1 deployments are unaffected when the flag is unset.
-
-**Quick start** (full walkthrough in [`docs/onboarding-self-host.md`](./docs/onboarding-self-host.md)):
+#### Quick start (single IdP — GitHub OAuth App)
 
 ```bash
 export COORDINATOR_OAUTH_ENABLED=true
 export COORDINATOR_JWT_SECRET=$(openssl rand -base64 32)
+export COORDINATOR_PUBLIC_URL=https://coordinator.example.com
+
+# GitHub OAuth App
 export COORDINATOR_GITHUB_CLIENT_ID=<from-github-oauth-app>
 export COORDINATOR_GITHUB_CLIENT_SECRET=<from-github-oauth-app>
 export COORDINATOR_GITHUB_ORG=<your-org-slug>
-export COORDINATOR_PUBLIC_URL=https://coordinator.example.com
 
-mcp-coordinator init phase2  # interactive wizard
+mcp-coordinator init phase2     # interactive wizard
 mcp-coordinator server start
 ```
 
-The first user to sign in via `${PUBLIC_URL}/auth/login` becomes the bootstrap admin atomically.
+The first user to sign in via `${PUBLIC_URL}/auth/login` becomes the bootstrap admin atomically. Full walkthrough: [`docs/onboarding-self-host.md`](./docs/onboarding-self-host.md).
 
-**Multiple IdPs (v0.9.0+).** GitHub is always registered. Add Google or a generic OIDC issuer via additional env vars and `/auth/login` automatically renders a picker:
+#### Multi-IdP matrix (v0.9.0 → v0.10.4)
 
-```bash
-# Google
-export COORDINATOR_GOOGLE_CLIENT_ID=<from-google-cloud-console>
-export COORDINATOR_GOOGLE_CLIENT_SECRET=<from-google-cloud-console>
+Configure any subset of the 4 providers simultaneously — `/auth/login` automatically renders a picker page when `>=2` are registered. Each provider can be opted in / out independently; `COORDINATOR_GITHUB_CLIENT_ID` is the only one always required.
 
-# Generic OIDC (Okta / Auth0 / Azure AD / Keycloak / Authentik / ...)
-export COORDINATOR_OIDC_ISSUER_URL=https://your-tenant.example.com
-export COORDINATOR_OIDC_CLIENT_ID=<client-id>
-export COORDINATOR_OIDC_CLIENT_SECRET=<client-secret>
+| Provider | Required env vars | Allowlist strategy | Allowlist column |
+|----------|-------------------|--------------------|------------------|
+| **GitHub OAuth App** | `COORDINATOR_GITHUB_CLIENT_ID` + `_SECRET` + `COORDINATOR_GITHUB_ORG` | `memberships` (default) | `orgs.allowlist_github_org` |
+| **GitHub App** (v0.10.0+) | `COORDINATOR_GITHUB_APP_CLIENT_ID` + `_SECRET` | `memberships` (default) OR `memberships` via installation-footprint when `COORDINATOR_GITHUB_APP_ALLOWLIST_SOURCE=user_installations` (v0.10.3) | `orgs.allowlist_github_org` |
+| **Google** (v0.9.0+) | `COORDINATOR_GOOGLE_CLIENT_ID` + `_SECRET` | `idp_org_id` (v0.10.2; Workspace `hd` claim) | `orgs.allowlist_idp_org_id` |
+| **Generic OIDC** (v0.9.0+) | `COORDINATOR_OIDC_ISSUER_URL` + `_CLIENT_ID` + `_CLIENT_SECRET` | `none` by default; switches to `id_token_groups` when `COORDINATOR_OIDC_GROUPS_CLAIM` is set (v0.10.4) | `orgs.allowlist_github_org` |
+
+Setting partial credentials for any provider fails closed at boot (BootValidationError). Detailed setup per provider: [`docs/idp-providers.md`](./docs/idp-providers.md).
+
+#### Allowlist strategy semantics
+
+All four strategies are case-insensitive string matches against the relevant `orgs` column. Tie-break is alphabetical (deterministic per V4 FIX 22).
+
+- **`memberships`** — Provider's `listMemberships(accessToken)` returns an array of strings, each matched against `orgs.allowlist_github_org`. Used by GitHub OAuth App (`/user/orgs` → GitHub orgs) and GitHub App (`/user/orgs` OR `/user/installations` per `_ALLOWLIST_SOURCE`).
+- **`idp_org_id`** — `IdpUserInfo.idp_org_id` matched directly against `orgs.allowlist_idp_org_id`. Used by Google (the `hd` Workspace claim).
+- **`id_token_groups`** — Groups extracted from the id_token at a configurable dot-notation path (`COORDINATOR_OIDC_GROUPS_CLAIM`, typical values: `groups` / `realm_access.roles` / `roles`). Used by OIDC.
+- **`none`** — Deny by default. Used by OIDC when no groups claim is configured. Operators wanting a custom OIDC allowlist vendor a subclass.
+
+Refresh-rotation re-checks the IdP-side allowlist only for `memberships` providers. `idp_org_id` and `id_token_groups` strategies are sign-in-only — operator-side revocation requires `token_epoch` bump.
+
+#### Sample `orgs` provisioning
+
+```sql
+-- GitHub OAuth App + GitHub App (memberships): use allowlist_github_org
+INSERT INTO orgs (id, name, allowlist_github_org)
+VALUES ('org-acme-gh', 'Acme GitHub', 'acme');
+
+-- Google Workspace (idp_org_id): use allowlist_idp_org_id
+INSERT INTO orgs (id, name, allowlist_idp_org_id)
+VALUES ('org-acme-google', 'Acme Workspace', 'acme.com');
+
+-- OIDC with groups claim (id_token_groups): reuses allowlist_github_org
+INSERT INTO orgs (id, name, allowlist_github_org)
+VALUES ('org-acme-okta', 'Acme via Okta', 'engineers');
 ```
 
-Both `_ID`+`_SECRET` are required together; partial config fails closed at boot. See [`docs/idp-providers.md`](./docs/idp-providers.md) for setup walkthroughs.
+A user signs in once per provider; their `users.idp_provider` stays sticky. Identities are not auto-merged across providers — a one-shot SQL reconciliation is needed if you want to consolidate users who signed in via multiple paths.
 
-**Service tokens for CI/CD:**
+#### Refresh-token recovery (GitHub App, v0.10.0+)
+
+GitHub App user-to-server tokens expire after 8h. On a 401 at refresh-rotation time, the coordinator automatically calls `refreshIdpToken(refresh_token)` to mint a fresh access+refresh pair, persists both to `users.idp_access_token` / `users.idp_refresh_token`, emits a Tier 2 `auth.idp.token_refreshed` audit, and retries the membership check. Only triggers for providers that implement `refreshIdpToken` (currently `GitHubAppProvider`).
+
+#### Service tokens for CI/CD
 
 ```bash
 mcp-coordinator service-token issue \
   --user u-admin-123 --org org-acme-001 \
   --scope read --ttl 30d --reason "CI deploy pipeline"
 # → Returns access_token (show once)
+
+mcp-coordinator service-token list
+mcp-coordinator service-token revoke --jti <jti>
 ```
 
-**Documentation:**
+90-day max TTL. Admin-only issuance. Reason ≥ 10 chars required.
 
-- [Onboarding](./docs/onboarding-self-host.md) — zero to first sign-in
-- [Upgrade v0.7.0 → v0.8.0](./docs/ops/upgrade-phase1-to-phase2.md)
-- [OpenAPI spec](./docs/openapi.yaml) — 17 endpoints
-- [Threat model](./docs/security/threat-model.md) — STRIDE per asset
-- [Key rotation](./docs/ops/key-rotation.md) — JWT_SECRET overlap procedure
-- [Backup & restore](./docs/ops/backup-restore.md) — Litestream + NR12 reconciliation
-- [GDPR Art. 17 procedures](./docs/gdpr.md)
-- [SDK quick-start](./sdk/README.md)
+#### OIDC defense-in-depth
+
+- **`nonce` verification** (v0.10.1) — Generated per authorize request, stored in `oauth_state`, verified against `id_token.nonce` at exchange time. Guards against id_token replay across authorize requests. Automatic; no configuration.
+- **`id_token` signature verification** (v0.9.0) — RS256 only, JWKS-by-kid lookup from the OIDC discovery doc, `iss` + `aud` checks.
+- **Discovery doc `issuer` cross-check** — The discovery doc's own `issuer` field MUST match `COORDINATOR_OIDC_ISSUER_URL`; mismatch fails at first `/auth/login`. Guards against discovery-URL redirect attacks.
+
+#### Operational tooling
+
+| CLI / script | Purpose | Doc |
+|--------------|---------|-----|
+| `mcp-coordinator init phase2` | Interactive Phase 2 wizard | [onboarding](./docs/onboarding-self-host.md) |
+| `mcp-coordinator doctor --phase2` | 8 Phase 2 health probes | — |
+| `mcp-coordinator service-token {issue,list,revoke}` | CI/CD tokens | — |
+| `mcp-coordinator rotate-jwt-secret [--format env\|json\|secret-only]` | JWT secret rotation helper (v0.9.2) | [auto-rotation](./docs/ops/auto-rotation.md) |
+| `tsx scripts/verify-audit-chain.ts [--db <path>] [--json]` | SHA-256 audit chain integrity (v0.9.1) | [audit-integrity](./docs/ops/audit-integrity.md) |
+
+#### Audit log tamper-evidence (v0.9.1)
+
+Every `audit_log` row carries `prev_hash` + `row_hash`. `row_hash = SHA-256(prev_hash || canonical(row_fields))`. The chain proves no in-place tampering of committed rows. Pair with the **tip-attestation workflow** (cron + external signed store, e.g. S3 Object Lock) for full SOC 2 Type II deletion-detection.
+
+Limitations (documented in `src/security/audit-chain.ts` + `docs/ops/audit-integrity.md`):
+- `created_at` is NOT in the hash — timestamp rewrites are not detected by the chain alone.
+- Deletion of recent rows is indistinguishable from legitimate sweeper retention without external tip-attestation.
+
+#### Documentation
+
+| Doc | Topic |
+|-----|-------|
+| [`docs/onboarding-self-host.md`](./docs/onboarding-self-host.md) | Zero-to-first-signin walkthrough |
+| [`docs/idp-providers.md`](./docs/idp-providers.md) | Per-provider setup (GitHub OAuth App, GitHub App, Google, OIDC, Azure AD) |
+| [`docs/openapi.yaml`](./docs/openapi.yaml) | OpenAPI 3.1, 17 endpoints |
+| [`docs/security/threat-model.md`](./docs/security/threat-model.md) | STRIDE per asset, 10 residual risks |
+| [`docs/ops/upgrade-phase1-to-phase2.md`](./docs/ops/upgrade-phase1-to-phase2.md) | Phase 1 → Phase 2 migration |
+| [`docs/ops/key-rotation.md`](./docs/ops/key-rotation.md) | `JWT_SECRET` rotation procedure |
+| [`docs/ops/auto-rotation.md`](./docs/ops/auto-rotation.md) | Automation around `rotate-jwt-secret` (systemd / k8s CronJob) |
+| [`docs/ops/audit-integrity.md`](./docs/ops/audit-integrity.md) | Audit chain runbook + tip-attestation workflow |
+| [`docs/ops/backup-restore.md`](./docs/ops/backup-restore.md) | Litestream + NR12 reconciliation |
+| [`docs/gdpr.md`](./docs/gdpr.md) | GDPR Art. 17 procedures |
+| [`sdk/README.md`](./sdk/README.md) | TypeScript SDK reference |
+
+### Historical: v0.6.x → v0.7.0 migration
+
+v0.7.0 reworked auth foundation: schema gained `org_id` everywhere, JWTs gained `user_id`/`org` claims, MQTT topics gained an org prefix. Migration runs on first boot of v0.7.0 (`PRAGMA user_version` guard).
+
+Manual JWT-secret rotation (v0.7.0 era, still works in v0.8+):
+
+```bash
+export COORDINATOR_JWT_SECRET=new-secret-here
+export COORDINATOR_JWT_PREV_SECRET=old-secret-here
+# Restart coordinator. Wait one JWT TTL (24h default).
+# Then remove COORDINATOR_JWT_PREV_SECRET and restart again.
+```
+
+The v0.9.2 `rotate-jwt-secret` CLI automates the new-secret generation step of this procedure.
 
 ---
 
