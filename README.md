@@ -17,28 +17,6 @@
 
 ---
 
-## Capabilities at a glance (v0.10.4)
-
-| Concern | Out of the box | Opt-in |
-|---------|----------------|--------|
-| **Run the coordinator** | `mcp-coordinator server start` -- zero config | — |
-| **Conflict detection** | 4-layer impact scoring (announce / file / module / co-change), MQTT push | — |
-| **Authentication** | Open mode (synthetic legacy claims) | Phase 1 JWT (`COORDINATOR_AUTH_ENABLED`) OR Phase 2 OAuth (`COORDINATOR_OAUTH_ENABLED`) |
-| **Identity providers** | — | GitHub OAuth App + GitHub App + Google + generic OIDC; up to 4 in parallel via picker UI |
-| **Allowlist strategies** | — | 4 strategies (`memberships` / `idp_org_id` / `id_token_groups` / `none`); auto-selected per provider |
-| **Session model** | — | Cookie sessions (`__Host-coordinator_session`) + Bearer JWT for MCP transport + service tokens for CI/CD |
-| **Refresh-token rotation** | — | Reuse detection with 10s grace + family revoke; GitHub App auto-refreshes IdP access tokens on 401 |
-| **Audit log** | — | Tier-1 (never-drop) + Tier-2 (batched) + SHA-256 hash chain (`prev_hash` + `row_hash`) for tamper-evidence |
-| **Operational tooling** | — | `init phase2` wizard, `doctor --phase2`, `service-token {issue,list,revoke}`, `rotate-jwt-secret`, `verify-audit-chain.ts` |
-| **Compliance posture** | — | SOC 2 Type II audit-chain runbook, GDPR Art. 17 procedures, threat model with 10 documented residual risks |
-| **Observability** | Pino logs, MQTT broker stats | 29 Prometheus metrics on `/metrics/auth`, Grafana dashboard JSON, alert rules YAML |
-| **Multi-instance** | — | (Planned v1.0) Redis-backed cache invalidation + leader election |
-| **Database backend** | SQLite (better-sqlite3 / Bun:sqlite) | Postgres (planned v0.11, see [design spec](./docs/superpowers/specs/2026-05-16-postgres-adapter-design.md)) |
-
-**1740 tests passing.** Phase 2 features ship feature-flagged so Phase 1 deployments stay byte-identical (proven by the `tests/backcompat/` suite).
-
----
-
 ## The Problem
 
 When multiple developers each use an AI coding agent in parallel on the same repo, things break:
@@ -191,6 +169,28 @@ Scores are categorized into three outcomes:
 
 ---
 
+
+## Capabilities at a glance (v0.10.4)
+
+| Concern | Out of the box | Opt-in |
+|---------|----------------|--------|
+| **Run the coordinator** | `mcp-coordinator server start` -- zero config | — |
+| **Conflict detection** | 4-layer impact scoring (announce / file / module / co-change), MQTT push | — |
+| **Authentication** | Open mode (synthetic legacy claims) | Phase 1 JWT (`COORDINATOR_AUTH_ENABLED`) OR Phase 2 OAuth (`COORDINATOR_OAUTH_ENABLED`) |
+| **Identity providers** | — | GitHub OAuth App + GitHub App + Google + generic OIDC; up to 4 in parallel via picker UI |
+| **Allowlist strategies** | — | 4 strategies (`memberships` / `idp_org_id` / `id_token_groups` / `none`); auto-selected per provider |
+| **Session model** | — | Cookie sessions (`__Host-coordinator_session`) + Bearer JWT for MCP transport + service tokens for CI/CD |
+| **Refresh-token rotation** | — | Reuse detection with 10s grace + family revoke; GitHub App auto-refreshes IdP access tokens on 401 |
+| **Audit log** | — | Tier-1 (never-drop) + Tier-2 (batched) + SHA-256 hash chain (`prev_hash` + `row_hash`) for tamper-evidence |
+| **Operational tooling** | — | `init phase2` wizard, `doctor --phase2`, `service-token {issue,list,revoke}`, `rotate-jwt-secret`, `verify-audit-chain.ts` |
+| **Compliance posture** | — | SOC 2 Type II audit-chain runbook, GDPR Art. 17 procedures, threat model with 10 documented residual risks |
+| **Observability** | Pino logs, MQTT broker stats | 29 Prometheus metrics on `/metrics/auth`, Grafana dashboard JSON, alert rules YAML |
+| **Multi-instance** | — | (Planned v1.0) Redis-backed cache invalidation + leader election |
+| **Database backend** | SQLite (better-sqlite3 / Bun:sqlite) | Postgres (planned v0.11, see [design spec](./docs/superpowers/specs/2026-05-16-postgres-adapter-design.md)) |
+
+**1740 tests passing.** Phase 2 features ship feature-flagged so Phase 1 deployments stay byte-identical (proven by the `tests/backcompat/` suite).
+
+---
 
 ## MCP Tools
 
