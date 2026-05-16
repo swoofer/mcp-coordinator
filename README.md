@@ -446,14 +446,18 @@ OIDC `nonce` claim verification (OpenID Connect Core 1.0 §3.1.2.1). `OIDCProvid
 
 Google Workspace allowlist. New `orgs.allowlist_idp_org_id` column + per-provider `IdPProvider.allowlistStrategy` field. `GoogleProvider` switches to the `"idp_org_id"` strategy and matches the user's `hd` (hosted domain) claim against the new column. GitHub OAuth App + GitHub App keep the existing memberships strategy.
 
+### v0.10.3 (shipped 2026-05-16)
+
+GitHub App installation-footprint allowlist. `GitHubAppProvider` gains an opt-in `allowlistSource="user_installations"` mode (via `COORDINATOR_GITHUB_APP_ALLOWLIST_SOURCE`) where the org allowlist is driven by the App's installation footprint via `GET /user/installations` rather than the user's GitHub-org memberships. Uninstalling the App from an org becomes a hard revoke. No App RSA private key needed.
+
 ### v0.5.0 (shipped 2026-05-10)
 
 Working-files in-flight tracking, tree-sitter symbol annotations across 15 languages, git co-change Layer 4 scoring, dashboard Conflict signals panel, schema downgrade guard, 5 new Prometheus metrics.
 
 ### Planned
 
-- **v0.10.x** — App-as-itself installation token flow for GitHub App (allowlist driven by App installation footprint rather than user org memberships); OIDC group-claim allowlist for IdPs that publish a `groups` claim.
-- **v0.11** — Postgres adapter for regulated multi-instance workloads (Phase 4).
+- **v0.10.x** — OIDC group-claim allowlist for IdPs that publish a `groups` claim; encryption-at-rest for `users.idp_refresh_token` (currently plaintext).
+- **v0.11** — Postgres adapter for regulated multi-instance workloads (Phase 4; see [`docs/superpowers/specs/2026-05-16-postgres-adapter-design.md`](./docs/superpowers/specs/2026-05-16-postgres-adapter-design.md) for the honest scope assessment).
 - **v1.0** — Phase 5 multi-instance (Redis pub/sub for membership cache invalidation + token_epoch reads + rate-limit + sweeper leader election).
 
 ### Open items / known issues
