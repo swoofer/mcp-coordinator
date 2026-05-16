@@ -1,5 +1,76 @@
 # Changelog
 
+## [0.10.3](https://github.com/swoofer/mcp-coordinator/compare/v0.10.2...v0.10.3) (2026-05-16)
+
+GitHub App installation-footprint allowlist release. Adds an opt-in
+mode to `GitHubAppProvider` where the org allowlist is driven by the
+App's installation footprint rather than the user's own GitHub-org
+memberships. Default behaviour (`allowlistSource="user_orgs"`) is
+unchanged; existing deployments are behaviour-compatible.
+
+### Features
+
+* **auth/providers/github-app:** `GitHubAppProviderConfig` gains an
+  `allowlistSource: "user_orgs" | "user_installations"` field. When
+  `"user_installations"`, `listMemberships` calls
+  `GET /user/installations` with the user's user-to-server token
+  and returns the `installation.account.login` values. Each becomes
+  a candidate match against `orgs.allowlist_github_org`. The
+  semantics are "is the App installed in an org/account the user
+  has access to?" -- uninstalling the App from an org immediately
+  stops surfacing it in `/user/installations` responses, so the
+  allowlist match fails on the next refresh-rotation (within 8h
+  max). A hard revoke without any coordinator config change. (T57)
+* **auth/providers/github-shared:** new
+  `listGitHubAppInstallations(apiBaseUrl, accessToken)` helper + the
+  zod schemas (`GitHubInstallationSchema`,
+  `GitHubInstallationsResponseSchema`). Pagination via RFC 5988
+  Link headers, same SSRF-guard as `listGitHubOrgs`.
+* **boot:** new `COORDINATOR_GITHUB_APP_ALLOWLIST_SOURCE` env var
+  (`user_orgs` default, `user_installations` opt-in). Invalid
+  value -> `BootValidationError`.
+
+### Why this matters
+
+- "Install the App" becomes the operator's vetting gesture; the
+  coordinator's allowlist tracks the App-install lifecycle
+  automatically.
+- **No App RSA private key needed** -- `/user/installations` is
+  scoped to the user's own user-to-server token (Design B from the
+  2026-05-16-github-app-design spec, simpler variant). The
+  full installation-token-with-private-key path remains future
+  work for the App-as-itself scenario.
+- Personal-account installs work: `installation.account.type` can
+  be `"User"`, which lets operators allowlist individual user
+  accounts where the App is installed.
+
+### Documentation
+
+* **docs/idp-providers.md:** new "Allowlist source: orgs vs
+  installations" subsection with the pick-which guidance.
+* **.env.example:** `COORDINATOR_GITHUB_APP_ALLOWLIST_SOURCE`
+  block.
+
+### Test posture
+
+* **+10 tests** vs v0.10.2 (1724 total):
+  - 6 new GitHubAppProvider cases (`user_installations` happy /
+    empty / User-type install / 401 / 503 / backward-compat default
+    still hits `/user/orgs`)
+  - 4 new boot wiring cases (`user_installations` accepted /
+    explicit `user_orgs` / invalid value -> `BootValidationError` /
+    env var moot when App not registered)
+
+### Operator notes
+
+Drop-in upgrade. To enable installation-footprint allowlist on an
+existing deployment with the App provider registered, set
+`COORDINATOR_GITHUB_APP_ALLOWLIST_SOURCE=user_installations` and
+restart the coordinator. The next sign-in will drive off the
+installation footprint instead of `/user/orgs`. Existing users keep
+their `users.idp_provider` association and will see allowlist
+verdicts based on the new source on their next refresh-rotation.
+
 ## [0.10.2](https://github.com/swoofer/mcp-coordinator/compare/v0.10.1...v0.10.2) (2026-05-16)
 
 Google Workspace allowlist release. Introduces a per-provider allowlist
