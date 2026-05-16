@@ -150,11 +150,28 @@ export function bootPhase2(opts: Phase2BootOptions): Phase2Bootstrap | null {
   const githubAppClientId = process.env.COORDINATOR_GITHUB_APP_CLIENT_ID?.trim();
   const githubAppClientSecret = process.env.COORDINATOR_GITHUB_APP_CLIENT_SECRET?.trim();
   const githubAppName = process.env.COORDINATOR_GITHUB_APP_NAME?.trim();
+  // T57: COORDINATOR_GITHUB_APP_ALLOWLIST_SOURCE controls whether
+  // the allowlist drives off /user/orgs (default) or
+  // /user/installations (App-footprint-as-allowlist). Validated only
+  // when the App provider is registered.
+  const githubAppAllowlistSource = process.env.COORDINATOR_GITHUB_APP_ALLOWLIST_SOURCE?.trim();
   if (githubAppClientId || githubAppClientSecret) {
     if (!githubAppClientId || !githubAppClientSecret) {
       throw new BootValidationError(
         "COORDINATOR_GITHUB_APP_CLIENT_ID and COORDINATOR_GITHUB_APP_CLIENT_SECRET must both be set, or both unset",
       );
+    }
+    let allowlistSourceParsed: "user_orgs" | "user_installations" | undefined;
+    if (githubAppAllowlistSource) {
+      if (
+        githubAppAllowlistSource !== "user_orgs" &&
+        githubAppAllowlistSource !== "user_installations"
+      ) {
+        throw new BootValidationError(
+          `COORDINATOR_GITHUB_APP_ALLOWLIST_SOURCE must be "user_orgs" or "user_installations", got "${githubAppAllowlistSource}"`,
+        );
+      }
+      allowlistSourceParsed = githubAppAllowlistSource;
     }
     providers.register(
       new GitHubAppProvider({
@@ -163,6 +180,7 @@ export function bootPhase2(opts: Phase2BootOptions): Phase2Bootstrap | null {
         ...(githubAuthBaseUrl ? { authBaseUrl: githubAuthBaseUrl } : {}),
         ...(githubApiBaseUrl ? { apiBaseUrl: githubApiBaseUrl } : {}),
         ...(githubAppName ? { name: githubAppName } : {}),
+        ...(allowlistSourceParsed ? { allowlistSource: allowlistSourceParsed } : {}),
       }),
     );
   }

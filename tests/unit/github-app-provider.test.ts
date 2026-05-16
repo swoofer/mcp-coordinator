@@ -188,6 +188,95 @@ describe("GitHubAppProvider.listMemberships", () => {
   });
 });
 
+describe("GitHubAppProvider.listMemberships -- T57 user_installations", () => {
+  function makeAppFootprintProvider(): GitHubAppProvider {
+    return new GitHubAppProvider({
+      clientId: CLIENT_ID,
+      clientSecret: CLIENT_SECRET,
+      allowlistSource: "user_installations",
+    });
+  }
+
+  it("user_installations: calls /user/installations and returns account.login values", async () => {
+    server.use(
+      http.get("https://api.github.com/user/installations", () =>
+        HttpResponse.json({
+          total_count: 2,
+          installations: [
+            { id: 1, account: { login: "acme", type: "Organization" } },
+            { id: 2, account: { login: "wile-e", type: "Organization" } },
+          ],
+        }),
+      ),
+    );
+    const memberships = await makeAppFootprintProvider().listMemberships("tok");
+    expect(memberships).toEqual(["acme", "wile-e"]);
+  });
+
+  it("user_installations: returns empty list when user has access to no installations", async () => {
+    server.use(
+      http.get("https://api.github.com/user/installations", () =>
+        HttpResponse.json({ total_count: 0, installations: [] }),
+      ),
+    );
+    const memberships = await makeAppFootprintProvider().listMemberships("tok");
+    expect(memberships).toEqual([]);
+  });
+
+  it("user_installations: includes User-type installations (personal-account install)", async () => {
+    server.use(
+      http.get("https://api.github.com/user/installations", () =>
+        HttpResponse.json({
+          total_count: 1,
+          installations: [
+            { id: 99, account: { login: "alice", type: "User" } },
+          ],
+        }),
+      ),
+    );
+    const memberships = await makeAppFootprintProvider().listMemberships("tok");
+    expect(memberships).toEqual(["alice"]);
+  });
+
+  it("user_installations: 401 -> IdPTokenRevoked", async () => {
+    server.use(
+      http.get("https://api.github.com/user/installations", () =>
+        HttpResponse.json({}, { status: 401 }),
+      ),
+    );
+    await expect(
+      makeAppFootprintProvider().listMemberships("bad"),
+    ).rejects.toBeInstanceOf(IdPTokenRevoked);
+  });
+
+  it("user_installations: 503 -> IdPTransientError", async () => {
+    server.use(
+      http.get("https://api.github.com/user/installations", () =>
+        HttpResponse.json({}, { status: 503 }),
+      ),
+      http.get("https://api.github.com/user/installations", () =>
+        HttpResponse.json({}, { status: 503 }),
+      ),
+    );
+    await expect(
+      makeAppFootprintProvider().listMemberships("tok"),
+    ).rejects.toBeInstanceOf(IdPTransientError);
+  });
+
+  it("default allowlistSource (omitted) still hits /user/orgs (backward compat)", async () => {
+    server.use(
+      http.get("https://api.github.com/user/orgs", () =>
+        HttpResponse.json([{ login: "acme" }]),
+      ),
+    );
+    // Explicit "no /user/installations handler" -- the request would
+    // fail MSW's onUnhandledRequest:"error" check if the provider
+    // accidentally hit it.
+    const memberships = await makeProvider().listMemberships("tok");
+    expect(memberships).toEqual(["acme"]);
+  });
+});
+
 describe("GitHubAppProvider.refreshIdpToken", () => {
   it("returns fresh access + rotated refresh on success", async () => {
     server.use(

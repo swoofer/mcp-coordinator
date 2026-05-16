@@ -267,6 +267,37 @@ boot error. GHES base URLs are shared with the OAuth App provider
    not required) + a freshly generated **Client secret** into the env
    vars above.
 
+### Allowlist source: orgs vs installations (T57, v0.10.3)
+
+`GitHubAppProvider` supports two allowlist sources, selected via
+`COORDINATOR_GITHUB_APP_ALLOWLIST_SOURCE`:
+
+| Value | What it queries | Allowlist semantics |
+|-------|-----------------|---------------------|
+| `user_orgs` (default) | `GET /user/orgs` | User's GitHub-org memberships; mirrors OAuth App |
+| `user_installations` | `GET /user/installations` | Accounts (orgs OR users) where the App is installed AND the user has access; the App's installation footprint IS the allowlist |
+
+The `user_installations` mode delivers the "uninstall = hard revoke"
+property: removing the App from an org immediately stops surfacing
+that org in `/user/installations` responses, and the allowlist match
+fails on the next refresh-rotation (within 8h max). No App private
+key is required for this mode -- the user's own user-to-server
+token is sufficient because `/user/installations` is scoped to
+installations the user can already access.
+
+Pick `user_installations` if:
+- You want the installation footprint to drive the allowlist
+  (compliance: "App installed" = "operator-vetted")
+- You don't want to maintain a separate `orgs.allowlist_github_org`
+  list -- the App-install action IS the operator's grant gesture
+
+Pick `user_orgs` (default) if:
+- You're migrating from an existing OAuth App deployment and want
+  identical allowlist semantics
+- You want the App's permissions to be independent of org membership
+  (e.g. a personal-account install on `alice/repo` that grants
+  access to alice but not her org)
+
 ### Key differences from the OAuth App provider
 
 | | OAuth App (`github`) | GitHub App (`github-app`) |
