@@ -438,13 +438,18 @@ Audit log tamper-evidence (SHA-256 hash chain on every `audit_log` row + `verify
 
 `GitHubAppProvider` sibling to the OAuth App provider, with built-in user-to-server token refresh handling. New env vars `COORDINATOR_GITHUB_APP_CLIENT_ID` / `_SECRET` / `_NAME`. Co-exists with OAuth App. 1700 tests.
 
+### v0.10.1 (shipped 2026-05-16)
+
+OIDC `nonce` claim verification (OpenID Connect Core 1.0 §3.1.2.1). `OIDCProvider` now generates a 256-bit nonce per authorize request, persists it in `oauth_state`, and verifies the returned `id_token`'s `nonce` claim against it. Guards against id_token replay across authorize requests. Other providers unaffected.
+
 ### v0.5.0 (shipped 2026-05-10)
 
 Working-files in-flight tracking, tree-sitter symbol annotations across 15 languages, git co-change Layer 4 scoring, dashboard Conflict signals panel, schema downgrade guard, 5 new Prometheus metrics.
 
 ### Planned
 
-- **v0.10.x** — App-as-itself installation token flow for GitHub App (allowlist driven by App installation footprint rather than user org memberships); OIDC `nonce` claim verification; Postgres adapter for regulated multi-instance workloads; native `hd`-based allowlist column so Google Workspace deployments don't have to overload `allowlist_github_org`.
+- **v0.10.x** — App-as-itself installation token flow for GitHub App (allowlist driven by App installation footprint rather than user org memberships); native `hd`-based allowlist column so Google Workspace deployments don't have to overload `allowlist_github_org`.
+- **v0.11** — Postgres adapter for regulated multi-instance workloads (Phase 4).
 - **v1.0** — Phase 5 multi-instance (Redis pub/sub for membership cache invalidation + token_epoch reads + rate-limit + sweeper leader election).
 
 ### Open items / known issues

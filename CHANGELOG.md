@@ -1,5 +1,62 @@
 # Changelog
 
+## [0.10.1](https://github.com/swoofer/mcp-coordinator/compare/v0.10.0...v0.10.1) (2026-05-16)
+
+OIDC defense-in-depth release. Implements OpenID Connect Core 1.0
+§3.1.2.1 nonce verification: the relying party (this coordinator)
+generates a random nonce per authorize request, includes it in the
+URL, and verifies the returned `id_token`'s `nonce` claim against it
+at exchange time. Guards against id_token replay across authorize
+requests issued for the same client. GitHub OAuth App / Google /
+GitHub App flows are behaviour-unchanged.
+
+### Features
+
+* **auth/providers/oidc:** OIDC `nonce` is now generated, persisted,
+  and verified. `buildAuthUrl` emits the `nonce` query param when
+  supplied; `exchangeCode` verifies `id_token.nonce` against the
+  passed value. Mismatch (including an id_token with no nonce
+  claim at all) is mapped to `IdPTokenRevoked`. The CLI auth-code
+  grant path passes no nonce; OIDC providers skip the check there
+  (PKCE + state binding still apply). (T55)
+* **auth/oauth-state:** `createOAuthStateWithVerifier` accepts an
+  optional `nonce` parameter; `consumeOAuthState` surfaces it in
+  `ConsumedOAuthState`. Non-OIDC flows leave the column `NULL`.
+* **db:** `ALTER TABLE oauth_state ADD COLUMN nonce TEXT` idempotent
+  migration; nullable so non-OIDC rows stay clean.
+* **auth/oauth-login:** generates a 256-bit base64url nonce per
+  request, persists it via `createOAuthStateWithVerifier`, threads
+  it to `provider.buildAuthUrl`.
+* **auth/oauth-callback:** reads `row.nonce` and threads it to
+  `provider.exchangeCode`.
+
+### Interface widening
+
+`IdPProvider.buildAuthUrl(state, redirectUri, codeChallenge?, nonce?)`
++ `IdPProvider.exchangeCode(code, redirectUri, codeVerifier?, nonce?)`.
+Existing providers (GitHub OAuth App, GitHub App, Google) ignore the
+new parameter; only `OIDCProvider` uses it. Source-compatible for
+custom providers vendored by operators.
+
+### Test posture
+
+* **+8 tests** vs v0.10.0 (1708 total): 2 new oauth-state cases
+  (T55 nonce persistence + NULL when omitted), 5 new oidc-provider
+  cases (buildAuthUrl emits/omits nonce, happy path id_token match,
+  mismatch -> `IdPTokenRevoked`, missing-nonce-claim ->
+  `IdPTokenRevoked`, null-nonce skips check). Updated
+  `oauth_state` schema in 5 test files + `migration-v07-to-v08`
+  expected column list.
+
+### What this changes for operators
+
+Nothing in the existing deployment requires action. The migration
+is idempotent and the nonce field is nullable, so rolling onto
+v0.10.1 from v0.10.0 is a drop-in upgrade. OIDC deployments
+benefit automatically -- the first `/auth/login` after the
+restart starts emitting nonce-bearing authorize URLs and
+verifying them.
+
 ## [0.10.0](https://github.com/swoofer/mcp-coordinator/compare/v0.9.2...v0.10.0) (2026-05-16)
 
 GitHub App release. Adds a `GitHubAppProvider` sibling to the existing
