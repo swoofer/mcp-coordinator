@@ -15,12 +15,17 @@ export interface OAuthStateRow {
   created_at: number;
   expires_at: number;
   consumed_at: number | null;
+  /** T55 (v0.10.1): OIDC nonce, when present. Other flows leave NULL. */
+  nonce: string | null;
 }
 
 export interface ConsumedOAuthState {
   code_verifier: string;
   redirect_uri: string;
   provider: string;
+  /** T55: OIDC nonce that the callback must verify against the
+   *  id_token's `nonce` claim. Null for non-OIDC flows. */
+  nonce: string | null;
 }
 
 // Status returned by inspectOAuthState — used by /api/auth/oauth/callback
@@ -63,13 +68,18 @@ export function createOAuthStateWithVerifier(
   provider: string,
   redirectUri: string,
   codeVerifier: string,
+  /** T55 (v0.10.1): OIDC nonce. Pass when the provider requires
+   *  id_token nonce verification (OIDCProvider). Other providers
+   *  pass undefined / null. */
+  nonce?: string | null,
 ): { state: string } {
   const state = crypto.randomBytes(32).toString("base64url");
   const now = clock.now();
   db.prepare(`
-    INSERT INTO oauth_state (state, code_verifier, redirect_uri, provider, created_at, expires_at)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(state, codeVerifier, redirectUri, provider, now, now + TTL_S);
+    INSERT INTO oauth_state
+      (state, code_verifier, redirect_uri, provider, created_at, expires_at, nonce)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(state, codeVerifier, redirectUri, provider, now, now + TTL_S, nonce ?? null);
   return { state };
 }
 
@@ -88,7 +98,7 @@ export function consumeOAuthState(
     UPDATE oauth_state
     SET consumed_at = ?
     WHERE state = ? AND consumed_at IS NULL AND expires_at > ?
-    RETURNING code_verifier, redirect_uri, provider
+    RETURNING code_verifier, redirect_uri, provider, nonce
   `).get(now, state, now) as ConsumedOAuthState | undefined;
   return row ?? null;
 }

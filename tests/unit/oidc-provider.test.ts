@@ -58,6 +58,8 @@ interface IdTokenOverrides {
   alg?: "RS256" | "HS256";
   kidOverride?: string;
   expSeconds?: number;
+  /** T55: nonce claim baked into the id_token. */
+  nonce?: string;
 }
 
 async function makeIdToken(overrides: IdTokenOverrides = {}): Promise<string> {
@@ -67,6 +69,7 @@ async function makeIdToken(overrides: IdTokenOverrides = {}): Promise<string> {
   if (overrides.preferred_username !== undefined) {
     claims.preferred_username = overrides.preferred_username;
   }
+  if (overrides.nonce !== undefined) claims.nonce = overrides.nonce;
   return new SignJWT(claims)
     .setProtectedHeader({
       alg: overrides.alg ?? "RS256",
@@ -355,5 +358,95 @@ describe("OIDCProvider issuer URL normalization", () => {
     expect(discoveryUrlSeen).toBe(
       "https://idp.example.test/realms/main/.well-known/openid-configuration",
     );
+  });
+});
+
+describe("OIDCProvider nonce (T55)", () => {
+  it("buildAuthUrl emits the nonce param when one is supplied", async () => {
+    mountDiscoveryAndJwks();
+    const url = await makeProvider().buildAuthUrl(
+      "state-x",
+      REDIRECT_URI,
+      "challenge-y",
+      "n-test-12345",
+    );
+    expect(new URL(url).searchParams.get("nonce")).toBe("n-test-12345");
+  });
+
+  it("buildAuthUrl omits nonce param when none supplied", async () => {
+    mountDiscoveryAndJwks();
+    const url = await makeProvider().buildAuthUrl("state-x", REDIRECT_URI);
+    expect(new URL(url).searchParams.has("nonce")).toBe(false);
+  });
+
+  it("exchangeCode happy path: id_token nonce matches supplied -> success", async () => {
+    const nonceValue = "n-good-1";
+    const idToken = await makeIdToken({ email: "a@x.test", nonce: nonceValue });
+    mountDiscoveryAndJwks();
+    server.use(
+      http.post(TOKEN_ENDPOINT, () =>
+        HttpResponse.json({
+          access_token: "oidc-a",
+          id_token: idToken,
+          token_type: "Bearer",
+        }),
+      ),
+    );
+    const result = await makeProvider().exchangeCode(
+      "code-x", REDIRECT_URI, undefined, nonceValue,
+    );
+    expect(result.user.idp_user_id).toBe("user-7");
+  });
+
+  it("exchangeCode: id_token has a DIFFERENT nonce -> IdPTokenRevoked", async () => {
+    const idToken = await makeIdToken({ nonce: "n-IMPOSTOR" });
+    mountDiscoveryAndJwks();
+    server.use(
+      http.post(TOKEN_ENDPOINT, () =>
+        HttpResponse.json({
+          access_token: "oidc-a",
+          id_token: idToken,
+          token_type: "Bearer",
+        }),
+      ),
+    );
+    await expect(
+      makeProvider().exchangeCode("code-x", REDIRECT_URI, undefined, "n-EXPECTED"),
+    ).rejects.toBeInstanceOf(IdPTokenRevoked);
+  });
+
+  it("exchangeCode: id_token MISSING nonce claim entirely -> IdPTokenRevoked", async () => {
+    const idToken = await makeIdToken(); // no nonce baked in
+    mountDiscoveryAndJwks();
+    server.use(
+      http.post(TOKEN_ENDPOINT, () =>
+        HttpResponse.json({
+          access_token: "oidc-a",
+          id_token: idToken,
+          token_type: "Bearer",
+        }),
+      ),
+    );
+    await expect(
+      makeProvider().exchangeCode("code-x", REDIRECT_URI, undefined, "n-EXPECTED"),
+    ).rejects.toBeInstanceOf(IdPTokenRevoked);
+  });
+
+  it("exchangeCode: caller passes null nonce -> nonce check is skipped (CLI auth-code grant path)", async () => {
+    const idToken = await makeIdToken({ email: "a@x.test" });
+    mountDiscoveryAndJwks();
+    server.use(
+      http.post(TOKEN_ENDPOINT, () =>
+        HttpResponse.json({
+          access_token: "oidc-a",
+          id_token: idToken,
+          token_type: "Bearer",
+        }),
+      ),
+    );
+    const result = await makeProvider().exchangeCode(
+      "code-x", REDIRECT_URI, undefined, null,
+    );
+    expect(result.user.idp_user_id).toBe("user-7");
   });
 });

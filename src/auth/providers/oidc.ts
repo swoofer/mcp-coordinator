@@ -108,6 +108,7 @@ export class OIDCProvider implements IdPProvider {
     state: string,
     redirectUri: string,
     codeChallenge?: string,
+    nonce?: string,
   ): Promise<string> {
     const disco = await this.getDiscovery();
     const u = new URL(disco.authorizationEndpoint);
@@ -120,6 +121,16 @@ export class OIDCProvider implements IdPProvider {
       u.searchParams.set("code_challenge", codeChallenge);
       u.searchParams.set("code_challenge_method", "S256");
     }
+    // T55: OIDC nonce (Core 1.0 §3.1.2.1). Bound to the oauth_state
+    // row by the caller; verified against id_token.nonce in
+    // exchangeCode. The caller (oauth-login) MUST pass a value for
+    // OIDC providers; absence here is a misconfiguration upstream
+    // and lets the IdP fall through to nonce-less behaviour rather
+    // than failing closed -- acceptable because state binding + PKCE
+    // already provide proof-of-possession.
+    if (nonce) {
+      u.searchParams.set("nonce", nonce);
+    }
     return u.toString();
   }
 
@@ -127,6 +138,7 @@ export class OIDCProvider implements IdPProvider {
     code: string,
     redirectUri: string,
     codeVerifier?: string,
+    nonce?: string | null,
   ): Promise<ExchangeCodeResult> {
     const disco = await this.getDiscovery();
     const body = new URLSearchParams({
@@ -188,6 +200,25 @@ export class OIDCProvider implements IdPProvider {
     }
 
     const claims = IdTokenClaimsSchema.parse(payload);
+
+    // T55: nonce check. If the caller passed a nonce (the standard
+    // path from oauth-login -> oauth_state.nonce -> oauth-callback),
+    // it MUST match the id_token's nonce claim. Mismatch indicates
+    // a replayed id_token issued for a different authorize request.
+    //
+    // If nonce is null/undefined, the caller is the CLI auth-code
+    // grant (which predates per-state nonce tracking) and we skip
+    // the check -- PKCE already provides proof-of-possession at the
+    // exchange step, so absence of nonce verification narrows but
+    // does not eliminate the residual risk.
+    if (nonce !== undefined && nonce !== null) {
+      // Read from the raw verified payload, not the zod-narrowed
+      // `claims` (which strips unknown keys including `nonce`).
+      const tokenNonce = (payload as { nonce?: unknown }).nonce;
+      if (typeof tokenNonce !== "string" || tokenNonce !== nonce) {
+        throw new IdPTokenRevoked();
+      }
+    }
 
     // Email is OPTIONAL in OIDC core (some providers require explicit
     // "email" scope; some IdPs like Azure AD ship `email` only when

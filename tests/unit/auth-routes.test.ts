@@ -103,7 +103,8 @@ beforeEach(() => {
       org_id          TEXT,
       created_at      INTEGER NOT NULL,
       expires_at      INTEGER NOT NULL,
-      consumed_at     INTEGER
+      consumed_at     INTEGER,
+      nonce           TEXT
     );
   `);
   const clock = new FakeClock();
