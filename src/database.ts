@@ -693,6 +693,9 @@ export function initDatabase(dataDir: string): void {
       consumed_at     INTEGER
     )`);
     db.exec("CREATE INDEX IF NOT EXISTS idx_oauth_state_expires ON oauth_state(expires_at)");
+    // T55 (v0.10.1): OIDC nonce. Optional; only OIDCProvider stores a
+    // value here. Nullable so existing rows + non-OIDC flows keep NULL.
+    try { db.exec("ALTER TABLE oauth_state ADD COLUMN nonce TEXT"); } catch { /* already exists */ }
 
     // --- refresh_tokens: family lineage + reuse detection (Q7 V4 FIX 6) -------
     try { db.exec("ALTER TABLE refresh_tokens ADD COLUMN family_id TEXT"); } catch { /* already exists */ }

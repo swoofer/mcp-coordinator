@@ -165,13 +165,13 @@ describe("v0.7 → v0.8 migration", () => {
     expect(cols.map((c) => c.name)).toContain("allowlist_github_org");
   });
 
-  it("oauth_state table created with required schema", () => {
+  it("oauth_state table created with required schema (+ v0.10.1 nonce)", () => {
     const db = getDb();
     const cols = db.prepare("PRAGMA table_info(oauth_state)").all() as { name: string; pk: number }[];
     const names = cols.map((c) => c.name).sort();
     expect(names).toEqual([
       "code_verifier", "consumed_at", "created_at", "expires_at",
-      "org_id", "provider", "redirect_uri", "state",
+      "nonce", "org_id", "provider", "redirect_uri", "state",
     ]);
     // state is the PK
     expect(cols.find((c) => c.name === "state")?.pk).toBe(1);

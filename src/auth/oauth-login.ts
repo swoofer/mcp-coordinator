@@ -115,6 +115,13 @@ export async function handleAuthLogin(
   const codeVerifier = generateVerifier();
   const codeChallenge = computeChallenge(codeVerifier);
 
+  // T55 (v0.10.1): OIDC nonce. 256-bit base64url random; bound to
+  // oauth_state and verified against id_token.nonce on callback.
+  // Generated unconditionally so providers that don't use OIDC just
+  // ignore the value; OIDCProvider passes it through to its
+  // authorize URL and verifies it in exchangeCode.
+  const nonce = crypto.randomBytes(32).toString("base64url");
+
   // Persist state + verifier. Normalize trailing slash on publicUrl so
   // the redirect_uri sent to the IdP is canonical (GitHub/Google match exactly).
   const redirectUri = `${ctx.publicUrl.replace(/\/$/, "")}/api/auth/oauth/callback`;
@@ -124,6 +131,7 @@ export async function handleAuthLogin(
     provider.name,
     redirectUri,
     codeVerifier,
+    nonce,
   );
 
   // HMAC-bound state cookie (V4 FIX 19). The callback recomputes this
@@ -136,8 +144,8 @@ export async function handleAuthLogin(
   });
   setCookies(res, [stateCookie]);
 
-  // Build IdP authorize URL with state + S256 challenge.
-  const authUrl = await provider.buildAuthUrl(state, redirectUri, codeChallenge);
+  // Build IdP authorize URL with state + S256 challenge + nonce.
+  const authUrl = await provider.buildAuthUrl(state, redirectUri, codeChallenge, nonce);
 
   res.writeHead(302, { Location: authUrl });
   res.end();

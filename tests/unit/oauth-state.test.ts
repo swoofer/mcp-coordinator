@@ -36,7 +36,8 @@ beforeEach(() => {
       org_id          TEXT,
       created_at      INTEGER NOT NULL,
       expires_at      INTEGER NOT NULL,
-      consumed_at     INTEGER
+      consumed_at     INTEGER,
+      nonce           TEXT
     );
     CREATE INDEX idx_oauth_state_expires ON oauth_state(expires_at);
   `);
@@ -111,6 +112,38 @@ describe("createOAuthStateWithVerifier", () => {
     expect(row.expires_at).toBe(1_000_600);
     expect(row.consumed_at).toBeNull();
   });
+
+  it("T55: stores the supplied nonce (OIDC) and consumeOAuthState returns it", () => {
+    const nonceValue = "n-7b3f0a8e-deterministic";
+    const { state } = createOAuthStateWithVerifier(
+      db,
+      clock,
+      "oidc",
+      "https://app/cb",
+      "verifier-x",
+      nonceValue,
+    );
+    const consumed = consumeOAuthState(db, clock, state);
+    expect(consumed).toEqual({
+      code_verifier: "verifier-x",
+      redirect_uri: "https://app/cb",
+      provider: "oidc",
+      nonce: nonceValue,
+    });
+  });
+
+  it("T55: nonce is nullable when caller omits it", () => {
+    const { state } = createOAuthStateWithVerifier(
+      db,
+      clock,
+      "github",
+      "https://app/cb",
+      "verifier-x",
+      // nonce intentionally omitted
+    );
+    const consumed = consumeOAuthState(db, clock, state);
+    expect(consumed?.nonce).toBeNull();
+  });
 });
 
 describe("consumeOAuthState", () => {
@@ -122,6 +155,8 @@ describe("consumeOAuthState", () => {
       code_verifier,
       redirect_uri: "https://app/cb",
       provider: "github",
+      // T55: createOAuthState (no-nonce overload) leaves nonce NULL.
+      nonce: null,
     });
     const row = db.prepare("SELECT consumed_at FROM oauth_state WHERE state = ?").get(state) as { consumed_at: number };
     expect(row.consumed_at).toBe(1_000_005);

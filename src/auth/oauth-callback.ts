@@ -164,6 +164,7 @@ export async function handleOAuthCallback(
       code,
       row.redirect_uri,
       row.code_verifier,
+      row.nonce,
     );
   } catch (err) {
     if (err instanceof IdPTokenRevoked) {
