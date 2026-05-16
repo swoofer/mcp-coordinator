@@ -191,328 +191,6 @@ Scores are categorized into three outcomes:
 
 ---
 
-## What's New in v0.8.0 (Phase 2 OAuth)
-
-Released 2026-05-14. Feature-flagged behind `COORDINATOR_OAUTH_ENABLED=true`. Phase 1 deployments are byte-identical when the flag is unset.
-
-### A. OAuth 2.1 + device flow (RFC 6749 + RFC 8628)
-
-- `GET /auth/login` initiates the browser flow with PKCE S256 + HMAC-bound state cookie
-- `GET /api/auth/oauth/callback` performs state CAS + provider mix-up defense + IdP code exchange + user provisioning inside a transaction
-- `POST /api/auth/oauth/token` unified grant endpoint (authorization_code, refresh_token, device_code per RFC 8628)
-- `POST /api/auth/oauth/device_authorization` for CLI / TV / IoT device flow
-- 5 HTML pages: /auth/login, /auth/device, /auth/device/confirm, /auth/device/approve POST, /auth/success
-- See [`docs/openapi.yaml`](./docs/openapi.yaml) for the full API spec
-
-### B. Refresh-token rotation with stolen-token detection (V3 §B-NEW-2)
-
-- Each refresh issues a new family member (`family_id`) with `parent_jti` lineage
-- 10-second grace window allows legitimate retries with matching fingerprint
-- Mismatched fingerprint within grace → atomic `replay_count++`; family revoked at threshold 3
-- Hard reuse (rotation > 10s old) → immediate family revoke + `auth.refresh.chain_revoked` Tier 1 audit
-
-### C. Cookie sessions (Scenario 5)
-
-- `__Host-coordinator_session` cookie + `__Host-coordinator_csrf` (double-submit pattern)
-- `authenticateRequest` now handles 5 scenarios: legacy fallback, no-auth, v0.6 legacy JWT reject, Bearer JWT, cookie session
-- `POST /api/auth/logout` (revoke current refresh), `/logout-all` (bump `token_epoch` → all sessions invalidated instantly), `/revoke` (RFC 7009)
-- `GET /api/auth/me` userinfo helper
-
-### D. Service tokens (V4 §5.5)
-
-- Admin-issued long-lived JWTs for CI/CD: `mcp-coordinator service-token issue --user X --org Y --scope read --ttl 30d --reason "..."`
-- 90d hardcoded TTL ceiling; reason ≥10 chars required; admin-only issuance
-- `family_id` format `service:<uuid>` distinguishes from user refresh families
-- DB-lookup verification on every request (admin force-revoke is immediate)
-- `list` + `revoke` CLI verbs; `auth.service_token.{issued,revoked,used}` audit events
-
-### E. Audit pipeline (two-tier durability per V3 NR13)
-
-- 35 audit event types catalogued in `src/security/audit-events.ts`
-- Tier 1 (sync direct INSERT, never drop): security-critical events (refresh.chain_revoked, login.locked, token.revoked, admin.bootstrapped, ...)
-- Tier 2 (async batched queue, may drop under pressure): high-volume operational (login.success, refresh.rotated, device.code_issued, ...)
-- AsyncLocalStorage-based actor + request_id propagation — no explicit threading
-- Audit queue capacity 10K with backpressure → `auth.shutdown.audit_loss` row on drop
-
-### F. Operational
-
-- `bootPhase2` composes ServerContext at boot: env validation, HKDF key derivation, restore detection (NR12), feature-flag gate
-- Sweeper prunes 6 tables on 60s cadence (oauth_state, device_auth_requests, refresh_tokens × 2 retention buckets, audit_log × 2 tiers) with adaptive chained passes + 5-failure circuit breaker
-- Rate limiter + login lockout (5 failures / 15min → 15min lockout per V3 §B-NEW-8) in-memory token bucket
-- IdP membership cache with 60s positive TTL + 10min stale-on-error window (V3 §B-NEW-5)
-
-### G. Observability
-
-- 29 new Prometheus metrics in `src/observability/metrics.ts` (auth activity, refresh chain, device flow, IdP, audit queue, sweeper, rate limit, request duration)
-- `/metrics/auth` Prometheus scrape endpoint (localhost-only + optional Bearer auth)
-- `/healthz` (liveness) + `/health/ready` (readiness — DB + sweeper circuit + audit queue depth + draining flag)
-- Pino logger with 16 redact paths per V4 §11.3
-- Grafana dashboard JSON ([`docs/ops/dashboards/coordinator.json`](./docs/ops/dashboards/coordinator.json)) + Prometheus alert rules YAML ([`docs/ops/alerts/coordinator-alerts.yaml`](./docs/ops/alerts/coordinator-alerts.yaml))
-
-### H. CLI
-
-- `mcp-coordinator init phase2` interactive wizard for first-time Phase 2 setup
-- `mcp-coordinator doctor --phase2` runs 8 Phase 2 health probes (DB schema version, JWT_SECRET entropy, discovery doc reachability, etc.)
-- `mcp-coordinator service-token {issue,list,revoke}` for admin token management
-
-### I. Testing
-
-- **1555 tests passing** across 116 test files (up from 392 at v0.5.0)
-- 100% branch coverage enforced via vitest per-file thresholds on every security-critical module (csrf, token-epoch, oauth-state, jwt-mint, membership-cache, refresh-rotation, service-tokens, github provider, etc.)
-- Playwright E2E suite (`tests/e2e/`) — 5 scenarios in ~12s, zero flakes over 5 runs
-- D1-D10 cross-cutting test matrix (`tests/integration/d1-d10-matrix.test.ts`) — 20 cases proving component-interaction seams
-- Phase 1 backcompat suite (`tests/backcompat/`) — 31 cases proving `COORDINATOR_OAUTH_ENABLED` unset = byte-identical Phase 1
-- Cross-tenant isolation suite — 22 cases proving multi-tenant data boundary
-
-### J. SDK (`sdk/`)
-
-- TypeScript client `@mcp-coordinator/sdk-js` in repo workspace (not yet published)
-- `McpCoordinatorClient` with verbs: `whoami`, `logout`, `logoutAll`, `revoke`, `refresh`, `deviceCodeStart`, `deviceCodePoll`
-- 14 typed error subclasses mapping to the OpenAPI error envelope
-- `FileTokenStore` persists tokens to `~/.mcp-coordinator/tokens.json` with `chmod 0600` (POSIX) + atomic write-rename
-- `ProactiveRefresh` schedules refresh at `accessExpiresAt - 120s ± 30s jitter`
-- Single-flight refresh lock via atomic O_EXCL file lock (multi-process CLI safety)
-- See [`sdk/README.md`](./sdk/README.md) for usage
-
-### Documentation
-
-23 new doc files under `docs/` and `examples/`:
-
-- Operator: [`docs/onboarding-self-host.md`](./docs/onboarding-self-host.md), [`docs/ops/upgrade-phase1-to-phase2.md`](./docs/ops/upgrade-phase1-to-phase2.md), 8 ops runbooks
-- Security: [`docs/security/threat-model.md`](./docs/security/threat-model.md), 3 incident runbooks, [`SECURITY.md`](./SECURITY.md), `.well-known/security.txt`
-- Compliance: [`docs/gdpr.md`](./docs/gdpr.md), [`docs/idp-providers.md`](./docs/idp-providers.md)
-- API: [`docs/openapi.yaml`](./docs/openapi.yaml) (OpenAPI 3.1, 17 endpoints, 13 schemas)
-- Examples: `examples/{docker-compose,nginx-reverse-proxy,ghes-config,custom-idp-provider}/`
-
-### v0.8.1 follow-up (2026-05-15)
-
-- JWT key rotation overlap (prev-secret support per [`docs/ops/key-rotation.md`](./docs/ops/key-rotation.md))
-- GHES env vars wiring (`COORDINATOR_GITHUB_AUTH_BASE_URL` + `_API_BASE_URL`)
-
----
-
-## What's New in v0.9.0 (Multi-IdP)
-
-Released 2026-05-15. Single-provider GitHub-only deployments stay behaviour-compatible — every change is opt-in via new env vars or a no-op when only one IdP is registered.
-
-### A. Provider registry
-
-- `ProviderRegistry` class attached to `AuthHandlerContext.providers` (T45). First registration becomes the implicit default.
-- Every OAuth handler resolves the IdP through `ctx.providers.get(...)` rather than the removed `ctx.githubProvider` alias (T46). Refresh-rotation reads `users.idp_provider` so multi-provider users get re-validated against the IdP they actually signed in with.
-
-### B. Google OAuth / OIDC
-
-- First-class `GoogleProvider` (T47) with **mandatory** id_token signature verification: jose `createRemoteJWKSet` + RS256 + `iss=https://accounts.google.com` + `aud=client_id`.
-- Identity claims read straight from the verified id_token (no extra `/userinfo` round-trip).
-- Workspace `hd` claim surfaces as `idp_org_id` for hd-based allowlist deployments.
-- Opt-in via `COORDINATOR_GOOGLE_CLIENT_ID` + `COORDINATOR_GOOGLE_CLIENT_SECRET` (both required or neither — fail-closed at boot).
-
-### C. Generic OpenID Connect
-
-- `OIDCProvider` (T48) for Okta / Auth0 / Azure AD / Keycloak / Authentik / any conformant OIDC issuer.
-- Auto-discovers `authorization_endpoint`, `token_endpoint`, and `jwks_uri` from `<issuer>/.well-known/openid-configuration`.
-- Discovery doc's own `issuer` field is cross-checked against config — catches redirect attacks on the discovery URL.
-- Email-claim fallback chain: `email` → `preferred_username` → `sub` (OIDC core makes `email` optional).
-- Opt-in via `COORDINATOR_OIDC_ISSUER_URL` + `COORDINATOR_OIDC_CLIENT_ID` + `COORDINATOR_OIDC_CLIENT_SECRET` (all three required together).
-
-### D. Login picker UI
-
-- `GET /auth/login` renders an HTML picker when `ctx.providers.size() > 1` (T49). Each button is a top-level GET to `/auth/login?provider=<name>`; the underlying PKCE + state-cookie + 302 flow is unchanged.
-- Friendly built-in labels for `github` / `google` / `oidc`; title-cased fallback for custom provider names.
-- Unknown `?provider=X` → 400 `UNKNOWN_PROVIDER` (no silent fallback to the default).
-- Single-provider deployments skip the picker entirely.
-
-### Breaking changes (internal embedding APIs)
-
-| Surface | Change | Migration |
-|---------|--------|-----------|
-| `AuthHandlerContext.githubProvider` | Removed | Use `ctx.providers.get("github")` or `ctx.providers.getDefault()` |
-| `IdPProvider.buildAuthUrl` return type | `string` → `string \| Promise<string>` | `await` the result; built-in providers stay synchronous |
-| `provisionUser(...)` | Required 6th arg `providerName: string` | Pass `"github"` for existing call sites; the resolved `provider.name` for new ones |
-| `auth.state.mixup` audit metadata | `{ expected_provider: "github" }` → `{ registered_providers: string[] }` | Log-pipeline consumers parsing `expected_provider` need to update |
-
-### Testing
-
-- **1623 tests** passing (+61 vs v0.8.1). 100% branch coverage on `auth/providers/{registry,github,google,oidc}.ts`.
-- 16 GoogleProvider tests covering happy path, id_token verification (wrong issuer / audience / expired / unknown kid), JWKS unreachable transient errors, token-endpoint 401 / 502 / 4xx mapping.
-- 21 OIDCProvider tests covering discovery-URL validation, issuer cross-check, the same id_token verification matrix, and email-claim fallback chain.
-- 8 login-picker rendering tests + 6 picker integration tests (1 vs N provider behaviour, unknown-name 400, rate-limit, state row provider field).
-
-### v0.9.1 follow-up (2026-05-15)
-
-Audit log tamper-evidence. New `prev_hash` + `row_hash` columns on `audit_log` build a SHA-256 chain over every row written via `audit()`. `scripts/verify-audit-chain.ts` walks the chain and reports tampering; `docs/ops/audit-integrity.md` is the SOC 2 Type II operator runbook covering the external tip-attestation workflow that closes the deletion-detection gap.
-
-### v0.9.2 follow-up (2026-05-15)
-
-`mcp-coordinator rotate-jwt-secret` CLI helper generates a fresh signing secret with entropy validation + prints the operator workflow. `docs/ops/auto-rotation.md` covers systemd-timer + Vault and Kubernetes CronJob automation patterns around the helper.
-
----
-
-## What's New in v0.10.0 (GitHub App)
-
-Released 2026-05-16. Adds a `GitHubAppProvider` sibling to the existing OAuth App `GitHubProvider`, with built-in user-to-server token refresh handling. Existing OAuth App and Google / OIDC deployments stay behaviour-compatible; the new provider is opt-in via env vars.
-
-### Why GitHub App on top of OAuth App?
-
-- **Fine-grained permissions** -- GitHub Apps declare per-resource permissions, OAuth App scopes are coarser
-- **Installation isolation** -- the App's footprint IS the allowlist; uninstalling the App from an org is an immediate hard revoke
-- **Short-lived user-to-server tokens** -- 8h TTL with auto-rotating refresh tokens vs OAuth App's effectively permanent tokens
-
-### Configure
-
-```bash
-export COORDINATOR_GITHUB_APP_CLIENT_ID=Iv1.0123456789abcdef
-export COORDINATOR_GITHUB_APP_CLIENT_SECRET=<from-app-settings>
-# Optional: registry key (default "github-app")
-export COORDINATOR_GITHUB_APP_NAME=acme-app
-```
-
-Both `_ID` + `_SECRET` are required together; partial config fails closed at boot. Co-exists with `COORDINATOR_GITHUB_CLIENT_ID` + `_SECRET` (OAuth App) -- the picker UI on `/auth/login` shows both entry points when both providers are registered. See [`docs/idp-providers.md`](./docs/idp-providers.md#configuring-github-app) for the full setup walkthrough.
-
-### Refresh-token recovery
-
-On `IdPTokenRevoked` from `/user/orgs` at refresh-rotation time, the coordinator calls `GitHubAppProvider.refreshIdpToken(refresh_token)` to mint a fresh access token + rotated refresh token, persists both, and retries the membership check. A Tier 2 `auth.idp.token_refreshed` audit row captures the recovery. If refresh fails too -- existing Tier 1 `auth.idp.token_revoked` + 401 path.
-
-### Out of scope for v0.10.0
-
-- App-as-itself installation token flow for membership queries (v0.10.x exploration; requires PEM private key provisioning)
-- Webhook-driven membership cache invalidation (v1.0)
-- IdP refresh-token replay detection (the coordinator's reuse logic covers ITS OWN refresh family only)
-
-### Testing
-
-- **1700 tests passing** (+45 vs v0.9.2)
-- 19 `GitHubAppProvider` unit tests, 5 refresh-rotation recovery tests, 7 boot wiring tests, plus the shared HTTP transport refactor exercised by the 35 existing OAuth App tests
-
-### v0.10.1 follow-up (2026-05-16) — OIDC nonce verification
-
-OpenID Connect Core 1.0 §3.1.2.1 nonce verification. `OIDCProvider` generates a 256-bit nonce per authorize request, persists it in `oauth_state`, and verifies the returned `id_token`'s `nonce` claim against it. Guards against `id_token` replay across authorize requests issued for the same client. New nullable `oauth_state.nonce` column (idempotent migration). 1708 tests; +8 vs v0.10.0. Other providers unaffected; CLI auth-code grant path skips the check (PKCE + state binding still apply).
-
-### v0.10.2 follow-up (2026-05-16) — Google Workspace `hd` allowlist
-
-New `orgs.allowlist_idp_org_id` column + per-provider `IdPProvider.allowlistStrategy` field. `GoogleProvider` switches to the `"idp_org_id"` strategy and matches the user's Workspace `hd` (hosted domain) claim against the new column. The previous behaviour (where Google sign-in didn't work end-to-end because `listMemberships` threw) is now fixed. GitHub OAuth App + GitHub App keep the existing `"memberships"` strategy. Allowlist is now per-provider: 4 strategies total — `memberships` / `idp_org_id` / `id_token_groups` / `none`. 1714 tests; +6.
-
-### v0.10.3 follow-up (2026-05-16) — GitHub App installation-footprint allowlist
-
-`GitHubAppProvider` gains opt-in `COORDINATOR_GITHUB_APP_ALLOWLIST_SOURCE=user_installations` mode. Calls `GET /user/installations` instead of `/user/orgs` and matches against `orgs.allowlist_github_org`. The App's installation footprint IS the allowlist — uninstalling the App from an org is an immediate hard revoke (within 8h of next refresh-rotation) with no coordinator config change required. No App RSA private key needed; the user's user-to-server token is sufficient. Default remains `user_orgs` (mirrors OAuth App behaviour). 1724 tests; +10.
-
-### v0.10.4 follow-up (2026-05-16) — OIDC group-claim allowlist
-
-`OIDCProvider` learns to read group / role memberships from a configurable id_token claim path. New `COORDINATOR_OIDC_GROUPS_CLAIM` env var (typical values: `groups` for Okta/Auth0/Authentik, `realm_access.roles` for Keycloak, `roles` for Azure AD App Roles). When set, `allowlistStrategy` switches from `"none"` (deny-by-default) to `"id_token_groups"`; the callback matches `IdpUserInfo.groups` (lowercased) against `orgs.allowlist_github_org`. Misconfig (wrong path, non-array value, non-string entries) fails closed. Groups captured at sign-in only — refresh-rotation does not re-fetch. 1740 tests; +16.
-
----
-
-## What's New in v0.5.0
-
-Released 2026-05-10.
-
-### A. In-flight tracking (server-anchored)
-
-- `WorkingFilesTracker` ([`src/working-files-tracker.ts`](src/working-files-tracker.ts)) with TTL sweeper (default 30 min claim, 60 s sweep tick).
-- `POST /api/working-files/start` and `POST /api/working-files/stop` REST endpoints.
-- essaim hooks: `scripts/pre_track_activity.sh` + extended `track_activity.sh` via PreToolUse / PostToolUse pipeline.
-
-### B. Symbol-aware annotations (tree-sitter)
-
-- 15 languages via `optionalDependencies`: TypeScript, TSX, JavaScript, JSX, Python, Go, Rust, Java, C#, C, C++, Ruby, PHP, Kotlin, Swift, Bash.
-- Strategy registry in [`src/tree-sitter-extractor.ts`](src/tree-sitter-extractor.ts) — adding a 16th language is ~5 LOC.
-- `POST /api/file-activity` now accepts an optional `content` field (capped 256 KB) for server-side symbol extraction.
-- New DB columns: `file_activity.symbols_touched` (JSON) + `content_hash`.
-
-### C. Layer 0.5 annotation — disjoint-symbol enrichment
-
-- Same file with disjoint symbols: score stays 100, reason text enriched with `disjoint symbols: you=[X], them=[Y] — verify shared module state`.
-- New optional `target_symbols?: string[]` on `announce_work` (cap 200 elements, max 256 chars each).
-
-### D. Layer 4 — git co-change scoring
-
-- [`src/git-cochange-builder.ts`](src/git-cochange-builder.ts): bounded `git log` (max 2000 commits, `--since=7d` default), 5 s timeout, denylist (lockfiles, dist, snapshots), dynamic 40% predictor cap.
-- Score 60 if co-change ratio > 0.5, score 40 if > 0.2; canonical-pair lookup.
-- Background scheduler with 5-min retry on timeout, 30-min refresh on success.
-- Requires `COORDINATOR_REPO_ROOT` to enable + `git` on PATH.
-
-### E. Dashboard "Conflict signals" panel
-
-- New panel in `dashboard/public/index.html` backed by `GET /api/scoring-stats?since=<dur>`.
-- Populated by `runCommonAnnounceFlow` writing per-firing rows to `layer_firings` table.
-
-### Hardening & observability
-
-- `parseBody` 1 MB cap (HTTP 413; env: `COORDINATOR_MAX_BODY_BYTES`).
-- `PRAGMA user_version = 6` schema marker; daemon refuses to start on a newer DB (downgrade guard).
-- [`src/path-normalize.ts`](src/path-normalize.ts) — symmetric Windows/POSIX path canonicalization.
-- 5 new Prometheus metrics: `mcp_coordinator_working_files_active` (gauge), `mcp_coordinator_working_files_starts_total{result}`, `mcp_coordinator_tree_sitter_parse_failures_total`, `mcp_coordinator_git_cochange_builds_total{outcome}`, `mcp_coordinator_git_cochange_pairs_total`.
-- `/readyz` extended with `tree_sitter` and `git_cochange` blocks (both `optional: true`, non-gating).
-
-### Bundled v0.4.1 hotfix
-
-`/livez`, `/readyz`, and `/metrics` were wired in v0.4.0 but not routed — fixed.
-
----
-
-## Roadmap
-
-### v0.8.0 (shipped 2026-05-14)
-
-Phase 2 OAuth 2.1 + RFC 8628 device flow + cookie sessions + service tokens + audit pipeline + sweeper + 29 Prometheus metrics + reference SDK. Feature-flagged behind `COORDINATOR_OAUTH_ENABLED=true`; Phase 1 deployments byte-identical when unset. 1555 tests passing across 116 files.
-
-See [CHANGELOG.md](./CHANGELOG.md) for the full list.
-
-### v0.8.1 (shipped 2026-05-15)
-
-JWT key rotation overlap (prev-secret support) + GHES env vars wiring.
-
-### v0.9.0 (shipped 2026-05-15)
-
-Multi-IdP: `ProviderRegistry` class + first-class `GoogleProvider` (id_token verification with JWKS) + generic `OIDCProvider` (discovery + JWKS) for Okta / Auth0 / Azure AD / Keycloak / Authentik + `/auth/login` picker UI when 2+ providers are registered. Single-provider deployments stay behaviour-compatible. 1623 tests.
-
-### v0.9.1 (shipped 2026-05-15)
-
-Audit log tamper-evidence (SHA-256 hash chain on every `audit_log` row + `verify-audit-chain.ts` operator script + SOC 2 Type II runbook).
-
-### v0.9.2 (shipped 2026-05-15)
-
-`mcp-coordinator rotate-jwt-secret` CLI helper + auto-rotation operator runbook.
-
-### v0.10.0 (shipped 2026-05-16)
-
-`GitHubAppProvider` sibling to the OAuth App provider, with built-in user-to-server token refresh handling. New env vars `COORDINATOR_GITHUB_APP_CLIENT_ID` / `_SECRET` / `_NAME`. Co-exists with OAuth App. 1700 tests.
-
-### v0.10.1 (shipped 2026-05-16)
-
-OIDC `nonce` claim verification (OpenID Connect Core 1.0 §3.1.2.1). `OIDCProvider` now generates a 256-bit nonce per authorize request, persists it in `oauth_state`, and verifies the returned `id_token`'s `nonce` claim against it. Guards against id_token replay across authorize requests. Other providers unaffected.
-
-### v0.10.2 (shipped 2026-05-16)
-
-Google Workspace allowlist. New `orgs.allowlist_idp_org_id` column + per-provider `IdPProvider.allowlistStrategy` field. `GoogleProvider` switches to the `"idp_org_id"` strategy and matches the user's `hd` (hosted domain) claim against the new column. GitHub OAuth App + GitHub App keep the existing memberships strategy.
-
-### v0.10.3 (shipped 2026-05-16)
-
-GitHub App installation-footprint allowlist. `GitHubAppProvider` gains an opt-in `allowlistSource="user_installations"` mode (via `COORDINATOR_GITHUB_APP_ALLOWLIST_SOURCE`) where the org allowlist is driven by the App's installation footprint via `GET /user/installations` rather than the user's GitHub-org memberships. Uninstalling the App from an org becomes a hard revoke. No App RSA private key needed.
-
-### v0.10.4 (shipped 2026-05-16)
-
-OIDC group-claim allowlist. `OIDCProvider` learns to read group / role memberships from a configurable id_token claim path (`COORDINATOR_OIDC_GROUPS_CLAIM` — `groups` for Okta/Auth0/Authentik, `realm_access.roles` for Keycloak). When set, `allowlistStrategy` switches to `id_token_groups` and matches against `orgs.allowlist_github_org`. Misconfig fails closed.
-
-### v0.5.0 (shipped 2026-05-10)
-
-Working-files in-flight tracking, tree-sitter symbol annotations across 15 languages, git co-change Layer 4 scoring, dashboard Conflict signals panel, schema downgrade guard, 5 new Prometheus metrics.
-
-### Planned
-
-- **v0.10.x** — Encryption-at-rest for `users.idp_refresh_token` + `users.idp_access_token` (currently plaintext); admin web UI for org allowlist management.
-- **v0.11** — Postgres adapter for regulated multi-instance workloads (Phase 4; see [`docs/superpowers/specs/2026-05-16-postgres-adapter-design.md`](./docs/superpowers/specs/2026-05-16-postgres-adapter-design.md) for the honest scope assessment).
-- **v1.0** — Phase 5 multi-instance (Redis pub/sub for membership cache invalidation + token_epoch reads + rate-limit + sweeper leader election).
-
-### Open items / known issues
-
-- T40c SDK enhancements: keytar keychain integration, Windows DPAPI for token file, named-profile TOML config, discovery doc 24h cache
-- T33 perf bench + chaos suite (next sprint)
-- Encryption-at-rest (v0.7.5 deferred) — SQLCipher whole-DB encryption
-- v0.5.0 dashboard Conflict signals widget shows aggregated counts only; per-layer outcome breakdown (`auto_resolved`, `consensus`, `timeout`, `cancelled`) currently returns zeros — the `layer_firings` table is not yet joined against the `events` table (decorative, not blocking).
-- CHANGELOG has both an auto-generated `## [0.5.0]` block (from release-please) and a stale manual `## [0.6.0]` heading from the original plan — cosmetic, will be reconciled in a doc-only commit.
-
----
 
 ## MCP Tools
 
@@ -919,6 +597,188 @@ This pattern works well alongside `essaim`, which uses Strategy A (in-process) a
 
 ---
 
+## Authentication
+
+The coordinator runs in one of three modes, selected by env-var configuration. **Single-user / dev local stays zero-config**; multi-user deployments opt in to Phase 2 OAuth via a single feature flag.
+
+### Mode 1 — Open (default, no auth)
+
+```bash
+mcp-coordinator server start
+```
+
+No env vars, no setup, no `/auth/login`. All requests get synthetic legacy claims (`sub="legacy"`, `user_id="legacy"`, `org="default"`, `role="admin"`). MCP tools work unchanged. This is byte-identical to v0.7.x; a 31-case `tests/backcompat/` suite proves the non-regression on every release.
+
+### Mode 2 — JWT (Phase 1, v0.7.x)
+
+Opt-in symmetric JWTs (HS256 via [jose](https://github.com/panva/jose)) without OAuth. Agents self-register against a shared secret; admins revoke via a separate secret.
+
+```bash
+export COORDINATOR_AUTH_ENABLED=true
+export COORDINATOR_JWT_SECRET="$(openssl rand -base64 32)"
+export COORDINATOR_REGISTRATION_SECRET="team-shared-secret"
+export COORDINATOR_ADMIN_SECRET="admin-only-secret"
+```
+
+```bash
+# Agent self-register
+curl -X POST http://localhost:3100/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"agent_name":"my-agent","registration_secret":"team-shared-secret"}'
+# → { agent_id, token, expires_at, role }
+
+# Refresh
+curl -X POST http://localhost:3100/api/auth/refresh \
+  -H "Authorization: Bearer <current-token>"
+
+# Admin revoke
+curl -X POST http://localhost:3100/api/auth/revoke \
+  -H "Authorization: Bearer <admin-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"agent_id":"agent-to-revoke"}'
+```
+
+Exempt routes: `GET /health`, `POST /api/auth/register`, `POST /api/auth/refresh`, `GET /api/events` (SSE).
+
+### Mode 3 — Phase 2 OAuth (v0.8.0+, the modern path)
+
+Full OAuth 2.1 + RFC 8628 device flow + cookie sessions + service tokens + audit-chain tamper-evidence + multi-IdP picker. Activate by setting `COORDINATOR_OAUTH_ENABLED=true`; Phase 1 deployments are unaffected when the flag is unset.
+
+#### Quick start (single IdP — GitHub OAuth App)
+
+```bash
+export COORDINATOR_OAUTH_ENABLED=true
+export COORDINATOR_JWT_SECRET=$(openssl rand -base64 32)
+export COORDINATOR_PUBLIC_URL=https://coordinator.example.com
+
+# GitHub OAuth App
+export COORDINATOR_GITHUB_CLIENT_ID=<from-github-oauth-app>
+export COORDINATOR_GITHUB_CLIENT_SECRET=<from-github-oauth-app>
+export COORDINATOR_GITHUB_ORG=<your-org-slug>
+
+mcp-coordinator init phase2     # interactive wizard
+mcp-coordinator server start
+```
+
+The first user to sign in via `${PUBLIC_URL}/auth/login` becomes the bootstrap admin atomically. Full walkthrough: [`docs/onboarding-self-host.md`](./docs/onboarding-self-host.md).
+
+#### Multi-IdP matrix (v0.9.0 → v0.10.4)
+
+Configure any subset of the 4 providers simultaneously — `/auth/login` automatically renders a picker page when `>=2` are registered. Each provider can be opted in / out independently; `COORDINATOR_GITHUB_CLIENT_ID` is the only one always required.
+
+| Provider | Required env vars | Allowlist strategy | Allowlist column |
+|----------|-------------------|--------------------|------------------|
+| **GitHub OAuth App** | `COORDINATOR_GITHUB_CLIENT_ID` + `_SECRET` + `COORDINATOR_GITHUB_ORG` | `memberships` (default) | `orgs.allowlist_github_org` |
+| **GitHub App** (v0.10.0+) | `COORDINATOR_GITHUB_APP_CLIENT_ID` + `_SECRET` | `memberships` (default) OR `memberships` via installation-footprint when `COORDINATOR_GITHUB_APP_ALLOWLIST_SOURCE=user_installations` (v0.10.3) | `orgs.allowlist_github_org` |
+| **Google** (v0.9.0+) | `COORDINATOR_GOOGLE_CLIENT_ID` + `_SECRET` | `idp_org_id` (v0.10.2; Workspace `hd` claim) | `orgs.allowlist_idp_org_id` |
+| **Generic OIDC** (v0.9.0+) | `COORDINATOR_OIDC_ISSUER_URL` + `_CLIENT_ID` + `_CLIENT_SECRET` | `none` by default; switches to `id_token_groups` when `COORDINATOR_OIDC_GROUPS_CLAIM` is set (v0.10.4) | `orgs.allowlist_github_org` |
+
+Setting partial credentials for any provider fails closed at boot (BootValidationError). Detailed setup per provider: [`docs/idp-providers.md`](./docs/idp-providers.md).
+
+#### Allowlist strategy semantics
+
+All four strategies are case-insensitive string matches against the relevant `orgs` column. Tie-break is alphabetical (deterministic per V4 FIX 22).
+
+- **`memberships`** — Provider's `listMemberships(accessToken)` returns an array of strings, each matched against `orgs.allowlist_github_org`. Used by GitHub OAuth App (`/user/orgs` → GitHub orgs) and GitHub App (`/user/orgs` OR `/user/installations` per `_ALLOWLIST_SOURCE`).
+- **`idp_org_id`** — `IdpUserInfo.idp_org_id` matched directly against `orgs.allowlist_idp_org_id`. Used by Google (the `hd` Workspace claim).
+- **`id_token_groups`** — Groups extracted from the id_token at a configurable dot-notation path (`COORDINATOR_OIDC_GROUPS_CLAIM`, typical values: `groups` / `realm_access.roles` / `roles`). Used by OIDC.
+- **`none`** — Deny by default. Used by OIDC when no groups claim is configured. Operators wanting a custom OIDC allowlist vendor a subclass.
+
+Refresh-rotation re-checks the IdP-side allowlist only for `memberships` providers. `idp_org_id` and `id_token_groups` strategies are sign-in-only — operator-side revocation requires `token_epoch` bump.
+
+#### Sample `orgs` provisioning
+
+```sql
+-- GitHub OAuth App + GitHub App (memberships): use allowlist_github_org
+INSERT INTO orgs (id, name, allowlist_github_org)
+VALUES ('org-acme-gh', 'Acme GitHub', 'acme');
+
+-- Google Workspace (idp_org_id): use allowlist_idp_org_id
+INSERT INTO orgs (id, name, allowlist_idp_org_id)
+VALUES ('org-acme-google', 'Acme Workspace', 'acme.com');
+
+-- OIDC with groups claim (id_token_groups): reuses allowlist_github_org
+INSERT INTO orgs (id, name, allowlist_github_org)
+VALUES ('org-acme-okta', 'Acme via Okta', 'engineers');
+```
+
+A user signs in once per provider; their `users.idp_provider` stays sticky. Identities are not auto-merged across providers — a one-shot SQL reconciliation is needed if you want to consolidate users who signed in via multiple paths.
+
+#### Refresh-token recovery (GitHub App, v0.10.0+)
+
+GitHub App user-to-server tokens expire after 8h. On a 401 at refresh-rotation time, the coordinator automatically calls `refreshIdpToken(refresh_token)` to mint a fresh access+refresh pair, persists both to `users.idp_access_token` / `users.idp_refresh_token`, emits a Tier 2 `auth.idp.token_refreshed` audit, and retries the membership check. Only triggers for providers that implement `refreshIdpToken` (currently `GitHubAppProvider`).
+
+#### Service tokens for CI/CD
+
+```bash
+mcp-coordinator service-token issue \
+  --user u-admin-123 --org org-acme-001 \
+  --scope read --ttl 30d --reason "CI deploy pipeline"
+# → Returns access_token (show once)
+
+mcp-coordinator service-token list
+mcp-coordinator service-token revoke --jti <jti>
+```
+
+90-day max TTL. Admin-only issuance. Reason ≥ 10 chars required.
+
+#### OIDC defense-in-depth
+
+- **`nonce` verification** (v0.10.1) — Generated per authorize request, stored in `oauth_state`, verified against `id_token.nonce` at exchange time. Guards against id_token replay across authorize requests. Automatic; no configuration.
+- **`id_token` signature verification** (v0.9.0) — RS256 only, JWKS-by-kid lookup from the OIDC discovery doc, `iss` + `aud` checks.
+- **Discovery doc `issuer` cross-check** — The discovery doc's own `issuer` field MUST match `COORDINATOR_OIDC_ISSUER_URL`; mismatch fails at first `/auth/login`. Guards against discovery-URL redirect attacks.
+
+#### Operational tooling
+
+| CLI / script | Purpose | Doc |
+|--------------|---------|-----|
+| `mcp-coordinator init phase2` | Interactive Phase 2 wizard | [onboarding](./docs/onboarding-self-host.md) |
+| `mcp-coordinator doctor --phase2` | 8 Phase 2 health probes | — |
+| `mcp-coordinator service-token {issue,list,revoke}` | CI/CD tokens | — |
+| `mcp-coordinator rotate-jwt-secret [--format env\|json\|secret-only]` | JWT secret rotation helper (v0.9.2) | [auto-rotation](./docs/ops/auto-rotation.md) |
+| `tsx scripts/verify-audit-chain.ts [--db <path>] [--json]` | SHA-256 audit chain integrity (v0.9.1) | [audit-integrity](./docs/ops/audit-integrity.md) |
+
+#### Audit log tamper-evidence (v0.9.1)
+
+Every `audit_log` row carries `prev_hash` + `row_hash`. `row_hash = SHA-256(prev_hash || canonical(row_fields))`. The chain proves no in-place tampering of committed rows. Pair with the **tip-attestation workflow** (cron + external signed store, e.g. S3 Object Lock) for full SOC 2 Type II deletion-detection.
+
+Limitations (documented in `src/security/audit-chain.ts` + `docs/ops/audit-integrity.md`):
+- `created_at` is NOT in the hash — timestamp rewrites are not detected by the chain alone.
+- Deletion of recent rows is indistinguishable from legitimate sweeper retention without external tip-attestation.
+
+#### Documentation
+
+| Doc | Topic |
+|-----|-------|
+| [`docs/onboarding-self-host.md`](./docs/onboarding-self-host.md) | Zero-to-first-signin walkthrough |
+| [`docs/idp-providers.md`](./docs/idp-providers.md) | Per-provider setup (GitHub OAuth App, GitHub App, Google, OIDC, Azure AD) |
+| [`docs/openapi.yaml`](./docs/openapi.yaml) | OpenAPI 3.1, 17 endpoints |
+| [`docs/security/threat-model.md`](./docs/security/threat-model.md) | STRIDE per asset, 10 residual risks |
+| [`docs/ops/upgrade-phase1-to-phase2.md`](./docs/ops/upgrade-phase1-to-phase2.md) | Phase 1 → Phase 2 migration |
+| [`docs/ops/key-rotation.md`](./docs/ops/key-rotation.md) | `JWT_SECRET` rotation procedure |
+| [`docs/ops/auto-rotation.md`](./docs/ops/auto-rotation.md) | Automation around `rotate-jwt-secret` (systemd / k8s CronJob) |
+| [`docs/ops/audit-integrity.md`](./docs/ops/audit-integrity.md) | Audit chain runbook + tip-attestation workflow |
+| [`docs/ops/backup-restore.md`](./docs/ops/backup-restore.md) | Litestream + NR12 reconciliation |
+| [`docs/gdpr.md`](./docs/gdpr.md) | GDPR Art. 17 procedures |
+| [`sdk/README.md`](./sdk/README.md) | TypeScript SDK reference |
+
+### Historical: v0.6.x → v0.7.0 migration
+
+v0.7.0 reworked auth foundation: schema gained `org_id` everywhere, JWTs gained `user_id`/`org` claims, MQTT topics gained an org prefix. Migration runs on first boot of v0.7.0 (`PRAGMA user_version` guard).
+
+Manual JWT-secret rotation (v0.7.0 era, still works in v0.8+):
+
+```bash
+export COORDINATOR_JWT_SECRET=new-secret-here
+export COORDINATOR_JWT_PREV_SECRET=old-secret-here
+# Restart coordinator. Wait one JWT TTL (24h default).
+# Then remove COORDINATOR_JWT_PREV_SECRET and restart again.
+```
+
+The v0.9.2 `rotate-jwt-secret` CLI automates the new-secret generation step of this procedure.
+
+---
+
 ## Anthropic Quota Pre-flight
 
 The coordinator tracks Anthropic workspace quota live and exposes it on MQTT, the dashboard, and the `coordinator_status` MCP tool — so MCP clients can decide whether to abort, throttle, or proceed before launching expensive turns.
@@ -1106,188 +966,6 @@ Levels controlled via `LOG_LEVEL`.
 
 ---
 
-## Authentication
-
-The coordinator runs in one of three modes, selected by env-var configuration. **Single-user / dev local stays zero-config**; multi-user deployments opt in to Phase 2 OAuth via a single feature flag.
-
-### Mode 1 — Open (default, no auth)
-
-```bash
-mcp-coordinator server start
-```
-
-No env vars, no setup, no `/auth/login`. All requests get synthetic legacy claims (`sub="legacy"`, `user_id="legacy"`, `org="default"`, `role="admin"`). MCP tools work unchanged. This is byte-identical to v0.7.x; a 31-case `tests/backcompat/` suite proves the non-regression on every release.
-
-### Mode 2 — JWT (Phase 1, v0.7.x)
-
-Opt-in symmetric JWTs (HS256 via [jose](https://github.com/panva/jose)) without OAuth. Agents self-register against a shared secret; admins revoke via a separate secret.
-
-```bash
-export COORDINATOR_AUTH_ENABLED=true
-export COORDINATOR_JWT_SECRET="$(openssl rand -base64 32)"
-export COORDINATOR_REGISTRATION_SECRET="team-shared-secret"
-export COORDINATOR_ADMIN_SECRET="admin-only-secret"
-```
-
-```bash
-# Agent self-register
-curl -X POST http://localhost:3100/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"agent_name":"my-agent","registration_secret":"team-shared-secret"}'
-# → { agent_id, token, expires_at, role }
-
-# Refresh
-curl -X POST http://localhost:3100/api/auth/refresh \
-  -H "Authorization: Bearer <current-token>"
-
-# Admin revoke
-curl -X POST http://localhost:3100/api/auth/revoke \
-  -H "Authorization: Bearer <admin-token>" \
-  -H "Content-Type: application/json" \
-  -d '{"agent_id":"agent-to-revoke"}'
-```
-
-Exempt routes: `GET /health`, `POST /api/auth/register`, `POST /api/auth/refresh`, `GET /api/events` (SSE).
-
-### Mode 3 — Phase 2 OAuth (v0.8.0+, the modern path)
-
-Full OAuth 2.1 + RFC 8628 device flow + cookie sessions + service tokens + audit-chain tamper-evidence + multi-IdP picker. Activate by setting `COORDINATOR_OAUTH_ENABLED=true`; Phase 1 deployments are unaffected when the flag is unset.
-
-#### Quick start (single IdP — GitHub OAuth App)
-
-```bash
-export COORDINATOR_OAUTH_ENABLED=true
-export COORDINATOR_JWT_SECRET=$(openssl rand -base64 32)
-export COORDINATOR_PUBLIC_URL=https://coordinator.example.com
-
-# GitHub OAuth App
-export COORDINATOR_GITHUB_CLIENT_ID=<from-github-oauth-app>
-export COORDINATOR_GITHUB_CLIENT_SECRET=<from-github-oauth-app>
-export COORDINATOR_GITHUB_ORG=<your-org-slug>
-
-mcp-coordinator init phase2     # interactive wizard
-mcp-coordinator server start
-```
-
-The first user to sign in via `${PUBLIC_URL}/auth/login` becomes the bootstrap admin atomically. Full walkthrough: [`docs/onboarding-self-host.md`](./docs/onboarding-self-host.md).
-
-#### Multi-IdP matrix (v0.9.0 → v0.10.4)
-
-Configure any subset of the 4 providers simultaneously — `/auth/login` automatically renders a picker page when `>=2` are registered. Each provider can be opted in / out independently; `COORDINATOR_GITHUB_CLIENT_ID` is the only one always required.
-
-| Provider | Required env vars | Allowlist strategy | Allowlist column |
-|----------|-------------------|--------------------|------------------|
-| **GitHub OAuth App** | `COORDINATOR_GITHUB_CLIENT_ID` + `_SECRET` + `COORDINATOR_GITHUB_ORG` | `memberships` (default) | `orgs.allowlist_github_org` |
-| **GitHub App** (v0.10.0+) | `COORDINATOR_GITHUB_APP_CLIENT_ID` + `_SECRET` | `memberships` (default) OR `memberships` via installation-footprint when `COORDINATOR_GITHUB_APP_ALLOWLIST_SOURCE=user_installations` (v0.10.3) | `orgs.allowlist_github_org` |
-| **Google** (v0.9.0+) | `COORDINATOR_GOOGLE_CLIENT_ID` + `_SECRET` | `idp_org_id` (v0.10.2; Workspace `hd` claim) | `orgs.allowlist_idp_org_id` |
-| **Generic OIDC** (v0.9.0+) | `COORDINATOR_OIDC_ISSUER_URL` + `_CLIENT_ID` + `_CLIENT_SECRET` | `none` by default; switches to `id_token_groups` when `COORDINATOR_OIDC_GROUPS_CLAIM` is set (v0.10.4) | `orgs.allowlist_github_org` |
-
-Setting partial credentials for any provider fails closed at boot (BootValidationError). Detailed setup per provider: [`docs/idp-providers.md`](./docs/idp-providers.md).
-
-#### Allowlist strategy semantics
-
-All four strategies are case-insensitive string matches against the relevant `orgs` column. Tie-break is alphabetical (deterministic per V4 FIX 22).
-
-- **`memberships`** — Provider's `listMemberships(accessToken)` returns an array of strings, each matched against `orgs.allowlist_github_org`. Used by GitHub OAuth App (`/user/orgs` → GitHub orgs) and GitHub App (`/user/orgs` OR `/user/installations` per `_ALLOWLIST_SOURCE`).
-- **`idp_org_id`** — `IdpUserInfo.idp_org_id` matched directly against `orgs.allowlist_idp_org_id`. Used by Google (the `hd` Workspace claim).
-- **`id_token_groups`** — Groups extracted from the id_token at a configurable dot-notation path (`COORDINATOR_OIDC_GROUPS_CLAIM`, typical values: `groups` / `realm_access.roles` / `roles`). Used by OIDC.
-- **`none`** — Deny by default. Used by OIDC when no groups claim is configured. Operators wanting a custom OIDC allowlist vendor a subclass.
-
-Refresh-rotation re-checks the IdP-side allowlist only for `memberships` providers. `idp_org_id` and `id_token_groups` strategies are sign-in-only — operator-side revocation requires `token_epoch` bump.
-
-#### Sample `orgs` provisioning
-
-```sql
--- GitHub OAuth App + GitHub App (memberships): use allowlist_github_org
-INSERT INTO orgs (id, name, allowlist_github_org)
-VALUES ('org-acme-gh', 'Acme GitHub', 'acme');
-
--- Google Workspace (idp_org_id): use allowlist_idp_org_id
-INSERT INTO orgs (id, name, allowlist_idp_org_id)
-VALUES ('org-acme-google', 'Acme Workspace', 'acme.com');
-
--- OIDC with groups claim (id_token_groups): reuses allowlist_github_org
-INSERT INTO orgs (id, name, allowlist_github_org)
-VALUES ('org-acme-okta', 'Acme via Okta', 'engineers');
-```
-
-A user signs in once per provider; their `users.idp_provider` stays sticky. Identities are not auto-merged across providers — a one-shot SQL reconciliation is needed if you want to consolidate users who signed in via multiple paths.
-
-#### Refresh-token recovery (GitHub App, v0.10.0+)
-
-GitHub App user-to-server tokens expire after 8h. On a 401 at refresh-rotation time, the coordinator automatically calls `refreshIdpToken(refresh_token)` to mint a fresh access+refresh pair, persists both to `users.idp_access_token` / `users.idp_refresh_token`, emits a Tier 2 `auth.idp.token_refreshed` audit, and retries the membership check. Only triggers for providers that implement `refreshIdpToken` (currently `GitHubAppProvider`).
-
-#### Service tokens for CI/CD
-
-```bash
-mcp-coordinator service-token issue \
-  --user u-admin-123 --org org-acme-001 \
-  --scope read --ttl 30d --reason "CI deploy pipeline"
-# → Returns access_token (show once)
-
-mcp-coordinator service-token list
-mcp-coordinator service-token revoke --jti <jti>
-```
-
-90-day max TTL. Admin-only issuance. Reason ≥ 10 chars required.
-
-#### OIDC defense-in-depth
-
-- **`nonce` verification** (v0.10.1) — Generated per authorize request, stored in `oauth_state`, verified against `id_token.nonce` at exchange time. Guards against id_token replay across authorize requests. Automatic; no configuration.
-- **`id_token` signature verification** (v0.9.0) — RS256 only, JWKS-by-kid lookup from the OIDC discovery doc, `iss` + `aud` checks.
-- **Discovery doc `issuer` cross-check** — The discovery doc's own `issuer` field MUST match `COORDINATOR_OIDC_ISSUER_URL`; mismatch fails at first `/auth/login`. Guards against discovery-URL redirect attacks.
-
-#### Operational tooling
-
-| CLI / script | Purpose | Doc |
-|--------------|---------|-----|
-| `mcp-coordinator init phase2` | Interactive Phase 2 wizard | [onboarding](./docs/onboarding-self-host.md) |
-| `mcp-coordinator doctor --phase2` | 8 Phase 2 health probes | — |
-| `mcp-coordinator service-token {issue,list,revoke}` | CI/CD tokens | — |
-| `mcp-coordinator rotate-jwt-secret [--format env\|json\|secret-only]` | JWT secret rotation helper (v0.9.2) | [auto-rotation](./docs/ops/auto-rotation.md) |
-| `tsx scripts/verify-audit-chain.ts [--db <path>] [--json]` | SHA-256 audit chain integrity (v0.9.1) | [audit-integrity](./docs/ops/audit-integrity.md) |
-
-#### Audit log tamper-evidence (v0.9.1)
-
-Every `audit_log` row carries `prev_hash` + `row_hash`. `row_hash = SHA-256(prev_hash || canonical(row_fields))`. The chain proves no in-place tampering of committed rows. Pair with the **tip-attestation workflow** (cron + external signed store, e.g. S3 Object Lock) for full SOC 2 Type II deletion-detection.
-
-Limitations (documented in `src/security/audit-chain.ts` + `docs/ops/audit-integrity.md`):
-- `created_at` is NOT in the hash — timestamp rewrites are not detected by the chain alone.
-- Deletion of recent rows is indistinguishable from legitimate sweeper retention without external tip-attestation.
-
-#### Documentation
-
-| Doc | Topic |
-|-----|-------|
-| [`docs/onboarding-self-host.md`](./docs/onboarding-self-host.md) | Zero-to-first-signin walkthrough |
-| [`docs/idp-providers.md`](./docs/idp-providers.md) | Per-provider setup (GitHub OAuth App, GitHub App, Google, OIDC, Azure AD) |
-| [`docs/openapi.yaml`](./docs/openapi.yaml) | OpenAPI 3.1, 17 endpoints |
-| [`docs/security/threat-model.md`](./docs/security/threat-model.md) | STRIDE per asset, 10 residual risks |
-| [`docs/ops/upgrade-phase1-to-phase2.md`](./docs/ops/upgrade-phase1-to-phase2.md) | Phase 1 → Phase 2 migration |
-| [`docs/ops/key-rotation.md`](./docs/ops/key-rotation.md) | `JWT_SECRET` rotation procedure |
-| [`docs/ops/auto-rotation.md`](./docs/ops/auto-rotation.md) | Automation around `rotate-jwt-secret` (systemd / k8s CronJob) |
-| [`docs/ops/audit-integrity.md`](./docs/ops/audit-integrity.md) | Audit chain runbook + tip-attestation workflow |
-| [`docs/ops/backup-restore.md`](./docs/ops/backup-restore.md) | Litestream + NR12 reconciliation |
-| [`docs/gdpr.md`](./docs/gdpr.md) | GDPR Art. 17 procedures |
-| [`sdk/README.md`](./sdk/README.md) | TypeScript SDK reference |
-
-### Historical: v0.6.x → v0.7.0 migration
-
-v0.7.0 reworked auth foundation: schema gained `org_id` everywhere, JWTs gained `user_id`/`org` claims, MQTT topics gained an org prefix. Migration runs on first boot of v0.7.0 (`PRAGMA user_version` guard).
-
-Manual JWT-secret rotation (v0.7.0 era, still works in v0.8+):
-
-```bash
-export COORDINATOR_JWT_SECRET=new-secret-here
-export COORDINATOR_JWT_PREV_SECRET=old-secret-here
-# Restart coordinator. Wait one JWT TTL (24h default).
-# Then remove COORDINATOR_JWT_PREV_SECRET and restart again.
-```
-
-The v0.9.2 `rotate-jwt-secret` CLI automates the new-secret generation step of this procedure.
-
----
-
 ## SDK
 
 A TypeScript reference client lives in [`sdk/`](./sdk/) (not yet published to npm). Install via `npm install file:./sdk` from a consumer project.
@@ -1347,6 +1025,332 @@ The behaviors that make agents announce-before-write, resolve conflicts, and par
 
 ---
 
+## Release history & Roadmap
+
+Per-version detail for v0.5.0 → v0.10.4 lives below. The [Capabilities at a glance](#capabilities-at-a-glance-v0104) matrix at the top of this README is the current-state summary.
+
+## What's New in v0.8.0 (Phase 2 OAuth)
+
+Released 2026-05-14. Feature-flagged behind `COORDINATOR_OAUTH_ENABLED=true`. Phase 1 deployments are byte-identical when the flag is unset.
+
+### A. OAuth 2.1 + device flow (RFC 6749 + RFC 8628)
+
+- `GET /auth/login` initiates the browser flow with PKCE S256 + HMAC-bound state cookie
+- `GET /api/auth/oauth/callback` performs state CAS + provider mix-up defense + IdP code exchange + user provisioning inside a transaction
+- `POST /api/auth/oauth/token` unified grant endpoint (authorization_code, refresh_token, device_code per RFC 8628)
+- `POST /api/auth/oauth/device_authorization` for CLI / TV / IoT device flow
+- 5 HTML pages: /auth/login, /auth/device, /auth/device/confirm, /auth/device/approve POST, /auth/success
+- See [`docs/openapi.yaml`](./docs/openapi.yaml) for the full API spec
+
+### B. Refresh-token rotation with stolen-token detection (V3 §B-NEW-2)
+
+- Each refresh issues a new family member (`family_id`) with `parent_jti` lineage
+- 10-second grace window allows legitimate retries with matching fingerprint
+- Mismatched fingerprint within grace → atomic `replay_count++`; family revoked at threshold 3
+- Hard reuse (rotation > 10s old) → immediate family revoke + `auth.refresh.chain_revoked` Tier 1 audit
+
+### C. Cookie sessions (Scenario 5)
+
+- `__Host-coordinator_session` cookie + `__Host-coordinator_csrf` (double-submit pattern)
+- `authenticateRequest` now handles 5 scenarios: legacy fallback, no-auth, v0.6 legacy JWT reject, Bearer JWT, cookie session
+- `POST /api/auth/logout` (revoke current refresh), `/logout-all` (bump `token_epoch` → all sessions invalidated instantly), `/revoke` (RFC 7009)
+- `GET /api/auth/me` userinfo helper
+
+### D. Service tokens (V4 §5.5)
+
+- Admin-issued long-lived JWTs for CI/CD: `mcp-coordinator service-token issue --user X --org Y --scope read --ttl 30d --reason "..."`
+- 90d hardcoded TTL ceiling; reason ≥10 chars required; admin-only issuance
+- `family_id` format `service:<uuid>` distinguishes from user refresh families
+- DB-lookup verification on every request (admin force-revoke is immediate)
+- `list` + `revoke` CLI verbs; `auth.service_token.{issued,revoked,used}` audit events
+
+### E. Audit pipeline (two-tier durability per V3 NR13)
+
+- 35 audit event types catalogued in `src/security/audit-events.ts`
+- Tier 1 (sync direct INSERT, never drop): security-critical events (refresh.chain_revoked, login.locked, token.revoked, admin.bootstrapped, ...)
+- Tier 2 (async batched queue, may drop under pressure): high-volume operational (login.success, refresh.rotated, device.code_issued, ...)
+- AsyncLocalStorage-based actor + request_id propagation — no explicit threading
+- Audit queue capacity 10K with backpressure → `auth.shutdown.audit_loss` row on drop
+
+### F. Operational
+
+- `bootPhase2` composes ServerContext at boot: env validation, HKDF key derivation, restore detection (NR12), feature-flag gate
+- Sweeper prunes 6 tables on 60s cadence (oauth_state, device_auth_requests, refresh_tokens × 2 retention buckets, audit_log × 2 tiers) with adaptive chained passes + 5-failure circuit breaker
+- Rate limiter + login lockout (5 failures / 15min → 15min lockout per V3 §B-NEW-8) in-memory token bucket
+- IdP membership cache with 60s positive TTL + 10min stale-on-error window (V3 §B-NEW-5)
+
+### G. Observability
+
+- 29 new Prometheus metrics in `src/observability/metrics.ts` (auth activity, refresh chain, device flow, IdP, audit queue, sweeper, rate limit, request duration)
+- `/metrics/auth` Prometheus scrape endpoint (localhost-only + optional Bearer auth)
+- `/healthz` (liveness) + `/health/ready` (readiness — DB + sweeper circuit + audit queue depth + draining flag)
+- Pino logger with 16 redact paths per V4 §11.3
+- Grafana dashboard JSON ([`docs/ops/dashboards/coordinator.json`](./docs/ops/dashboards/coordinator.json)) + Prometheus alert rules YAML ([`docs/ops/alerts/coordinator-alerts.yaml`](./docs/ops/alerts/coordinator-alerts.yaml))
+
+### H. CLI
+
+- `mcp-coordinator init phase2` interactive wizard for first-time Phase 2 setup
+- `mcp-coordinator doctor --phase2` runs 8 Phase 2 health probes (DB schema version, JWT_SECRET entropy, discovery doc reachability, etc.)
+- `mcp-coordinator service-token {issue,list,revoke}` for admin token management
+
+### I. Testing
+
+- **1555 tests passing** across 116 test files (up from 392 at v0.5.0)
+- 100% branch coverage enforced via vitest per-file thresholds on every security-critical module (csrf, token-epoch, oauth-state, jwt-mint, membership-cache, refresh-rotation, service-tokens, github provider, etc.)
+- Playwright E2E suite (`tests/e2e/`) — 5 scenarios in ~12s, zero flakes over 5 runs
+- D1-D10 cross-cutting test matrix (`tests/integration/d1-d10-matrix.test.ts`) — 20 cases proving component-interaction seams
+- Phase 1 backcompat suite (`tests/backcompat/`) — 31 cases proving `COORDINATOR_OAUTH_ENABLED` unset = byte-identical Phase 1
+- Cross-tenant isolation suite — 22 cases proving multi-tenant data boundary
+
+### J. SDK (`sdk/`)
+
+- TypeScript client `@mcp-coordinator/sdk-js` in repo workspace (not yet published)
+- `McpCoordinatorClient` with verbs: `whoami`, `logout`, `logoutAll`, `revoke`, `refresh`, `deviceCodeStart`, `deviceCodePoll`
+- 14 typed error subclasses mapping to the OpenAPI error envelope
+- `FileTokenStore` persists tokens to `~/.mcp-coordinator/tokens.json` with `chmod 0600` (POSIX) + atomic write-rename
+- `ProactiveRefresh` schedules refresh at `accessExpiresAt - 120s ± 30s jitter`
+- Single-flight refresh lock via atomic O_EXCL file lock (multi-process CLI safety)
+- See [`sdk/README.md`](./sdk/README.md) for usage
+
+### Documentation
+
+23 new doc files under `docs/` and `examples/`:
+
+- Operator: [`docs/onboarding-self-host.md`](./docs/onboarding-self-host.md), [`docs/ops/upgrade-phase1-to-phase2.md`](./docs/ops/upgrade-phase1-to-phase2.md), 8 ops runbooks
+- Security: [`docs/security/threat-model.md`](./docs/security/threat-model.md), 3 incident runbooks, [`SECURITY.md`](./SECURITY.md), `.well-known/security.txt`
+- Compliance: [`docs/gdpr.md`](./docs/gdpr.md), [`docs/idp-providers.md`](./docs/idp-providers.md)
+- API: [`docs/openapi.yaml`](./docs/openapi.yaml) (OpenAPI 3.1, 17 endpoints, 13 schemas)
+- Examples: `examples/{docker-compose,nginx-reverse-proxy,ghes-config,custom-idp-provider}/`
+
+### v0.8.1 follow-up (2026-05-15)
+
+- JWT key rotation overlap (prev-secret support per [`docs/ops/key-rotation.md`](./docs/ops/key-rotation.md))
+- GHES env vars wiring (`COORDINATOR_GITHUB_AUTH_BASE_URL` + `_API_BASE_URL`)
+
+---
+
+## What's New in v0.9.0 (Multi-IdP)
+
+Released 2026-05-15. Single-provider GitHub-only deployments stay behaviour-compatible — every change is opt-in via new env vars or a no-op when only one IdP is registered.
+
+### A. Provider registry
+
+- `ProviderRegistry` class attached to `AuthHandlerContext.providers` (T45). First registration becomes the implicit default.
+- Every OAuth handler resolves the IdP through `ctx.providers.get(...)` rather than the removed `ctx.githubProvider` alias (T46). Refresh-rotation reads `users.idp_provider` so multi-provider users get re-validated against the IdP they actually signed in with.
+
+### B. Google OAuth / OIDC
+
+- First-class `GoogleProvider` (T47) with **mandatory** id_token signature verification: jose `createRemoteJWKSet` + RS256 + `iss=https://accounts.google.com` + `aud=client_id`.
+- Identity claims read straight from the verified id_token (no extra `/userinfo` round-trip).
+- Workspace `hd` claim surfaces as `idp_org_id` for hd-based allowlist deployments.
+- Opt-in via `COORDINATOR_GOOGLE_CLIENT_ID` + `COORDINATOR_GOOGLE_CLIENT_SECRET` (both required or neither — fail-closed at boot).
+
+### C. Generic OpenID Connect
+
+- `OIDCProvider` (T48) for Okta / Auth0 / Azure AD / Keycloak / Authentik / any conformant OIDC issuer.
+- Auto-discovers `authorization_endpoint`, `token_endpoint`, and `jwks_uri` from `<issuer>/.well-known/openid-configuration`.
+- Discovery doc's own `issuer` field is cross-checked against config — catches redirect attacks on the discovery URL.
+- Email-claim fallback chain: `email` → `preferred_username` → `sub` (OIDC core makes `email` optional).
+- Opt-in via `COORDINATOR_OIDC_ISSUER_URL` + `COORDINATOR_OIDC_CLIENT_ID` + `COORDINATOR_OIDC_CLIENT_SECRET` (all three required together).
+
+### D. Login picker UI
+
+- `GET /auth/login` renders an HTML picker when `ctx.providers.size() > 1` (T49). Each button is a top-level GET to `/auth/login?provider=<name>`; the underlying PKCE + state-cookie + 302 flow is unchanged.
+- Friendly built-in labels for `github` / `google` / `oidc`; title-cased fallback for custom provider names.
+- Unknown `?provider=X` → 400 `UNKNOWN_PROVIDER` (no silent fallback to the default).
+- Single-provider deployments skip the picker entirely.
+
+### Breaking changes (internal embedding APIs)
+
+| Surface | Change | Migration |
+|---------|--------|-----------|
+| `AuthHandlerContext.githubProvider` | Removed | Use `ctx.providers.get("github")` or `ctx.providers.getDefault()` |
+| `IdPProvider.buildAuthUrl` return type | `string` → `string \| Promise<string>` | `await` the result; built-in providers stay synchronous |
+| `provisionUser(...)` | Required 6th arg `providerName: string` | Pass `"github"` for existing call sites; the resolved `provider.name` for new ones |
+| `auth.state.mixup` audit metadata | `{ expected_provider: "github" }` → `{ registered_providers: string[] }` | Log-pipeline consumers parsing `expected_provider` need to update |
+
+### Testing
+
+- **1623 tests** passing (+61 vs v0.8.1). 100% branch coverage on `auth/providers/{registry,github,google,oidc}.ts`.
+- 16 GoogleProvider tests covering happy path, id_token verification (wrong issuer / audience / expired / unknown kid), JWKS unreachable transient errors, token-endpoint 401 / 502 / 4xx mapping.
+- 21 OIDCProvider tests covering discovery-URL validation, issuer cross-check, the same id_token verification matrix, and email-claim fallback chain.
+- 8 login-picker rendering tests + 6 picker integration tests (1 vs N provider behaviour, unknown-name 400, rate-limit, state row provider field).
+
+### v0.9.1 follow-up (2026-05-15)
+
+Audit log tamper-evidence. New `prev_hash` + `row_hash` columns on `audit_log` build a SHA-256 chain over every row written via `audit()`. `scripts/verify-audit-chain.ts` walks the chain and reports tampering; `docs/ops/audit-integrity.md` is the SOC 2 Type II operator runbook covering the external tip-attestation workflow that closes the deletion-detection gap.
+
+### v0.9.2 follow-up (2026-05-15)
+
+`mcp-coordinator rotate-jwt-secret` CLI helper generates a fresh signing secret with entropy validation + prints the operator workflow. `docs/ops/auto-rotation.md` covers systemd-timer + Vault and Kubernetes CronJob automation patterns around the helper.
+
+---
+
+## What's New in v0.10.0 (GitHub App)
+
+Released 2026-05-16. Adds a `GitHubAppProvider` sibling to the existing OAuth App `GitHubProvider`, with built-in user-to-server token refresh handling. Existing OAuth App and Google / OIDC deployments stay behaviour-compatible; the new provider is opt-in via env vars.
+
+### Why GitHub App on top of OAuth App?
+
+- **Fine-grained permissions** -- GitHub Apps declare per-resource permissions, OAuth App scopes are coarser
+- **Installation isolation** -- the App's footprint IS the allowlist; uninstalling the App from an org is an immediate hard revoke
+- **Short-lived user-to-server tokens** -- 8h TTL with auto-rotating refresh tokens vs OAuth App's effectively permanent tokens
+
+### Configure
+
+```bash
+export COORDINATOR_GITHUB_APP_CLIENT_ID=Iv1.0123456789abcdef
+export COORDINATOR_GITHUB_APP_CLIENT_SECRET=<from-app-settings>
+# Optional: registry key (default "github-app")
+export COORDINATOR_GITHUB_APP_NAME=acme-app
+```
+
+Both `_ID` + `_SECRET` are required together; partial config fails closed at boot. Co-exists with `COORDINATOR_GITHUB_CLIENT_ID` + `_SECRET` (OAuth App) -- the picker UI on `/auth/login` shows both entry points when both providers are registered. See [`docs/idp-providers.md`](./docs/idp-providers.md#configuring-github-app) for the full setup walkthrough.
+
+### Refresh-token recovery
+
+On `IdPTokenRevoked` from `/user/orgs` at refresh-rotation time, the coordinator calls `GitHubAppProvider.refreshIdpToken(refresh_token)` to mint a fresh access token + rotated refresh token, persists both, and retries the membership check. A Tier 2 `auth.idp.token_refreshed` audit row captures the recovery. If refresh fails too -- existing Tier 1 `auth.idp.token_revoked` + 401 path.
+
+### Out of scope for v0.10.0
+
+- App-as-itself installation token flow for membership queries (v0.10.x exploration; requires PEM private key provisioning)
+- Webhook-driven membership cache invalidation (v1.0)
+- IdP refresh-token replay detection (the coordinator's reuse logic covers ITS OWN refresh family only)
+
+### Testing
+
+- **1700 tests passing** (+45 vs v0.9.2)
+- 19 `GitHubAppProvider` unit tests, 5 refresh-rotation recovery tests, 7 boot wiring tests, plus the shared HTTP transport refactor exercised by the 35 existing OAuth App tests
+
+### v0.10.1 follow-up (2026-05-16) — OIDC nonce verification
+
+OpenID Connect Core 1.0 §3.1.2.1 nonce verification. `OIDCProvider` generates a 256-bit nonce per authorize request, persists it in `oauth_state`, and verifies the returned `id_token`'s `nonce` claim against it. Guards against `id_token` replay across authorize requests issued for the same client. New nullable `oauth_state.nonce` column (idempotent migration). 1708 tests; +8 vs v0.10.0. Other providers unaffected; CLI auth-code grant path skips the check (PKCE + state binding still apply).
+
+### v0.10.2 follow-up (2026-05-16) — Google Workspace `hd` allowlist
+
+New `orgs.allowlist_idp_org_id` column + per-provider `IdPProvider.allowlistStrategy` field. `GoogleProvider` switches to the `"idp_org_id"` strategy and matches the user's Workspace `hd` (hosted domain) claim against the new column. The previous behaviour (where Google sign-in didn't work end-to-end because `listMemberships` threw) is now fixed. GitHub OAuth App + GitHub App keep the existing `"memberships"` strategy. Allowlist is now per-provider: 4 strategies total — `memberships` / `idp_org_id` / `id_token_groups` / `none`. 1714 tests; +6.
+
+### v0.10.3 follow-up (2026-05-16) — GitHub App installation-footprint allowlist
+
+`GitHubAppProvider` gains opt-in `COORDINATOR_GITHUB_APP_ALLOWLIST_SOURCE=user_installations` mode. Calls `GET /user/installations` instead of `/user/orgs` and matches against `orgs.allowlist_github_org`. The App's installation footprint IS the allowlist — uninstalling the App from an org is an immediate hard revoke (within 8h of next refresh-rotation) with no coordinator config change required. No App RSA private key needed; the user's user-to-server token is sufficient. Default remains `user_orgs` (mirrors OAuth App behaviour). 1724 tests; +10.
+
+### v0.10.4 follow-up (2026-05-16) — OIDC group-claim allowlist
+
+`OIDCProvider` learns to read group / role memberships from a configurable id_token claim path. New `COORDINATOR_OIDC_GROUPS_CLAIM` env var (typical values: `groups` for Okta/Auth0/Authentik, `realm_access.roles` for Keycloak, `roles` for Azure AD App Roles). When set, `allowlistStrategy` switches from `"none"` (deny-by-default) to `"id_token_groups"`; the callback matches `IdpUserInfo.groups` (lowercased) against `orgs.allowlist_github_org`. Misconfig (wrong path, non-array value, non-string entries) fails closed. Groups captured at sign-in only — refresh-rotation does not re-fetch. 1740 tests; +16.
+
+---
+
+## What's New in v0.5.0
+
+Released 2026-05-10.
+
+### A. In-flight tracking (server-anchored)
+
+- `WorkingFilesTracker` ([`src/working-files-tracker.ts`](src/working-files-tracker.ts)) with TTL sweeper (default 30 min claim, 60 s sweep tick).
+- `POST /api/working-files/start` and `POST /api/working-files/stop` REST endpoints.
+- essaim hooks: `scripts/pre_track_activity.sh` + extended `track_activity.sh` via PreToolUse / PostToolUse pipeline.
+
+### B. Symbol-aware annotations (tree-sitter)
+
+- 15 languages via `optionalDependencies`: TypeScript, TSX, JavaScript, JSX, Python, Go, Rust, Java, C#, C, C++, Ruby, PHP, Kotlin, Swift, Bash.
+- Strategy registry in [`src/tree-sitter-extractor.ts`](src/tree-sitter-extractor.ts) — adding a 16th language is ~5 LOC.
+- `POST /api/file-activity` now accepts an optional `content` field (capped 256 KB) for server-side symbol extraction.
+- New DB columns: `file_activity.symbols_touched` (JSON) + `content_hash`.
+
+### C. Layer 0.5 annotation — disjoint-symbol enrichment
+
+- Same file with disjoint symbols: score stays 100, reason text enriched with `disjoint symbols: you=[X], them=[Y] — verify shared module state`.
+- New optional `target_symbols?: string[]` on `announce_work` (cap 200 elements, max 256 chars each).
+
+### D. Layer 4 — git co-change scoring
+
+- [`src/git-cochange-builder.ts`](src/git-cochange-builder.ts): bounded `git log` (max 2000 commits, `--since=7d` default), 5 s timeout, denylist (lockfiles, dist, snapshots), dynamic 40% predictor cap.
+- Score 60 if co-change ratio > 0.5, score 40 if > 0.2; canonical-pair lookup.
+- Background scheduler with 5-min retry on timeout, 30-min refresh on success.
+- Requires `COORDINATOR_REPO_ROOT` to enable + `git` on PATH.
+
+### E. Dashboard "Conflict signals" panel
+
+- New panel in `dashboard/public/index.html` backed by `GET /api/scoring-stats?since=<dur>`.
+- Populated by `runCommonAnnounceFlow` writing per-firing rows to `layer_firings` table.
+
+### Hardening & observability
+
+- `parseBody` 1 MB cap (HTTP 413; env: `COORDINATOR_MAX_BODY_BYTES`).
+- `PRAGMA user_version = 6` schema marker; daemon refuses to start on a newer DB (downgrade guard).
+- [`src/path-normalize.ts`](src/path-normalize.ts) — symmetric Windows/POSIX path canonicalization.
+- 5 new Prometheus metrics: `mcp_coordinator_working_files_active` (gauge), `mcp_coordinator_working_files_starts_total{result}`, `mcp_coordinator_tree_sitter_parse_failures_total`, `mcp_coordinator_git_cochange_builds_total{outcome}`, `mcp_coordinator_git_cochange_pairs_total`.
+- `/readyz` extended with `tree_sitter` and `git_cochange` blocks (both `optional: true`, non-gating).
+
+### Bundled v0.4.1 hotfix
+
+`/livez`, `/readyz`, and `/metrics` were wired in v0.4.0 but not routed — fixed.
+
+---
+
+## Roadmap
+
+### v0.8.0 (shipped 2026-05-14)
+
+Phase 2 OAuth 2.1 + RFC 8628 device flow + cookie sessions + service tokens + audit pipeline + sweeper + 29 Prometheus metrics + reference SDK. Feature-flagged behind `COORDINATOR_OAUTH_ENABLED=true`; Phase 1 deployments byte-identical when unset. 1555 tests passing across 116 files.
+
+See [CHANGELOG.md](./CHANGELOG.md) for the full list.
+
+### v0.8.1 (shipped 2026-05-15)
+
+JWT key rotation overlap (prev-secret support) + GHES env vars wiring.
+
+### v0.9.0 (shipped 2026-05-15)
+
+Multi-IdP: `ProviderRegistry` class + first-class `GoogleProvider` (id_token verification with JWKS) + generic `OIDCProvider` (discovery + JWKS) for Okta / Auth0 / Azure AD / Keycloak / Authentik + `/auth/login` picker UI when 2+ providers are registered. Single-provider deployments stay behaviour-compatible. 1623 tests.
+
+### v0.9.1 (shipped 2026-05-15)
+
+Audit log tamper-evidence (SHA-256 hash chain on every `audit_log` row + `verify-audit-chain.ts` operator script + SOC 2 Type II runbook).
+
+### v0.9.2 (shipped 2026-05-15)
+
+`mcp-coordinator rotate-jwt-secret` CLI helper + auto-rotation operator runbook.
+
+### v0.10.0 (shipped 2026-05-16)
+
+`GitHubAppProvider` sibling to the OAuth App provider, with built-in user-to-server token refresh handling. New env vars `COORDINATOR_GITHUB_APP_CLIENT_ID` / `_SECRET` / `_NAME`. Co-exists with OAuth App. 1700 tests.
+
+### v0.10.1 (shipped 2026-05-16)
+
+OIDC `nonce` claim verification (OpenID Connect Core 1.0 §3.1.2.1). `OIDCProvider` now generates a 256-bit nonce per authorize request, persists it in `oauth_state`, and verifies the returned `id_token`'s `nonce` claim against it. Guards against id_token replay across authorize requests. Other providers unaffected.
+
+### v0.10.2 (shipped 2026-05-16)
+
+Google Workspace allowlist. New `orgs.allowlist_idp_org_id` column + per-provider `IdPProvider.allowlistStrategy` field. `GoogleProvider` switches to the `"idp_org_id"` strategy and matches the user's `hd` (hosted domain) claim against the new column. GitHub OAuth App + GitHub App keep the existing memberships strategy.
+
+### v0.10.3 (shipped 2026-05-16)
+
+GitHub App installation-footprint allowlist. `GitHubAppProvider` gains an opt-in `allowlistSource="user_installations"` mode (via `COORDINATOR_GITHUB_APP_ALLOWLIST_SOURCE`) where the org allowlist is driven by the App's installation footprint via `GET /user/installations` rather than the user's GitHub-org memberships. Uninstalling the App from an org becomes a hard revoke. No App RSA private key needed.
+
+### v0.10.4 (shipped 2026-05-16)
+
+OIDC group-claim allowlist. `OIDCProvider` learns to read group / role memberships from a configurable id_token claim path (`COORDINATOR_OIDC_GROUPS_CLAIM` — `groups` for Okta/Auth0/Authentik, `realm_access.roles` for Keycloak). When set, `allowlistStrategy` switches to `id_token_groups` and matches against `orgs.allowlist_github_org`. Misconfig fails closed.
+
+### v0.5.0 (shipped 2026-05-10)
+
+Working-files in-flight tracking, tree-sitter symbol annotations across 15 languages, git co-change Layer 4 scoring, dashboard Conflict signals panel, schema downgrade guard, 5 new Prometheus metrics.
+
+### Planned
+
+- **v0.10.x** — Encryption-at-rest for `users.idp_refresh_token` + `users.idp_access_token` (currently plaintext); admin web UI for org allowlist management.
+- **v0.11** — Postgres adapter for regulated multi-instance workloads (Phase 4; see [`docs/superpowers/specs/2026-05-16-postgres-adapter-design.md`](./docs/superpowers/specs/2026-05-16-postgres-adapter-design.md) for the honest scope assessment).
+- **v1.0** — Phase 5 multi-instance (Redis pub/sub for membership cache invalidation + token_epoch reads + rate-limit + sweeper leader election).
+
+### Open items / known issues
+
+- T40c SDK enhancements: keytar keychain integration, Windows DPAPI for token file, named-profile TOML config, discovery doc 24h cache
+- T33 perf bench + chaos suite (next sprint)
+- Encryption-at-rest (v0.7.5 deferred) — SQLCipher whole-DB encryption
+- v0.5.0 dashboard Conflict signals widget shows aggregated counts only; per-layer outcome breakdown (`auto_resolved`, `consensus`, `timeout`, `cancelled`) currently returns zeros — the `layer_firings` table is not yet joined against the `events` table (decorative, not blocking).
+- CHANGELOG has both an auto-generated `## [0.5.0]` block (from release-please) and a stale manual `## [0.6.0]` heading from the original plan — cosmetic, will be reconciled in a doc-only commit.
+
+---
 ## Development
 
 ```bash
