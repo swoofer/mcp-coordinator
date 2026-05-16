@@ -1,5 +1,79 @@
 # Changelog
 
+## [0.10.4](https://github.com/swoofer/mcp-coordinator/compare/v0.10.3...v0.10.4) (2026-05-16)
+
+OIDC group-claim allowlist release. `OIDCProvider` learns to read
+group / role memberships from a configurable id_token claim path and
+feed them into the allowlist match. Existing OIDC deployments stay
+deny-by-default; the new behaviour is opt-in via the new
+`COORDINATOR_OIDC_GROUPS_CLAIM` env var. GitHub OAuth App / GitHub
+App / Google flows behaviour-unchanged.
+
+### Features
+
+* **auth/providers/oidc:** `OIDCProviderConfig` gains a
+  `groupsClaim?: string` field (dot-notation path into the
+  id_token). When set, `allowlistStrategy` switches from `"none"`
+  to `"id_token_groups"`, `exchangeCode` extracts the array at
+  that path, and `IdpUserInfo.groups` is populated. Common values:
+    - `groups` -- Okta, Auth0, Authentik
+    - `realm_access.roles` -- Keycloak
+    - `roles` -- Azure AD App Roles
+  Missing path / non-array value / non-string entries fail closed
+  (user.groups undefined or filtered). (T58)
+* **auth/providers/types:** `AllowlistStrategy` gains
+  `"id_token_groups"`. `IdpUserInfo` gains optional `groups`.
+* **auth/oauth-callback + oauth-token:** new strategy branch
+  matches `user.groups` (lowercased) against
+  `orgs.allowlist_github_org` via the existing
+  `resolveOrgFromMemberships`.
+* **boot:** new `COORDINATOR_OIDC_GROUPS_CLAIM` env var threads
+  into `OIDCProvider` config when the OIDC provider is
+  registered. No env var = original deny-by-default behaviour.
+
+### Documentation
+
+* **docs/idp-providers.md:** new "Allowlist via id_token groups
+  claim" subsection with the per-IdP path table, example SQL,
+  and the sign-in-only refresh caveat. The previous "listMemberships
+  throws" gotcha is rewritten to point at the new strategy.
+* **.env.example:** `COORDINATOR_OIDC_GROUPS_CLAIM` block with the
+  common-IdP table.
+
+### Test posture
+
+* **+16 tests** vs v0.10.3 (1740 total):
+  - 6 new OIDCProvider integration cases (allowlistStrategy
+    switch, top-level groups, nested `realm_access.roles`,
+    missing claim, non-string entries filtered, non-array value
+    handled)
+  - 9 new `extractGroupsFromClaims` pure-unit cases (top-level /
+    nested / deeply nested / missing / traversal-through-non-object
+    / non-object payload / non-array terminal / non-string entries
+    filtered / empty array)
+  - 1 `allowlistStrategy` defaulting case
+
+### Operator notes
+
+Drop-in upgrade. Existing OIDC deployments need no env-var change to
+stay deny-by-default. To enable group-claim allowlist:
+
+1. Set `COORDINATOR_OIDC_GROUPS_CLAIM` to the path that holds the
+   groups in your IdP's id_token.
+2. Provision `orgs` rows with `allowlist_github_org` set to the
+   group names you want to allow (the column is historical;
+   semantically it's just a string match).
+3. Restart the coordinator.
+
+### Caveats (also in the docs)
+
+- Groups captured at sign-in only; refresh-rotation does not
+  re-fetch from the IdP. A user removed from a group keeps their
+  session until next full sign-in (`token_epoch` is the operator
+  kill switch in the meantime).
+- Group match is case-insensitive.
+- Misconfiguration (wrong path / non-array value) fails closed.
+
 ## [0.10.3](https://github.com/swoofer/mcp-coordinator/compare/v0.10.2...v0.10.3) (2026-05-16)
 
 GitHub App installation-footprint allowlist release. Adds an opt-in
