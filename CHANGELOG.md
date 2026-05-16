@@ -1,5 +1,63 @@
 # Changelog
 
+## [0.10.2](https://github.com/swoofer/mcp-coordinator/compare/v0.10.1...v0.10.2) (2026-05-16)
+
+Google Workspace allowlist release. Introduces a per-provider allowlist
+strategy + a new `orgs.allowlist_idp_org_id` column so Google
+Workspace deployments can drive sign-in off the Workspace
+hosted-domain (`hd`) claim without overloading `allowlist_github_org`.
+GitHub OAuth App + GitHub App deployments are behaviour-unchanged.
+
+### Features
+
+* **auth/providers:** new `IdPProvider.allowlistStrategy` field
+  declaring how the callback resolves the user's org match:
+  - `"memberships"` -- call `listMemberships`, match against
+    `orgs.allowlist_github_org` (GitHub OAuth App + GitHub App;
+    default when omitted)
+  - `"idp_org_id"` -- match `IdpUserInfo.idp_org_id` directly
+    against `orgs.allowlist_idp_org_id` (GoogleProvider; the `hd`
+    claim is the canonical case)
+  - `"none"` -- deny by default; deployments wanting to use the
+    provider for allowlist must vendor a subclass (generic
+    `OIDCProvider`'s default since OIDC has no portable model)
+* **auth/allowlist:** new `resolveOrgFromIdpOrgId(db, value)`
+  helper does case-insensitive lookup against the new column. (T56)
+* **db:** `ALTER TABLE orgs ADD COLUMN allowlist_idp_org_id TEXT`
+  idempotent migration + `idx_orgs_allowlist_idp` index. Nullable;
+  rows tagged for the `"memberships"` strategy keep this column NULL
+  forever.
+* **auth/oauth-callback + oauth-token:** dispatch on
+  `provider.allowlistStrategy` instead of unconditionally calling
+  `listMemberships`. `GoogleProvider` no longer crashes the sign-in
+  flow when configured -- the previous behaviour relied on the
+  `listMemberships` throw, which prevented Google sign-in entirely.
+* **auth/refresh-rotation:** skips the IdP-side allowlist recheck
+  for non-`"memberships"` providers. At-sign-in match is
+  authoritative; `token_epoch` is the manual kill switch.
+
+### Documentation
+
+* **docs/idp-providers.md:** Google section gains the hd-allowlist
+  setup walkthrough (with example `INSERT INTO orgs`) plus the
+  explicit no-refresh-recheck caveat.
+
+### Test posture
+
+* **+6 tests** vs v0.10.1 (1714 total): `resolveOrgFromIdpOrgId`
+  unit cases (match / case-insensitive / miss / empty table /
+  stored-casing preserved / orthogonality with
+  `allowlist_github_org`). `orgs-migration.test.ts` expected
+  column list updated.
+
+### Operator notes
+
+The schema migration is idempotent so the upgrade is drop-in.
+Existing GitHub OAuth App / GitHub App / OIDC deployments need no
+configuration change. To enable Google Workspace sign-in for the
+first time, provision an `orgs` row with `allowlist_idp_org_id` set
+to the Workspace hosted-domain (e.g. `acme.com`).
+
 ## [0.10.1](https://github.com/swoofer/mcp-coordinator/compare/v0.10.0...v0.10.1) (2026-05-16)
 
 OIDC defense-in-depth release. Implements OpenID Connect Core 1.0

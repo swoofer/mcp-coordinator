@@ -442,13 +442,17 @@ Audit log tamper-evidence (SHA-256 hash chain on every `audit_log` row + `verify
 
 OIDC `nonce` claim verification (OpenID Connect Core 1.0 §3.1.2.1). `OIDCProvider` now generates a 256-bit nonce per authorize request, persists it in `oauth_state`, and verifies the returned `id_token`'s `nonce` claim against it. Guards against id_token replay across authorize requests. Other providers unaffected.
 
+### v0.10.2 (shipped 2026-05-16)
+
+Google Workspace allowlist. New `orgs.allowlist_idp_org_id` column + per-provider `IdPProvider.allowlistStrategy` field. `GoogleProvider` switches to the `"idp_org_id"` strategy and matches the user's `hd` (hosted domain) claim against the new column. GitHub OAuth App + GitHub App keep the existing memberships strategy.
+
 ### v0.5.0 (shipped 2026-05-10)
 
 Working-files in-flight tracking, tree-sitter symbol annotations across 15 languages, git co-change Layer 4 scoring, dashboard Conflict signals panel, schema downgrade guard, 5 new Prometheus metrics.
 
 ### Planned
 
-- **v0.10.x** — App-as-itself installation token flow for GitHub App (allowlist driven by App installation footprint rather than user org memberships); native `hd`-based allowlist column so Google Workspace deployments don't have to overload `allowlist_github_org`.
+- **v0.10.x** — App-as-itself installation token flow for GitHub App (allowlist driven by App installation footprint rather than user org memberships); OIDC group-claim allowlist for IdPs that publish a `groups` claim.
 - **v0.11** — Postgres adapter for regulated multi-instance workloads (Phase 4).
 - **v1.0** — Phase 5 multi-instance (Redis pub/sub for membership cache invalidation + token_epoch reads + rate-limit + sweeper leader election).
 
