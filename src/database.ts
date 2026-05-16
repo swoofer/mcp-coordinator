@@ -662,6 +662,12 @@ export function initDatabase(dataDir: string): void {
     // --- orgs: allowlist_github_org column (B-NEW-4 Phase 5 readiness) --------
     try { db.exec("ALTER TABLE orgs ADD COLUMN allowlist_github_org TEXT"); } catch { /* already exists */ }
     try { db.exec("CREATE INDEX IF NOT EXISTS idx_orgs_allowlist ON orgs(allowlist_github_org)"); } catch { /* already exists */ }
+    // --- orgs: allowlist_idp_org_id column (T56, v0.10.2) ---------------------
+    // Generic IdP-supplied org identifier; matched against
+    // IdpUserInfo.idp_org_id. GoogleProvider stores the Workspace hd
+    // claim there. OAuth App / GitHub App stay on allowlist_github_org.
+    try { db.exec("ALTER TABLE orgs ADD COLUMN allowlist_idp_org_id TEXT"); } catch { /* already exists */ }
+    try { db.exec("CREATE INDEX IF NOT EXISTS idx_orgs_allowlist_idp ON orgs(allowlist_idp_org_id)"); } catch { /* already exists */ }
 
     // --- user_orgs join table (Q1 V2 N:M-ready, 1:1 invariant app-layer) ------
     db.exec(`CREATE TABLE IF NOT EXISTS user_orgs (

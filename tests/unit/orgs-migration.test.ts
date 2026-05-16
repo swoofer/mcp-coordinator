@@ -33,13 +33,15 @@ describe("orgs table", () => {
     expect(row.name).toBe("Default Organization");
   });
 
-  it("has the expected columns (Phase 1 + v0.8 allowlist_github_org)", () => {
+  it("has the expected columns (+ v0.10.2 allowlist_idp_org_id)", () => {
     const db = getDb();
     const cols = db.prepare("PRAGMA table_info(orgs)").all() as { name: string }[];
     const names = cols.map((c) => c.name).sort();
     // v0.8 adds allowlist_github_org for B-NEW-4 Phase 5 SaaS readiness
+    // v0.10.2 adds allowlist_idp_org_id (T56, generic IdP-supplied org)
     expect(names).toEqual([
-      "allowlist_github_org", "created_at", "id", "idp_org_id", "idp_provider", "name",
+      "allowlist_github_org", "allowlist_idp_org_id", "created_at", "id",
+      "idp_org_id", "idp_provider", "name",
     ]);
   });
 });

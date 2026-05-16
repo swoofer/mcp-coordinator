@@ -6,7 +6,7 @@ import { IdPTokenRevoked, IdPTransientError } from "./providers/errors.js";
 import { consumeOAuthState, inspectOAuthState } from "./oauth-state.js";
 import { parseCookies } from "./cookies.js";
 import { hashIdentifier, isLocked, recordFailedLogin } from "./login-lockout.js";
-import { resolveOrgFromMemberships } from "./allowlist.js";
+import { resolveOrgFromMemberships, resolveOrgFromIdpOrgId } from "./allowlist.js";
 import {
   provisionUser,
   mintTokenPair,
@@ -264,40 +264,59 @@ async function finalizeBrowserOAuth(
     return;
   }
 
-  // 2. listMemberships via T04 cache.
-  let memberships: string[];
-  try {
-    memberships = await ctx.membershipCache.getMemberships(
-      exchange.user.idp_user_id,
-      provider,
-      exchange.accessToken,
-    );
-  } catch (err) {
-    if (err instanceof IdPTokenRevoked) {
-      audit("auth.idp.token_revoked", {
-        tier: 1,
-        metadata: { phase: "callback_memberships" },
-      });
-      res.writeHead(401, {
-        "Content-Type": "application/json; charset=utf-8",
-        "WWW-Authenticate": bearerAuthHeader("invalid_token", "IdP token revoked"),
-      });
-      res.end(JSON.stringify(appError("IDP_TOKEN_REVOKED", "Identity provider rejected the token")));
-      return;
-    }
-    if (err instanceof IdPTransientError) {
-      res.writeHead(503, { "Content-Type": "application/json; charset=utf-8" });
-      res.end(JSON.stringify(appError("IDP_UNAVAILABLE", "Identity provider temporarily unavailable")));
-      return;
-    }
-    throw err;
-  }
+  // 2. Resolve allowlist match. The strategy depends on the provider:
+  //
+  //    "memberships" (GitHub OAuth App, GitHub App): listMemberships
+  //      via T04 cache, then resolveOrgFromMemberships against
+  //      orgs.allowlist_github_org.
+  //    "idp_org_id"  (GoogleProvider, T56 v0.10.2): skip the
+  //      round-trip; match IdpUserInfo.idp_org_id directly against
+  //      orgs.allowlist_idp_org_id. A user with no idp_org_id
+  //      (e.g. consumer Gmail account with no Workspace hd) gets
+  //      null and is denied.
+  //    "none"        (generic OIDCProvider): no portable allowlist
+  //      model. Deny by default; deployments needing OIDC allowlist
+  //      vendor a subclass.
+  const strategy = provider.allowlistStrategy ?? "memberships";
+  let memberships: string[] = [];
+  let allowlistMatch: ReturnType<typeof resolveOrgFromMemberships> = null;
 
-  // 3. Allowlist resolution (T09 — alphabetical tie-break, V4 FIX 22).
-  //    On miss: record a failed login (consumes a token; the (threshold+1)th
-  //    attempt is what trips the lockout, observed by the NEXT request's
-  //    isLocked peek). Emit Tier 1 audit auth.login.denied.not_in_org.
-  const allowlistMatch = resolveOrgFromMemberships(ctx.db, memberships);
+  if (strategy === "memberships") {
+    try {
+      memberships = await ctx.membershipCache.getMemberships(
+        exchange.user.idp_user_id,
+        provider,
+        exchange.accessToken,
+      );
+    } catch (err) {
+      if (err instanceof IdPTokenRevoked) {
+        audit("auth.idp.token_revoked", {
+          tier: 1,
+          metadata: { phase: "callback_memberships" },
+        });
+        res.writeHead(401, {
+          "Content-Type": "application/json; charset=utf-8",
+          "WWW-Authenticate": bearerAuthHeader("invalid_token", "IdP token revoked"),
+        });
+        res.end(JSON.stringify(appError("IDP_TOKEN_REVOKED", "Identity provider rejected the token")));
+        return;
+      }
+      if (err instanceof IdPTransientError) {
+        res.writeHead(503, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify(appError("IDP_UNAVAILABLE", "Identity provider temporarily unavailable")));
+        return;
+      }
+      throw err;
+    }
+    allowlistMatch = resolveOrgFromMemberships(ctx.db, memberships);
+  } else if (strategy === "idp_org_id") {
+    if (exchange.user.idp_org_id) {
+      allowlistMatch = resolveOrgFromIdpOrgId(ctx.db, exchange.user.idp_org_id);
+    }
+    // memberships stays empty; the audit downstream uses it as a count
+    // (will be 0 for idp_org_id deployments, which is informative).
+  }
+  // strategy === "none": leave allowlistMatch as null -> denied below.
   if (!allowlistMatch) {
     recordFailedLogin(ctx.rateLimiter, identifierHash);
     audit("auth.login.denied.not_in_org", {
