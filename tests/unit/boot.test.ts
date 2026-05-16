@@ -47,6 +47,7 @@ const ENV_KEYS = [
   "COORDINATOR_GITHUB_APP_CLIENT_ID",
   "COORDINATOR_GITHUB_APP_CLIENT_SECRET",
   "COORDINATOR_GITHUB_APP_NAME",
+  "COORDINATOR_GITHUB_APP_ALLOWLIST_SOURCE",
 ];
 
 // 32 random bytes (high entropy, no dictionary words) — passes
@@ -945,6 +946,55 @@ describe("bootPhase2 — GitHub App wiring (v0.10.0 T54)", () => {
       .buildAuthUrl("state-x", "https://coordinator.example.com/cb");
     expect(authUrl.startsWith("https://ghe.example.com/login/oauth/authorize"))
       .toBe(true);
+    void result!.shutdown();
+  });
+
+  it("T57: COORDINATOR_GITHUB_APP_ALLOWLIST_SOURCE=user_installations is accepted", () => {
+    applyValidEnv();
+    process.env.COORDINATOR_GITHUB_APP_CLIENT_ID = "Iv1.xxxx";
+    process.env.COORDINATOR_GITHUB_APP_CLIENT_SECRET = "secret";
+    process.env.COORDINATOR_GITHUB_APP_ALLOWLIST_SOURCE = "user_installations";
+
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+    expect(result!.context.providers.has("github-app")).toBe(true);
+    void result!.shutdown();
+  });
+
+  it("T57: COORDINATOR_GITHUB_APP_ALLOWLIST_SOURCE=user_orgs is accepted (explicit default)", () => {
+    applyValidEnv();
+    process.env.COORDINATOR_GITHUB_APP_CLIENT_ID = "Iv1.xxxx";
+    process.env.COORDINATOR_GITHUB_APP_CLIENT_SECRET = "secret";
+    process.env.COORDINATOR_GITHUB_APP_ALLOWLIST_SOURCE = "user_orgs";
+
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+    void result!.shutdown();
+  });
+
+  it("T57: invalid COORDINATOR_GITHUB_APP_ALLOWLIST_SOURCE throws BootValidationError", () => {
+    applyValidEnv();
+    process.env.COORDINATOR_GITHUB_APP_CLIENT_ID = "Iv1.xxxx";
+    process.env.COORDINATOR_GITHUB_APP_CLIENT_SECRET = "secret";
+    process.env.COORDINATOR_GITHUB_APP_ALLOWLIST_SOURCE = "bogus";
+
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
+      /must be "user_orgs" or "user_installations"/,
+    );
+  });
+
+  it("T57: COORDINATOR_GITHUB_APP_ALLOWLIST_SOURCE without App credentials is ignored", () => {
+    applyValidEnv();
+    delete process.env.COORDINATOR_GITHUB_APP_CLIENT_ID;
+    delete process.env.COORDINATOR_GITHUB_APP_CLIENT_SECRET;
+    process.env.COORDINATOR_GITHUB_APP_ALLOWLIST_SOURCE = "user_installations";
+
+    // Boot succeeds; the env var is moot when the provider isn't
+    // registered. Validation runs only inside the App-registration
+    // branch.
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+    expect(result!.context.providers.has("github-app")).toBe(false);
     void result!.shutdown();
   });
 

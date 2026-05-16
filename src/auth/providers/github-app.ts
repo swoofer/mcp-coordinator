@@ -9,6 +9,7 @@ import {
   TokenResponseSchema,
   fetchGitHubUserInfo,
   fetchWithRetry,
+  listGitHubAppInstallations,
   listGitHubOrgs,
   mapGitHubHttpError,
 } from "./github-shared.js";
@@ -36,6 +37,25 @@ import {
  * Design rationale, threat model, and out-of-scope items are
  * documented in docs/superpowers/specs/2026-05-16-github-app-design.md.
  */
+/**
+ * T57 (v0.10.3): how the App provider sources the allowlist
+ * candidate list at sign-in time.
+ *
+ *   "user_orgs"          (default) -- call `GET /user/orgs` with the
+ *                         user's user-to-server token; returns the
+ *                         user's GitHub-org memberships. Mirrors
+ *                         OAuth App behaviour.
+ *   "user_installations" -- call `GET /user/installations`; returns
+ *                         the App-installations the user can access.
+ *                         The App's installation footprint IS the
+ *                         allowlist -- uninstalling the App from an
+ *                         org evicts users from that org without any
+ *                         coordinator config change. No App private
+ *                         key needed; the user's user-to-server
+ *                         token is sufficient.
+ */
+export type GitHubAppAllowlistSource = "user_orgs" | "user_installations";
+
 export interface GitHubAppProviderConfig {
   clientId: string;
   clientSecret: string;
@@ -47,17 +67,22 @@ export interface GitHubAppProviderConfig {
   // The picker will title-case this for display, so prefer short
   // lowercase strings.
   name?: string;
+  /** T57: see GitHubAppAllowlistSource. Defaults to "user_orgs" for
+   *  backward compatibility with v0.10.0. */
+  allowlistSource?: GitHubAppAllowlistSource;
 }
 
 export class GitHubAppProvider implements IdPProvider {
   readonly name: string;
   private readonly apiBaseUrl: string;
   private readonly authBaseUrl: string;
+  private readonly allowlistSource: GitHubAppAllowlistSource;
 
   constructor(private readonly cfg: GitHubAppProviderConfig) {
     this.name = cfg.name ?? "github-app";
     this.apiBaseUrl = cfg.apiBaseUrl ?? DEFAULT_API_BASE;
     this.authBaseUrl = cfg.authBaseUrl ?? DEFAULT_AUTH_BASE;
+    this.allowlistSource = cfg.allowlistSource ?? "user_orgs";
   }
 
   buildAuthUrl(state: string, redirectUri: string, codeChallenge?: string): string {
@@ -119,6 +144,9 @@ export class GitHubAppProvider implements IdPProvider {
   }
 
   async listMemberships(accessToken: string): Promise<string[]> {
+    if (this.allowlistSource === "user_installations") {
+      return listGitHubAppInstallations(this.apiBaseUrl, accessToken);
+    }
     return listGitHubOrgs(this.apiBaseUrl, accessToken);
   }
 

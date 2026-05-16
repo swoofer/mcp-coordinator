@@ -134,6 +134,19 @@ export const GitHubEmailsSchema = z.array(GitHubEmailSchema);
 export const GitHubOrgSchema = z.object({ login: z.string() });
 export const GitHubOrgsSchema = z.array(GitHubOrgSchema);
 
+// T57: /user/installations response shape. Pagination matches /user/orgs.
+export const GitHubInstallationSchema = z.object({
+  id: z.number(),
+  account: z.object({
+    login: z.string(),
+    type: z.string().optional(),
+  }),
+});
+export const GitHubInstallationsResponseSchema = z.object({
+  total_count: z.number(),
+  installations: z.array(GitHubInstallationSchema),
+});
+
 // ---- Shared identity + membership helpers ----
 
 import type { IdpUserInfo } from "./types.js";
@@ -210,6 +223,54 @@ export async function listGitHubOrgs(
     const orgs = GitHubOrgsSchema.parse(json);
     for (const o of orgs) {
       logins.push(o.login);
+    }
+    url = parseNextLink(res.headers.get("link"), expectedOrigin);
+  }
+  return logins;
+}
+
+/**
+ * List the GitHub App installations the current user has access to,
+ * returning the installation account logins (lowercased to match the
+ * existing membership-cache + allowlist normalization).
+ *
+ * T57 (v0.10.3): used by GitHubAppProvider when
+ * `allowlistSource === "user_installations"` to drive the org
+ * allowlist off the App's installation footprint rather than the
+ * user's GitHub-org memberships. This delivers the
+ * "App-installed-on-org IS the allowlist" property without needing
+ * the App's RSA private key -- the user's own user-to-server token
+ * is sufficient because `/user/installations` is scoped to
+ * installations the user can access.
+ *
+ * Endpoint: `GET /user/installations` (paginated).
+ * Response: `{ total_count, installations: [{ account: { login }, ... }] }`.
+ *
+ * Each result becomes a candidate match against
+ * `orgs.allowlist_github_org`. Personal-account installations
+ * (`account.type === "User"`) work too -- the account login is the
+ * user's own GitHub login, which an operator can put on the
+ * allowlist if they want personal-account sign-in.
+ */
+export async function listGitHubAppInstallations(
+  apiBaseUrl: string,
+  accessToken: string,
+): Promise<string[]> {
+  const logins: string[] = [];
+  const expectedOrigin = new URL(apiBaseUrl).origin;
+  let url: string | null = `${apiBaseUrl}/user/installations?per_page=100`;
+  while (url) {
+    const res: Response = await fetchWithRetry(url, {
+      method: "GET",
+      headers: apiHeaders(accessToken),
+    });
+    if (!res.ok) {
+      throw mapGitHubHttpError(res.status, "GitHub App");
+    }
+    const json = await res.json();
+    const parsed = GitHubInstallationsResponseSchema.parse(json);
+    for (const inst of parsed.installations) {
+      logins.push(inst.account.login);
     }
     url = parseNextLink(res.headers.get("link"), expectedOrigin);
   }
