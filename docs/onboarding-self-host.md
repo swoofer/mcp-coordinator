@@ -125,6 +125,26 @@ COORDINATOR_SESSION_IDLE_TIMEOUT=15m          # for regulated workloads
 COORDINATOR_METRICS_BEARER=<paste output of: openssl rand -hex 32>
 ```
 
+### Encryption (v0.10.5)
+
+Optionally encrypt the OAuth IdP tokens (`users.idp_access_token` and
+`users.idp_refresh_token`) at rest:
+
+```
+COORDINATOR_ENCRYPTION_KEY=<paste output of: openssl rand -base64 32>
+```
+
+Same generation command as `COORDINATOR_JWT_SECRET`; it must be a distinct
+value. When set, all writes to the IdP token columns are sealed with
+AES-256-GCM, AAD-bound to `user_id` + column name + `org_id` so ciphertext
+cannot be swapped across rows by a DB-write attacker.
+
+Backward-compat: without `COORDINATOR_ENCRYPTION_KEY`, the daemon boots and
+stores tokens plaintext (boot warning logged — promoted to ERROR level when
+the deployment looks like production). Existing v0.10.4 databases continue to
+work unchanged; encryption only takes effect for rows written after the key
+is set.
+
 ### JWT secret entropy
 
 The boot path runs an entropy check on `COORDINATOR_JWT_SECRET`:
@@ -334,6 +354,24 @@ Fix: set `COORDINATOR_ALLOW_RESTORE=true`, boot ONCE (which bumps the
 global `token_epoch` and invalidates every refresh token in circulation),
 then unset the variable before the next boot.
 
+### Decrypt errors after restore
+
+If you restore a backed-up `coordinator.db` to a new host without setting
+`COORDINATOR_ENCRYPTION_KEY` to the SAME value used at backup time, the
+daemon will refuse to boot with: "Database contains encrypted IdP token rows
+but COORDINATOR_ENCRYPTION_KEY is not set." Recover the original key from
+your secret manager (the 16-char key fingerprint stored in
+`system_config.encryption.key_fingerprint` helps you identify which key is
+correct). If the original key is permanently lost, set
+`COORDINATOR_ALLOW_TOKEN_LOSS=1` +
+`COORDINATOR_TOKEN_LOSS_CONFIRM=I_UNDERSTAND_THIS_NULLS_<N>_ROWS` (replace
+`<N>` with the row count printed in the refusal message) to NULL the
+encrypted rows and force all users to re-authenticate. The original
+ciphertexts are stashed in `encryption_invalidated_tokens` for forensic
+recovery if the key is later found. See
+`docs/ops/encryption-key-management.md` for the full runbook (T13b — not
+yet written).
+
 ## Docker / Kubernetes
 
 A reference `Dockerfile` and `docker-compose.yml` ship at the repo root.
@@ -383,6 +421,14 @@ cp data/coordinator.db backup/coordinator-$(date +%F).db
 Restore procedure: stop the coordinator, copy the backup over the live
 file, set `COORDINATOR_ALLOW_RESTORE=true`, start, then unset the variable
 before the next restart. See "Restore-from-backup boot refused" above.
+
+If `COORDINATOR_ENCRYPTION_KEY` is set, the backup tarball contains
+encrypted IdP tokens. The encryption key itself is NOT in the backup —
+store it separately (e.g., in your secret manager) alongside its 16-char
+fingerprint from `system_config.encryption.key_fingerprint`. Losing the key
+while keeping the backup means losing all stored IdP sessions (users will
+be forced to re-auth). Coordinator data + audit log + everything else
+remain intact regardless.
 
 ## Next steps
 

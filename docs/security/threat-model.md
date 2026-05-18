@@ -15,9 +15,10 @@ References:
 - V2/V3 plan — `docs/superpowers/plans/2026-05-13-auth-phase2-oauth-device-plan-v2-patches.md`
 
 Out of scope (deferred to later phases): MQTT broker authentication
-(Phase 1 still trust-on-first-connect), encryption at rest of the SQLite
-database (Phase 2.5 / v0.7.5), Postgres back-end for regulated workloads
-(Phase 4), multi-instance HA (Phase 5).
+(Phase 1 still trust-on-first-connect), full database-file encryption at
+rest (v0.10.5 ships column-level encryption for IdP tokens only; other
+columns rely on OS-level encryption), Postgres back-end for regulated
+workloads (Phase 4), multi-instance HA (Phase 5).
 
 ## Trust boundaries
 
@@ -72,7 +73,7 @@ in its own section.
 | `refresh_tokens` rows      | SQLite `refresh_tokens` table  | High        |
 | `audit_log` rows           | SQLite `audit_log` table       | High        |
 | Session cookies (browser)  | Browser cookie jar             | High        |
-| `idp_access_token`         | SQLite `users.idp_access_token` (plaintext) | High |
+| `idp_access_token`         | SQLite `users.idp_access_token` (AES-256-GCM v0.10.5; plaintext if `COORDINATOR_ENCRYPTION_KEY` unset) | High |
 | GitHub OAuth grant         | External (GitHub side)         | High        |
 
 ## Asset 1: JWT signing key
@@ -354,15 +355,23 @@ look up org membership in `src/auth/membership-cache.ts`.
 ### Information disclosure
 
 - **Threat**: DB compromise discloses live GitHub OAuth grants for
-  all users. Per V4 FIX 4 #6, **the token is stored in plaintext in
-  Phase 2** because envelope encryption of per-user secrets requires
-  the master-key infrastructure not delivered until v0.7.5.
-- **Mitigation (interim)**: SQLite file permissions, no plaintext
-  backups, prompt rotation on suspected DB compromise via
-  `docs/ops/incident-refresh-leak.md`. Operators who cannot accept
-  plaintext IdP tokens should defer mcp-coordinator to v0.7.5.
-- **Residual**: see residual-risks section below — this is the highest
-  documented Phase 2 risk.
+  all users.
+- **Mitigation (v0.10.5)**: when `COORDINATOR_ENCRYPTION_KEY` is set, the
+  `idp_access_token` and `idp_refresh_token` columns are sealed with
+  AES-256-GCM. AAD is bound to `user_id` + column name + `org_id`, so an
+  attacker with DB-write cannot swap ciphertexts across rows or columns.
+  Boot refuses to start if the DB contains encrypted rows but the key is
+  absent (recovery via `COORDINATOR_ALLOW_TOKEN_LOSS` is documented in
+  `docs/onboarding-self-host.md`). A 16-char key fingerprint is stored in
+  `system_config.encryption.key_fingerprint`; a silent operator key-swap
+  trips the boot fingerprint guard.
+- **Mitigation (legacy / opt-out)**: with `COORDINATOR_ENCRYPTION_KEY`
+  unset, tokens remain plaintext (boot warning, ERROR in production). Fall
+  back to SQLite file permissions, no plaintext backups, prompt rotation
+  on suspected DB compromise via `docs/ops/incident-refresh-leak.md`.
+- **Residual**: master-key compromise reveals every encrypted token;
+  master-key loss makes IdP tokens unreadable but does not destroy
+  coordinator data (users re-auth). See residual-risks section below.
 
 ### Denial of service
 
@@ -410,13 +419,14 @@ These risks are accepted in Phase 2 and tracked for later phases. Each
 is documented here so operators can choose deployment configurations
 that compensate.
 
-1. **No encryption at rest** — the SQLite database is a plaintext file.
-   Refresh tokens, audit rows, and `idp_access_token` are readable by
-   anyone with filesystem access. **Mitigation roadmap**: Phase 2.5 /
-   v0.7.5 encryption-at-rest (see
-   `docs/superpowers/specs/2026-05-11-encryption-at-rest-design.md`).
-   Interim: rely on OS file permissions and full-disk encryption on the
-   host.
+1. **Backup theft / insider direct-read of DB file** — for IdP tokens
+   (`idp_access_token`, `idp_refresh_token`) this is **CLOSED** in v0.10.5
+   when `COORDINATOR_ENCRYPTION_KEY` is set: column-level AES-256-GCM with
+   AAD-bound ciphertext means a leaked DB file no longer discloses IdP
+   credentials. Other plaintext columns (file paths, plan text, audit
+   metadata, `refresh_tokens` rows) remain readable from a leaked DB file;
+   mitigation = OS-level encryption (full-disk encryption on the host)
+   plus restrictive file permissions on `data/coordinator.db`.
 
 2. **Single-instance deployment only** — Phase 2 does not implement
    distributed session state. Operators running more than one
@@ -425,10 +435,33 @@ that compensate.
    roadmap**: Phase 5 multi-instance with a Postgres or Redis-backed
    session store.
 
-3. **`idp_access_token` stored in plaintext** — see V4 FIX 4 #6 and
-   Asset 6 above. **Mitigation roadmap**: envelope encryption with the
-   v0.7.5 master-key infrastructure. Phase 2 ships without it because
-   the master-key bootstrap is not solved here.
+3. **`idp_access_token` / `idp_refresh_token` stored in plaintext** —
+   **CLOSED in v0.10.5** when `COORDINATOR_ENCRYPTION_KEY` is set
+   (column-level AES-256-GCM). Remaining sub-risks:
+   (a) **Cross-row / cross-column ciphertext swap by attacker with
+   DB-write access** — CLOSED: AAD-bound to `user_id` + column name +
+   `org_id`, so a ciphertext cannot be transplanted across rows/columns
+   without breaking GCM auth.
+   (b) **Silent operator key-swap** — MITIGATED: the 16-char key
+   fingerprint stored in `system_config.encryption.key_fingerprint` is
+   checked at every boot; a swapped key refuses to start unless
+   `COORDINATOR_ALLOW_KEY_ROTATION=1` is set deliberately.
+   (c) **Silent restore-without-key** — MITIGATED: boot refuses when the
+   DB contains encrypted rows but `COORDINATOR_ENCRYPTION_KEY` is unset;
+   operator must either supply the original key or invoke the
+   `COORDINATOR_ALLOW_TOKEN_LOSS` + `COORDINATOR_TOKEN_LOSS_CONFIRM` flow
+   documented in `docs/onboarding-self-host.md`.
+   (d) **Master key loss** — OPEN but bounded: IdP tokens become
+   unreadable and users are forced to re-auth; original ciphertexts are
+   stashed in `encryption_invalidated_tokens` for forensic recovery if the
+   key later resurfaces. No permanent coordinator data loss.
+   (e) **Compromised master key** — OPEN: all encrypted rows become
+   readable. Mitigation = secure env handling (secret manager, never bake
+   into images) plus rotation via the documented procedure
+   (`COORDINATOR_ALLOW_KEY_ROTATION=1`, maintenance window with no
+   concurrent backups, since rotation transits plaintext in-process).
+   (f) **Process memory dump** — OUT OF SCOPE; in-memory plaintext after
+   decryption is unavoidable for the coordinator to use the token.
 
 4. **SQLite-only persistence** — better-sqlite3 is appropriate for the
    single-node Phase 2 target but unsuitable for regulated workloads
