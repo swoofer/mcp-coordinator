@@ -6,6 +6,8 @@ import { hostCookie, setCookies } from "./cookies.js";
 import type { JwtKeyRegistry } from "./jwt-keys.js";
 import { mintAccessJWT, mintRefreshJWT } from "./jwt-mint.js";
 import type { IdpUserInfo } from "./providers/types.js";
+import type { EncryptionProvider } from "../security/encryption.js";
+import { encryptNullable } from "../security/encrypt-nullable.js";
 
 /**
  * Shared OAuth-finalize helpers — consumed by:
@@ -39,6 +41,23 @@ export interface ProvisionResult {
   bootstrapAdmin: boolean;
 }
 
+export interface ProvisionUserArgs {
+  db: Database.Database;
+  clock: Clock;
+  idpUser: IdpUserInfo;
+  accessToken: string;
+  allowlistOrg: AllowlistOrg;
+  providerName: string;
+  /** T54: optional IdP refresh token. GitHub App user-to-server tokens
+   *  carry one (8h access + 6mo refresh); OAuth App / Google / OIDC
+   *  do not and pass undefined. Stored in users.idp_refresh_token. */
+  idpRefreshToken?: string | null;
+  /** T08: encryption provider used to wrap idp_access_token +
+   *  idp_refresh_token at write. Pass `PassthroughEncryption` when no
+   *  master key is configured (boot wires this up via bootPhase2). */
+  encryption: EncryptionProvider;
+}
+
 /**
  * Find-or-create the user for a given IdP user-info + allowlisted org.
  *
@@ -58,18 +77,17 @@ export interface ProvisionResult {
  * `auth.user.created` (T16b emits Tier 2) or `auth.admin.bootstrapped`
  * (T16b emits Tier 1).
  */
-export function provisionUser(
-  db: Database.Database,
-  clock: Clock,
-  idpUser: IdpUserInfo,
-  accessToken: string,
-  allowlistOrg: AllowlistOrg,
-  providerName: string,
-  /** T54: optional IdP refresh token. GitHub App user-to-server tokens
-   *  carry one (8h access + 6mo refresh); OAuth App / Google / OIDC
-   *  do not and pass undefined. Stored in users.idp_refresh_token. */
-  idpRefreshToken?: string | null,
-): ProvisionResult {
+export function provisionUser(args: ProvisionUserArgs): ProvisionResult {
+  const {
+    db,
+    clock,
+    idpUser,
+    accessToken,
+    allowlistOrg,
+    providerName,
+    idpRefreshToken,
+    encryption,
+  } = args;
   const refreshTokenValue = idpRefreshToken ?? null;
   const existing = db
     .prepare(
@@ -83,11 +101,28 @@ export function provisionUser(
 
   if (existing) {
     // Returning user — update idp_access_token + idp_refresh_token + last_login_at.
+    // T08: encrypt at write. AAD includes user_id + column so a swap of
+    // ciphertext between users or between columns fails decrypt.
+    const ctxAccess = {
+      org_id: allowlistOrg.org_id,
+      column: "idp_access_token" as const,
+      user_id: existing.id,
+    };
+    const ctxRefresh = {
+      org_id: allowlistOrg.org_id,
+      column: "idp_refresh_token" as const,
+      user_id: existing.id,
+    };
     db.prepare(
       `UPDATE users
        SET idp_access_token = ?, idp_refresh_token = ?, last_login_at = ?
        WHERE id = ?`,
-    ).run(accessToken, refreshTokenValue, String(clock.now()), existing.id);
+    ).run(
+      encryptNullable(encryption, accessToken, ctxAccess),
+      encryptNullable(encryption, refreshTokenValue, ctxRefresh),
+      String(clock.now()),
+      existing.id,
+    );
 
     return {
       user: {
@@ -101,8 +136,20 @@ export function provisionUser(
   }
 
   // New user — INSERT then bootstrap-admin atomic check.
+  // T08: compute userId BEFORE the bind so EncryptionContext.user_id is
+  // correct for AAD construction (binding ciphertext to its row).
   const userId = crypto.randomUUID();
   const now = String(clock.now());
+  const ctxAccess = {
+    org_id: allowlistOrg.org_id,
+    column: "idp_access_token" as const,
+    user_id: userId,
+  };
+  const ctxRefresh = {
+    org_id: allowlistOrg.org_id,
+    column: "idp_refresh_token" as const,
+    user_id: userId,
+  };
 
   db.prepare(
     `INSERT INTO users
@@ -116,8 +163,8 @@ export function provisionUser(
     idpUser.name ?? null,
     providerName,
     idpUser.idp_user_id,
-    accessToken,
-    refreshTokenValue,
+    encryptNullable(encryption, accessToken, ctxAccess),
+    encryptNullable(encryption, refreshTokenValue, ctxRefresh),
     "member", // start as member; bootstrap check may promote
     now,
   );

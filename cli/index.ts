@@ -7,6 +7,7 @@ import { createDoctorCommand } from "./doctor.js";
 import { createUninstallCommand } from "./uninstall.js";
 import { createServiceTokensCommand } from "./service-tokens.js";
 import { createRotateJwtSecretCommand } from "./rotate-jwt-secret.js";
+import { createEncryptionCommand } from "./encryption/index.js";
 import { getVersion } from "./version.js";
 
 const program = new Command();
@@ -22,5 +23,6 @@ program.addCommand(createDoctorCommand());
 program.addCommand(createUninstallCommand());
 program.addCommand(createServiceTokensCommand());
 program.addCommand(createRotateJwtSecretCommand());
+program.addCommand(createEncryptionCommand());
 
 program.parse();

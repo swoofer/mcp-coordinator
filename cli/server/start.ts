@@ -89,6 +89,11 @@ export function createServerStartCommand(): Command {
         fwd("COORDINATOR_LAYER4_MAX_COMMITS", process.env.COORDINATOR_LAYER4_MAX_COMMITS);
         fwd("COORDINATOR_LAYER4_REFRESH_INTERVAL_MS", process.env.COORDINATOR_LAYER4_REFRESH_INTERVAL_MS);
         fwd("COORDINATOR_LAYER4_RETRY_MS", process.env.COORDINATOR_LAYER4_RETRY_MS);
+        // T06a: Phase 3 encryption envs. Forward only when set in parent.
+        fwd("COORDINATOR_ENCRYPTION_KEY", process.env.COORDINATOR_ENCRYPTION_KEY);
+        fwd("COORDINATOR_ALLOW_TOKEN_LOSS", process.env.COORDINATOR_ALLOW_TOKEN_LOSS);
+        fwd("COORDINATOR_TOKEN_LOSS_CONFIRM", process.env.COORDINATOR_TOKEN_LOSS_CONFIRM);
+        fwd("COORDINATOR_ALLOW_KEY_ROTATION", process.env.COORDINATOR_ALLOW_KEY_ROTATION);
         const child = spawn(cmd, args, {
           detached: true,
           stdio: ["ignore", logFd, logFd],

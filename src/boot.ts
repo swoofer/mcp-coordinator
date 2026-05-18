@@ -15,6 +15,17 @@ import { bumpTokenEpochAllUsers } from "./auth/token-epoch.js";
 import { realClock, type Clock } from "./auth/clock.js";
 import { Sweeper } from "./sweeper/index.js";
 import type { AuthHandlerContext } from "./auth/context.js";
+import { createLogger, type Logger } from "./observability/logger.js";
+import {
+  loadEncryptionKey,
+  runEncryptionGuards,
+  buildWrappedProvider,
+  registerPlaintextReminder,
+  BootValidationError,
+} from "./boot-encryption.js";
+
+// Re-export so existing consumers (tests, serve-http, etc.) keep working.
+export { BootValidationError };
 
 // T29: Phase 2 boot. This module is the integration glue that activates
 // Phase 2 features on the live HTTP server. It is the ONLY module (besides
@@ -38,6 +49,18 @@ export interface Phase2Bootstrap {
   shutdown: () => Promise<void>;
 }
 
+/**
+ * Injectable dependencies for bootPhase2 (T01 plan V2). All fields are
+ * optional — when omitted, each resolves to the existing global default
+ * (opts.db / process.env / a freshly-created Pino logger). Tests inject
+ * fakes to exercise boot in isolation from process state.
+ */
+export interface BootPhase2Deps {
+  db?: Database.Database;
+  env?: NodeJS.ProcessEnv;
+  logger?: Logger;
+}
+
 const MIN_JWT_SECRET_BITS = 128;
 const RESTORE_DETECTION_STALE_THRESHOLD_S = 300; // 5 minutes
 const DRAIN_TIMEOUT_MS = 5000;
@@ -51,23 +74,32 @@ const DRAIN_TIMEOUT_MS = 5000;
  * Throws on validation failure — boot must NOT silently activate with
  * weak/missing secrets.
  */
-export function bootPhase2(opts: Phase2BootOptions): Phase2Bootstrap | null {
+export function bootPhase2(
+  opts: Phase2BootOptions,
+  deps?: BootPhase2Deps,
+): Phase2Bootstrap | null {
   if (!opts.enabled) return null;
 
   const clock = opts.clock ?? realClock;
-  const db = opts.db;
+  // T01 plan V2: resolve injectable deps with ?? fallback to existing
+  // globals so existing callers (which pass no deps) are unaffected.
+  const db = deps?.db ?? opts.db;
+  const env = deps?.env ?? process.env;
+  const logger = deps?.logger ?? createLogger({ level: "silent" });
 
   // 1. Required env vars (V3 §4).
-  const jwtSecret = readRequiredEnv("COORDINATOR_JWT_SECRET");
-  const githubClientId = readRequiredEnv("COORDINATOR_GITHUB_CLIENT_ID");
-  const githubClientSecret = readRequiredEnv("COORDINATOR_GITHUB_CLIENT_SECRET");
-  const publicUrl = readRequiredEnv("COORDINATOR_PUBLIC_URL");
-  const githubOrg = readRequiredEnv("COORDINATOR_GITHUB_ORG");
+  const jwtSecret = readRequiredEnv(env, "COORDINATOR_JWT_SECRET");
+  const githubClientId = readRequiredEnv(env, "COORDINATOR_GITHUB_CLIENT_ID");
+  const githubClientSecret = readRequiredEnv(env, "COORDINATOR_GITHUB_CLIENT_SECRET");
+  const publicUrl = readRequiredEnv(env, "COORDINATOR_PUBLIC_URL");
+  const githubOrg = readRequiredEnv(env, "COORDINATOR_GITHUB_ORG");
+
+  logger.debug({ public_url: publicUrl }, "bootPhase2: env resolved");
 
   // 2. Validate PUBLIC_URL format. http:// non-localhost requires an explicit
   //    COORDINATOR_INSECURE_COOKIES=true override since the Secure flag is
   //    dropped — see V3 §4.2 and src/auth/cookies.ts.
-  validatePublicUrl(publicUrl);
+  validatePublicUrl(publicUrl, env);
 
   // 3. Validate JWT secret entropy (T08b assertSecretEntropy).
   const secretBuf = Buffer.from(jwtSecret, "utf8");
@@ -78,7 +110,7 @@ export function bootPhase2(opts: Phase2BootOptions): Phase2Bootstrap | null {
 
   // 5. NR12 restore detection — refuse boot if audit_log is more than
   //    5 minutes stale relative to wall clock, unless explicitly overridden.
-  performRestoreCheck(db, clock);
+  performRestoreCheck(db, clock, env);
 
   // 6. Compose Phase 2 components.
   const stateBindingKey = deriveStateBindingKey(secretBuf);
@@ -87,7 +119,7 @@ export function bootPhase2(opts: Phase2BootOptions): Phase2Bootstrap | null {
   // under kid "hs256-v0" verify-only so existing sessions don't immediately
   // 401 when JWT_SECRET is rotated. See docs/ops/key-rotation.md.
   let prevSecretBuf: Buffer | undefined;
-  const prevSecret = process.env.COORDINATOR_JWT_SECRET_PREV;
+  const prevSecret = env.COORDINATOR_JWT_SECRET_PREV;
   if (prevSecret && prevSecret.trim() !== "") {
     // Entropy validation: prev MUST also meet the bar (operators should never
     // rotate FROM a weak secret either — the entropy check applies to both).
@@ -102,8 +134,8 @@ export function bootPhase2(opts: Phase2BootOptions): Phase2Bootstrap | null {
   // defaults (github.com / api.github.com) take over. Conditional spread so we
   // never pass undefined into the config object — the constructor's `?? DEFAULT`
   // fallback only fires when the key is absent.
-  const githubAuthBaseUrl = process.env.COORDINATOR_GITHUB_AUTH_BASE_URL?.trim();
-  const githubApiBaseUrl = process.env.COORDINATOR_GITHUB_API_BASE_URL?.trim();
+  const githubAuthBaseUrl = env.COORDINATOR_GITHUB_AUTH_BASE_URL?.trim();
+  const githubApiBaseUrl = env.COORDINATOR_GITHUB_API_BASE_URL?.trim();
   if (githubAuthBaseUrl) {
     validateGithubBaseUrl(githubAuthBaseUrl, "COORDINATOR_GITHUB_AUTH_BASE_URL");
   }
@@ -127,8 +159,8 @@ export function bootPhase2(opts: Phase2BootOptions): Phase2Bootstrap | null {
   // T47 (v0.9.0): GoogleProvider. Opt-in via env. Both client_id and
   // client_secret are required; presence of only one is a config error
   // so the deployment fails closed at boot rather than half-registering.
-  const googleClientId = process.env.COORDINATOR_GOOGLE_CLIENT_ID?.trim();
-  const googleClientSecret = process.env.COORDINATOR_GOOGLE_CLIENT_SECRET?.trim();
+  const googleClientId = env.COORDINATOR_GOOGLE_CLIENT_ID?.trim();
+  const googleClientSecret = env.COORDINATOR_GOOGLE_CLIENT_SECRET?.trim();
   if (googleClientId || googleClientSecret) {
     if (!googleClientId || !googleClientSecret) {
       throw new BootValidationError(
@@ -147,14 +179,14 @@ export function bootPhase2(opts: Phase2BootOptions): Phase2Bootstrap | null {
   // client_secret required together, same fail-closed pattern as Google.
   // GHES base URLs are SHARED with GitHubProvider since GitHub Apps and
   // OAuth Apps live at the same hostnames in GHES.
-  const githubAppClientId = process.env.COORDINATOR_GITHUB_APP_CLIENT_ID?.trim();
-  const githubAppClientSecret = process.env.COORDINATOR_GITHUB_APP_CLIENT_SECRET?.trim();
-  const githubAppName = process.env.COORDINATOR_GITHUB_APP_NAME?.trim();
+  const githubAppClientId = env.COORDINATOR_GITHUB_APP_CLIENT_ID?.trim();
+  const githubAppClientSecret = env.COORDINATOR_GITHUB_APP_CLIENT_SECRET?.trim();
+  const githubAppName = env.COORDINATOR_GITHUB_APP_NAME?.trim();
   // T57: COORDINATOR_GITHUB_APP_ALLOWLIST_SOURCE controls whether
   // the allowlist drives off /user/orgs (default) or
   // /user/installations (App-footprint-as-allowlist). Validated only
   // when the App provider is registered.
-  const githubAppAllowlistSource = process.env.COORDINATOR_GITHUB_APP_ALLOWLIST_SOURCE?.trim();
+  const githubAppAllowlistSource = env.COORDINATOR_GITHUB_APP_ALLOWLIST_SOURCE?.trim();
   if (githubAppClientId || githubAppClientSecret) {
     if (!githubAppClientId || !githubAppClientSecret) {
       throw new BootValidationError(
@@ -188,12 +220,12 @@ export function bootPhase2(opts: Phase2BootOptions): Phase2Bootstrap | null {
   // T48 (v0.9.0): generic OIDC. Opt-in via env; issuer_url + client_id
   // + client_secret are all required if ANY is set, same fail-closed
   // posture as Google. Discovery doc is fetched lazily at first use.
-  const oidcIssuerUrl = process.env.COORDINATOR_OIDC_ISSUER_URL?.trim();
-  const oidcClientId = process.env.COORDINATOR_OIDC_CLIENT_ID?.trim();
-  const oidcClientSecret = process.env.COORDINATOR_OIDC_CLIENT_SECRET?.trim();
+  const oidcIssuerUrl = env.COORDINATOR_OIDC_ISSUER_URL?.trim();
+  const oidcClientId = env.COORDINATOR_OIDC_CLIENT_ID?.trim();
+  const oidcClientSecret = env.COORDINATOR_OIDC_CLIENT_SECRET?.trim();
   // T58: optional groups-claim path enables the "id_token_groups"
   // allowlist strategy. Common values: "groups", "realm_access.roles".
-  const oidcGroupsClaim = process.env.COORDINATOR_OIDC_GROUPS_CLAIM?.trim();
+  const oidcGroupsClaim = env.COORDINATOR_OIDC_GROUPS_CLAIM?.trim();
   if (oidcIssuerUrl || oidcClientId || oidcClientSecret) {
     if (!oidcIssuerUrl || !oidcClientId || !oidcClientSecret) {
       throw new BootValidationError(
@@ -228,6 +260,34 @@ export function bootPhase2(opts: Phase2BootOptions): Phase2Bootstrap | null {
   // 7. Initialize audit queue (Tier 2 buffered writes; T11b).
   initAuditQueue(db);
 
+  // 7b. Phase 3 (T06a): load master key + run encryption-mode strict guards.
+  //     Sits AFTER initAuditQueue so the optional `audit` hook lands in the
+  //     real queue, and AFTER performRestoreCheck so we don't tear down rows
+  //     a restore would have invalidated anyway. T06b will wrap the raw
+  //     provider with first-encrypt fingerprint persistence; T06c adds the
+  //     plaintext-bypass reminder. For now we only attach the raw provider.
+  const encKey = loadEncryptionKey(env, logger);
+  const encInit = runEncryptionGuards(
+    { db, env, logger, audit },
+    encKey,
+  );
+  // T06b: wrap the raw provider so the first encrypt() persists the key
+  // fingerprint to system_config (idempotent) + emits encryption.config.loaded.
+  // In passthrough mode (keyFingerprint=null), buildWrappedProvider returns
+  // the raw PassthroughEncryption instance unchanged (reference-equal).
+  const wrappedProvider = buildWrappedProvider({
+    rawProvider: encInit.rawProvider,
+    keyFingerprint: encInit.keyFingerprint,
+    fingerprintAlreadyPersisted: encInit.fingerprintAlreadyPersisted,
+    db,
+    audit,
+  });
+
+  // T06c: when no encryption key is set, log a startup warning at the
+  // appropriate level + register a 24h recurring reminder. Returns a
+  // teardown invoked from Phase2Bootstrap.shutdown to clear the interval.
+  const stopReminder = registerPlaintextReminder({ env, logger }, encKey);
+
   // 8. Wire authenticateRequest cookie path (Scenario 5, spec §9.5).
   initPhase2Auth({ db, signingKeys, publicUrl });
 
@@ -241,6 +301,8 @@ export function bootPhase2(opts: Phase2BootOptions): Phase2Bootstrap | null {
     stateBindingKey,
     signingKeys,
     membershipCache,
+    encryptionProvider: wrappedProvider,
+    encryptionKeyFingerprint: encInit.keyFingerprint,
   };
 
   // 10. Start sweeper (60s cadence; T28).
@@ -259,7 +321,7 @@ export function bootPhase2(opts: Phase2BootOptions): Phase2Bootstrap | null {
   // correlation across deployments. "unset" sentinel when not provided.
   if (prevSecretBuf) {
     const rotatedAt =
-      process.env.COORDINATOR_JWT_SECRET_PREV_ROTATED_AT ?? "unset";
+      env.COORDINATOR_JWT_SECRET_PREV_ROTATED_AT ?? "unset";
     audit("config.key_rotation", {
       tier: 1,
       metadata: {
@@ -274,6 +336,9 @@ export function bootPhase2(opts: Phase2BootOptions): Phase2Bootstrap | null {
     context,
     sweeper,
     shutdown: async () => {
+      // T06c: clear the plaintext-reminder interval first (idempotent,
+      // safe across multiple shutdown invocations in tests).
+      stopReminder();
       sweeper.stop();
       await sweeper.drain(DRAIN_TIMEOUT_MS);
       const queue = getAuditQueue();
@@ -284,8 +349,8 @@ export function bootPhase2(opts: Phase2BootOptions): Phase2Bootstrap | null {
   };
 }
 
-function readRequiredEnv(key: string): string {
-  const value = process.env[key];
+function readRequiredEnv(env: NodeJS.ProcessEnv, key: string): string {
+  const value = env[key];
   if (!value || value.trim() === "") {
     throw new BootValidationError(
       `${key} is required when COORDINATOR_OAUTH_ENABLED=true`,
@@ -294,7 +359,7 @@ function readRequiredEnv(key: string): string {
   return value;
 }
 
-function validatePublicUrl(url: string): void {
+function validatePublicUrl(url: string, env: NodeJS.ProcessEnv): void {
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -311,7 +376,7 @@ function validatePublicUrl(url: string): void {
   if (
     parsed.protocol === "http:" &&
     !isLocalhost(parsed.hostname) &&
-    process.env.COORDINATOR_INSECURE_COOKIES !== "true"
+    env.COORDINATOR_INSECURE_COOKIES !== "true"
   ) {
     throw new BootValidationError(
       `COORDINATOR_PUBLIC_URL=${url} uses http:// for non-localhost; ` +
@@ -361,7 +426,11 @@ interface MaxEpochRow {
   max_epoch: string | null;
 }
 
-function performRestoreCheck(db: Database.Database, clock: Clock): void {
+function performRestoreCheck(
+  db: Database.Database,
+  clock: Clock,
+  env: NodeJS.ProcessEnv,
+): void {
   // NR12: compare max audit_log.created_at (ISO string) to wall clock.
   // If > 5 min stale → refuse boot UNLESS COORDINATOR_ALLOW_RESTORE=true.
   const row = db
@@ -375,7 +444,7 @@ function performRestoreCheck(db: Database.Database, clock: Clock): void {
   const staleSeconds = now - maxEpoch;
   if (staleSeconds <= RESTORE_DETECTION_STALE_THRESHOLD_S) return; // healthy
 
-  if (process.env.COORDINATOR_ALLOW_RESTORE !== "true") {
+  if (env.COORDINATOR_ALLOW_RESTORE !== "true") {
     throw new BootValidationError(
       `Restore suspected: audit_log timestamps lag wall-clock by ${staleSeconds}s ` +
         `(threshold: ${RESTORE_DETECTION_STALE_THRESHOLD_S}s). ` +
@@ -400,9 +469,3 @@ function performRestoreCheck(db: Database.Database, clock: Clock): void {
   });
 }
 
-export class BootValidationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "BootValidationError";
-  }
-}

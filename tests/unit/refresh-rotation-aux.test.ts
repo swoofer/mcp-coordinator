@@ -20,6 +20,7 @@ import {
   IdPTransientError,
 } from "../../src/auth/providers/errors.js";
 import { findAuditRows } from "../helpers/audit.js";
+import { PassthroughEncryption } from "../../src/security/encryption.js";
 
 /**
  * T19c — refresh-rotation aux paths:
@@ -118,6 +119,7 @@ function makeCtx(overrides: Partial<AuthHandlerContext> = {}): AuthHandlerContex
     stateBindingKey: STATE_BINDING_KEY,
     signingKeys: buildJwtKeyRegistry(SIGNING_SECRET),
     membershipCache,
+    encryptionProvider: new PassthroughEncryption(),
     ...overrides,
   };
 }

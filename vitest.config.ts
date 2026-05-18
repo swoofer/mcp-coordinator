@@ -7,7 +7,12 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reporter: ["text", "html", "lcov"],
-      include: ["src/**/*.ts"],
+      include: [
+        "src/**/*.ts",
+        "tests/helpers/encryption.ts",
+        "cli/lib/**/*.ts",
+        "cli/encryption/**/*.ts",
+      ],
       exclude: ["src/**/*.test.ts", "src/**/types.ts", "dist/**"],
       // Phase 2 security-critical files require 100% branch coverage
       // per spec §15.6 + V4 + V2 patches §C.3. Per-file thresholds are
@@ -45,6 +50,7 @@ export default defineConfig({
         "src/observability/logger.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/http/health.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/observability/metrics.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
+        "src/observability/encryption-status.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/http/metrics.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/http/auth-routes.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/auth/pages/device.html.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
@@ -53,6 +59,27 @@ export default defineConfig({
         "src/sweeper/index.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/security/audit-events.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/boot.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
+        // T01 V2 PATCH 10: pre-stubbed per-file thresholds for the 11
+        // forthcoming Phase 3 encryption files. Entries are commented
+        // out until each file lands — uncomment per task as it ships.
+        "src/security/encryption.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
+        "src/security/encrypt-nullable.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
+        "src/security/envelope-encryption.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
+        "src/security/master-key.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
+        "tests/helpers/encryption.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
+        "src/boot-encryption.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
+        "src/security/audit-pseudonym.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
+        "cli/lib/pid-lock.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
+        "cli/encryption/index.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
+        "cli/encryption/migrate.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
+        "cli/encryption/verify.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
+        "cli/encryption/fingerprint.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
+        // TODO(T07): "src/security/key-rotation.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
+        // TODO(T08): "src/security/dek-cache.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
+        // TODO(T09): "src/security/kek-provider.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
+        // TODO(T10): "src/security/encrypted-columns.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
+        // TODO(T11): "src/security/encryption-metrics.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
+        // TODO(T12): "src/security/encryption-audit.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
       },
     },
   },

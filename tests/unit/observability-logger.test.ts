@@ -85,6 +85,15 @@ describe("observability/logger: redaction", () => {
     expect(out).not.toContain("RT_PLAINTEXT_VALUE");
   });
 
+  it("*.idp_refresh_token paths are redacted", () => {
+    const { sink, chunks } = makeSink();
+    const logger = createLogger({ destination: sink });
+    logger.info({ user: { idp_refresh_token: "IDP_RT_PLAINTEXT_VALUE" } }, "msg");
+    const out = chunks.join("");
+    expect(out).not.toContain("IDP_RT_PLAINTEXT_VALUE");
+    expect(out).toContain("[REDACTED]");
+  });
+
   it("body.code_verifier is redacted", () => {
     const { sink, chunks } = makeSink();
     const logger = createLogger({ destination: sink });
@@ -113,9 +122,9 @@ describe("observability/logger: redaction", () => {
 });
 
 describe("observability/logger: getRedactPaths", () => {
-  it("returns the 16-path redaction allowlist", () => {
+  it("returns the 17-path redaction allowlist", () => {
     const paths = getRedactPaths();
-    expect(paths).toHaveLength(16);
+    expect(paths).toHaveLength(17);
   });
 
   it("includes the documented anchors", () => {

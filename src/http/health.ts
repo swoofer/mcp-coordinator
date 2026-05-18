@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { getDb } from "../database.js";
 import { getAuditQueue } from "../security/audit.js";
+import { getEncryptionStatus } from "../observability/encryption-status.js";
 
 export interface ReadinessOptions {
   /** Set to true when the sweeper circuit-breaker (T28) has tripped open.
@@ -40,11 +41,11 @@ export function handleHealthz(
  * Phase 1's /readyz (which checks db + mqtt + tree_sitter + git_cochange);
  * Phase 2 readiness is auth-flow-specific.
  */
-export function handleHealthReady(
+export async function handleHealthReady(
   _req: IncomingMessage,
   res: ServerResponse,
   opts: ReadinessOptions = {},
-): void {
+): Promise<void> {
   const checks = {
     db: { ok: false as boolean, error: undefined as string | undefined },
     audit_queue: {
@@ -79,6 +80,12 @@ export function handleHealthReady(
     checks.sweeper.ok &&
     !checks.draining;
 
+  // T12c: include the boot-resolved encryption block when available. The
+  // accessor returns null when boot has not (yet) called setEncryptionStatus
+  // (e.g. unit-test fixtures that exercise the handler in isolation) — in
+  // that case the field is OMITTED ENTIRELY from the payload.
+  const encryption = await getEncryptionStatus();
+
   res.writeHead(ready ? 200 : 503, {
     "Content-Type": "application/json; charset=utf-8",
   });
@@ -86,6 +93,7 @@ export function handleHealthReady(
     JSON.stringify({
       status: ready ? "ready" : "not_ready",
       checks,
+      ...(encryption !== null ? { encryption } : {}),
     }),
   );
 }

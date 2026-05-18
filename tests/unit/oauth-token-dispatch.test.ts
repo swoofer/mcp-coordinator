@@ -21,6 +21,7 @@ import {
 } from "../../src/auth/providers/errors.js";
 import { findAuditRows } from "../helpers/audit.js";
 import { hashIdpUserId } from "../../src/auth/audit-helpers.js";
+import { PassthroughEncryption } from "../../src/security/encryption.js";
 
 /**
  * T18 — POST /api/auth/oauth/token unified grant dispatcher.
@@ -119,6 +120,9 @@ function makeCtx(overrides: Partial<AuthHandlerContext> = {}): AuthHandlerContex
     stateBindingKey: STATE_BINDING_KEY,
     signingKeys: buildJwtKeyRegistry(SIGNING_SECRET),
     membershipCache,
+    // T08: provisionUser requires encryption; default passthrough so
+    // existing fixtures keep storing plaintext (round-trips unchanged).
+    encryptionProvider: new PassthroughEncryption(),
     ...overrides,
   };
 }

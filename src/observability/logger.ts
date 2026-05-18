@@ -6,7 +6,7 @@ import pino, { type Logger as PinoLogger } from "pino";
  * level — they will never appear in log output regardless of what
  * handler code logs.
  *
- * NR4 / V4 §11.3 redaction allowlist (16 paths):
+ * NR4 / V4 §11.3 redaction allowlist (17 paths):
  */
 const REDACT_PATHS: readonly string[] = [
   // JWT + session secrets
@@ -20,6 +20,7 @@ const REDACT_PATHS: readonly string[] = [
   "*.code_verifier",
   "*.client_secret",
   "*.idp_access_token",
+  "*.idp_refresh_token",
   // Form bodies
   "body.code",
   "body.code_verifier",

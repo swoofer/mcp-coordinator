@@ -312,6 +312,12 @@ const SCHEMA = `
     CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action, created_at);
 
+    CREATE TABLE IF NOT EXISTS system_config (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
     INSERT OR IGNORE INTO orgs (id, name) VALUES ('default', 'Default Organization');
 `;
 

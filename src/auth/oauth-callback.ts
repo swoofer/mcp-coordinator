@@ -363,18 +363,21 @@ async function finalizeBrowserOAuth(
           throw new ProvisioningDeniedError("USER_NOT_PROVISIONED");
         }
       }
-      return provisionUser(
-        ctx.db,
-        ctx.clock,
-        exchange.user,
-        exchange.accessToken,
-        {
+      return provisionUser({
+        db: ctx.db,
+        clock: ctx.clock,
+        idpUser: exchange.user,
+        accessToken: exchange.accessToken,
+        allowlistOrg: {
           org_id: allowlistMatch.org_id,
           org_name: allowlistMatch.org_name,
         },
-        provider.name,
-        exchange.refreshToken,
-      );
+        providerName: provider.name,
+        idpRefreshToken: exchange.refreshToken,
+        // T08: ctx.encryptionProvider is optional on the type only to
+        // accommodate pre-T06b test fixtures; bootPhase2 always sets it.
+        encryption: ctx.encryptionProvider!,
+      });
     });
     provisionResult = tx.immediate();
   } catch (err) {

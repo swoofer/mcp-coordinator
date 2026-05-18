@@ -8,10 +8,14 @@ import { oauthError, bearerAuthHeader } from "../http/response-contract.js";
 import { mintTokenPair, computeFingerprint } from "./oauth-finalize.js";
 import { mintAccessJWT, mintRefreshJWT } from "./jwt-mint.js";
 import { isAcceptedKid } from "./jwt-keys.js";
-import { readTokenEpoch } from "./token-epoch.js";
+import { readTokenEpoch, bumpTokenEpoch } from "./token-epoch.js";
 import { resolveOrgFromMemberships, type AllowlistMatch } from "./allowlist.js";
 import { IdPTokenRevoked, IdPTransientError } from "./providers/errors.js";
 import { getOrgSetting } from "./org-settings.js";
+import { DecryptionError, UnknownCipherVersion } from "../security/encryption.js";
+import { decryptNullable, encryptNullable } from "../security/encrypt-nullable.js";
+import { pseudonym } from "../security/audit-pseudonym.js";
+import { decryptFailuresCounter } from "../observability/metrics.js";
 
 /**
  * Refresh-token rotation handler — T19a happy + T19b reuse + T19c aux.
@@ -545,18 +549,79 @@ export async function refreshTokenGrant(
   //    (or simply expire after token_epoch bump if admin chooses).
   const userRow = ctx.db
     .prepare(
-      "SELECT idp_access_token, idp_refresh_token, idp_provider FROM users WHERE id = ?",
+      "SELECT idp_access_token, idp_refresh_token, idp_provider, primary_org_id FROM users WHERE id = ?",
     )
     .get(row.user_id) as
     | {
         idp_access_token: string | null;
         idp_refresh_token: string | null;
         idp_provider: string;
+        primary_org_id: string;
       }
     | undefined;
-  const idpAccessToken = userRow?.idp_access_token ?? null;
-  const idpRefreshToken = userRow?.idp_refresh_token ?? null;
+  // T09: AAD for envelope decryption requires the user's primary_org_id.
+  const orgId = userRow?.primary_org_id ?? null;
+  let idpAccessToken: string | null = null;
+  let idpRefreshToken: string | null = null;
   const idpProviderName = userRow?.idp_provider ?? null;
+
+  if (userRow && orgId) {
+    // T09: encryptionProvider is optional on the interface (T06b) to keep
+    // pre-T06b test fixtures buildable, but boot ALWAYS populates it.
+    // Use a non-null assertion; tests that exercise this path must wire it.
+    try {
+      idpAccessToken = decryptNullable(
+        ctx.encryptionProvider!,
+        userRow.idp_access_token,
+        { org_id: orgId, column: "idp_access_token", user_id: row.user_id },
+      );
+      idpRefreshToken = decryptNullable(
+        ctx.encryptionProvider!,
+        userRow.idp_refresh_token,
+        { org_id: orgId, column: "idp_refresh_token", user_id: row.user_id },
+      );
+    } catch (err) {
+      if (err instanceof DecryptionError || err instanceof UnknownCipherVersion) {
+        // Hash user_id for audit (defense in depth — same approach as PATCH 17).
+        audit("encryption.decrypt.failed", {
+          tier: 1,
+          metadata: {
+            user_id_hash: pseudonym(row.user_id),
+            error_class: err.name,
+          },
+        });
+        decryptFailuresCounter.inc({ error_class: err.name });
+        // Map to IdPTokenRevoked-equivalent path: bump token_epoch (forces
+        // full re-auth on every outstanding session) + emit the same
+        // canonical auth.idp.token_revoked audit + 401 response with the
+        // same WWW-Authenticate / body shape as the existing IdPTokenRevoked
+        // branch below. The decrypt failure means we cannot prove the user
+        // is still authorized by the IdP, so we MUST evict the session.
+        bumpTokenEpoch(ctx.db, row.user_id);
+        audit("auth.idp.token_revoked", {
+          tier: 1,
+          metadata: {
+            user_id: row.user_id,
+            phase: "refresh_decrypt_failed",
+          },
+        });
+        res.writeHead(401, {
+          "Content-Type": "application/json; charset=utf-8",
+          "WWW-Authenticate": bearerAuthHeader(
+            "invalid_token",
+            "IdP rejected the token",
+          ),
+        });
+        res.end(
+          JSON.stringify(
+            oauthError("invalid_grant", "Identity provider rejected the token"),
+          ),
+        );
+        return;
+      }
+      throw err;
+    }
+  }
 
   // T46: look up the IdP via the registry using the user's stored
   // idp_provider. If a previously-provisioned user's provider is no
@@ -602,13 +667,30 @@ export async function refreshTokenGrant(
     ) {
       try {
         const refreshed = await idpProvider.refreshIdpToken(idpRefreshToken);
+        // T09: encrypt the rotated IdP tokens at rest. orgId is guaranteed
+        // non-null in this branch because we only enter the recheck path
+        // when userRow + orgId were both present above.
+        const ctxAccess = {
+          org_id: orgId!,
+          column: "idp_access_token" as const,
+          user_id: row.user_id,
+        };
+        const ctxRefresh = {
+          org_id: orgId!,
+          column: "idp_refresh_token" as const,
+          user_id: row.user_id,
+        };
         ctx.db
           .prepare(
             "UPDATE users SET idp_access_token = ?, idp_refresh_token = ? WHERE id = ?",
           )
           .run(
-            refreshed.accessToken,
-            refreshed.refreshToken ?? idpRefreshToken,
+            encryptNullable(ctx.encryptionProvider!, refreshed.accessToken, ctxAccess),
+            encryptNullable(
+              ctx.encryptionProvider!,
+              refreshed.refreshToken ?? idpRefreshToken,
+              ctxRefresh,
+            ),
             row.user_id,
           );
         audit("auth.idp.token_refreshed", {

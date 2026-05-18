@@ -22,6 +22,7 @@ import type {
   IdpUserInfo,
 } from "../../src/auth/providers/types.js";
 import { findAuditRows, expectAuditRow } from "../helpers/audit.js";
+import { PassthroughEncryption } from "../../src/security/encryption.js";
 
 /**
  * T16b — finalizeBrowserOAuth provisioning flow (post-state, post-exchange).
@@ -132,6 +133,9 @@ function makeCtx(
     stateBindingKey: Buffer.alloc(32, 0x01),
     signingKeys: buildJwtKeyRegistry(Buffer.alloc(32, 0x01)),
     membershipCache,
+    // T08: provisionUser requires encryption; supply passthrough by default
+    // so existing fixtures keep storing plaintext (round-trips unchanged).
+    encryptionProvider: new PassthroughEncryption(),
     ...rest,
   };
 }

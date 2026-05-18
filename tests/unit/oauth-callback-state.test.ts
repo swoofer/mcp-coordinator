@@ -13,6 +13,7 @@ import { initDatabase, getDb, closeDb } from "../../src/database.js";
 import type { IdPProvider, ExchangeCodeResult } from "../../src/auth/providers/types.js";
 import { IdPTokenRevoked, IdPTransientError } from "../../src/auth/providers/errors.js";
 import { findAuditRows, expectAuditRow } from "../helpers/audit.js";
+import { PassthroughEncryption } from "../../src/security/encryption.js";
 
 /**
  * T16a — handleOAuthCallback steps 1-5 (query parse + state cookie HMAC +
@@ -157,6 +158,9 @@ function makeCtx(overrides: Partial<AuthHandlerContext> = {}): AuthHandlerContex
     stateBindingKey: STATE_BINDING_KEY,
     signingKeys: buildJwtKeyRegistry(Buffer.alloc(32, 0x01)),
     membershipCache: new MembershipCache(clock),
+    // T08: provisionUser requires encryption; default passthrough so
+    // happy-path tests keep storing plaintext (round-trip unchanged).
+    encryptionProvider: new PassthroughEncryption(),
     ...overrides,
   };
 }

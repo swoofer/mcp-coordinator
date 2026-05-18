@@ -60,6 +60,7 @@ import { singleProviderRegistry } from "../helpers/index.js";
 import { RateLimiter } from "../../src/auth/rate-limit.js";
 import { MembershipCache } from "../../src/auth/membership-cache.js";
 import { refreshTokenGrant } from "../../src/auth/refresh-rotation.js";
+import { PassthroughEncryption } from "../../src/security/encryption.js";
 import { issueServiceToken } from "../../src/auth/service-tokens.js";
 import { bumpTokenEpoch, readTokenEpoch } from "../../src/auth/token-epoch.js";
 import { computeFingerprint } from "../../src/auth/oauth-finalize.js";
@@ -351,6 +352,7 @@ function makeCtx(
     stateBindingKey: STATE_BINDING_KEY,
     signingKeys: registry,
     membershipCache,
+    encryptionProvider: new PassthroughEncryption(),
     ...overrides,
   };
 }

@@ -36,6 +36,7 @@ import { initAuditQueue, resetAuditQueue } from "../../src/security/audit.js";
 import type { AuthHandlerContext } from "../../src/auth/context.js";
 import type { ExchangeCodeResult, IdPProvider } from "../../src/auth/providers/types.js";
 import { singleProviderRegistry } from "../helpers/index.js";
+import { PassthroughEncryption } from "../../src/security/encryption.js";
 
 const ISSUER = "http://localhost:3000";
 const SIGNING_SECRET = Buffer.alloc(32, 0x01);
@@ -106,6 +107,7 @@ async function main(): Promise<void> {
     stateBindingKey: STATE_BINDING_KEY,
     signingKeys: buildJwtKeyRegistry(SIGNING_SECRET),
     membershipCache: new MembershipCache(realClock),
+    encryptionProvider: new PassthroughEncryption(),
   };
 
   // Mint the seed refresh JWT via the real mintTokenPair (so the row

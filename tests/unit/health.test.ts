@@ -66,9 +66,9 @@ describe("handleHealthz", () => {
 });
 
 describe("handleHealthReady — happy path", () => {
-  it("returns 200 when DB is reachable, queue absent, sweeper ok, not draining", () => {
+  it("returns 200 when DB is reachable, queue absent, sweeper ok, not draining", async () => {
     const res = mockResponse();
-    handleHealthReady(mockReq(), res as unknown as ServerResponse);
+    await handleHealthReady(mockReq(), res as unknown as ServerResponse);
     expect(res.statusCode).toBe(200);
     const body = res.body as Record<string, unknown>;
     expect(body.status).toBe("ready");
@@ -82,9 +82,9 @@ describe("handleHealthReady — happy path", () => {
     expect(checks.draining).toBe(false);
   });
 
-  it("response body shape matches the checks schema (keys present in both 200 and 503 paths)", () => {
+  it("response body shape matches the checks schema (keys present in both 200 and 503 paths)", async () => {
     const res = mockResponse();
-    handleHealthReady(mockReq(), res as unknown as ServerResponse, {
+    await handleHealthReady(mockReq(), res as unknown as ServerResponse, {
       sweeperCircuitOpen: true,
     });
     const body = res.body as Record<string, unknown>;
@@ -99,9 +99,9 @@ describe("handleHealthReady — happy path", () => {
 });
 
 describe("handleHealthReady — failure paths", () => {
-  it("returns 503 with sweeper.ok=false when sweeperCircuitOpen: true", () => {
+  it("returns 503 with sweeper.ok=false when sweeperCircuitOpen: true", async () => {
     const res = mockResponse();
-    handleHealthReady(mockReq(), res as unknown as ServerResponse, {
+    await handleHealthReady(mockReq(), res as unknown as ServerResponse, {
       sweeperCircuitOpen: true,
     });
     expect(res.statusCode).toBe(503);
@@ -111,9 +111,9 @@ describe("handleHealthReady — failure paths", () => {
     expect(checks.sweeper.ok).toBe(false);
   });
 
-  it("returns 503 with draining=true when draining: true", () => {
+  it("returns 503 with draining=true when draining: true", async () => {
     const res = mockResponse();
-    handleHealthReady(mockReq(), res as unknown as ServerResponse, {
+    await handleHealthReady(mockReq(), res as unknown as ServerResponse, {
       draining: true,
     });
     expect(res.statusCode).toBe(503);
@@ -123,9 +123,9 @@ describe("handleHealthReady — failure paths", () => {
     expect(checks.draining).toBe(true);
   });
 
-  it("honors custom auditDepthThresholdPercent option", () => {
+  it("honors custom auditDepthThresholdPercent option", async () => {
     const res = mockResponse();
-    handleHealthReady(mockReq(), res as unknown as ServerResponse, {
+    await handleHealthReady(mockReq(), res as unknown as ServerResponse, {
       auditDepthThresholdPercent: 50,
     });
     const body = res.body as Record<string, unknown>;
@@ -135,7 +135,7 @@ describe("handleHealthReady — failure paths", () => {
 });
 
 describe("handleHealthReady — audit queue depth check", () => {
-  it("returns 200 when audit queue at exactly the threshold (8000 rows)", () => {
+  it("returns 200 when audit queue at exactly the threshold (8000 rows)", async () => {
     const db = getDb() as unknown as import("better-sqlite3").Database;
     const queue = initAuditQueue(db);
     // Monkey-patch flush() to no-op so the buffer fills past the auto-flush
@@ -161,7 +161,7 @@ describe("handleHealthReady — audit queue depth check", () => {
       expect(queue.size()).toBe(8000);
 
       const res = mockResponse();
-      handleHealthReady(mockReq(), res as unknown as ServerResponse);
+      await handleHealthReady(mockReq(), res as unknown as ServerResponse);
       const body = res.body as Record<string, unknown>;
       const checks = body.checks as Record<string, Record<string, unknown>>;
       expect(checks.audit_queue.depth).toBe(8000);
@@ -172,7 +172,7 @@ describe("handleHealthReady — audit queue depth check", () => {
     }
   });
 
-  it("returns 503 when audit queue depth > threshold (8001 rows, default 80%)", () => {
+  it("returns 503 when audit queue depth > threshold (8001 rows, default 80%)", async () => {
     const db = getDb() as unknown as import("better-sqlite3").Database;
     const queue = initAuditQueue(db);
     const realFlush = queue.flush.bind(queue);
@@ -196,7 +196,7 @@ describe("handleHealthReady — audit queue depth check", () => {
       expect(queue.size()).toBe(8001);
 
       const res = mockResponse();
-      handleHealthReady(mockReq(), res as unknown as ServerResponse);
+      await handleHealthReady(mockReq(), res as unknown as ServerResponse);
       expect(res.statusCode).toBe(503);
       const body = res.body as Record<string, unknown>;
       expect(body.status).toBe("not_ready");
@@ -208,11 +208,11 @@ describe("handleHealthReady — audit queue depth check", () => {
     }
   });
 
-  it("returns 200 when audit queue not initialized (depth stays 0)", () => {
+  it("returns 200 when audit queue not initialized (depth stays 0)", async () => {
     // resetAuditQueue in beforeEach already cleared the singleton.
     expect(getAuditQueue()).toBeNull();
     const res = mockResponse();
-    handleHealthReady(mockReq(), res as unknown as ServerResponse);
+    await handleHealthReady(mockReq(), res as unknown as ServerResponse);
     expect(res.statusCode).toBe(200);
     const body = res.body as Record<string, unknown>;
     const checks = body.checks as Record<string, Record<string, unknown>>;
@@ -224,10 +224,10 @@ describe("handleHealthReady — audit queue depth check", () => {
 describe("handleHealthReady — DB failure path", () => {
   // This test must run LAST in the file because it closes the DB. Vitest's
   // file-level afterAll re-tries closeDb defensively (try/catch).
-  it("returns 503 when DB SELECT 1 throws (close DB first)", () => {
+  it("returns 503 when DB SELECT 1 throws (close DB first)", async () => {
     closeDb();
     const res = mockResponse();
-    handleHealthReady(mockReq(), res as unknown as ServerResponse);
+    await handleHealthReady(mockReq(), res as unknown as ServerResponse);
     expect(res.statusCode).toBe(503);
     const body = res.body as Record<string, unknown>;
     expect(body.status).toBe("not_ready");

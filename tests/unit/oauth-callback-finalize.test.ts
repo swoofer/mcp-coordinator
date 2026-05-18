@@ -20,6 +20,7 @@ import type {
   ExchangeCodeResult,
 } from "../../src/auth/providers/types.js";
 import { findAuditRows } from "../helpers/audit.js";
+import { PassthroughEncryption } from "../../src/security/encryption.js";
 
 /**
  * T16c — finalizeBrowserOAuthMint (JWT mint + cookies + 302 redirect).
@@ -122,6 +123,9 @@ function makeCtx(overrides: Partial<AuthHandlerContext> = {}): AuthHandlerContex
     stateBindingKey: STATE_BINDING_KEY,
     signingKeys: buildJwtKeyRegistry(SIGNING_SECRET),
     membershipCache,
+    // T08: provisionUser requires encryption; default passthrough so
+    // existing assertions about stored token values remain unchanged.
+    encryptionProvider: new PassthroughEncryption(),
     ...overrides,
   };
 }

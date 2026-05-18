@@ -16,6 +16,7 @@ import type {
   ExchangeCodeResult,
 } from "../../src/auth/providers/types.js";
 import { findAuditRows } from "../helpers/audit.js";
+import { PassthroughEncryption } from "../../src/security/encryption.js";
 
 /**
  * T19a — refresh-rotation happy path + JWT validation.
@@ -109,6 +110,7 @@ function makeCtx(overrides: Partial<AuthHandlerContext> = {}): AuthHandlerContex
     stateBindingKey: STATE_BINDING_KEY,
     signingKeys: buildJwtKeyRegistry(SIGNING_SECRET),
     membershipCache,
+    encryptionProvider: new PassthroughEncryption(),
     ...overrides,
   };
 }

@@ -169,6 +169,27 @@ export const idpRateLimitRemaining = new Gauge({
   registers: [registry],
 });
 
+// ── IdP token encryption (Phase 3) ──────────────────────────────────────
+
+export const encryptionEnabledGauge = new Gauge({
+  name: "coordinator_idp_encryption_enabled",
+  help: "1 if COORDINATOR_ENCRYPTION_KEY is set and EnvelopeEncryption is active; 0 if running PassthroughEncryption",
+  registers: [registry],
+});
+
+export const decryptFailuresCounter = new Counter({
+  name: "coordinator_idp_decrypt_failures_total",
+  help: "Total number of IdP token decrypt failures since process start",
+  labelNames: ["error_class"] as const,
+  registers: [registry],
+});
+
+export const plaintextRowsGauge = new Gauge({
+  name: "coordinator_idp_plaintext_rows",
+  help: "Number of users.idp_*_token rows still stored as plaintext (updated by encryption verify or migrate; NOT real-time)",
+  registers: [registry],
+});
+
 // ── Audit + sweeper gauges ──────────────────────────────────────────────
 
 export const auditQueueDepth = new Gauge({

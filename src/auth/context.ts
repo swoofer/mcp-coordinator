@@ -4,6 +4,7 @@ import type { JwtKeyRegistry } from "./jwt-keys.js";
 import type { MembershipCache } from "./membership-cache.js";
 import type { ProviderRegistry } from "./providers/registry.js";
 import type { RateLimiter } from "./rate-limit.js";
+import type { EncryptionProvider } from "../security/encryption.js";
 
 /**
  * Phase 2 auth handler dependencies. Composed at boot (T29) and passed
@@ -38,4 +39,18 @@ export interface AuthHandlerContext {
    *  grant) to look up listMemberships per (user_id, provider) with a
    *  60s positive TTL + 10min stale-on-error window. */
   membershipCache: MembershipCache;
+  /** T06b: Phase 3 encryption provider. Wrapped at boot to persist the
+   *  key fingerprint to system_config on first encrypt() (idempotent).
+   *  When no master key is configured, this is the raw
+   *  PassthroughEncryption instance (reference-equal to encInit.rawProvider).
+   *
+   *  Marked optional ONLY to preserve compatibility with pre-T06b test
+   *  fixtures that build AuthHandlerContext literals without this field;
+   *  bootPhase2 ALWAYS sets it, so call sites added in T08/T09 may treat
+   *  it as non-null (or guard with a clear error). */
+  encryptionProvider?: EncryptionProvider;
+  /** T06b: 16-hex key fingerprint when COORDINATOR_ENCRYPTION_KEY is set;
+   *  null in passthrough mode. Optional for the same reason as
+   *  encryptionProvider above. */
+  encryptionKeyFingerprint?: string | null;
 }
