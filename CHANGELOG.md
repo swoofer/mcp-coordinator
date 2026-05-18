@@ -1,5 +1,92 @@
 # Changelog
 
+## [0.10.5](https://github.com/swoofer/mcp-coordinator/compare/v0.10.4...v0.10.5) (2026-05-17)
+
+Column-level encryption at-rest for OAuth IdP tokens. Closes the residual
+risk on plaintext `users.idp_access_token` / `users.idp_refresh_token` flagged
+in `docs/security/threat-model.md`. Bun runtime preserved (zero native deps;
+`node:crypto` only — SQLCipher rejected to keep Bun first-class).
+
+### Features
+
+* **security:** column-level AES-256-GCM envelope encryption with
+  length-prefixed binary AAD bound to `(org_id, column, user_id)`. Per-row
+  random DEK wrapped with master key. Forward-compat `enc:v\d+:` version
+  parser with three typed error classes (`MalformedCiphertext`,
+  `DEKUnwrapFailed`, `DataDecryptFailed`) + `UnknownCipherVersion`. Storage
+  format pinned via deterministic test vector.
+* **security/master-key:** `decodeMasterKey` accepts hex / base64 /
+  base64url (unambiguous by length+alphabet), refuses entropy < 3.0
+  bits/byte (catches passphrases / constants), warns 3.0-4.5. HMAC-SHA256
+  fingerprint with label `mcc-fingerprint-v1`, 16 hex chars.
+* **boot:** strict-mode guards prevent silent data loss:
+    - encrypted rows + no key → refuse boot (override via
+      `COORDINATOR_ALLOW_TOKEN_LOSS=1` + `COORDINATOR_TOKEN_LOSS_CONFIRM=
+      I_UNDERSTAND_THIS_NULLS_<N>_ROWS`; stashes ciphertexts to
+      `encryption_invalidated_tokens` for forensic recovery; per-user
+      audit)
+    - fingerprint mismatch → refuse boot (override via
+      `COORDINATOR_ALLOW_KEY_ROTATION=1`)
+    - key fingerprint persisted to `system_config` on first encrypt via
+      wrapped provider; verified at boot
+  GLOB-based prefix matching (`enc:v[0-9]*:*`) — never the LIKE
+  underscore-wildcard trap.
+* **auth:** `oauth-finalize.ts` + `refresh-rotation.ts` encrypt/decrypt
+  on read+write paths via `encryptNullable` / `decryptNullable` helpers
+  (NULL and empty-string → SQL NULL). Decrypt failures map to existing
+  `IdPTokenRevoked` path: `bumpTokenEpoch` + 401 via `bearerAuthHeader`.
+  `provisionUser` refactored to options-object signature for clean
+  encryption threading.
+* **cli:** `mcp-coordinator encryption migrate [--direction encrypt|decrypt]
+  [--batch-size N] [--force]` — CAS-protected batched migration with
+  cross-platform PID-in-content file lock + stale-PID recovery + SIGINT
+  cleanup. `mcp-coordinator encryption verify [--samples N]` — fingerprint
+  check + sampled decrypt with per-class counts. `mcp-coordinator
+  encryption fingerprint` — 16-hex fingerprint output (no DB access).
+* **cli/server/start:** `--daemon` now forwards
+  `COORDINATOR_ENCRYPTION_KEY`, `COORDINATOR_ALLOW_TOKEN_LOSS`,
+  `COORDINATOR_TOKEN_LOSS_CONFIRM`, `COORDINATOR_ALLOW_KEY_ROTATION` to
+  the spawned child (without this, daemon would silently run plaintext).
+* **observability:** new prom metrics `coordinator_idp_encryption_enabled`
+  (gauge), `coordinator_idp_decrypt_failures_total` (counter, labeled by
+  `error_class`), `coordinator_idp_plaintext_rows` (gauge). Five new audit
+  events with HMAC-pseudonymized `user_id_hash` (label
+  `mcc-audit-pseudonym-v1`). `/health/ready` payload extends with
+  `encryption: {enabled, key_source, key_fingerprint, decrypt_failures_total}`
+  block. `*.idp_refresh_token` added to logger `REDACT_PATHS`.
+* **schema:** `system_config (key TEXT PRIMARY KEY, value TEXT NOT NULL,
+  updated_at TEXT)` table added — generic key/value store. Stores
+  `encryption.key_fingerprint`.
+* **boot:** `bootPhase2(opts, deps?)` accepts optional `db`/`env`/`logger`
+  injection for testability of fail-loud boot guards without child-process
+  spawning.
+
+### Documentation
+
+* **ops/encryption-key-management:** new runbook covering key generation,
+  storage (env vs Docker secret + `docker inspect` exposure), backup-the-key
+  (fingerprint alongside DB backup), migration runbook, verification,
+  rotation (with explicit plaintext-on-disk-during-decrypt-all warning),
+  disaster recovery via `ALLOW_TOKEN_LOSS`, recovery from
+  `encryption_invalidated_tokens` stash table.
+* **onboarding-self-host:** Encryption section under §3 Configure
+  environment + post-restore gotcha + backup-the-key note.
+* **security/threat-model:** closes residual risk on plaintext IdP
+  credentials.
+* **README:** Compliance matrix marks IdP token encryption Shipped.
+* **.env.example** + **examples/docker-compose/.env.example:**
+  `COORDINATOR_ENCRYPTION_KEY=` entry with `openssl rand -base64 32` hint
+  and `docker inspect` exposure note.
+
+### Backward compatibility
+
+Existing v0.10.4 deployments without `COORDINATOR_ENCRYPTION_KEY` continue
+to run unchanged (PassthroughEncryption fallback). Boot logs at ERROR level
+in `NODE_ENV=production` (WARN otherwise) and reminds every 24h. Operators
+opt in by generating a key (`openssl rand -base64 32`) and setting the env
+var. Lazy migration encrypts existing rows on read/write; `encryption migrate`
+forces full migration.
+
 ## [0.10.4](https://github.com/swoofer/mcp-coordinator/compare/v0.10.3...v0.10.4) (2026-05-16)
 
 OIDC group-claim allowlist release. `OIDCProvider` learns to read
