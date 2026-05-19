@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>mcp-coordinator - Users</title>
+    <link rel="stylesheet" href="admin.css">
+    <!-- T12: CSP `script-src 'self'` — admin-users.js MUST stay external.
+         Zero inline JS, zero inline styles, zero on* handlers on this page. -->
+    <script type="module" src="admin-users.js"></script>
+  </head>
+  <body>
+    <header class="admin-header">
+      <h1>Users</h1>
+      <nav class="admin-nav">
+        <a href="admin.html">&larr; Admin</a>
+        <a href="admin-orgs.html">Orgs</a>
+        <a href="admin-users.html" class="active">Users</a>
+      </nav>
+    </header>
+
+    <main class="container">
+      <!-- Filter section: org dropdown populated at load from /api/admin/orgs.
+           "All orgs" is value="" so we omit the ?org= param when selected. -->
+      <section class="filter-bar">
+        <div class="form-row">
+          <label for="org-filter">Filter by org:</label>
+          <select id="org-filter" name="org">
+            <option value="">All orgs</option>
+          </select>
+        </div>
+      </section>
+
+      <!-- Banner shown by admin-users.js when admin_count === 1 (PATCH 14).
+           Hidden by default; toggled via the `hidden` attribute (no inline
+           style mutation, no class flipping needed). -->
+      <p id="last-admin-notice" class="empty-state" hidden>
+        Only one admin in the system &mdash; demote is disabled to prevent lockout.
+      </p>
+
+      <div class="table-wrap">
+        <table class="data-table" id="users-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Email</th>
+              <th>Name</th>
+              <th>Role</th>
+              <th>Primary org</th>
+              <th>Last login</th>
+            </tr>
+          </thead>
+          <tbody id="users-tbody">
+            <!-- Populated by admin-users.js via renderTable() (T09). -->
+          </tbody>
+        </table>
+      </div>
+    </main>
+
+    <!-- Toast container: showToast() appends to <body>, this is a hint only. -->
+    <div id="toast-container" aria-live="polite"></div>
+  </body>
+</html>

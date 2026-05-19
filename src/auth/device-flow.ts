@@ -4,7 +4,7 @@ import type { AuthHandlerContext } from "./context.js";
 import { appError } from "../http/response-contract.js";
 import { audit } from "../security/audit.js";
 import { authenticateRequest } from "../auth.js";
-import { parseCookies } from "./cookies.js";
+import { CSRF_COOKIE_NAME, parseCookies } from "./cookies.js";
 import { verifyCsrfToken } from "./csrf.js";
 
 const DEVICE_CODE_TTL_S = 600;       // 10-minute device flow window per RFC 8628
@@ -205,7 +205,6 @@ export async function handleDeviceAuthorization(
 const APPROVE_RATE_PER_MIN = { per: 10, window_seconds: 60 } as const;
 const APPROVE_RATE_PER_HOUR = { per: 20, window_seconds: 3600 } as const;
 
-const CSRF_COOKIE_NAME = "__Host-coordinator_csrf";
 const APPROVE_FAILURE_THRESHOLD = 5;
 
 /**

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mcp-coordinator — Admin</title>
+  <link rel="stylesheet" href="admin.css">
+  <link rel="stylesheet" href="admin-home.css">
+  <script type="module" src="admin.js"></script>
+</head>
+<body>
+  <header class="admin-header">
+    <h1>mcp-coordinator <span class="role-chip">Admin</span></h1>
+    <nav class="admin-nav" aria-label="Admin sections">
+      <a href="admin.html" class="active">Home</a>
+      <a href="admin-orgs.html">Orgs</a>
+      <a href="admin-users.html">Users</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <section class="admin-section" aria-labelledby="user-info-heading">
+      <h2 id="user-info-heading" class="admin-section-title">Session</h2>
+      <div id="user-info" aria-live="polite">
+        <div class="skeleton skeleton-line"></div>
+      </div>
+    </section>
+
+    <section class="admin-section" aria-labelledby="nav-heading">
+      <h2 id="nav-heading" class="admin-section-title">Navigation</h2>
+      <div class="admin-tiles">
+        <a class="admin-tile" href="admin-orgs.html">
+          <div class="admin-tile-title">Orgs</div>
+          <div class="admin-tile-desc">Manage organizations: create, rename, slug.</div>
+        </a>
+        <a class="admin-tile" href="admin-users.html">
+          <div class="admin-tile-title">Users</div>
+          <div class="admin-tile-desc">Browse users by org, change roles.</div>
+        </a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="admin-footer">
+    mcp-coordinator admin UI &middot; v0.10.6
+  </footer>
+</body>
+</html>

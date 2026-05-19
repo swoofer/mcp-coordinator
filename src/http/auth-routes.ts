@@ -11,10 +11,34 @@ import {
   handleListServiceTokens,
   handleRevokeServiceToken,
 } from "../admin/handle-service-tokens.js";
+import {
+  handleListOrgs,
+  handleCreateOrg,
+  handleUpdateOrg,
+} from "../admin/handle-admin-orgs.js";
+import {
+  handleListUsers,
+  handleUpdateUser,
+} from "../admin/handle-admin-users.js";
 import { handleDevicePage } from "../auth/pages/device.html.js";
 import { handleDeviceConfirmPage } from "../auth/pages/device-confirm.html.js";
 import { handleSuccessPage } from "../auth/pages/success.html.js";
 import { appError } from "./response-contract.js";
+
+/**
+ * Per-IP rate limit on admin mutation endpoints (V3 PATCH 4). Applied before
+ * the auth gate so credential-stuffing or admin-cookie probing can't bury
+ * the system under POSTs. GETs are unlimited — read-only browsing of the
+ * admin UI should not throttle. 30 mutations / 60s matches the order of the
+ * device-flow per-min limit and accommodates a busy admin without footgunning
+ * shared NAT.
+ */
+const ADMIN_MUT_RATE_LIMIT = { per: 30, window_seconds: 60 };
+
+/** Regex matchers for parameterized admin routes — see service-tokens
+ *  /revoke pattern at handle-service-tokens.ts §handleRevokeServiceToken. */
+const ADMIN_ORG_ID_RE = /^\/api\/admin\/orgs\/([^/]+)$/;
+const ADMIN_USER_ID_RE = /^\/api\/admin\/users\/([^/]+)$/;
 
 /**
  * Phase 2 auth-route dispatcher. Returns true if the URL matched an
@@ -37,6 +61,14 @@ import { appError } from "./response-contract.js";
  *   POST /api/admin/service-tokens                → handleIssueServiceToken (T25)
  *   GET  /api/admin/service-tokens                → handleListServiceTokens (T25)
  *   POST /api/admin/service-tokens/<jti>/revoke   → handleRevokeServiceToken (T25)
+ *   GET  /api/admin/orgs                          → handleListOrgs (v0.10.6 T05)
+ *   POST /api/admin/orgs                          → handleCreateOrg (v0.10.6 T05) [RL]
+ *   PATCH /api/admin/orgs/:id                     → handleUpdateOrg (v0.10.6 T05) [RL]
+ *   GET  /api/admin/users                         → handleListUsers (v0.10.6 T06)
+ *   PATCH /api/admin/users/:id                    → handleUpdateUser (v0.10.6 T06) [RL]
+ *
+ * [RL] = per-IP pre-auth rate limit on mutations only (V3 PATCH 4, T07).
+ * Key namespace `admin:mut:${ip}` is distinct from existing limiters.
  *
  * Discovery doc (T14) is wired separately by serve-http.ts at boot —
  * it doesn't flow through this dispatcher.
@@ -107,6 +139,43 @@ export async function dispatchAuthRoutes(
     return true;
   }
 
+  // ---------------------------------------------------------------------
+  // v0.10.6 admin-UI orgs + users (T05 + T06 handlers, T07 wiring).
+  // Mutations (POST/PATCH) are rate-limited per-IP BEFORE auth — see
+  // ADMIN_MUT_RATE_LIMIT + checkAdminMutationRateLimit() below.
+  // ---------------------------------------------------------------------
+  if (url === "/api/admin/orgs" && method === "GET") {
+    await handleListOrgs(req, res, ctx);
+    return true;
+  }
+  if (url === "/api/admin/orgs" && method === "POST") {
+    if (!checkAdminMutationRateLimit(req, res, ctx)) return true;
+    await handleCreateOrg(req, res, ctx);
+    return true;
+  }
+  if (url === "/api/admin/users" && method === "GET") {
+    await handleListUsers(req, res, ctx);
+    return true;
+  }
+
+  // Parameterized PATCH /api/admin/orgs/:id. Match via regex; non-PATCH
+  // methods on this path fall through to handleRest. The handler itself
+  // re-parses :id defensively (see handle-admin-orgs.ts ORG_PATH_RE).
+  const orgIdMatch = url.match(ADMIN_ORG_ID_RE);
+  if (orgIdMatch && method === "PATCH") {
+    if (!checkAdminMutationRateLimit(req, res, ctx)) return true;
+    await handleUpdateOrg(req, res, ctx);
+    return true;
+  }
+
+  // Parameterized PATCH /api/admin/users/:id. Same pattern as orgs above.
+  const userIdMatch = url.match(ADMIN_USER_ID_RE);
+  if (userIdMatch && method === "PATCH") {
+    if (!checkAdminMutationRateLimit(req, res, ctx)) return true;
+    await handleUpdateUser(req, res, ctx);
+    return true;
+  }
+
   // Service-token revoke is parameterized (jti in URL). Match via regex
   // before the KNOWN_AUTH_PATHS check; non-POST methods on this path fall
   // through to the dispatcher's return false (handleRest will 404). This
@@ -147,10 +216,14 @@ const KNOWN_AUTH_PATHS = new Set([
   "/api/auth/revoke",
   "/api/auth/me",
   "/api/admin/service-tokens",
+  "/api/admin/orgs",
+  "/api/admin/users",
 ]);
 
 function methodForPath(url: string): string {
   if (url === "/api/admin/service-tokens") return "GET, POST";
+  if (url === "/api/admin/orgs") return "GET, POST";
+  if (url === "/api/admin/users") return "GET";
   if (
     url === "/auth/login" ||
     url === "/auth/device" ||
@@ -162,4 +235,41 @@ function methodForPath(url: string): string {
     return "GET";
   }
   return "POST";
+}
+
+/**
+ * Per-IP pre-auth rate-limit gate for admin MUTATION endpoints (V3 PATCH 4).
+ * Returns true when the request may proceed; returns false AFTER writing a
+ * 429 JSON envelope + Retry-After header (caller must short-circuit).
+ *
+ * IP source: req.socket.remoteAddress (mirrors device-flow.ts:93,
+ * oauth-login.ts:73, oauth-callback.ts:187). Falls back to "unknown" when
+ * the socket is unavailable, which buckets all such requests together —
+ * acceptable since this is a coarse safety net, not the primary auth gate.
+ *
+ * Key namespace `admin:mut:${ip}` is intentionally distinct from
+ * `device-auth-min:${ip}` / `auth-login:${ip}` / `userinfo:${user_id}` /
+ * `logout-all:${user_id}` to avoid cross-contamination between policies.
+ */
+function checkAdminMutationRateLimit(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: AuthHandlerContext,
+): boolean {
+  const ip = req.socket?.remoteAddress ?? "unknown";
+  const result = ctx.rateLimiter.check(
+    `admin:mut:${ip}`,
+    ADMIN_MUT_RATE_LIMIT,
+  );
+  if (result.allowed) return true;
+  res.writeHead(429, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Retry-After": String(result.retry_after_seconds),
+  });
+  res.end(
+    JSON.stringify(
+      appError("RATE_LIMITED", "Too many admin mutation requests"),
+    ),
+  );
+  return false;
 }

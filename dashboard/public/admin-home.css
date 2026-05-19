@@ -1,0 +1,68 @@
+/* admin-home.css — page-specific styles for admin.html (T10).
+ *
+ * The shared admin.css (T09) is loaded first; this file layers landing-page
+ * extras (section headings, tile grid, footer). Kept in a separate file so
+ * T09's admin.css is not modified — orgs/users pages don't need these.
+ *
+ * CSP `style-src 'self'` rejects inline `style="..."` attributes, so every
+ * visual rule for admin.html must live here (or in admin.css).
+ *
+ * Filename matches the CSP scope regex from src/serve-http.ts:487
+ * (`/^\/dashboard\/admin(?:-[a-z]+)?\.(?:html|js|css)$/`).
+ */
+
+.admin-section { margin-bottom: 24px; }
+.admin-section-title {
+  font-size: 13px;
+  text-transform: uppercase;
+  color: var(--text-mute);
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+}
+
+#user-info { font-size: 14px; }
+#user-info .skeleton-line { width: 240px; }
+.user-info-line { font-size: 14px; }
+.user-info-line .label { color: var(--text-mute); }
+.user-info-line .role { color: var(--text-mute); }
+.user-info-org { font-size: 12px; color: var(--text-mute); margin-top: 4px; }
+.user-info-error { font-size: 13px; color: var(--danger); }
+
+.admin-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.admin-tile {
+  display: block;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+  color: var(--text);
+  text-decoration: none;
+  transition: border-color 0.15s, transform 0.15s;
+}
+.admin-tile:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+.admin-tile-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+.admin-tile-desc {
+  font-size: 12px;
+  color: var(--text-mute);
+}
+
+.admin-footer {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 11px;
+  padding: 16px;
+  border-top: 1px solid var(--border);
+  margin-top: 24px;
+}

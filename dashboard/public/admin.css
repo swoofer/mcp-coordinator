@@ -1,0 +1,219 @@
+/* admin.css — shared styles for v0.10.6 admin pages.
+ * Palette mirrors dashboard/public/index.html so the admin area feels
+ * native to the rest of the dashboard (dark navy, slate text, blue
+ * accents). CSP is `script-src 'self'` — no inline styles or scripts
+ * are allowed on admin pages, so all rules live in this file.
+ *
+ * Layout target: 320px minimum (mobile), scales to desktop.
+ * 200% browser zoom is acceptable (no fixed pixel-perfect layout).
+ */
+
+:root {
+  --bg: #0a0a14;
+  --bg-elev: #0f0f1a;
+  --bg-card: #1a1a2e;
+  --bg-input: #111122;
+  --border: #1e293b;
+  --border-strong: #334155;
+  --text: #e2e8f0;
+  --text-mute: #94a3b8;
+  --text-dim: #64748b;
+  --accent: #60a5fa;
+  --success: #4ade80;
+  --warn: #fbbf24;
+  --danger: #f87171;
+  --danger-bg: #2e1a1a;
+  --success-bg: #0a2a18;
+  --radius: 6px;
+  --gap: 12px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.container { max-width: 1100px; margin: 0 auto; padding: 16px; }
+
+/* Header / nav -------------------------------------------------------- */
+.admin-header {
+  background: var(--bg-elev);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.admin-header h1 { font-size: 16px; font-weight: 600; }
+.admin-nav { display: flex; gap: 8px; flex-wrap: wrap; }
+.admin-nav a {
+  color: var(--text-mute);
+  text-decoration: none;
+  font-size: 13px;
+  padding: 4px 10px;
+  border-radius: 4px;
+}
+.admin-nav a:hover { background: var(--bg-card); color: var(--text); }
+.admin-nav a.active { background: var(--bg-card); color: var(--accent); }
+
+.role-chip {
+  display: inline-block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--bg-card);
+  color: var(--accent);
+  border: 1px solid var(--border-strong);
+}
+
+/* Tables -------------------------------------------------------------- */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.data-table th,
+.data-table td {
+  text-align: left;
+  padding: 10px 12px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+  word-break: break-word;
+}
+.data-table th {
+  background: var(--bg-card);
+  color: var(--text-mute);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+.data-table tr:last-child td { border-bottom: none; }
+.data-table tr:hover td { background: rgba(96, 165, 250, 0.04); }
+.table-wrap { overflow-x: auto; }
+
+/* Forms --------------------------------------------------------------- */
+.form-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+.form-row label { font-size: 12px; color: var(--text-mute); }
+input[type="text"], input[type="search"], select, textarea {
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  padding: 7px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  width: 100%;
+}
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.25);
+}
+select option[disabled] { color: var(--text-dim); font-style: italic; }
+
+button {
+  background: var(--bg-card);
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  font-size: 13px;
+  padding: 6px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+}
+button:hover:not([disabled]) { border-color: var(--accent); color: var(--accent); }
+button[disabled] { opacity: 0.5; cursor: not-allowed; }
+button.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+button.primary:hover:not([disabled]) { background: #93c5fd; color: var(--bg); }
+button.danger { color: var(--danger); border-color: var(--danger); }
+
+/* Toast --------------------------------------------------------------- */
+.toast {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  max-width: 360px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  animation: toast-in 0.18s ease-out;
+}
+.toast-success { background: var(--success-bg); color: var(--success); border: 1px solid var(--success); }
+.toast-error   { background: var(--danger-bg);  color: var(--danger);  border: 1px solid var(--danger); }
+.toast.fade-out { opacity: 0; transition: opacity 0.3s; }
+.toast .request-id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--text-mute);
+}
+.toast .copy-btn { align-self: flex-start; padding: 2px 8px; font-size: 11px; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Modal --------------------------------------------------------------- */
+/* Only paint flex when NOT [hidden] — otherwise `display: flex` beats the
+ * UA's `[hidden] { display: none }` and the modal stays visually present
+ * even after JS toggles the attribute. */
+.modal-backdrop:not([hidden]) {
+  position: fixed; inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+}
+.modal-body {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  width: 100%;
+  max-width: 420px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+/* Skeleton + empty state --------------------------------------------- */
+.skeleton {
+  background: linear-gradient(90deg, var(--bg-card) 0%, var(--border-strong) 50%, var(--bg-card) 100%);
+  background-size: 200% 100%;
+  animation: skel 1.4s infinite;
+  border-radius: 4px;
+  height: 14px;
+  width: 100%;
+}
+@keyframes skel { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+
+.empty-state {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 13px;
+  font-style: italic;
+}
+
+/* Responsive ---------------------------------------------------------- */
+@media (max-width: 600px) {
+  .admin-header { padding: 10px 12px; }
+  .container { padding: 12px; }
+  .data-table th, .data-table td { padding: 8px 6px; font-size: 12px; }
+  .toast { left: 10px; right: 10px; max-width: none; }
+}

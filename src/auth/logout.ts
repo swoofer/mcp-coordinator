@@ -5,7 +5,12 @@ import { appError } from "../http/response-contract.js";
 import { authenticateRequest } from "../auth.js";
 import { audit } from "../security/audit.js";
 import { bumpTokenEpoch } from "./token-epoch.js";
-import { hostCookie, setCookies } from "./cookies.js";
+import {
+  CSRF_COOKIE_NAME,
+  SESSION_COOKIE_NAME,
+  hostCookie,
+  setCookies,
+} from "./cookies.js";
 
 /**
  * T23 — POST /api/auth/logout, /logout-all, /revoke
@@ -25,9 +30,6 @@ import { hostCookie, setCookies } from "./cookies.js";
  * Cookie clearing: both __Host-coordinator_session and __Host-coordinator_csrf
  * are re-issued with Max-Age=0 so browsers drop them immediately.
  */
-
-const SESSION_COOKIE_NAME = "__Host-coordinator_session";
-const CSRF_COOKIE_NAME = "__Host-coordinator_csrf";
 
 const LOGOUT_ALL_RATE_LIMIT = { per: 5, window_seconds: 3600 } as const;
 

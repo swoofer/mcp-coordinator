@@ -476,10 +476,31 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
             ".json": "application/json",
           };
           const content = readFileSync(filePath, "utf-8");
-          res.writeHead(200, {
-            "Content-Type": contentTypes[ext] || "text/plain",
-            "Access-Control-Allow-Origin": "*",
-          });
+          // T08 (v0.10.6): admin pages get hardened headers and DROP the
+          // wildcard CORS that the legacy dashboard inherits. Scope regex
+          // matches admin.{html,js,css} and admin-<word>.{html,js,css}
+          // (e.g. admin-orgs.html, admin-users.html) ONLY — rejects
+          // admin.html.bak, notadmin.html, admin/orgs.html, admin-x-y.html.
+          // index.html and any other legacy dashboard asset keep existing
+          // headers untouched (Round 2 finding #1, V3 PATCH 6 + 7).
+          const urlNoQuery = url.split("?")[0] || "";
+          const isAdminAsset = /^\/dashboard\/admin(?:-[a-z]+)?\.(?:html|js|css)$/.test(urlNoQuery);
+          if (isAdminAsset) {
+            res.writeHead(200, {
+              "Content-Type": contentTypes[ext] || "text/plain",
+              "Content-Security-Policy":
+                "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+              "X-Frame-Options": "DENY",
+              "X-Content-Type-Options": "nosniff",
+              "Referrer-Policy": "same-origin",
+              "Cache-Control": "no-store",
+            });
+          } else {
+            res.writeHead(200, {
+              "Content-Type": contentTypes[ext] || "text/plain",
+              "Access-Control-Allow-Origin": "*",
+            });
+          }
           res.end(content);
         } else {
           json(res, { error: "not found" }, 404);

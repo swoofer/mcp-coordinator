@@ -1,6 +1,14 @@
 import { parse, serialize } from "cookie";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
+// Canonical cookie names for Phase 2 session + CSRF. Exported here so
+// src/auth.ts, src/auth/logout.ts, src/auth/oauth-finalize.ts,
+// src/auth/device-flow.ts, and test helpers all reference one source of
+// truth (eliminates 4-way string-literal drift; see v0.10.6 Round 1 finding).
+// The __Host- prefix is load-bearing — see hostCookie() below.
+export const SESSION_COOKIE_NAME = "__Host-coordinator_session";
+export const CSRF_COOKIE_NAME = "__Host-coordinator_csrf";
+
 export interface CookieAttrs {
   httpOnly?: boolean;
   secure?: boolean;

@@ -7,6 +7,10 @@ import {
   computeRowHash,
   type AuditChainFields,
 } from "./security/audit-chain.js";
+import {
+  runOrgsUniquenessGuard,
+  emitDuplicatesAcceptedAudit,
+} from "./boot-orgs-uniqueness.js";
 
 const require = createRequire(import.meta.url);
 
@@ -256,6 +260,13 @@ const SCHEMA = `
       idp_org_id    TEXT,
       created_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
+    -- v0.10.6 (T03): UNIQUE INDEX on orgs.name. Admin-UI POST /api/admin/orgs
+    -- relies on this for the 409 ORG_NAME_TAKEN response (the SQLITE_CONSTRAINT
+    -- error is what discriminates "name taken" from other write failures).
+    -- A pre-flight boot guard in src/boot-orgs-uniqueness.ts runs BEFORE this
+    -- index is created on each boot; if existing rows contain duplicate names
+    -- the guard refuses boot (or audits via COORDINATOR_ALLOW_DUPLICATE_ORG_NAMES=1).
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_orgs_name ON orgs(name);
 
     CREATE TABLE IF NOT EXISTS users (
       id              TEXT PRIMARY KEY,
@@ -363,6 +374,18 @@ export function initDatabase(dataDir: string): void {
       `Database schema is from a newer version (${foundVersion}) than this binary supports (${CURRENT_USER_VERSION}). Downgrade not supported.`
     );
   }
+
+  // v0.10.6 T03: pre-flight UNIQUE INDEX guard. MUST run before SCHEMA so the
+  // SCHEMA's `CREATE UNIQUE INDEX IF NOT EXISTS idx_orgs_name` doesn't abort
+  // with a cryptic SQLITE_CONSTRAINT on upgrade DBs that happen to have
+  // duplicate org names. See src/boot-orgs-uniqueness.ts for the branch matrix.
+  // The returned payload, if non-null, is the override-accepted audit deferred
+  // to AFTER the v0.8 migration block (audit_log column renames must be done
+  // before we INSERT to actor_user_id / metadata_json / prev_hash / row_hash).
+  const orgsUniquenessResult = runOrgsUniquenessGuard({
+    db,
+    env: process.env,
+  });
 
   db.exec(SCHEMA);
 
@@ -779,6 +802,20 @@ export function initDatabase(dataDir: string): void {
     // in PRAGMA foreign_keys = OFF state otherwise, silently disabling all FK
     // enforcement for the rest of this process's lifetime.
     db.exec("PRAGMA foreign_keys = ON");
+  }
+
+  // v0.10.6 T03: if the pre-flight guard accepted duplicate org names via
+  // COORDINATOR_ALLOW_DUPLICATE_ORG_NAMES=1, emit the Tier 1 audit row NOW —
+  // SCHEMA has run (audit_log exists with id/created_at/prev_hash/row_hash)
+  // and the v0.8 column renames are complete. Direct INSERT rather than
+  // routing through `audit()` because `audit()` resolves `getDb()` against
+  // the still-being-initialized module-level reference + the audit queue is
+  // not initialized until bootPhase2.
+  if (orgsUniquenessResult.pendingDuplicatesAcceptedAudit) {
+    emitDuplicatesAcceptedAudit(
+      db,
+      orgsUniquenessResult.pendingDuplicatesAcceptedAudit,
+    );
   }
 }
 

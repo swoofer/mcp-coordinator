@@ -4,7 +4,7 @@ import type { IncomingMessage } from "http";
 import type Database from "better-sqlite3";
 import { getDb } from "./database.js";
 import { silentLogger, type Logger } from "./logger.js";
-import { parseCookies } from "./auth/cookies.js";
+import { parseCookies, SESSION_COOKIE_NAME } from "./auth/cookies.js";
 import { isAcceptedKid, type JwtKeyRegistry } from "./auth/jwt-keys.js";
 import { readTokenEpoch } from "./auth/token-epoch.js";
 import { verifyServiceTokenJti } from "./auth/service-tokens.js";
@@ -217,7 +217,6 @@ export type AuthResult =
 // a module-level variable. If the context is never wired (Phase 1 deploys),
 // the cookie path falls through silently — preserving Phase 1 semantics.
 
-const SESSION_COOKIE_NAME = "__Host-coordinator_session";
 const SESSION_CLOCK_TOLERANCE_S = 30;
 
 interface Phase2AuthContext {

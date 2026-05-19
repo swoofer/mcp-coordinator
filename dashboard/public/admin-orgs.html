@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>mcp-coordinator - Orgs</title>
+    <link rel="stylesheet" href="admin.css">
+    <!-- T11: CSP `script-src 'self'` — admin-orgs.js MUST stay external.
+         Zero inline JS, zero inline styles, zero on* handlers on this page.
+         Filename is a single hyphen segment (admin-orgs) so it matches the
+         CSP scope regex installed by T08 (`/^\/dashboard\/admin(?:-[a-z]+)?\.(?:html|js|css)$/`). -->
+    <script type="module" src="admin-orgs.js"></script>
+  </head>
+  <body>
+    <header class="admin-header">
+      <h1>Orgs</h1>
+      <nav class="admin-nav" aria-label="Admin sections">
+        <a href="admin.html">&larr; Admin</a>
+        <a href="admin-orgs.html" class="active">Orgs</a>
+        <a href="admin-users.html">Users</a>
+      </nav>
+    </header>
+
+    <main class="container">
+      <!-- Toolbar: New-org button opens the shared create/edit modal. The
+           click handler is wired in admin-orgs.js (no on* attributes). -->
+      <section class="toolbar">
+        <button id="new-org-btn" type="button" class="primary">+ New org</button>
+      </section>
+
+      <div class="table-wrap">
+        <table class="data-table" id="orgs-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Name</th>
+              <th>Allowlist GitHub org</th>
+              <th>Allowlist IdP org id</th>
+              <th>Created</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="orgs-tbody">
+            <!-- Skeleton row painted by admin-orgs.js on load, then replaced
+                 by renderTable() once /api/admin/orgs resolves. -->
+          </tbody>
+        </table>
+      </div>
+    </main>
+
+    <!-- Modal backdrop: hidden by default via the `hidden` attribute (no
+         inline style needed). admin-orgs.js toggles `hidden` to show/hide.
+         The same form serves both Create and Edit — the submit handler
+         picks POST vs PATCH based on the value of #org-edit-id. -->
+    <div id="org-modal" class="modal-backdrop" hidden>
+      <div class="modal-body" role="dialog" aria-modal="true" aria-labelledby="org-modal-title">
+        <h2 id="org-modal-title">New org</h2>
+        <form id="org-form">
+          <!-- Hidden field carries the org id when editing; empty = create. -->
+          <input type="hidden" id="org-edit-id" name="id" value="">
+
+          <div class="form-row">
+            <label for="org-name">Name</label>
+            <input type="text" id="org-name" name="name" required maxlength="200" autocomplete="off">
+            <div id="org-name-error" class="form-error" role="alert" hidden></div>
+          </div>
+
+          <div class="form-row">
+            <label for="org-allow-github">Allowlist GitHub org (optional)</label>
+            <input type="text" id="org-allow-github" name="allowlist_github_org" maxlength="200" autocomplete="off">
+            <div id="org-allow-github-error" class="form-error" role="alert" hidden></div>
+          </div>
+
+          <div class="form-row">
+            <label for="org-allow-idp">Allowlist IdP org id (optional)</label>
+            <input type="text" id="org-allow-idp" name="allowlist_idp_org_id" maxlength="200" autocomplete="off">
+            <div id="org-allow-idp-error" class="form-error" role="alert" hidden></div>
+          </div>
+
+          <div class="modal-actions">
+            <button type="button" id="org-cancel-btn">Cancel</button>
+            <button type="submit" id="org-save-btn" class="primary">Save</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Toast container hint: showToast() appends directly to <body>. -->
+    <div id="toast-container" aria-live="polite"></div>
+  </body>
+</html>

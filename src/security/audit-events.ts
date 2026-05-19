@@ -33,6 +33,19 @@ export const TIER1_EVENTS = [
   "config.key_rotation",
   "system.shutdown.audit_loss",
   "migration.audit_backfill",
+  // v0.10.6 T03: boot-time override accepted duplicate org names instead of
+  // failing the UNIQUE INDEX pre-flight (COORDINATOR_ALLOW_DUPLICATE_ORG_NAMES=1).
+  // Operator-acknowledged risk; full duplicate list lands in the metadata.
+  "admin.orgs.duplicate_names_accepted",
+  // v0.10.6 T02 (V2 §C.2 master table, V3 PATCH 3): admin UI mutations.
+  // Emitted by handle-admin-orgs / handle-admin-users in the same transaction
+  // as the underlying INSERT/UPDATE so the write and audit row commit atomically.
+  // `admin.user.role_changed` carries both `outcome: "success"` and
+  // `outcome: "denied"` rows (denied_reason ∈ last_admin | self_demotion |
+  // not_human_user | not_found).
+  "admin.org.created",
+  "admin.org.updated",
+  "admin.user.role_changed",
 ] as const;
 
 /** Tier 2: asynchronous emission (T11b queue), may drop under pressure, shorter retention. */

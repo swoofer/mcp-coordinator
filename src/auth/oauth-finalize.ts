@@ -2,7 +2,12 @@ import crypto from "node:crypto";
 import type Database from "better-sqlite3";
 import type { ServerResponse } from "node:http";
 import type { Clock } from "./clock.js";
-import { hostCookie, setCookies } from "./cookies.js";
+import {
+  CSRF_COOKIE_NAME,
+  SESSION_COOKIE_NAME,
+  hostCookie,
+  setCookies,
+} from "./cookies.js";
 import type { JwtKeyRegistry } from "./jwt-keys.js";
 import { mintAccessJWT, mintRefreshJWT } from "./jwt-mint.js";
 import type { IdpUserInfo } from "./providers/types.js";
@@ -20,8 +25,6 @@ import { encryptNullable } from "../security/encrypt-nullable.js";
 
 const ACCESS_TTL_S_DEFAULT = 15 * 60; // 15 minutes
 const REFRESH_TTL_S_DEFAULT = 30 * 24 * 3600; // 30 days
-const SESSION_COOKIE_NAME = "__Host-coordinator_session";
-const CSRF_COOKIE_NAME = "__Host-coordinator_csrf";
 const STATE_COOKIE_NAME = "__Host-coordinator_oauth_state";
 
 export interface AllowlistOrg {

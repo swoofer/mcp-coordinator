@@ -10,8 +10,13 @@ export default defineConfig({
       include: [
         "src/**/*.ts",
         "tests/helpers/encryption.ts",
+        "tests/helpers/admin-session.ts",
         "cli/lib/**/*.ts",
         "cli/encryption/**/*.ts",
+        // T09: admin-UI shared frontend modules. Plain ES so v8 can
+        // instrument them directly — no transform required.
+        "dashboard/public/admin-common.js",
+        "dashboard/public/admin-strings.js",
       ],
       exclude: ["src/**/*.test.ts", "src/**/types.ts", "dist/**"],
       // Phase 2 security-critical files require 100% branch coverage
@@ -36,6 +41,7 @@ export default defineConfig({
         "src/auth/providers/github.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/auth/service-tokens.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/admin/handle-service-tokens.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
+        "src/admin/validate.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/auth/cookies.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/auth/request-id.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/auth/audit-context.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
@@ -67,6 +73,7 @@ export default defineConfig({
         "src/security/envelope-encryption.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/security/master-key.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "tests/helpers/encryption.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
+        "tests/helpers/admin-session.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/boot-encryption.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/security/audit-pseudonym.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "cli/lib/pid-lock.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
@@ -80,6 +87,28 @@ export default defineConfig({
         // TODO(T10): "src/security/encrypted-columns.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         // TODO(T11): "src/security/encryption-metrics.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         // TODO(T12): "src/security/encryption-audit.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
+        // ---- v0.10.6 admin-UI (T03 V2 PATCH 6): pre-stubbed per-file thresholds ----
+        // T03 ships the boot guard + UNIQUE INDEX migration; threshold enforced now.
+        "src/boot-orgs-uniqueness.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
+        // The following entries are pre-stubbed (commented) so that the PRs that
+        // land each admin file can simply uncomment its line — no merge conflict
+        // on the shared `coverage.thresholds` block. Mirrors the v0.10.5 T01
+        // pre-stubbing pattern (encryption files above).
+        // TODO(T04): "src/admin/validate.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
+        "src/admin/handle-admin-orgs.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
+        // TODO(T06): "src/admin/handle-admin-users.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
+        // TODO(TH):  "tests/helpers/admin-session.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
+        // T09: shared frontend modules for the admin pages.
+        "dashboard/public/admin-strings.js": { branches: 100, lines: 100, statements: 100, functions: 100 },
+        "dashboard/public/admin-common.js": { branches: 100, lines: 100, statements: 100, functions: 100 },
+        // T11 admin-orgs.js: intentionally NOT pinned to a per-file
+        // threshold. The module is glue code (DOM event wiring +
+        // fetchJSON calls) whose behavior surface would require a full
+        // jsdom harness to exercise meaningfully — jsdom is not in
+        // devDependencies (see admin-common.test.ts comment). The smoke
+        // test (admin-orgs-html.test.ts) covers the HTML invariants;
+        // T09 helpers carry the logic that's worth pinning. Mirrors
+        // admin.js + admin-users.js policy.
       },
     },
   },
