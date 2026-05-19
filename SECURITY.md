@@ -10,16 +10,23 @@ Security fixes are issued against the latest minor release. Older minors
 receive a fix only if the issue is critical (CVSS >= 9.0) and a clean
 backport exists.
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 0.8.x   | Yes                |
-| 0.7.x   | Yes (current minor) |
-| < 0.7   | No                 |
+| Version  | Supported               |
+| -------- | ----------------------- |
+| 0.10.x   | Yes (current minor)     |
+| 0.9.x    | Yes                     |
+| < 0.9    | No                      |
 
 ## Reporting a vulnerability
 
-Email `security@example.com` (replace with the operator's mailbox before
-publishing the repo) with:
+**Preferred channel — GitHub private vulnerability reporting:**
+[Open a private advisory](https://github.com/swoofer/mcp-coordinator/security/advisories/new).
+This routes the report directly to the maintainer through GitHub's
+encrypted reporting flow — no email setup or PGP needed.
+
+A dedicated `security@` mailbox is not yet provisioned (tracked as a TODO
+by the maintainer). Until it is, please use the GitHub channel above.
+
+When you report, include:
 
 - A short description of the issue.
 - Reproduction steps, including the affected version (`mcp-coordinator
