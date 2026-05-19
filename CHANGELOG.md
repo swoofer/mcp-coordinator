@@ -1,5 +1,73 @@
 # Changelog
 
+## [0.10.6](https://github.com/swoofer/mcp-coordinator/compare/v0.10.5...v0.10.6) (2026-05-19)
+
+Admin web UI for orgs + users. Operators no longer need raw SQL to manage
+org allowlists or change user roles — point a browser at
+`/dashboard/admin.html` (logged in as `role: "admin"`) and use the UI.
+Equivalent REST surface available at `/api/admin/{orgs,users}` for scripts.
+All mutations are audit-logged, rate-limited, and protected against the
+last-admin-self-lockout footgun.
+
+### Features
+
+* **admin:** 5 REST endpoints under `/api/admin/*`:
+    - `GET /api/admin/orgs` — list (5000-row hard cap)
+    - `POST /api/admin/orgs` — create with name + `allowlist_github_org` +
+      `allowlist_idp_org_id`
+    - `PATCH /api/admin/orgs/:id` — update name / allowlists (null clears)
+    - `GET /api/admin/users[?org=ID]` — list (excludes agent/service roles)
+    - `PATCH /api/admin/users/:id` — change role admin↔member
+  All require JWT with `role: "admin"`, CSRF double-submit on mutations,
+  per-IP rate limit (30 mutations/min). Tier-1 audit on every mutation.
+* **admin/last-admin:** TOCTOU-safe protection via `BEGIN IMMEDIATE` +
+  admin-count check. Refuses to demote the only admin; frontend proactively
+  disables the demote option via `meta.admin_count` from server-truth.
+* **dashboard:** 3 new CSP-compliant static admin pages:
+    - `/dashboard/admin.html` — landing with role chip, nav to Orgs/Users
+    - `/dashboard/admin-orgs.html` — CRUD form + table, modal-driven
+    - `/dashboard/admin-users.html` — filter by org, role dropdown
+  Vanilla HTML/CSS/JS, no framework. Shared infra: `admin.css` +
+  `admin-common.js` (fetchJSON / renderTable / showToast / readCsrfToken /
+  redirectToLogin / formatTimestamp) + `admin-strings.js` (centralized
+  STRINGS table + `t(path, vars)` for future i18n). Zero `innerHTML`;
+  every cell built via `createElement` + `textContent`.
+* **security/static-handler:** admin pages get CSP `script-src 'self'` +
+  `X-Frame-Options: DENY` + `Cache-Control: no-store`; `Access-Control-
+  Allow-Origin: *` DROPPED for admin paths only. `index.html` and other
+  legacy assets retain existing headers.
+* **schema:** `orgs.name` UNIQUE INDEX added (`idx_orgs_name`). Pre-flight
+  boot guard refuses startup when existing deployments contain duplicate
+  org names; override via `COORDINATOR_ALLOW_DUPLICATE_ORG_NAMES=1` (audited).
+* **auth/cookies:** `SESSION_COOKIE_NAME` + `CSRF_COOKIE_NAME` constants
+  exported from `src/auth/cookies.ts` and consumed by all 5 prior duplicate
+  literal sites (auth.ts, logout.ts, oauth-finalize.ts, device-flow.ts).
+* **observability:** 5 new Tier-1 audit events (`admin.org.created`,
+  `admin.org.updated`, `admin.user.role_changed`,
+  `admin.orgs.duplicate_names_accepted`); flat-scalar metadata; HMAC-
+  pseudonymized `user_id_hash` (label `mcc-audit-pseudonym-v1`).
+  `request_id` auto-injected in every error envelope.
+
+### Documentation
+
+* **ops/admin-ui:** new runbook covering bootstrap, daily usage,
+  allowlist semantics, rate-limit behavior, last-admin protection +
+  safe self-demote procedure, audit-log queries, disaster recovery
+  (SQL fallback for admin role).
+* **onboarding-self-host:** Admin UI section with bootstrap behavior +
+  endpoint table + cross-link to runbook.
+* **security/threat-model:** new Asset 7 (operator surface) with STRIDE
+  walk of /api/admin/* + static admin pages.
+* **README:** Compliance matrix marks Admin UI Shipped.
+
+### Backward compatibility
+
+Fully additive. Existing v0.10.5 deployments upgrade with no config changes
+required. The single boot guard (orgs.name UNIQUE INDEX) only fires on
+deployments that have pre-existing duplicate org names — extremely rare;
+override env var provided. CSRF / session cookie names unchanged. Existing
+service-token admin endpoints untouched.
+
 ## [0.10.5](https://github.com/swoofer/mcp-coordinator/compare/v0.10.4...v0.10.5) (2026-05-17)
 
 Column-level encryption at-rest for OAuth IdP tokens. Closes the residual
