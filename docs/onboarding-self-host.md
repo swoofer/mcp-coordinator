@@ -157,6 +157,43 @@ The boot path runs an entropy check on `COORDINATOR_JWT_SECRET`:
 Always generate via a cryptographic RNG. `openssl rand -base64 32` and
 `head -c 32 /dev/urandom | base64` both work.
 
+### Admin UI (v0.10.6)
+
+The coordinator ships a browser-based admin console for managing
+organizations and user roles. No additional environment variables are
+required to enable it — the surface is present whenever Phase 2 OAuth
+is enabled.
+
+- **URL**: `${COORDINATOR_PUBLIC_URL}/dashboard/admin.html`
+- **Access**: requires a session cookie AND `role = 'admin'` on the
+  caller's user row. Non-admins see a 403 from every mutation; the page
+  itself is served statically (CSP + `X-Frame-Options: DENY`, no CORS).
+- **Bootstrap admin**: the FIRST user to complete the OAuth flow on a
+  fresh deployment is promoted to `admin` automatically (T16b atomic
+  check — see §5 below). Subsequent users land as `member` until an
+  admin promotes them through the UI or by SQL.
+- **CSRF**: the login flow sets a CSRF cookie that the admin UI submits
+  back as a header on every state-changing call (double-submit pattern,
+  same as the rest of Phase 2). No operator action required.
+- **Rate limit**: mutations are gated by a per-IP token bucket (30
+  requests / minute). Exceeding it returns `429` with `Retry-After`.
+- **Last-admin protection**: the API refuses to demote the only
+  remaining admin. Promote another user first, then demote yourself.
+
+Endpoints surfaced by the admin UI (all under `/api/admin/*`, all
+require admin role):
+
+| Method + path                         | Purpose                                  |
+| ------------------------------------- | ---------------------------------------- |
+| `GET    /api/admin/orgs`              | List organizations                       |
+| `POST   /api/admin/orgs`              | Create an organization                   |
+| `PATCH  /api/admin/orgs/:id`          | Update org name / allowlists / status    |
+| `GET    /api/admin/users`             | List users (with org + role)             |
+| `PATCH  /api/admin/users/:id`         | Change a user's role (admin / member)    |
+
+Full operator runbook (initial setup, daily usage, disaster recovery,
+audit-log queries): `docs/ops/admin-ui.md`.
+
 ### HTTPS expectation
 
 The coordinator refuses to set the `Secure` flag on session cookies over

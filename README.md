@@ -170,7 +170,7 @@ Scores are categorized into three outcomes:
 ---
 
 
-## Capabilities at a glance (v0.10.5)
+## Capabilities at a glance (v0.10.6)
 
 | Concern | Out of the box | Opt-in |
 |---------|----------------|--------|
@@ -182,6 +182,7 @@ Scores are categorized into three outcomes:
 | **Session model** | — | Cookie sessions (`__Host-coordinator_session`) + Bearer JWT for MCP transport + service tokens for CI/CD |
 | **Refresh-token rotation** | — | Reuse detection with 10s grace + family revoke; GitHub App auto-refreshes IdP access tokens on 401 |
 | **IdP token encryption at rest** | — | ✅ Shipped v0.10.5 — column-level AES-256-GCM on `users.idp_access_token` + `users.idp_refresh_token`, AAD-bound to `user_id`/column/`org_id`, key fingerprint guard at boot (`COORDINATOR_ENCRYPTION_KEY`) |
+| **Admin UI for org / user management** | — | ✅ Shipped v0.10.6 — browser console at `/dashboard/admin.html` (admin role required); manage organizations, allowlists, and per-user roles; CSRF double-submit + per-IP rate limit (30/min) on mutations; last-admin demote protection; audit trail under `admin.org.*` + `admin.user.role_changed` |
 | **Audit log** | — | Tier-1 (never-drop) + Tier-2 (batched) + SHA-256 hash chain (`prev_hash` + `row_hash`) for tamper-evidence |
 | **Operational tooling** | — | `init phase2` wizard, `doctor --phase2`, `service-token {issue,list,revoke}`, `rotate-jwt-secret`, `verify-audit-chain.ts` |
 | **Compliance posture** | — | SOC 2 Type II audit-chain runbook, GDPR Art. 17 procedures, threat model with IdP-token-leak path closed (v0.10.5) and remaining residual risks documented |
@@ -1028,7 +1029,7 @@ The behaviors that make agents announce-before-write, resolve conflicts, and par
 
 ## Release history & Roadmap
 
-Per-version detail for v0.5.0 → v0.10.5 lives below. The [Capabilities at a glance](#capabilities-at-a-glance-v0105) matrix at the top of this README is the current-state summary.
+Per-version detail for v0.5.0 → v0.10.6 lives below. The [Capabilities at a glance](#capabilities-at-a-glance-v0106) matrix at the top of this README is the current-state summary.
 
 ## What's New in v0.8.0 (Phase 2 OAuth)
 

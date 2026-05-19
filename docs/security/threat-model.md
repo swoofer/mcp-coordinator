@@ -387,7 +387,61 @@ look up org membership in `src/auth/membership-cache.ts`.
   `read:user`). Operators should review the GitHub OAuth app scope
   list periodically.
 
-## Asset 7: GitHub OAuth grant
+## Asset 7 (operator surface): Admin UI endpoints (v0.10.6)
+
+The v0.10.6 admin console at `/dashboard/admin.html` and its backing
+`/api/admin/*` endpoints introduce no new asset type — they are an
+authenticated operator-facing view onto existing tables (`users`,
+`organizations`, `audit_log`). The threat model is fully covered by
+the existing JWT + CSRF + audit controls; this section enumerates the
+new attack surfaces and confirms which existing mitigation applies.
+
+### `/api/admin/*` endpoints
+
+- **Spoofing / EoP**: every admin endpoint runs through the same
+  `authenticateRequest` path as the rest of Phase 2 (HS256 JWT verify
+  via `src/auth/jwt-verify.ts`) and then explicitly checks
+  `role === 'admin'` before dispatching. A member-role JWT receives
+  `403`, audited as a Tier 2 `admin.access.denied` event.
+- **CSRF**: state-changing methods (`POST` / `PATCH`) require the CSRF
+  double-submit token issued at login (`src/auth/csrf.ts`). Missing or
+  mismatched tokens produce `403` with `auth.csrf.failed` Tier 2.
+- **DoS**: per-IP rate limit of 30 mutations / minute via the shared
+  `RateLimiter` (`src/auth/rate-limit.ts`). Exceeded requests return
+  `429` with `Retry-After`. Reads are unthrottled (consistent with
+  other authenticated read endpoints in Phase 2).
+- **Repudiation**: every successful mutation emits a Tier 1 audit row
+  under one of `admin.org.created`, `admin.org.updated`,
+  `admin.user.role_changed`, or
+  `admin.orgs.duplicate_names_accepted`. The hash chain
+  (`src/security/audit-chain.ts`) covers these rows like any other.
+- **Last-admin protection**: the `PATCH /api/admin/users/:id` handler
+  refuses to demote the only remaining admin, preventing accidental
+  total lockout. Recovery procedure (raw SQL) is documented in
+  `docs/ops/admin-ui.md`.
+
+### Static admin pages (`/dashboard/admin.html`)
+
+- **Spoofing**: the static asset is served without ACAO and with
+  `X-Frame-Options: DENY`, so it cannot be iframed onto an
+  attacker-controlled origin (clickjacking-resistant).
+- **Tampering**: the page is bundled in-tree; no runtime template
+  inflation. CSP restricts script sources to `self` (no inline,
+  no `eval`).
+- **Information disclosure**: the page itself contains no secrets;
+  all admin data is fetched at runtime via the authenticated
+  endpoints above.
+
+### Residual
+
+No new residual risks: the admin UI is a thin client over
+endpoints whose threat model is identical to the rest of Phase 2.
+Operators should review the per-admin audit trail
+(`SELECT * FROM audit_log WHERE action LIKE 'admin.%'`) on the same
+cadence as the rest of the security-relevant audit events; see
+`docs/ops/admin-ui.md` for the operator runbook.
+
+## Asset 8: GitHub OAuth grant
 
 Lives on GitHub. Identified by `COORDINATOR_GITHUB_CLIENT_ID` /
 `COORDINATOR_GITHUB_CLIENT_SECRET`. The client_secret is a coordinator
