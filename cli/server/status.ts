@@ -1,4 +1,4 @@
-﻿import { Command } from "commander";
+import { Command } from "commander";
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
 import { getConfigDir, loadConfig } from "../config.js";
@@ -24,6 +24,7 @@ export function createServerStatusCommand(): Command {
 
       if (!existsSync(pidPath)) {
         console.log("Coordinator: stopped");
+        process.exitCode = 1;
         return;
       }
 
@@ -36,6 +37,7 @@ export function createServerStatusCommand(): Command {
 
       if (!processAlive) {
         console.log("Coordinator: stopped (stale PID file)");
+        process.exitCode = 1;
         return;
       }
 
@@ -55,7 +57,7 @@ export function createServerStatusCommand(): Command {
         console.log(`Dashboard:   http://localhost:${port}/dashboard`);
       } else {
         console.log(`Coordinator: running (PID ${pid}) but health check failed`);
+        process.exitCode = 1;
       }
     });
 }
-
