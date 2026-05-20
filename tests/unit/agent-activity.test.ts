@@ -196,4 +196,47 @@ describe("agent-activity org_id scoping", () => {
     tracker.reportOffline("org-a", "agent-1");
     expect(tracker.getStatus("org-a", "agent-1")?.activity_status).toBe("offline");
   });
+
+  // -- Regression: #77 reportWaiting/heartbeat must thread real org_id --
+
+  it("reportWaiting writes the caller's org_id (not 'default')", () => {
+    tracker.reportWaiting("orgA", "agent-1", "thread-a");
+    tracker.reportWaiting("orgB", "agent-2", "thread-b");
+
+    const rowA = getDb()
+      .prepare("SELECT org_id, current_thread FROM agent_activity_status WHERE agent_id = ?")
+      .get("agent-1") as { org_id: string; current_thread: string };
+    const rowB = getDb()
+      .prepare("SELECT org_id, current_thread FROM agent_activity_status WHERE agent_id = ?")
+      .get("agent-2") as { org_id: string; current_thread: string };
+
+    expect(rowA.org_id).toBe("orgA");
+    expect(rowA.current_thread).toBe("thread-a");
+    expect(rowB.org_id).toBe("orgB");
+    expect(rowB.current_thread).toBe("thread-b");
+    // Neither row should be commingled under "default"
+    expect(rowA.org_id).not.toBe("default");
+    expect(rowB.org_id).not.toBe("default");
+  });
+
+  it("heartbeat writes the caller's org_id (not 'default')", () => {
+    tracker.heartbeat("orgA", "agent-1", { currentFile: "a.ts", currentThread: null });
+    tracker.heartbeat("orgB", "agent-2", { currentFile: null, currentThread: "thr-b" });
+
+    const rowA = getDb()
+      .prepare("SELECT org_id, activity_status, current_file FROM agent_activity_status WHERE agent_id = ?")
+      .get("agent-1") as { org_id: string; activity_status: string; current_file: string };
+    const rowB = getDb()
+      .prepare("SELECT org_id, activity_status, current_thread FROM agent_activity_status WHERE agent_id = ?")
+      .get("agent-2") as { org_id: string; activity_status: string; current_thread: string };
+
+    expect(rowA.org_id).toBe("orgA");
+    expect(rowA.activity_status).toBe("working");
+    expect(rowA.current_file).toBe("a.ts");
+    expect(rowB.org_id).toBe("orgB");
+    expect(rowB.activity_status).toBe("waiting");
+    expect(rowB.current_thread).toBe("thr-b");
+    expect(rowA.org_id).not.toBe("default");
+    expect(rowB.org_id).not.toBe("default");
+  });
 });
