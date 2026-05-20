@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.10.7](https://github.com/swoofer/mcp-coordinator/compare/v0.10.6...v0.10.7) (2026-05-19)
+
+Documentation clarification — no code changes. v0.10.6 never reached npm
+(publish workflow misfired); v0.10.7 ships the v0.10.6 admin UI feature
+PLUS the doc fix described below.
+
+### Documentation
+
+* **README + onboarding-self-host:** clarify the 3 install styles (`npx` /
+  global / local-project). Explicit table + note that `npm install
+  mcp-coordinator` (without `-g`) does NOT extract files into the current
+  directory — they live in `node_modules/mcp-coordinator/`, and the
+  binary is at `node_modules/.bin/mcp-coordinator` (invoke via `npx
+  mcp-coordinator <cmd>` from the project root). Resolves common
+  first-user confusion when the "Getting started" example was misread
+  as "install + cd into the package".
+
+### Note
+
+The feature changelog for the included admin UI is under the v0.10.6
+entry below; this v0.10.7 entry is purely the doc patch.
+
 ## [0.10.6](https://github.com/swoofer/mcp-coordinator/compare/v0.10.5...v0.10.6) (2026-05-19)
 
 Admin web UI for orgs + users. Operators no longer need raw SQL to manage
