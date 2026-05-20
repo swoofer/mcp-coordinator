@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "fs";
+import { mkdtempSync, writeFileSync, promises as fsp } from "fs";
 import { tmpdir } from "os";
 import path from "path";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
@@ -12,10 +12,20 @@ const TEST_DIR = mkdtempSync(path.join(tmpdir(), "gitcc-"));
 
 describe("GitCochangeBuilder", () => {
   beforeEach(() => {
+    // Close any previous connection before re-init: initDatabase() reassigns the
+    // module-level db without closing the old handle, which on Windows leaks
+    // handles to the same .db file and causes EBUSY on rmSync in afterAll.
+    try { closeDb(); } catch { /* nothing to close yet */ }
     initDatabase(TEST_DIR);
     getDb().exec("DELETE FROM git_cochange; DELETE FROM git_cochange_meta;");
   });
-  afterAll(() => { closeDb(); rmSync(TEST_DIR, { recursive: true, force: true }); });
+  afterAll(async () => {
+    try { closeDb(); } catch { /* already closed */ }
+    // Windows can hold .db handles for many seconds after better-sqlite3 close()
+    // (Defender / indexer / WAL teardown). Retry generously so cleanup wins
+    // once the OS releases the file.
+    await fsp.rm(TEST_DIR, { recursive: true, force: true, maxRetries: 20, retryDelay: 750 });
+  }, 30000);
 
   it("computes ratios from a 5-commit fixture", async () => {
     // Use files that each co-change in 2 of 5 commits (40% threshold not exceeded).

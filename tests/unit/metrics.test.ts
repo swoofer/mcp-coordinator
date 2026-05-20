@@ -32,9 +32,11 @@ beforeEach(() => {
   metrics = new Metrics({ collectDefault: false });
 });
 
-afterAll(() => {
-  closeDb();
-  fs.rmSync(TEST_DIR, { recursive: true, force: true });
+afterAll(async () => {
+  try { closeDb(); } catch { /* already closed */ }
+  // Windows holds the .db handle briefly after better-sqlite3 close() (Defender/indexer);
+  // use the async API so retries give the event loop time to drain pending releases.
+  await fs.promises.rm(TEST_DIR, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 });
 });
 
 describe("Metrics counters", () => {

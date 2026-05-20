@@ -1,5 +1,5 @@
 ﻿import { describe, it, expect, beforeEach, afterAll } from "vitest";
-import { mkdtempSync, rmSync } from "fs";
+import { mkdtempSync, promises as fsp } from "fs";
 import { tmpdir } from "os";
 import path from "path";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
@@ -12,6 +12,10 @@ const TEST_DIR = mkdtempSync(path.join(tmpdir(), "l4-"));
 describe("Layer 4 git_cochange lookup", () => {
   let registry: AgentRegistry, fileTracker: FileTracker, scorer: ImpactScorer;
   beforeEach(() => {
+    // Close any previous connection before re-init: initDatabase() reassigns the
+    // module-level db without closing the old handle, which on Windows leaks
+    // handles to the same .db file and causes EBUSY on rmSync in afterAll.
+    try { closeDb(); } catch { /* nothing to close yet */ }
     initDatabase(TEST_DIR);
     const db = getDb();
     db.exec("DELETE FROM agents; DELETE FROM file_activity; DELETE FROM git_cochange;");
@@ -27,7 +31,13 @@ describe("Layer 4 git_cochange lookup", () => {
     // Bob recently edited b.ts
     fileTracker.log({ org_id: "default", session_id: "s", agent_id: "bob", tool_name: "Edit", file_path: "b.ts" });
   });
-  afterAll(() => { closeDb(); rmSync(TEST_DIR, { recursive: true, force: true }); });
+  afterAll(async () => {
+    try { closeDb(); } catch { /* already closed */ }
+    // Windows can hold .db handles for many seconds after better-sqlite3 close()
+    // (Defender / indexer / WAL teardown). Retry generously so cleanup wins
+    // once the OS releases the file.
+    await fsp.rm(TEST_DIR, { recursive: true, force: true, maxRetries: 20, retryDelay: 750 });
+  }, 30000);
 
   it("scores 60 when ratio > 0.5 (alice→a.ts, bob touched b.ts which co-changes 0.6)", () => {
     const scores = scorer.score({ org_id: "default", agent_id: "alice", target_modules: [], target_files: ["a.ts"] });

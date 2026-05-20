@@ -10,10 +10,13 @@ beforeAll(() => {
   initDatabase(TEST_DIR);
 });
 
-afterAll(() => {
-  closeDb();
-  fs.rmSync(TEST_DIR, { recursive: true, force: true });
-});
+afterAll(async () => {
+  try { closeDb(); } catch { /* already closed */ }
+  // Windows can hold .db handles for many seconds after better-sqlite3 close()
+  // (Defender / indexer / WAL teardown). Retry generously; the parent dir cleanup
+  // will eventually win once the OS releases the file.
+  await fs.promises.rm(TEST_DIR, { recursive: true, force: true, maxRetries: 20, retryDelay: 750 });
+}, 30000);
 
 describe("Database", () => {
   it("creates all required tables", () => {

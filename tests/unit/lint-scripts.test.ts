@@ -8,6 +8,28 @@ import path from "path";
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 const SCRIPTS_DIR = path.join(REPO_ROOT, "scripts");
 
+// Detect whether a working POSIX bash is available. The suite shells out to
+// `bash` to run /scripts/lint-*.sh. Cases that block this test:
+//   - Pure Windows host with no Git Bash AND no WSL → bash not on PATH.
+//   - Windows host with WSL but no distro installed → `bash.exe` is on PATH
+//     but invoking it tries to launch /bin/bash inside a non-existent WSL
+//     distro, producing `WSL (NN) ERROR: ... execvpe(/bin/bash) failed:
+//     No such file or directory`.
+// In both cases the lint suite cannot meaningfully run; skip the whole
+// describe block so the suite does not red-flag the developer on Windows.
+const BASH_AVAILABLE: boolean = (() => {
+  try {
+    const out = execFileSync("bash", ["-c", "echo ok"], {
+      stdio: ["ignore", "pipe", "pipe"],
+      encoding: "utf-8",
+      timeout: 5000,
+    });
+    return out.trim() === "ok";
+  } catch {
+    return false;
+  }
+})();
+
 // Use `bash` on PATH so the suite works on Windows (Git Bash) and Linux CI.
 // execFileSync returns the script's stdout on success and throws on non-zero exit.
 function runLint(script: string, args: string[] = []): { status: number; stdout: string; stderr: string } {
@@ -45,7 +67,7 @@ function writeFixture(relPath: string, content: string): string {
   return full;
 }
 
-describe("lint scripts (Phase 2 guard rails)", () => {
+describe.skipIf(!BASH_AVAILABLE)("lint scripts (Phase 2 guard rails)", () => {
   describe("lint-no-users-org-id.sh", () => {
     it("catches synthetic users.org_id violation", () => {
       writeFixture("src/foo.ts", "const x = row.users.org_id;\n");
