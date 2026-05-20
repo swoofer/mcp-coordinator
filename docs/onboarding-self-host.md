@@ -52,10 +52,26 @@ The coordinator is pure Node and runs anywhere Node 20+ runs.
 
 ## 1. Install
 
+Three usage styles (pick one):
+
+| Style | Command | How to invoke |
+|---|---|---|
+| **Global** _(recommended for long-running daemons)_ | `npm install -g mcp-coordinator@latest` | `mcp-coordinator <cmd>` |
+| **`npx` (zero install)** | _(none)_ | `npx mcp-coordinator <cmd>` |
+| **Local project (pinned version)** | `npm install mcp-coordinator@latest` | `npx mcp-coordinator <cmd>` from project root |
+
 ```bash
+# Global install
 npm install -g mcp-coordinator@latest
 mcp-coordinator --version    # should print 0.8.0 or later
+
+# Or, zero-install via npx (downloads to cache, no PATH pollution)
+npx mcp-coordinator --version
 ```
+
+> **Note**: `npm install mcp-coordinator` (without `-g`) places files in `node_modules/mcp-coordinator/`, NOT in the current directory — that's normal npm behavior. The binary lives at `node_modules/.bin/mcp-coordinator` and is invoked via `npx mcp-coordinator …` from the project root.
+
+The rest of this guide writes commands as bare `mcp-coordinator <cmd>`. If you use `npx` or a local install, prefix each command with `npx `.
 
 Alternatively, run from a checkout:
 
