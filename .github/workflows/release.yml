@@ -22,6 +22,7 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
@@ -38,8 +39,9 @@ jobs:
         with:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
+          cache: "npm"
 
-      - run: npm install
+      - run: npm ci
         if: ${{ steps.release.outputs.release_created || inputs.publish_only == 'true' }}
 
       - run: npm run build

@@ -26,6 +26,7 @@ jobs:
             bun_target: bun-linux-x64
 
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
 
     steps:
       - uses: actions/checkout@v4
@@ -37,7 +38,7 @@ jobs:
           node-version: "22"
           cache: "npm"
 
-      - run: npm install
+      - run: npm ci
 
       - run: npm test
 
