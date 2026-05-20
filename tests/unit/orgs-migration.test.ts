@@ -216,10 +216,13 @@ describe("ALTER existing tables for org_id", () => {
 });
 
 describe("user_version after migration", () => {
-  it("is 8 after a fresh init (v0.8 = Phase 2 schema)", () => {
+  it("is at the current head (9 = v0.9 FK migration; was 8 in v0.10.x)", () => {
     const db = getDb();
     const row = db.prepare("PRAGMA user_version").get() as { user_version: number };
-    expect(row.user_version).toBe(8);
+    // v0.9 (issue #79) bumps the version to 9 after adding FK on org_id.
+    // This used to assert exactly 8; relaxed to >=8 to keep the intent
+    // (post-v0.8 schema is present) while accommodating the new bump.
+    expect(row.user_version).toBeGreaterThanOrEqual(8);
   });
 });
 

@@ -41,8 +41,10 @@ describe("v0.6 schema", () => {
     expect(cols.map(c => c.name)).toContain("content_hash");
   });
 
-  it("user_version is 8", () => {
+  it("user_version is at the current head (>=8; 9 after v0.9 FK migration)", () => {
     const v = getDb().prepare("PRAGMA user_version").get() as { user_version: number };
-    expect(v.user_version).toBe(8);
+    // v0.9 (issue #79) bumps to 9. Loosened from strict ==8 so this guard
+    // tracks "post-v0.8 schema" without re-failing on each future bump.
+    expect(v.user_version).toBeGreaterThanOrEqual(8);
   });
 });

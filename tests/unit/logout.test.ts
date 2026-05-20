@@ -288,7 +288,10 @@ beforeEach(() => {
   getDb().exec("DELETE FROM refresh_tokens");
   getDb().exec("DELETE FROM user_orgs");
   getDb().exec("DELETE FROM users");
-  getDb().exec("DELETE FROM orgs");
+  // v0.9 (issue #79): revoked_agents now has FK on org_id → orgs(id); preserve
+  // 'default' so the test below's INSERT INTO revoked_agents satisfies the FK.
+  getDb().exec("DELETE FROM orgs WHERE id <> 'default'");
+  getDb().prepare("INSERT OR IGNORE INTO orgs (id, name) VALUES ('default', 'Default Organization')").run();
   getDb().exec("DELETE FROM revoked_agents");
   resetPhase2Auth();
   clock = new FakeClock(Math.floor(Date.now() / 1000));

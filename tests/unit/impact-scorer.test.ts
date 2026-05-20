@@ -4,6 +4,7 @@ import { AgentRegistry } from "../../src/agent-registry.js";
 import { FileTracker } from "../../src/file-tracker.js";
 import { ImpactScorer } from "../../src/impact-scorer.js";
 import { Consultation } from "../../src/consultation.js";
+import { seedTestOrgs } from "../helpers/orgs.js";
 import fs from "fs";
 
 const TEST_DIR = "data-test-scorer";
@@ -14,6 +15,8 @@ let scorer: ImpactScorer;
 beforeAll(() => {
   fs.mkdirSync(TEST_DIR, { recursive: true });
   initDatabase(TEST_DIR);
+  // v0.9 (issue #79): FK on agents/file_activity/git_cochange.org_id → orgs(id).
+  seedTestOrgs(getDb(), ["org-acme", "org-a", "org-b"]);
 });
 
 beforeEach(() => {

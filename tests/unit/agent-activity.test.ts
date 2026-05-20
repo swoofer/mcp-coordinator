@@ -3,6 +3,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
 import { AgentRegistry } from "../../src/agent-registry.js";
 import { AgentActivityTracker } from "../../src/agent-activity.js";
+import { seedTestOrgs } from "../helpers/orgs.js";
 import fs from "fs";
 
 const TEST_DIR = "data-test-activity";
@@ -12,6 +13,9 @@ let tracker: AgentActivityTracker;
 beforeAll(() => {
   fs.mkdirSync(TEST_DIR, { recursive: true });
   initDatabase(TEST_DIR);
+  // v0.9 (issue #79): FK on agents.org_id → orgs(id) needs the org rows
+  // referenced by the org-scoping tests to already exist.
+  seedTestOrgs(getDb(), ["org-a", "org-b"]);
 });
 
 beforeEach(() => {

@@ -1,11 +1,17 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { initDatabase, closeDb } from "../../src/database.js";
+import { initDatabase, getDb, closeDb } from "../../src/database.js";
 import { SseEmitter } from "../../src/sse-emitter.js";
+import { seedTestOrgs } from "../helpers/orgs.js";
 import fs from "fs";
 
 const DIR = "data-test-sse-org";
 
-beforeAll(() => { fs.mkdirSync(DIR, { recursive: true }); initDatabase(DIR); });
+beforeAll(() => {
+  fs.mkdirSync(DIR, { recursive: true });
+  initDatabase(DIR);
+  // v0.9 (issue #79): SseEmitter.emit() INSERTs into events; FK on events.org_id.
+  seedTestOrgs(getDb(), ["org-a", "org-b"]);
+});
 afterAll(() => { closeDb(); fs.rmSync(DIR, { recursive: true, force: true }); });
 
 describe("SseEmitter org_id filtering", () => {

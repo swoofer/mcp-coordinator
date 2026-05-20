@@ -3,6 +3,7 @@ import { initDatabase, getDb, closeDb } from "../../src/database.js";
 import { AgentRegistry } from "../../src/agent-registry.js";
 import { IntrospectionManager } from "../../src/introspection.js";
 import { Consultation } from "../../src/consultation.js";
+import { seedTestOrgs } from "../helpers/orgs.js";
 import fs from "fs";
 
 const TEST_DIR = "data-test-introspection";
@@ -13,6 +14,8 @@ let consultation: Consultation;
 beforeAll(() => {
   fs.mkdirSync(TEST_DIR, { recursive: true });
   initDatabase(TEST_DIR);
+  // v0.9 (issue #79): FK on introspections/threads/agents.org_id → orgs(id).
+  seedTestOrgs(getDb(), ["org-a", "org-b"]);
 });
 
 beforeEach(() => {
