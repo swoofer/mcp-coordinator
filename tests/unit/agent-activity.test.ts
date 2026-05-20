@@ -47,14 +47,14 @@ describe("AgentActivityTracker", () => {
   });
 
   it("transitions to waiting when thread is open", () => {
-    tracker.reportWaiting("a1", "thread-123");
+    tracker.reportWaiting("default", "a1", "thread-123");
     const activity = tracker.getActivity("default", "a1");
     expect(activity.activity_status).toBe("waiting");
     expect(activity.current_thread).toBe("thread-123");
   });
 
   it("transitions back to working after waiting", () => {
-    tracker.reportWaiting("a1", "thread-123");
+    tracker.reportWaiting("default", "a1", "thread-123");
     tracker.reportFileActivity("default", "a1", "src/auth/login.ts");
     const activity = tracker.getActivity("default", "a1");
     expect(activity.activity_status).toBe("working");
@@ -83,20 +83,20 @@ describe("AgentActivityTracker", () => {
   // -- Heartbeat enrichi --
 
   it("heartbeat updates last_activity_at and current state", () => {
-    tracker.heartbeat("a1", { currentFile: "src/auth/login.ts", currentThread: null });
+    tracker.heartbeat("default", "a1", { currentFile: "src/auth/login.ts", currentThread: null });
     const activity = tracker.getActivity("default", "a1");
     expect(activity.activity_status).toBe("working");
     expect(activity.current_file).toBe("src/auth/login.ts");
   });
 
   it("heartbeat with no file and no thread -> idle", () => {
-    tracker.heartbeat("a1", { currentFile: null, currentThread: null });
+    tracker.heartbeat("default", "a1", { currentFile: null, currentThread: null });
     const activity = tracker.getActivity("default", "a1");
     expect(activity.activity_status).toBe("idle");
   });
 
   it("heartbeat with thread and no file -> waiting", () => {
-    tracker.heartbeat("a1", { currentFile: null, currentThread: "thread-456" });
+    tracker.heartbeat("default", "a1", { currentFile: null, currentThread: "thread-456" });
     const activity = tracker.getActivity("default", "a1");
     expect(activity.activity_status).toBe("waiting");
     expect(activity.current_thread).toBe("thread-456");
@@ -106,7 +106,7 @@ describe("AgentActivityTracker", () => {
 
   it("listAll returns activity for all online agents", () => {
     tracker.reportFileActivity("default", "a1", "src/auth/login.ts");
-    tracker.reportWaiting("a2", "thread-789");
+    tracker.reportWaiting("default", "a2", "thread-789");
     const all = tracker.listAll("default");
     expect(all).toHaveLength(2);
     const a1 = all.find((a) => a.agent_id === "a1");
@@ -145,7 +145,7 @@ describe("AgentActivityTracker", () => {
 
   it("preserves activity across heartbeats", () => {
     tracker.reportFileActivity("default", "a1", "src/auth/login.ts");
-    tracker.heartbeat("a1", { currentFile: "src/auth/login.ts", currentThread: null });
+    tracker.heartbeat("default", "a1", { currentFile: "src/auth/login.ts", currentThread: null });
     const activity = tracker.getActivity("default", "a1");
     expect(activity.activity_status).toBe("working");
     expect(activity.last_activity_at).toBeDefined();
