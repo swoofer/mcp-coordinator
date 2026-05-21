@@ -29,10 +29,9 @@ export class AgentActivityTracker {
     ).run(orgId, agentId, filePath);
   }
 
-  /** Report agent is waiting on a consultation thread */
-  reportWaiting(agentId: string, threadId: string): void {
-    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
-    this.upsert("default", agentId, "waiting", null, threadId);
+  /** Report agent is waiting on a consultation thread (org-scoped) */
+  reportWaiting(orgId: string, agentId: string, threadId: string): void {
+    this.upsert(orgId, agentId, "waiting", null, threadId);
   }
 
   /** Report agent went offline -> clear all activity (org-scoped) */
@@ -43,8 +42,8 @@ export class AgentActivityTracker {
     ).run(orgId, agentId);
   }
 
-  /** Enriched heartbeat -- derives status from current state */
-  heartbeat(agentId: string, payload: HeartbeatPayload): void {
+  /** Enriched heartbeat -- derives status from current state (org-scoped) */
+  heartbeat(orgId: string, agentId: string, payload: HeartbeatPayload): void {
     let status: ActivityStatus;
     if (payload.currentFile) {
       status = "working";
@@ -53,8 +52,7 @@ export class AgentActivityTracker {
     } else {
       status = "idle";
     }
-    // TODO(Task 23.5): thread real org_id from MCP session claims; for now MCP uses 'default' (cross-org leak window — single-tenant only)
-    this.upsert("default", agentId, status, payload.currentFile, payload.currentThread);
+    this.upsert(orgId, agentId, status, payload.currentFile, payload.currentThread);
   }
 
   /** Get raw status row for a single agent (org-scoped) */

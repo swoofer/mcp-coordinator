@@ -47,14 +47,14 @@ describe("AgentActivityTracker", () => {
   });
 
   it("transitions to waiting when thread is open", () => {
-    tracker.reportWaiting("a1", "thread-123");
+    tracker.reportWaiting("default", "a1", "thread-123");
     const activity = tracker.getActivity("default", "a1");
     expect(activity.activity_status).toBe("waiting");
     expect(activity.current_thread).toBe("thread-123");
   });
 
   it("transitions back to working after waiting", () => {
-    tracker.reportWaiting("a1", "thread-123");
+    tracker.reportWaiting("default", "a1", "thread-123");
     tracker.reportFileActivity("default", "a1", "src/auth/login.ts");
     const activity = tracker.getActivity("default", "a1");
     expect(activity.activity_status).toBe("working");
@@ -83,20 +83,20 @@ describe("AgentActivityTracker", () => {
   // -- Heartbeat enrichi --
 
   it("heartbeat updates last_activity_at and current state", () => {
-    tracker.heartbeat("a1", { currentFile: "src/auth/login.ts", currentThread: null });
+    tracker.heartbeat("default", "a1", { currentFile: "src/auth/login.ts", currentThread: null });
     const activity = tracker.getActivity("default", "a1");
     expect(activity.activity_status).toBe("working");
     expect(activity.current_file).toBe("src/auth/login.ts");
   });
 
   it("heartbeat with no file and no thread -> idle", () => {
-    tracker.heartbeat("a1", { currentFile: null, currentThread: null });
+    tracker.heartbeat("default", "a1", { currentFile: null, currentThread: null });
     const activity = tracker.getActivity("default", "a1");
     expect(activity.activity_status).toBe("idle");
   });
 
   it("heartbeat with thread and no file -> waiting", () => {
-    tracker.heartbeat("a1", { currentFile: null, currentThread: "thread-456" });
+    tracker.heartbeat("default", "a1", { currentFile: null, currentThread: "thread-456" });
     const activity = tracker.getActivity("default", "a1");
     expect(activity.activity_status).toBe("waiting");
     expect(activity.current_thread).toBe("thread-456");
@@ -106,7 +106,7 @@ describe("AgentActivityTracker", () => {
 
   it("listAll returns activity for all online agents", () => {
     tracker.reportFileActivity("default", "a1", "src/auth/login.ts");
-    tracker.reportWaiting("a2", "thread-789");
+    tracker.reportWaiting("default", "a2", "thread-789");
     const all = tracker.listAll("default");
     expect(all).toHaveLength(2);
     const a1 = all.find((a) => a.agent_id === "a1");
@@ -145,7 +145,7 @@ describe("AgentActivityTracker", () => {
 
   it("preserves activity across heartbeats", () => {
     tracker.reportFileActivity("default", "a1", "src/auth/login.ts");
-    tracker.heartbeat("a1", { currentFile: "src/auth/login.ts", currentThread: null });
+    tracker.heartbeat("default", "a1", { currentFile: "src/auth/login.ts", currentThread: null });
     const activity = tracker.getActivity("default", "a1");
     expect(activity.activity_status).toBe("working");
     expect(activity.last_activity_at).toBeDefined();
@@ -195,5 +195,48 @@ describe("agent-activity org_id scoping", () => {
     expect(tracker.getStatus("org-a", "agent-1")).not.toBeNull();
     tracker.reportOffline("org-a", "agent-1");
     expect(tracker.getStatus("org-a", "agent-1")?.activity_status).toBe("offline");
+  });
+
+  // -- Regression: #77 reportWaiting/heartbeat must thread real org_id --
+
+  it("reportWaiting writes the caller's org_id (not 'default')", () => {
+    tracker.reportWaiting("orgA", "agent-1", "thread-a");
+    tracker.reportWaiting("orgB", "agent-2", "thread-b");
+
+    const rowA = getDb()
+      .prepare("SELECT org_id, current_thread FROM agent_activity_status WHERE agent_id = ?")
+      .get("agent-1") as { org_id: string; current_thread: string };
+    const rowB = getDb()
+      .prepare("SELECT org_id, current_thread FROM agent_activity_status WHERE agent_id = ?")
+      .get("agent-2") as { org_id: string; current_thread: string };
+
+    expect(rowA.org_id).toBe("orgA");
+    expect(rowA.current_thread).toBe("thread-a");
+    expect(rowB.org_id).toBe("orgB");
+    expect(rowB.current_thread).toBe("thread-b");
+    // Neither row should be commingled under "default"
+    expect(rowA.org_id).not.toBe("default");
+    expect(rowB.org_id).not.toBe("default");
+  });
+
+  it("heartbeat writes the caller's org_id (not 'default')", () => {
+    tracker.heartbeat("orgA", "agent-1", { currentFile: "a.ts", currentThread: null });
+    tracker.heartbeat("orgB", "agent-2", { currentFile: null, currentThread: "thr-b" });
+
+    const rowA = getDb()
+      .prepare("SELECT org_id, activity_status, current_file FROM agent_activity_status WHERE agent_id = ?")
+      .get("agent-1") as { org_id: string; activity_status: string; current_file: string };
+    const rowB = getDb()
+      .prepare("SELECT org_id, activity_status, current_thread FROM agent_activity_status WHERE agent_id = ?")
+      .get("agent-2") as { org_id: string; activity_status: string; current_thread: string };
+
+    expect(rowA.org_id).toBe("orgA");
+    expect(rowA.activity_status).toBe("working");
+    expect(rowA.current_file).toBe("a.ts");
+    expect(rowB.org_id).toBe("orgB");
+    expect(rowB.activity_status).toBe("waiting");
+    expect(rowB.current_thread).toBe("thr-b");
+    expect(rowA.org_id).not.toBe("default");
+    expect(rowB.org_id).not.toBe("default");
   });
 });

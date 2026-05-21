@@ -53,7 +53,7 @@ export function registerAgentTools(
     const claims = getSessionClaims(sessionId);
     if (!claims) throw new Error("Session has no captured claims (auth bug)");
     registry.heartbeat(claims.org, agent_id);
-    activityTracker.heartbeat(agent_id, {
+    activityTracker.heartbeat(claims.org, agent_id, {
       currentFile: current_file || null,
       currentThread: current_thread || null,
     });
