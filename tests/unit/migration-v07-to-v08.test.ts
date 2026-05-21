@@ -92,10 +92,15 @@ afterAll(() => {
 });
 
 describe("v0.7 → v0.8 migration", () => {
-  it("user_version bumped to 8", () => {
+  it("user_version bumped to at least 8 (currently 9 after v0.9 FK migration)", () => {
     const db = getDb();
     const v = db.prepare("PRAGMA user_version").get() as { user_version: number };
-    expect(v.user_version).toBe(8);
+    // v0.9 (issue #79) runs after v0.8 in the same initDatabase pass, so on
+    // a fresh boot the version arrives at 9. The v0.8-specific migrations
+    // exercised below (audit_log column renames, user_orgs backfill,
+    // refresh_tokens family_id, etc.) all completed by the time user_version
+    // reached 8 — we just don't observe that intermediate state from outside.
+    expect(v.user_version).toBeGreaterThanOrEqual(8);
   });
 
   it("audit_log columns renamed to actor_* + metadata_json", () => {
@@ -287,8 +292,8 @@ describe("v0.7 → v0.8 migration", () => {
       "SELECT COUNT(*) AS c FROM audit_log WHERE action = 'migration.audit_backfill'"
     ).get() as { c: number };
     expect(backfillRowCount.c).toBe(1); // not 2
-    // Version still 8
+    // Version still at the current head (8 after v0.8, 9 after v0.9 FK migration).
     const v = db.prepare("PRAGMA user_version").get() as { user_version: number };
-    expect(v.user_version).toBe(8);
+    expect(v.user_version).toBeGreaterThanOrEqual(8);
   });
 });

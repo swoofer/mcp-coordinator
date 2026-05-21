@@ -127,9 +127,12 @@ afterAll(() => {
 });
 
 describe("Phase 1 → v8 migration (T43)", () => {
-  it("user_version is bumped to 8", () => {
+  it("user_version is bumped to 9", () => {
+    // v0.9 (issue #79) adds FK on org_id → orgs(id) ON DELETE RESTRICT on the
+    // 14 v0.7 coordinator tables. The version bump happens after v0.8 in the
+    // same initDatabase pass, so a Phase 1 fixture comes out at v9 directly.
     const v = getDb().prepare("PRAGMA user_version").get() as { user_version: number };
-    expect(v.user_version).toBe(8);
+    expect(v.user_version).toBe(9);
   });
 
   it("users primary_org_id column receives renamed Phase 1 org_id data", () => {
@@ -249,7 +252,7 @@ describe("Phase 1 → v8 migration (T43)", () => {
     const v = getDb()
       .prepare("PRAGMA user_version")
       .get() as { user_version: number };
-    expect(v.user_version).toBe(8);
+    expect(v.user_version).toBe(9);
   });
 
   it("re-running initDatabase does NOT re-backfill family_id (stable across boots)", () => {

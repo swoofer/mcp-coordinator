@@ -5,6 +5,7 @@ import path from "path";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
 import { GitCochangeBuilder } from "../../src/git-cochange-builder.js";
 import { createGitFixture } from "../test-utils/git-fixture.js";
+import { seedTestOrgs } from "../helpers/orgs.js";
 
 type CochangeRow = { org_id: string; file_a: string; file_b: string; count: number; total_commits: number; computed_at: string };
 
@@ -18,6 +19,8 @@ describe("GitCochangeBuilder", () => {
     try { closeDb(); } catch { /* nothing to close yet */ }
     initDatabase(TEST_DIR);
     getDb().exec("DELETE FROM git_cochange; DELETE FROM git_cochange_meta;");
+    // v0.9 (issue #79): FK on git_cochange*.org_id → orgs(id).
+    seedTestOrgs(getDb(), ["org-a", "org-b"]);
   });
   afterAll(async () => {
     try { closeDb(); } catch { /* already closed */ }
@@ -90,6 +93,8 @@ describe("git-cochange-builder org_id scoping", () => {
   beforeEach(() => {
     initDatabase(TEST_DIR);
     getDb().exec("DELETE FROM git_cochange; DELETE FROM git_cochange_meta");
+    // v0.9 (issue #79): FK on git_cochange*.org_id → orgs(id).
+    seedTestOrgs(getDb(), ["org-a", "org-b"]);
   });
 
   it("build writes org_id on every cochange row", async () => {

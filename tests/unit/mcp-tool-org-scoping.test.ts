@@ -34,6 +34,7 @@ import { QuotaCache } from "../../src/quota/quota-cache.js";
 import { Metrics } from "../../src/metrics.js";
 import { TreeSitterExtractor } from "../../src/tree-sitter-extractor.js";
 import { silentLogger } from "../../src/logger.js";
+import { seedTestOrgs } from "../helpers/orgs.js";
 import { registerAgentTools } from "../../src/tools/agents-tools.js";
 import { registerFilesTools } from "../../src/tools/files-tools.js";
 import { registerDependenciesTools } from "../../src/tools/dependencies-tools.js";
@@ -111,6 +112,8 @@ beforeAll(() => {
   fs.mkdirSync(TEST_DIR, { recursive: true });
   initDatabase(TEST_DIR);
   initAuth(SECRET);
+  // v0.9 (issue #79): claims.org values used below need real orgs rows.
+  seedTestOrgs(getDb(), ["org-x", "org-a", "org-b", "org-files", "org-dep"]);
 });
 
 beforeEach(() => {

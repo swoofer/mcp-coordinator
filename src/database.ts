@@ -16,7 +16,7 @@ const require = createRequire(import.meta.url);
 
 let db: DatabaseAdapter;
 
-const CURRENT_USER_VERSION = 8;
+const CURRENT_USER_VERSION = 9;
 
 /**
  * Narrow type alias for the migration code paths in this file. The
@@ -804,6 +804,29 @@ export function initDatabase(dataDir: string): void {
     db.exec("PRAGMA foreign_keys = ON");
   }
 
+  // ============================================================================
+  // v0.9 (issue #79): add FOREIGN KEY orgs(id) ON DELETE RESTRICT to coordinator tables
+  // ============================================================================
+  // v0.7 added `org_id TEXT NOT NULL DEFAULT 'default'` to 14 tables via plain
+  // ALTER TABLE ADD COLUMN, which SQLite cannot use to declare a constraint.
+  // The result: deleting an org silently leaves orphan rows in agents, threads,
+  // messages, file_activity, etc. Only the Phase-2 auth tables (users,
+  // refresh_tokens, user_orgs, oauth_state) had proper FK referential integrity.
+  //
+  // Fix: table-copy migration (SQLite has no ALTER constraint) — for each of
+  // the 14 tables, CREATE NEW with `FOREIGN KEY (org_id) REFERENCES orgs(id)
+  // ON DELETE RESTRICT`, copy rows, drop old, rename new, recreate indexes.
+  //
+  // ON DELETE RESTRICT chosen (NOT CASCADE) — safest default: operators must
+  // explicitly clean an org's data before they can DELETE the org row. No
+  // silent data loss. Reviewer can request CASCADE / SET DEFAULT instead.
+  //
+  // Orphan handling: any row whose org_id has no matching orgs.id is
+  // re-parented to 'default' BEFORE the table-copy runs (otherwise the
+  // post-copy `PRAGMA foreign_key_check` would fail). Counts are logged via
+  // an audit_log row keyed `migration.org_fk_reparent`.
+  migrateOrgsFkV9(db);
+
   // v0.10.6 T03: if the pre-flight guard accepted duplicate org names via
   // COORDINATOR_ALLOW_DUPLICATE_ORG_NAMES=1, emit the Tier 1 audit row NOW —
   // SCHEMA has run (audit_log exists with id/created_at/prev_hash/row_hash)
@@ -816,6 +839,491 @@ export function initDatabase(dataDir: string): void {
       db,
       orgsUniquenessResult.pendingDuplicatesAcceptedAudit,
     );
+  }
+}
+
+/**
+ * v0.9 (issue #79): Add `FOREIGN KEY (org_id) REFERENCES orgs(id) ON DELETE
+ * RESTRICT` to the 14 coordinator tables that received `org_id` via plain
+ * `ALTER TABLE ADD COLUMN` in v0.7.
+ *
+ * Idempotent via `PRAGMA user_version`: returns early if user_version >= 9.
+ * Sets user_version = 9 LAST so a crash mid-migration re-runs cleanly on
+ * the next boot.
+ *
+ * Wrapped in a single SQLite transaction inside `PRAGMA foreign_keys = OFF`.
+ * Re-enables foreign_keys in `finally` even on error.
+ *
+ * Orphan repair: rows whose `org_id` does NOT match any `orgs.id` are
+ * re-parented to 'default' before the table-copy (otherwise the post-copy
+ * FK self-check would fail). Operators see the repair counts in audit_log.
+ */
+function migrateOrgsFkV9(targetDb: DatabaseAdapter): void {
+  const v = (targetDb as unknown as {
+    prepare: (sql: string) => { get: () => unknown };
+  })
+    .prepare("PRAGMA user_version")
+    .get() as { user_version: number } | undefined;
+  if ((v?.user_version ?? 0) >= 9) return;
+
+  // Table-copy specs. Each entry describes the post-migration shape of one
+  // of the 14 tables. The CREATE TABLE statement is the EXACT schema we want
+  // after the migration (current columns + composite-PK migration deltas +
+  // new FOREIGN KEY (org_id) REFERENCES orgs(id) ON DELETE RESTRICT). The
+  // `columnList` is the column order used for INSERT INTO new SELECT FROM
+  // old — it must match the source table's column order at this point in
+  // boot (post-SCHEMA, post-ALTERs, post-composite-PK).
+  type FkMigrationSpec = {
+    table: string;
+    createSql: string;
+    columnList: string;
+    indexCreateSqls: string[];
+  };
+
+  const SPECS: FkMigrationSpec[] = [
+    // --- agents (composite-PK migrated to (org_id, id)) ---------------------
+    // idx_agents_id UNIQUE is LOAD-BEARING for the 5 FKs that target
+    // agents(id). DO NOT drop it. (see composite-pk-migration.test.ts)
+    {
+      table: "agents",
+      createSql: `CREATE TABLE agents_new (
+        id TEXT NOT NULL,
+        org_id TEXT NOT NULL DEFAULT 'default',
+        name TEXT NOT NULL,
+        modules TEXT DEFAULT '[]',
+        status TEXT DEFAULT 'offline',
+        registered_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        last_seen_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (org_id, id),
+        FOREIGN KEY (org_id) REFERENCES orgs(id) ON DELETE RESTRICT
+      )`,
+      columnList: "id, org_id, name, modules, status, registered_at, last_seen_at",
+      indexCreateSqls: [
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_agents_id ON agents(id)",
+      ],
+    },
+
+    // --- threads (NOT composite-PK migrated; standalone PK on id) ----------
+    {
+      table: "threads",
+      createSql: `CREATE TABLE threads_new (
+        id TEXT PRIMARY KEY,
+        initiator_id TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        plan TEXT,
+        target_modules TEXT DEFAULT '[]',
+        target_files TEXT DEFAULT '[]',
+        status TEXT DEFAULT 'open',
+        resolution_summary TEXT,
+        conflicts TEXT,
+        round INTEGER DEFAULT 1,
+        max_rounds INTEGER DEFAULT 4,
+        timeout_seconds INTEGER DEFAULT 600,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        resolved_at TEXT,
+        expected_respondents TEXT,
+        depends_on_files TEXT,
+        exports_affected TEXT,
+        claimed_by TEXT,
+        claimed_at TEXT,
+        unclaim_count INTEGER DEFAULT 0,
+        assigned_to TEXT,
+        org_id TEXT NOT NULL DEFAULT 'default',
+        FOREIGN KEY (initiator_id) REFERENCES agents(id),
+        FOREIGN KEY (org_id) REFERENCES orgs(id) ON DELETE RESTRICT
+      )`,
+      columnList:
+        "id, initiator_id, subject, plan, target_modules, target_files, status, " +
+        "resolution_summary, conflicts, round, max_rounds, timeout_seconds, " +
+        "created_at, resolved_at, expected_respondents, depends_on_files, " +
+        "exports_affected, claimed_by, claimed_at, unclaim_count, assigned_to, org_id",
+      indexCreateSqls: [
+        "CREATE INDEX IF NOT EXISTS idx_threads_status ON threads(status)",
+        "CREATE INDEX IF NOT EXISTS idx_threads_initiator ON threads(initiator_id)",
+        "CREATE INDEX IF NOT EXISTS idx_threads_org_status ON threads(org_id, status)",
+      ],
+    },
+
+    // --- thread_messages ---------------------------------------------------
+    {
+      table: "thread_messages",
+      createSql: `CREATE TABLE thread_messages_new (
+        id TEXT PRIMARY KEY,
+        thread_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        agent_name TEXT,
+        type TEXT NOT NULL,
+        content TEXT NOT NULL,
+        context_snapshot TEXT,
+        in_reply_to TEXT,
+        round INTEGER NOT NULL,
+        token_estimate INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        org_id TEXT NOT NULL DEFAULT 'default',
+        FOREIGN KEY (thread_id) REFERENCES threads(id),
+        FOREIGN KEY (agent_id) REFERENCES agents(id),
+        FOREIGN KEY (org_id) REFERENCES orgs(id) ON DELETE RESTRICT
+      )`,
+      columnList:
+        "id, thread_id, agent_id, agent_name, type, content, context_snapshot, " +
+        "in_reply_to, round, token_estimate, created_at, org_id",
+      indexCreateSqls: [
+        "CREATE INDEX IF NOT EXISTS idx_messages_thread ON thread_messages(thread_id)",
+        "CREATE INDEX IF NOT EXISTS idx_messages_agent ON thread_messages(agent_id)",
+      ],
+    },
+
+    // --- action_summaries --------------------------------------------------
+    {
+      table: "action_summaries",
+      createSql: `CREATE TABLE action_summaries_new (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        file_path TEXT,
+        summary TEXT NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        org_id TEXT NOT NULL DEFAULT 'default',
+        FOREIGN KEY (agent_id) REFERENCES agents(id),
+        FOREIGN KEY (org_id) REFERENCES orgs(id) ON DELETE RESTRICT
+      )`,
+      columnList:
+        "id, session_id, agent_id, file_path, summary, created_at, org_id",
+      indexCreateSqls: [
+        "CREATE INDEX IF NOT EXISTS idx_summaries_agent ON action_summaries(agent_id)",
+        "CREATE INDEX IF NOT EXISTS idx_summaries_session ON action_summaries(session_id)",
+        "CREATE INDEX IF NOT EXISTS idx_summaries_org_agent ON action_summaries(org_id, agent_id)",
+      ],
+    },
+
+    // --- file_activity (AUTOINCREMENT — sqlite_sequence updated on RENAME) -
+    {
+      table: "file_activity",
+      createSql: `CREATE TABLE file_activity_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        agent_name TEXT,
+        tool_name TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        module TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        symbols_touched TEXT,
+        content_hash TEXT,
+        org_id TEXT NOT NULL DEFAULT 'default',
+        FOREIGN KEY (org_id) REFERENCES orgs(id) ON DELETE RESTRICT
+      )`,
+      columnList:
+        "id, session_id, agent_id, agent_name, tool_name, file_path, module, " +
+        "created_at, symbols_touched, content_hash, org_id",
+      indexCreateSqls: [
+        "CREATE INDEX IF NOT EXISTS idx_file_activity_agent ON file_activity(agent_id)",
+        "CREATE INDEX IF NOT EXISTS idx_file_activity_path ON file_activity(file_path)",
+        "CREATE INDEX IF NOT EXISTS idx_file_activity_org_path_time ON file_activity(org_id, file_path, created_at)",
+      ],
+    },
+
+    // --- events (AUTOINCREMENT) -------------------------------------------
+    {
+      table: "events",
+      createSql: `CREATE TABLE events_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        org_id TEXT NOT NULL DEFAULT 'default',
+        FOREIGN KEY (org_id) REFERENCES orgs(id) ON DELETE RESTRICT
+      )`,
+      columnList: "id, type, payload, created_at, org_id",
+      indexCreateSqls: [
+        "CREATE INDEX IF NOT EXISTS idx_events_type ON events(type)",
+        "CREATE INDEX IF NOT EXISTS idx_events_org_id ON events(org_id, id)",
+      ],
+    },
+
+    // --- dependency_map (composite-PK (org_id, module_id)) -----------------
+    {
+      table: "dependency_map",
+      createSql: `CREATE TABLE dependency_map_new (
+        module_id TEXT NOT NULL,
+        org_id TEXT NOT NULL DEFAULT 'default',
+        depends_on TEXT DEFAULT '[]',
+        exports TEXT DEFAULT '[]',
+        owners TEXT DEFAULT '[]',
+        PRIMARY KEY (org_id, module_id),
+        FOREIGN KEY (org_id) REFERENCES orgs(id) ON DELETE RESTRICT
+      )`,
+      columnList: "module_id, org_id, depends_on, exports, owners",
+      indexCreateSqls: [],
+    },
+
+    // --- introspections ----------------------------------------------------
+    {
+      table: "introspections",
+      createSql: `CREATE TABLE introspections_new (
+        id TEXT PRIMARY KEY,
+        thread_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        score INTEGER NOT NULL,
+        reasons TEXT,
+        status TEXT DEFAULT 'pending',
+        response TEXT,
+        concerned INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        responded_at TEXT,
+        org_id TEXT NOT NULL DEFAULT 'default',
+        FOREIGN KEY (thread_id) REFERENCES threads(id),
+        FOREIGN KEY (agent_id) REFERENCES agents(id),
+        FOREIGN KEY (org_id) REFERENCES orgs(id) ON DELETE RESTRICT
+      )`,
+      columnList:
+        "id, thread_id, agent_id, score, reasons, status, response, concerned, " +
+        "created_at, responded_at, org_id",
+      indexCreateSqls: [
+        "CREATE INDEX IF NOT EXISTS idx_introspections_agent ON introspections(agent_id)",
+        "CREATE INDEX IF NOT EXISTS idx_introspections_status ON introspections(status)",
+      ],
+    },
+
+    // --- agent_activity_status (composite-PK (org_id, agent_id)) -----------
+    {
+      table: "agent_activity_status",
+      createSql: `CREATE TABLE agent_activity_status_new (
+        agent_id TEXT NOT NULL,
+        org_id TEXT NOT NULL DEFAULT 'default',
+        activity_status TEXT DEFAULT 'idle',
+        current_file TEXT,
+        current_thread TEXT,
+        last_activity_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (agent_id) REFERENCES agents(id),
+        FOREIGN KEY (org_id) REFERENCES orgs(id) ON DELETE RESTRICT,
+        PRIMARY KEY (org_id, agent_id)
+      )`,
+      columnList:
+        "agent_id, org_id, activity_status, current_file, current_thread, last_activity_at",
+      indexCreateSqls: [],
+    },
+
+    // --- revoked_agents (composite-PK (org_id, agent_id)) ------------------
+    {
+      table: "revoked_agents",
+      createSql: `CREATE TABLE revoked_agents_new (
+        agent_id TEXT NOT NULL,
+        org_id TEXT NOT NULL DEFAULT 'default',
+        revoked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        revoked_by TEXT NOT NULL,
+        PRIMARY KEY (org_id, agent_id),
+        FOREIGN KEY (org_id) REFERENCES orgs(id) ON DELETE RESTRICT
+      )`,
+      columnList: "agent_id, org_id, revoked_at, revoked_by",
+      indexCreateSqls: [],
+    },
+
+    // --- working_files (composite-PK (org_id, agent_id, file_path)) --------
+    {
+      table: "working_files",
+      createSql: `CREATE TABLE working_files_new (
+        agent_id TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        org_id TEXT NOT NULL DEFAULT 'default',
+        started_at TEXT NOT NULL,
+        last_activity_at TEXT NOT NULL,
+        claim_until TEXT NOT NULL,
+        PRIMARY KEY (org_id, agent_id, file_path),
+        FOREIGN KEY (org_id) REFERENCES orgs(id) ON DELETE RESTRICT
+      )`,
+      columnList:
+        "agent_id, file_path, org_id, started_at, last_activity_at, claim_until",
+      indexCreateSqls: [
+        "CREATE INDEX IF NOT EXISTS idx_working_files_path  ON working_files(file_path)",
+        "CREATE INDEX IF NOT EXISTS idx_working_files_until ON working_files(claim_until)",
+      ],
+    },
+
+    // --- git_cochange (composite-PK + CHECK constraint preserved) ----------
+    {
+      table: "git_cochange",
+      createSql: `CREATE TABLE git_cochange_new (
+        file_a TEXT NOT NULL,
+        file_b TEXT NOT NULL,
+        org_id TEXT NOT NULL DEFAULT 'default',
+        count INTEGER NOT NULL,
+        total_commits INTEGER NOT NULL,
+        computed_at TEXT NOT NULL,
+        PRIMARY KEY (org_id, file_a, file_b),
+        CHECK (file_a < file_b),
+        FOREIGN KEY (org_id) REFERENCES orgs(id) ON DELETE RESTRICT
+      )`,
+      columnList: "file_a, file_b, org_id, count, total_commits, computed_at",
+      indexCreateSqls: [
+        "CREATE INDEX IF NOT EXISTS idx_cochange_a ON git_cochange(file_a)",
+        "CREATE INDEX IF NOT EXISTS idx_cochange_b ON git_cochange(file_b)",
+      ],
+    },
+
+    // --- git_cochange_meta (composite-PK (org_id, k)) ----------------------
+    {
+      table: "git_cochange_meta",
+      createSql: `CREATE TABLE git_cochange_meta_new (
+        k TEXT NOT NULL,
+        org_id TEXT NOT NULL DEFAULT 'default',
+        v TEXT,
+        PRIMARY KEY (org_id, k),
+        FOREIGN KEY (org_id) REFERENCES orgs(id) ON DELETE RESTRICT
+      )`,
+      columnList: "k, org_id, v",
+      indexCreateSqls: [],
+    },
+
+    // --- layer_firings (AUTOINCREMENT) -------------------------------------
+    {
+      table: "layer_firings",
+      createSql: `CREATE TABLE layer_firings_new (
+        id        INTEGER PRIMARY KEY AUTOINCREMENT,
+        thread_id TEXT,
+        layer     TEXT NOT NULL,
+        score     INTEGER NOT NULL,
+        agent_id  TEXT,
+        fired_at  TEXT DEFAULT CURRENT_TIMESTAMP,
+        org_id    TEXT NOT NULL DEFAULT 'default',
+        FOREIGN KEY (org_id) REFERENCES orgs(id) ON DELETE RESTRICT
+      )`,
+      columnList: "id, thread_id, layer, score, agent_id, fired_at, org_id",
+      indexCreateSqls: [
+        "CREATE INDEX IF NOT EXISTS idx_firings_layer  ON layer_firings(layer, fired_at)",
+        "CREATE INDEX IF NOT EXISTS idx_firings_thread ON layer_firings(thread_id)",
+      ],
+    },
+  ];
+
+  // Pre-flight: confirm 'default' org row exists. SCHEMA already inserts it
+  // via `INSERT OR IGNORE INTO orgs (id, name) VALUES ('default', ...)`, but
+  // we re-assert here so a deployment that somehow lost the row gets it back
+  // before we re-parent orphans onto it.
+  targetDb.exec(
+    "INSERT OR IGNORE INTO orgs (id, name) VALUES ('default', 'Default Organization')",
+  );
+
+  // Pre-flight: detect & re-parent orphans. For each table, count rows whose
+  // org_id has no matching orgs.id row, then UPDATE them to 'default'. Emits
+  // an audit row per table that had >0 orphans so operators can see what was
+  // touched. Done BEFORE the table-copy because the post-copy FK self-check
+  // would fail otherwise.
+  const reparentCounts: Record<string, number> = {};
+  for (const spec of SPECS) {
+    const orphanRow = (targetDb as unknown as {
+      prepare: (sql: string) => { get: () => unknown };
+    }).prepare(
+      `SELECT COUNT(*) AS n FROM ${spec.table} WHERE org_id NOT IN (SELECT id FROM orgs)`,
+    ).get() as { n: number } | undefined;
+    const n = orphanRow?.n ?? 0;
+    if (n > 0) {
+      (targetDb as unknown as {
+        prepare: (sql: string) => { run: () => { changes: number } };
+      }).prepare(
+        `UPDATE ${spec.table} SET org_id = 'default' WHERE org_id NOT IN (SELECT id FROM orgs)`,
+      ).run();
+      reparentCounts[spec.table] = n;
+    }
+  }
+  if (Object.keys(reparentCounts).length > 0) {
+    try {
+      (targetDb as unknown as {
+        prepare: (sql: string) => { run: (...args: unknown[]) => unknown };
+      }).prepare(
+        "INSERT INTO audit_log (action, outcome, metadata_json, created_at) " +
+          "VALUES ('migration.org_fk_reparent', 'success', ?, CURRENT_TIMESTAMP)",
+      ).run(
+        JSON.stringify({
+          reparented_to: "default",
+          counts: reparentCounts,
+          from_version: 8,
+          to_version: 9,
+        }),
+      );
+    } catch { /* audit_log shape mismatch; non-fatal */ }
+  }
+
+  // Run the table-copy migration. PRAGMA foreign_keys must be OFF outside
+  // the transaction (it's a no-op inside an open transaction). Wrapped in
+  // try/finally so foreign_keys is ALWAYS re-enabled even on error.
+  targetDb.exec("PRAGMA foreign_keys = OFF");
+  try {
+    targetDb.exec("BEGIN");
+    try {
+      for (const spec of SPECS) {
+        // Idempotency check: skip tables that already have the FK. We detect
+        // by parsing `PRAGMA foreign_key_list` for an entry pointing to
+        // orgs(id). If found, this table was migrated in a prior partial run.
+        const fkRows = (targetDb as unknown as {
+          prepare: (sql: string) => { all: () => unknown[] };
+        })
+          .prepare(`PRAGMA foreign_key_list(${spec.table})`)
+          .all() as { table: string; from: string }[];
+        const alreadyHasOrgFk = fkRows.some(
+          (r) => r.table === "orgs" && r.from === "org_id",
+        );
+        if (alreadyHasOrgFk) continue;
+
+        // Defensive column intersection: a partial-history DB (e.g. an old
+        // v0.6 row never went through a v0.7 SCHEMA pass that added the
+        // intervening columns) may lack columns the new table declares.
+        // Copy only the intersection of (spec.columnList) ∩ (source.columns).
+        // Missing columns get their declared DEFAULT on the new table, which
+        // is the same outcome as if a plain `ALTER TABLE ADD COLUMN` had run
+        // at boot. SECURITY: column names come from the compile-time
+        // `columnList` string only — never user input.
+        const sourceCols = (targetDb as unknown as {
+          prepare: (sql: string) => { all: () => unknown[] };
+        })
+          .prepare(`PRAGMA table_info(${spec.table})`)
+          .all() as { name: string }[];
+        const sourceColSet = new Set(sourceCols.map((c) => c.name));
+        const copyCols = spec.columnList
+          .split(",")
+          .map((s) => s.trim())
+          .filter((c) => sourceColSet.has(c))
+          .join(", ");
+
+        targetDb.exec(spec.createSql);
+        targetDb.exec(
+          `INSERT INTO ${spec.table}_new (${copyCols}) ` +
+            `SELECT ${copyCols} FROM ${spec.table}`,
+        );
+        targetDb.exec(`DROP TABLE ${spec.table}`);
+        targetDb.exec(
+          `ALTER TABLE ${spec.table}_new RENAME TO ${spec.table}`,
+        );
+        for (const idxSql of spec.indexCreateSqls) targetDb.exec(idxSql);
+      }
+
+      // Post-copy self-check: PRAGMA foreign_key_check returns rows for every
+      // FK violation. Inside the transaction we still see all data so any
+      // violation indicates a bug in the migration itself (NOT in the data —
+      // orphans were repaired up-front). Abort + ROLLBACK so the operator
+      // sees a clean failure and the DB stays at user_version=8.
+      const fkCheck = (targetDb as unknown as {
+        prepare: (sql: string) => { all: () => unknown[] };
+      })
+        .prepare("PRAGMA foreign_key_check")
+        .all() as unknown[];
+      if (fkCheck.length > 0) {
+        throw new Error(
+          `v0.9 org_id FK migration: foreign_key_check returned ${fkCheck.length} violations after table-copy (this indicates a migration bug; orphan repair should have prevented this). Aborting.`,
+        );
+      }
+
+      // Bump version LAST so a partial migration (crash before this line)
+      // re-runs cleanly on the next boot. The idempotency check above means
+      // already-migrated tables are skipped.
+      targetDb.exec("PRAGMA user_version = 9");
+      targetDb.exec("COMMIT");
+    } catch (e) {
+      targetDb.exec("ROLLBACK");
+      throw e;
+    }
+  } finally {
+    targetDb.exec("PRAGMA foreign_keys = ON");
   }
 }
 

@@ -4,6 +4,7 @@ import { tmpdir } from "os";
 import path from "path";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
 import { WorkingFilesTracker } from "../../src/working-files-tracker.js";
+import { seedTestOrgs } from "../helpers/orgs.js";
 
 const TEST_DIR = mkdtempSync(path.join(tmpdir(), "wf-"));
 
@@ -17,6 +18,8 @@ describe("WorkingFilesTracker", () => {
     try { closeDb(); } catch { /* nothing to close yet */ }
     initDatabase(TEST_DIR);
     getDb().exec("DELETE FROM working_files");
+    // v0.9 (issue #79): FK on working_files.org_id → orgs(id).
+    seedTestOrgs(getDb(), ["org-a", "org-b"]);
     tracker = new WorkingFilesTracker();
   });
 
@@ -122,6 +125,8 @@ describe("working-files-tracker org_id scoping", () => {
     try { closeDb(); } catch { /* nothing to close yet */ }
     initDatabase(TEST_DIR);
     getDb().exec("DELETE FROM working_files");
+    // v0.9 (issue #79): FK on working_files.org_id → orgs(id).
+    seedTestOrgs(getDb(), ["org-a", "org-b"]);
     tracker = new WorkingFilesTracker();
   });
 

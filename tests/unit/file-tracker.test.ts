@@ -1,6 +1,7 @@
 ﻿import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
 import { FileTracker } from "../../src/file-tracker.js";
+import { seedTestOrgs } from "../helpers/orgs.js";
 import fs from "fs";
 
 const TEST_DIR = "data-test-filetracker";
@@ -9,6 +10,8 @@ let tracker: FileTracker;
 beforeAll(() => {
   fs.mkdirSync(TEST_DIR, { recursive: true });
   initDatabase(TEST_DIR);
+  // v0.9 (issue #79): FK on file_activity/agents.org_id → orgs(id).
+  seedTestOrgs(getDb(), ["org-a", "org-b"]);
 });
 
 beforeEach(() => {

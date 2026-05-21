@@ -240,7 +240,11 @@ beforeEach(() => {
   getDb().exec("DELETE FROM audit_log");
   getDb().exec("DELETE FROM device_auth_requests");
   getDb().exec("DELETE FROM users");
-  getDb().exec("DELETE FROM orgs");
+  // v0.9 (issue #79): coordinator tables (incl. revoked_agents inserted by
+  // a test below) reference orgs(id). Preserve 'default' so the FK is
+  // satisfied; only wipe the bespoke per-test orgs.
+  getDb().exec("DELETE FROM orgs WHERE id <> 'default'");
+  getDb().prepare("INSERT OR IGNORE INTO orgs (id, name) VALUES ('default', 'Default Organization')").run();
   resetPhase2Auth();
   clock = new FakeClock(Math.floor(Date.now() / 1000));
   rateLimiter = new RateLimiter(clock);

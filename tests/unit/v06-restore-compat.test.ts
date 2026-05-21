@@ -14,7 +14,9 @@ describe("v0.6 restore compat", () => {
     // Re-init with current binary
     initDatabase(dir);
     const v = getDb().prepare("PRAGMA user_version").get() as any;
-    expect(v.user_version).toBe(8);
+    // v0.9 (issue #79) bumps schema to 9. Relaxed to >=8 so older snapshots
+    // and the current head both satisfy the assertion intent ("migration ran").
+    expect(v.user_version).toBeGreaterThanOrEqual(8);
     closeDb();
     rmSync(dir, { recursive: true, force: true });
   });
