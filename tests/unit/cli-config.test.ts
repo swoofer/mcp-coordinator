@@ -1,4 +1,4 @@
-﻿import { describe, it, expect, beforeEach, afterAll } from "vitest";
+import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { loadConfig, resolveValue, type CoordinatorConfig } from "../../cli/config.js";
 import fs from "fs";
 
@@ -32,6 +32,29 @@ describe("loadConfig", () => {
     expect(config.server.port).toBe(4000);
     expect(config.defaults.coordinator_url).toBe("http://remote:3100");
   });
+
+  it("throws on invalid JSON with message containing configPath and parse detail", () => {
+    fs.mkdirSync(TEST_CONFIG_DIR, { recursive: true });
+    fs.writeFileSync(`${TEST_CONFIG_DIR}/config.json`, "{ bad json ]}");
+    expect(() => loadConfig(TEST_CONFIG_DIR)).toThrow(/config\.json/);
+    expect(() => loadConfig(TEST_CONFIG_DIR)).toThrow(
+      /Failed to parse config file.*config\.json/,
+    );
+  });
+
+  it("throws error that includes underlying parse message", () => {
+    fs.mkdirSync(TEST_CONFIG_DIR, { recursive: true });
+    fs.writeFileSync(`${TEST_CONFIG_DIR}/config.json`, "not valid json at all");
+    try {
+      loadConfig(TEST_CONFIG_DIR);
+      throw new Error("Expected loadConfig to throw");
+    } catch (err) {
+      expect(err).toBeInstanceOf(Error);
+      const msg = (err as Error).message;
+      expect(msg).toContain("config.json");
+      expect(msg).toContain("Failed to parse");
+    }
+  });
 });
 
 describe("resolveValue", () => {
@@ -43,4 +66,3 @@ describe("resolveValue", () => {
     expect(resolveValue("6000", "5000", 4000, 3100)).toBe("6000");
   });
 });
-
