@@ -21,7 +21,7 @@ import { join } from "node:path";
  */
 describe("cli/server status — exit code reflects daemon health (issue #78)", () => {
   let tmpConfigDir: string;
-  let originalExitCode: number | string | undefined;
+  let originalExitCode: typeof process.exitCode;
 
   beforeEach(() => {
     tmpConfigDir = mkdtempSync(join(tmpdir(), "mcp-coord-status-test-"));
