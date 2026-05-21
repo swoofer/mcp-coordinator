@@ -1,6 +1,6 @@
 {
   "name": "mcp-coordinator",
-  "version": "0.10.7",
+  "version": "0.10.8",
   "mcpName": "io.github.swoofer/mcp-coordinator",
   "description": "Embedded MQTT broker + MCP server for multi-agent coordination",
   "type": "module",
