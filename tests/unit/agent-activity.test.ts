@@ -15,7 +15,7 @@ beforeAll(() => {
   initDatabase(TEST_DIR);
   // v0.9 (issue #79): FK on agents.org_id → orgs(id) needs the org rows
   // referenced by the org-scoping tests to already exist.
-  seedTestOrgs(getDb(), ["org-a", "org-b"]);
+  seedTestOrgs(getDb(), ["org-a", "org-b", "orgA", "orgB"]);
 });
 
 beforeEach(() => {
