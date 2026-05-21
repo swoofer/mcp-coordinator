@@ -53,8 +53,9 @@ export function loadConfig(configDir?: string): CoordinatorConfig {
         coordinator_url: raw.defaults?.coordinator_url ?? DEFAULT_CONFIG.defaults.coordinator_url,
       },
     };
-  } catch {
-    return { ...DEFAULT_CONFIG };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`Failed to parse config file "${configPath}": ${message}`);
   }
 }
 
