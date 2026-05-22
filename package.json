@@ -107,7 +107,8 @@
     "tree-sitter-typescript": "^0.21.2"
   },
   "overrides": {
-    "ip-address": "^10.2.0"
+    "ip-address": "^10.2.0",
+    "uuid": "^11.1.1"
   },
   "engines": {
     "node": ">=20"
