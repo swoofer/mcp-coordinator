@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.10.8](https://github.com/swoofer/mcp-coordinator/compare/v0.10.7...v0.10.8) (2026-05-21)
+
+
+### Bug Fixes
+
+* **activity:** thread real org_id into reportWaiting/heartbeat (closes [#77](https://github.com/swoofer/mcp-coordinator/issues/77)) ([#105](https://github.com/swoofer/mcp-coordinator/issues/105)) ([c2a42f9](https://github.com/swoofer/mcp-coordinator/commit/c2a42f927d48999d4dff5e9221b02e076c9d3f9a))
+* **cli:** server status exits 1 when daemon is stopped or unhealthy (closes [#78](https://github.com/swoofer/mcp-coordinator/issues/78)) ([#107](https://github.com/swoofer/mcp-coordinator/issues/107)) ([0cde8c2](https://github.com/swoofer/mcp-coordinator/commit/0cde8c26b364479a0863f47d2f5b6c4f9e7a6dbd))
+* **cli:** throw descriptive error on invalid config JSON (closes [#80](https://github.com/swoofer/mcp-coordinator/issues/80)) ([#108](https://github.com/swoofer/mcp-coordinator/issues/108)) ([3dd20bb](https://github.com/swoofer/mcp-coordinator/commit/3dd20bb9b30d0da09744f52858899be234260ff1))
+* **db:** add FK to orgs(id) on coordinator tables (closes [#79](https://github.com/swoofer/mcp-coordinator/issues/79)) ([#106](https://github.com/swoofer/mcp-coordinator/issues/106)) ([96e7a80](https://github.com/swoofer/mcp-coordinator/commit/96e7a8033f4800ae23f684c0dd34199f463537ba))
+* extend the seed list to include both casings. ([ca9fc38](https://github.com/swoofer/mcp-coordinator/commit/ca9fc3824db3d06b32057ac131724aa6b9395d14))
+
+
+### Reverts
+
+* remove internal promo notes from public repo ([aa11bb0](https://github.com/swoofer/mcp-coordinator/commit/aa11bb052f6e67e1a3c3ac774788bcaa002208b0))
+
+
+### Documentation
+
+* add Python MQTT subscriber example ([#74](https://github.com/swoofer/mcp-coordinator/issues/74)) ([c633413](https://github.com/swoofer/mcp-coordinator/commit/c6334132e29854aac372b36034cecf06388e44e3))
+
 ## [0.10.7](https://github.com/swoofer/mcp-coordinator/compare/v0.10.6...v0.10.7) (2026-05-19)
 
 Documentation clarification — no code changes. v0.10.6 never reached npm
