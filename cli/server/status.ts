@@ -43,7 +43,9 @@ export function createServerStatusCommand(): Command {
 
       const health = await fetchJson<{ status?: string }>(`http://localhost:${port}/health`);
 
-      if (health?.status === "ok") {
+      // /health returns {"status":"alive",...} since the health endpoint rewrite;
+      // accept "ok" too for backwards-compat with any older daemon still running.
+      if (health?.status === "alive" || health?.status === "ok") {
         const status = await fetchJson<{ online?: number; open_threads?: number; hot_files?: number }>(
           `http://localhost:${port}/api/status`,
           { method: "POST" },
