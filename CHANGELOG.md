@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.9](https://github.com/swoofer/mcp-coordinator/compare/v0.10.8...v0.10.9) (2026-05-22)
+
+
+### Bug Fixes
+
+* **cli:** accept /health {status:'alive'} response shape in server status ([#112](https://github.com/swoofer/mcp-coordinator/issues/112)) ([06d1cb7](https://github.com/swoofer/mcp-coordinator/commit/06d1cb71a413bfcde7441a360c08bea0e1f67c96))
+
 ## [0.10.8](https://github.com/swoofer/mcp-coordinator/compare/v0.10.7...v0.10.8) (2026-05-21)
 
 
