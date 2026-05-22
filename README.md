@@ -36,27 +36,17 @@ It works **with or without** an orchestrator on top. Use it standalone with any 
 
 ## Getting started
 
-Pick one of three install styles (all use the npm package):
-
-| Style | When to use | Install | Invoke as |
-|---|---|---|---|
-| **`npx` (zero install)** | Trying it out, one-shot commands | _(none)_ | `npx mcp-coordinator <cmd>` |
-| **Global** _(recommended for ops)_ | You run the daemon long-term | `npm install -g mcp-coordinator` | `mcp-coordinator <cmd>` |
-| **Local project** | Pinning a specific version per repo | `npm install mcp-coordinator` | `npx mcp-coordinator <cmd>` (from project root) |
-
-Requires Node.js 20+.
+The fastest path for running a long-lived coordinator is a **global install** (recommended for almost everyone):
 
 ```bash
-# Example using the global install (substitute `npx mcp-coordinator …` for the other styles):
-
-# 1. Install
+# 1. Install once, get the `mcp-coordinator` command on your PATH
 npm install -g mcp-coordinator
 
 # 2. First-time setup — creates ~/.mcp-coordinator/, writes a default config,
 #    and prints a .mcp.json snippet for your MCP client.
 mcp-coordinator init
 
-# 3. Start the server (foreground or --daemon for background)
+# 3. Start the server in the background
 mcp-coordinator server start --daemon
 
 # 4. Verify
@@ -64,11 +54,20 @@ mcp-coordinator server status
 mcp-coordinator dashboard      # opens http://localhost:3100/dashboard
 ```
 
-> **Note**: `npm install mcp-coordinator` (without `-g`) puts the binary in `node_modules/.bin/`, not in your `PATH`. From inside the project, run it via `npx mcp-coordinator <cmd>`. The current directory will not show the package's files — that's normal npm behavior; the files live in `node_modules/mcp-coordinator/`.
-
-Step 2 is idempotent — re-running `init` won't overwrite an existing config. The snippet it prints goes into your MCP client's config (e.g., `~/.claude/.mcp.json` for Claude Code). If you'd rather not copy-paste, run `mcp-coordinator init --write-mcp-config <project-path>` and the snippet is written to `<project-path>/.mcp.json` (merging if the file already exists).
+Requires Node.js 20+. Step 2 is idempotent — re-running `init` won't overwrite an existing config. The snippet it prints goes into your MCP client's config (e.g., `~/.claude/.mcp.json` for Claude Code). If you'd rather not copy-paste, run `mcp-coordinator init --write-mcp-config <project-path>` and the snippet is written to `<project-path>/.mcp.json` (merging if the file already exists).
 
 After step 4, every Claude Code (or other MCP-compatible) session connected to this coordinator can call all 26 tools (`register_agent`, `announce_work`, `post_to_thread`, `coordinator_status`, ...). For the full multi-Claude or team setup, see [Standalone use](#standalone-use--without-an-orchestrator).
+
+### Other install styles
+
+| Style | When to use | Install | Invoke as |
+|---|---|---|---|
+| **Global** _(default above)_ | Long-running daemon, ops | `npm install -g mcp-coordinator` | `mcp-coordinator <cmd>` |
+| **`npx` (zero install)** | One-shot try, CI scripts | _(none)_ | `npx mcp-coordinator <cmd>` |
+| **Local to a project** | Pinning a version per repo | `cd your-project && npm install mcp-coordinator` | `npx mcp-coordinator <cmd>` from project root |
+| **Single-file binary** | No Node available, easiest deploy | [GitHub Release tarball](https://github.com/swoofer/mcp-coordinator/releases) | `./mcp-coordinator <cmd>` |
+
+> ⚠️ **Don't `npm install mcp-coordinator` in an empty folder.** Without a `package.json` in the current directory, npm walks up the directory tree looking for one and installs *there* — not where you ran the command. Symptom: the install completes successfully but your folder still looks empty. Either use `-g` (global), use `npx` (no install), or `cd` into a real project directory that has its own `package.json` first.
 
 ---
 
