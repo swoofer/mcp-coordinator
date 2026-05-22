@@ -85,4 +85,91 @@ describe("cli/server status — exit code reflects daemon health (issue #78)", (
 
     expect(process.exitCode).not.toBe(0);
   });
+
+  // Regression for the shape-mismatch found in v0.10.8: /health returns
+  // {"status":"alive",...} but status.ts compared `=== "ok"`, so every
+  // healthy daemon was misreported as "running but health check failed"
+  // with exit 1.
+  it("exits 0 when /health reports {status: 'alive'} (issue v0.10.8 regression)", async () => {
+    if (!existsSync(tmpConfigDir)) mkdirSync(tmpConfigDir, { recursive: true });
+    // Use the current process PID so process.kill(pid, 0) succeeds and the
+    // code path advances to the health fetch.
+    writeFileSync(join(tmpConfigDir, "server.pid"), String(process.pid));
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      const u = typeof url === "string" ? url : url.toString();
+      if (u.endsWith("/health")) {
+        return new Response(JSON.stringify({ status: "alive", version: "test" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (u.endsWith("/api/status")) {
+        return new Response(JSON.stringify({ online: 0, open_threads: 0, hot_files: 0 }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    });
+
+    try {
+      await runStatus();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+
+    // Should NOT have flipped exitCode away from the clean default of 0.
+    expect(process.exitCode === 0 || process.exitCode === undefined).toBe(true);
+  });
+
+  it("still accepts {status: 'ok'} for backwards-compat with older daemons", async () => {
+    if (!existsSync(tmpConfigDir)) mkdirSync(tmpConfigDir, { recursive: true });
+    writeFileSync(join(tmpConfigDir, "server.pid"), String(process.pid));
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      const u = typeof url === "string" ? url : url.toString();
+      if (u.endsWith("/health")) {
+        return new Response(JSON.stringify({ status: "ok" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (u.endsWith("/api/status")) {
+        return new Response(JSON.stringify({ online: 0, open_threads: 0, hot_files: 0 }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    });
+
+    try {
+      await runStatus();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+
+    expect(process.exitCode === 0 || process.exitCode === undefined).toBe(true);
+  });
+
+  it("exits non-zero when /health returns an unexpected status (real misconfig)", async () => {
+    if (!existsSync(tmpConfigDir)) mkdirSync(tmpConfigDir, { recursive: true });
+    writeFileSync(join(tmpConfigDir, "server.pid"), String(process.pid));
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      return new Response(JSON.stringify({ status: "draining" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+
+    try {
+      await runStatus();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+
+    expect(process.exitCode).not.toBe(0);
+  });
 });
