@@ -84,6 +84,9 @@ importers:
       tree-sitter-ruby:
         specifier: ^0.21.0
         version: 0.21.0(tree-sitter@0.21.1)
+      tree-sitter-rust:
+        specifier: ^0.21.0
+        version: 0.21.0(tree-sitter@0.21.1)
       tree-sitter-swift:
         specifier: ^0.6.0
         version: 0.6.0(tree-sitter@0.21.1)
@@ -1726,6 +1729,15 @@ packages:
     resolution: {integrity: sha512-UrMpF9CZxKbZ5UFuPdXDuraaaYSMMlAiuzTpQXwNm7y0D48ibc9stWU5D6vDyJD0qf5/R+3yKTYHdHkqibmLSQ==}
     peerDependencies:
       tree-sitter: ^0.21.0
+      tree_sitter: '*'
+    peerDependenciesMeta:
+      tree_sitter:
+        optional: true
+
+  tree-sitter-rust@0.21.0:
+    resolution: {integrity: sha512-unVr73YLn3VC4Qa/GF0Nk+Wom6UtI526p5kz9Rn2iZSqwIFedyCZ3e0fKCEmUJLIPGrTb/cIEdu3ZUNGzfZx7A==}
+    peerDependencies:
+      tree-sitter: ^0.21.1
       tree_sitter: '*'
     peerDependenciesMeta:
       tree_sitter:
@@ -3508,6 +3520,13 @@ snapshots:
   tree-sitter-ruby@0.21.0(tree-sitter@0.21.1):
     dependencies:
       node-addon-api: 8.8.0
+      node-gyp-build: 4.8.4
+      tree-sitter: 0.21.1
+    optional: true
+
+  tree-sitter-rust@0.21.0(tree-sitter@0.21.1):
+    dependencies:
+      node-addon-api: 7.1.1
       node-gyp-build: 4.8.4
       tree-sitter: 0.21.1
     optional: true
