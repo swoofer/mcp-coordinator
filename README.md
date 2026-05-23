@@ -97,6 +97,20 @@ The image is published to GitHub Container Registry on every release tag — mul
 
 A working compose stack (coordinator + Caddy auto-TLS + GitHub OAuth) ships at [`examples/docker-compose/`](./examples/docker-compose/). For a Kubernetes CronJob example doing JWT secret rotation, see [`docs/ops/auto-rotation.md`](./docs/ops/auto-rotation.md).
 
+### Real-time push via Claude Code Channels (research preview)
+
+[Channels](https://code.claude.com/docs/en/channels) is Anthropic's new push-into-session primitive: an out-of-band subprocess can stream `<channel>` tags into a running Claude Code session, so the agent reacts to coordination events the moment they happen — no polling, no extra tool call. `mcp-coordinator channel` is a thin bridge over the embedded MQTT broker that emits one channel event per consultation, agent status change, and thread message.
+
+```bash
+# 1. Daemon already running? Add the channel server to ~/.claude/.mcp.json
+#    (see examples/channels-quickstart/.mcp.json.sample)
+# 2. Launch Claude Code with channels enabled
+claude --dangerously-load-development-channels server:mcp-coordinator-channel
+# 3. Watch consultation events arrive as <channel> tags in the session
+```
+
+This is **research preview** and requires the `--dangerously-load-development-channels` flag in a Channels-capable Claude Code build. Phase 1 is push-only — there is no `channel_reply` tool yet, so Claude reacts using the existing MCP tools (`post_to_thread`, `announce_work`, ...). Full walkthrough at [`examples/channels-quickstart/`](./examples/channels-quickstart/).
+
 ---
 
 ## How It Works
