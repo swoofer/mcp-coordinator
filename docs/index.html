@@ -2472,7 +2472,7 @@
 
       <details class="faq-item">
         <summary class="faq-q" data-i18n="faq.q8">Yet another tool to maintain?</summary>
-        <div class="faq-a" data-i18n="faq.a8">One <code>npm install -g</code>, or pull the published image <code>ghcr.io/swoofer/mcp-coordinator:0.10.9</code> if you prefer Docker. Embedded MQTT broker, SQLite, and dashboard ship in the package. Zero sidecar. Symmetric <code>uninstall</code> reverses the <code>init</code> actions; <code>--purge</code> wipes the data dir.</div>
+        <div class="faq-a" data-i18n="faq.a8">One <code>npm install -g</code>, or pull the published image <code>ghcr.io/swoofer/mcp-coordinator:0.11.0</code> if you prefer Docker. Embedded MQTT broker, SQLite, and dashboard ship in the package. Zero sidecar. Symmetric <code>uninstall</code> reverses the <code>init</code> actions; <code>--purge</code> wipes the data dir.</div>
       </details>
 
       <details class="faq-item">
@@ -2564,7 +2564,7 @@
         "name": "Yet another tool to maintain?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "One npm install -g, or pull the published image ghcr.io/swoofer/mcp-coordinator:0.10.9 if you prefer Docker. Embedded MQTT broker, SQLite, and dashboard ship in the package. Zero sidecar. Symmetric uninstall reverses the init actions; --purge wipes the data dir."
+          "text": "One npm install -g, or pull the published image ghcr.io/swoofer/mcp-coordinator:0.11.0 if you prefer Docker. Embedded MQTT broker, SQLite, and dashboard ship in the package. Zero sidecar. Symmetric uninstall reverses the init actions; --purge wipes the data dir."
         }
       },
       {
@@ -3104,7 +3104,7 @@
       "faq.q7": "How is this different from Aider or Cline's own coordination?",
       "faq.a7": "Aider and Cline have no cross-session awareness. mcp-coordinator gives them shared state via the MQTT broker.",
       "faq.q8": "Yet another tool to maintain?",
-      "faq.a8": "One <code>npm install -g</code>, or pull the published image <code>ghcr.io/swoofer/mcp-coordinator:0.10.9</code> if you prefer Docker. Embedded MQTT broker, SQLite, and dashboard ship in the package. Zero sidecar. Symmetric <code>uninstall</code> reverses the <code>init</code> actions; <code>--purge</code> wipes the data dir.",
+      "faq.a8": "One <code>npm install -g</code>, or pull the published image <code>ghcr.io/swoofer/mcp-coordinator:0.11.0</code> if you prefer Docker. Embedded MQTT broker, SQLite, and dashboard ship in the package. Zero sidecar. Symmetric <code>uninstall</code> reverses the <code>init</code> actions; <code>--purge</code> wipes the data dir.",
       "faq.q9": "What if the coordinator goes down?",
       "faq.a9": "Agents fail open and keep working as if uninstalled. Local SQLite resumes on restart.",
       "faq.q10": "Will my agent lose context between turns?",
@@ -3562,7 +3562,7 @@
       "faq.q7": "En quoi est-ce différent de la coordination propre à Aider ou Cline ?",
       "faq.a7": "Aider et Cline n'ont aucune conscience cross-session. mcp-coordinator leur donne un état partagé via le broker MQTT.",
       "faq.q8": "Encore un outil à maintenir ?",
-      "faq.a8": "Un seul <code>npm install -g</code>, ou pull de l'image publiée <code>ghcr.io/swoofer/mcp-coordinator:0.10.9</code> si vous préférez Docker. Broker MQTT, SQLite et dashboard embarqués dans le paquet. Zéro sidecar. Le <code>uninstall</code> symétrique annule les actions de <code>init</code> ; <code>--purge</code> efface le dossier de données.",
+      "faq.a8": "Un seul <code>npm install -g</code>, ou pull de l'image publiée <code>ghcr.io/swoofer/mcp-coordinator:0.11.0</code> si vous préférez Docker. Broker MQTT, SQLite et dashboard embarqués dans le paquet. Zéro sidecar. Le <code>uninstall</code> symétrique annule les actions de <code>init</code> ; <code>--purge</code> efface le dossier de données.",
       "faq.q9": "Que se passe-t-il si le coordinator tombe ?",
       "faq.a9": "Les agents échouent en mode ouvert et continuent à travailler comme s'il était désinstallé. SQLite local reprend au redémarrage.",
       "faq.q10": "Mon agent va-t-il perdre son contexte entre les turns ?",
@@ -4022,7 +4022,7 @@
       "faq.q7": "¿En qué se diferencia esto de la coordinación propia de Aider o Cline?",
       "faq.a7": "Aider y Cline no tienen conciencia entre sesiones. mcp-coordinator les da estado compartido vía el MQTT broker.",
       "faq.q8": "¿Otra herramienta más para mantener?",
-      "faq.a8": "Un solo <code>npm install -g</code>, o haz pull de la imagen publicada <code>ghcr.io/swoofer/mcp-coordinator:0.10.9</code> si prefieres Docker. MQTT broker embebido, SQLite y dashboard vienen en el paquete. Cero sidecar. El <code>uninstall</code> simétrico revierte las acciones de <code>init</code>; <code>--purge</code> limpia el directorio de datos.",
+      "faq.a8": "Un solo <code>npm install -g</code>, o haz pull de la imagen publicada <code>ghcr.io/swoofer/mcp-coordinator:0.11.0</code> si prefieres Docker. MQTT broker embebido, SQLite y dashboard vienen en el paquete. Cero sidecar. El <code>uninstall</code> simétrico revierte las acciones de <code>init</code>; <code>--purge</code> limpia el directorio de datos.",
       "faq.q9": "¿Qué pasa si el coordinator se cae?",
       "faq.a9": "Los agentes fallan en abierto y siguen trabajando como si estuviera desinstalado. La SQLite local retoma al reiniciar.",
       "faq.q10": "¿Mi agente perderá contexto entre turnos?",
@@ -4483,7 +4483,7 @@
       "faq.q7": "Wie unterscheidet sich das von Aiders oder Clines eigener Koordination?",
       "faq.a7": "Aider und Cline haben kein Bewusstsein über Sessions hinweg. mcp-coordinator gibt ihnen geteilten State über den MQTT-Broker.",
       "faq.q8": "Noch ein Tool zu pflegen?",
-      "faq.a8": "Ein <code>npm install -g</code>, oder ziehen Sie das veröffentlichte Image <code>ghcr.io/swoofer/mcp-coordinator:0.10.9</code>, wenn Sie Docker bevorzugen. Eingebetteter MQTT-Broker, SQLite und Dashboard sind im Paket enthalten. Kein Sidecar. Symmetrisches <code>uninstall</code> macht die <code>init</code>-Aktionen rückgängig; <code>--purge</code> löscht das Datenverzeichnis.",
+      "faq.a8": "Ein <code>npm install -g</code>, oder ziehen Sie das veröffentlichte Image <code>ghcr.io/swoofer/mcp-coordinator:0.11.0</code>, wenn Sie Docker bevorzugen. Eingebetteter MQTT-Broker, SQLite und Dashboard sind im Paket enthalten. Kein Sidecar. Symmetrisches <code>uninstall</code> macht die <code>init</code>-Aktionen rückgängig; <code>--purge</code> löscht das Datenverzeichnis.",
       "faq.q9": "Was, wenn der Coordinator ausfällt?",
       "faq.a9": "Agenten arbeiten weiter, als wäre nichts installiert. Lokales SQLite nimmt beim Neustart wieder auf.",
       "faq.q10": "Verliert mein Agent Kontext zwischen Turns?",
@@ -4944,7 +4944,7 @@
       "faq.q7": "这和 Aider 或 Cline 自带的协调有什么区别?",
       "faq.a7": "Aider 和 Cline 没有跨会话的感知。mcp-coordinator 通过 MQTT broker 给它们提供共享状态。",
       "faq.q8": "又多一个工具要维护?",
-      "faq.a8": "一条 <code>npm install -g</code>,或者拉取已发布的镜像 <code>ghcr.io/swoofer/mcp-coordinator:0.10.9</code>(如果您更喜欢 Docker)。嵌入式 MQTT broker、SQLite 和 dashboard 都在包里。零 sidecar。对称的 <code>uninstall</code> 可以撤销 <code>init</code> 的所有动作;<code>--purge</code> 清空数据目录。",
+      "faq.a8": "一条 <code>npm install -g</code>,或者拉取已发布的镜像 <code>ghcr.io/swoofer/mcp-coordinator:0.11.0</code>(如果您更喜欢 Docker)。嵌入式 MQTT broker、SQLite 和 dashboard 都在包里。零 sidecar。对称的 <code>uninstall</code> 可以撤销 <code>init</code> 的所有动作;<code>--purge</code> 清空数据目录。",
       "faq.q9": "如果 coordinator 挂了会怎样?",
       "faq.a9": "agent 失败开放,继续工作,就像没装过一样。本地 SQLite 在重启时恢复。",
       "faq.q10": "agent 会在轮次之间丢失上下文吗?",
@@ -5405,7 +5405,7 @@
       "faq.q7": "Aider や Cline 自身の連携機能とは何が違いますか?",
       "faq.a7": "Aider と Cline はセッション横断の認識を持ちません。mcp-coordinator は MQTT ブローカーを介して共有状態を提供します。",
       "faq.q8": "また別のメンテすべきツールが増えるのでは?",
-      "faq.a8": "<code>npm install -g</code> ひとつ、または Docker をお使いの場合は公開イメージ <code>ghcr.io/swoofer/mcp-coordinator:0.10.9</code> を pull するだけ。組み込み MQTT ブローカー、SQLite、ダッシュボードがパッケージに同梱されています。サイドカーゼロ。対称的な <code>uninstall</code> が <code>init</code> のアクションを巻き戻し、<code>--purge</code> がデータディレクトリを一掃します。",
+      "faq.a8": "<code>npm install -g</code> ひとつ、または Docker をお使いの場合は公開イメージ <code>ghcr.io/swoofer/mcp-coordinator:0.11.0</code> を pull するだけ。組み込み MQTT ブローカー、SQLite、ダッシュボードがパッケージに同梱されています。サイドカーゼロ。対称的な <code>uninstall</code> が <code>init</code> のアクションを巻き戻し、<code>--purge</code> がデータディレクトリを一掃します。",
       "faq.q9": "コーディネーターがダウンしたらどうなりますか?",
       "faq.a9": "エージェントはフェイルオープンし、未インストール時のように作業を続けます。再起動時にローカルの SQLite が再開します。",
       "faq.q10": "エージェントはターン間でコンテキストを失いますか?",

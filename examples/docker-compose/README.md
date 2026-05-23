@@ -7,7 +7,7 @@ certificates automatically via Let's Encrypt.
 Stack:
 
 - `coordinator` -- pulls the multi-arch image
-  `ghcr.io/swoofer/mcp-coordinator:0.10.9` published from this repo's
+  `ghcr.io/swoofer/mcp-coordinator:0.11.0` published from this repo's
   Dockerfile on every release tag. Listens on `:3100` inside the
   compose network. Data lives in the `coordinator-data` named volume.
   Pinned to an exact version for reproducibility — bump the tag in
