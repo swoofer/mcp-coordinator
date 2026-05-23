@@ -41,7 +41,7 @@ existing rows are preserved with column renames and backfills. The
 Run them locally before upgrading:
 
 ```bash
-npm test -- tests/backcompat
+pnpm test -- tests/backcompat
 ```
 
 All 31 must pass.
@@ -80,8 +80,8 @@ If you have a checkout, verify the test suite against your target version:
 ```bash
 git fetch
 git checkout v0.8.0
-npm ci
-npm test -- tests/backcompat
+pnpm install --frozen-lockfile
+pnpm test -- tests/backcompat
 ```
 
 This validates that the upgrade path is non-destructive against a fresh
@@ -107,8 +107,8 @@ mcp-coordinator --version            # expect 0.8.x
 ```bash
 git fetch --tags
 git checkout v0.8.0
-npm ci
-npm run build
+pnpm install --frozen-lockfile
+pnpm build
 ```
 
 ### Docker
@@ -215,8 +215,8 @@ curl -X POST http://localhost:3100/api/register \
 The `tests/backcompat/` suite codifies this guarantee:
 
 ```bash
-npm test -- tests/backcompat/phase1-feature-flag-off
-npm test -- tests/backcompat/phase1-jwt-acceptance
+ppnpm test -- tests/backcompat/phase1-feature-flag-off
+ppnpm test -- tests/backcompat/phase1-jwt-acceptance
 ```
 
 Both must pass. If they fail on your deployment, restore from backup and

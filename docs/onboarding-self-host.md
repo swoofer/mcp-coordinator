@@ -78,8 +78,8 @@ Alternatively, run from a checkout:
 ```bash
 git clone https://github.com/swoofer/mcp-coordinator.git
 cd mcp-coordinator
-npm ci
-npm run build
+pnpm install --frozen-lockfile
+pnpm build
 node dist/cli.js --version
 ```
 

@@ -10,19 +10,19 @@ under the failure modes they were designed for.
 
 ```bash
 # Refresh-token rotation: end-to-end latency (JWT verify + DB + mint + audit)
-npm run perf:rotation
+pnpm perf:rotation
 
 # Tier 2 audit queue: throughput + drop accounting
-npm run perf:audit
+pnpm perf:audit
 
 # token_epoch direct DB read (V4 CUT 1): confirms it stays in microseconds
-npm run perf:token-epoch
+pnpm perf:token-epoch
 
 # MembershipCache stale-on-error under 50% IdP failure
-npm run chaos:idp
+pnpm chaos:idp
 
 # AuditQueue overflow + recovery (V3 §B-NEW-6)
-npm run chaos:audit
+pnpm chaos:audit
 ```
 
 Each script prints a `JSON_SUMMARY: { ... }` line as the **final stdout
@@ -30,7 +30,7 @@ line** — easy to grep/pipe into a dashboard or regression-tracking
 tool. Example:
 
 ```bash
-npm run perf:rotation | grep ^JSON_SUMMARY
+pnpm perf:rotation | grep ^JSON_SUMMARY
 # JSON_SUMMARY: {"bench":"refresh-rotation","n":10000,"p50_ms":0.789,...}
 ```
 
@@ -43,7 +43,7 @@ clean up.
 ### bench-refresh-rotation
 
 ```bash
-npm run perf:rotation
+pnpm perf:rotation
 # or:
 npx tsx tests/perf/bench-refresh-rotation.ts
 
@@ -64,7 +64,7 @@ IdP-included path, swap in the MSW handler from
 ### bench-audit-queue
 
 ```bash
-npm run perf:audit
+pnpm perf:audit
 
 BENCH_N_NORMAL=10000 BENCH_N_BURST=20000 npx tsx tests/perf/bench-audit-queue.ts
 ```
@@ -81,7 +81,7 @@ Two scenarios:
 ### bench-token-epoch
 
 ```bash
-npm run perf:token-epoch
+pnpm perf:token-epoch
 
 BENCH_N=500000 BENCH_USERS=10000 npx tsx tests/perf/bench-token-epoch.ts
 ```
@@ -95,7 +95,7 @@ under the 1ms budget for auth hot paths.
 ### chaos/idp-failure-injection
 
 ```bash
-npm run chaos:idp
+pnpm chaos:idp
 
 CHAOS_N=5000 CHAOS_FAIL_EVERY=2 npx tsx tests/perf/chaos/idp-failure-injection.ts
 ```
@@ -110,7 +110,7 @@ through transient IdP outages (V3 §B-NEW-5).
 ### chaos/audit-queue-overflow
 
 ```bash
-npm run chaos:audit
+pnpm chaos:audit
 
 CHAOS_N=15000 CHAOS_N_RECOVERY=500 npx tsx tests/perf/chaos/audit-queue-overflow.ts
 ```
