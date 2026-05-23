@@ -99,17 +99,20 @@ A working compose stack (coordinator + Caddy auto-TLS + GitHub OAuth) ships at [
 
 ### Real-time push via Claude Code Channels (research preview)
 
-[Channels](https://code.claude.com/docs/en/channels) is Anthropic's new push-into-session primitive: an out-of-band subprocess can stream `<channel>` tags into a running Claude Code session, so the agent reacts to coordination events the moment they happen — no polling, no extra tool call. `mcp-coordinator channel` is a thin bridge over the embedded MQTT broker that emits one channel event per consultation, agent status change, and thread message.
+[Channels](https://code.claude.com/docs/en/channels) is Anthropic's new push-into-session primitive: an out-of-band subprocess streams `<channel>` tags into a running Claude Code session, so the agent reacts to coordination events the moment they happen — no polling, no extra tool call. `mcp-coordinator channel` is a thin bridge over the embedded MQTT broker that emits one channel event per consultation, agent status change, and thread message. It also exposes a `post_to_thread` MCP tool so Claude can reply into a thread directly from the session.
 
 ```bash
 # 1. Daemon already running? Add the channel server to ~/.claude/.mcp.json
 #    (see examples/channels-quickstart/.mcp.json.sample)
 # 2. Launch Claude Code with channels enabled
 claude --dangerously-load-development-channels server:mcp-coordinator-channel
-# 3. Watch consultation events arrive as <channel> tags in the session
+# 3. Watch consultation events arrive as <channel> tags in the session, and
+#    let Claude reply via post_to_thread when appropriate
 ```
 
-This is **research preview** and requires the `--dangerously-load-development-channels` flag in a Channels-capable Claude Code build. Phase 1 is push-only — there is no `channel_reply` tool yet, so Claude reacts using the existing MCP tools (`post_to_thread`, `announce_work`, ...). Full walkthrough at [`examples/channels-quickstart/`](./examples/channels-quickstart/).
+**Research preview** — requires `--dangerously-load-development-channels` in a Channels-capable Claude Code (v2.1.80+). Phase 3 (permission relay) intentionally deferred.
+
+📖 **Choosing between polling and push?** See [`docs/operating-modes.md`](./docs/operating-modes.md) for a full comparison of the two modes, when to pick each, and how to run them side by side. Full setup walkthrough at [`examples/channels-quickstart/`](./examples/channels-quickstart/).
 
 ---
 
