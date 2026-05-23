@@ -1,5 +1,5 @@
 /**
- * `mcp-coordinator channel` — Claude Code Channels (Phase 1 MVP).
+ * `mcp-coordinator channel` — Claude Code Channels (Phase 1 push + Phase 2 reply).
  *
  * This subcommand runs as a stdio MCP server that Claude Code spawns when
  * the user passes `--channels mcp-coordinator`. It is NOT the daemon — it is
@@ -8,26 +8,39 @@
  *   1. Subscribes to the daemon's MQTT broker (mqtt://127.0.0.1:<port>).
  *   2. Translates each coordination event into a `notifications/claude/channel`
  *      notification and pushes it into the Claude session.
- *
- * Scope is intentionally narrow: ONE-WAY PUSH ONLY. No reply tool, no
- * permission relay, no out-of-session injection. Those are Phase 2/3.
+ *   3. (Phase 2) Exposes a single `post_to_thread` tool that lets Claude
+ *      reply into a consultation thread by publishing a message back over
+ *      MQTT — same wire shape the daemon would produce. Channels become
+ *      bidirectional without coupling the channel process to the daemon's
+ *      HTTP surface (MQTT remains the canonical bus).
  *
  *   Claude Code session  ──stdio──▶  mcp-coordinator channel
+ *                          ◀──        (notifications/claude/channel)
+ *                          ──▶        (tools/call post_to_thread)
  *                                          │
- *                                          ▼  mqtt subscribe
+ *                                          ▼  mqtt subscribe + publish
  *                                    mcp-coordinator daemon (unchanged)
+ *
+ * Phase 3 (permission relay, out-of-session injection) remains deferred per
+ * the reference-plugin study.
  *
  * Authoritative spec: https://code.claude.com/docs/en/channels-reference
  *
  * Research-preview note: until this plugin is on Anthropic's allowlist,
  * users must launch Claude Code with `--dangerously-load-development-channels`
- * to enable an unverified channel server. Document this in your README before
- * publishing.
+ * to enable an unverified channel server. The `post_to_thread` tool exposed
+ * here is also research-preview — its name/schema may change before the
+ * Channels API leaves preview. Document this in your README before publishing.
  */
 import { Command } from "commander";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import {
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+} from "@modelcontextprotocol/sdk/types.js";
 import mqtt, { type MqttClient } from "mqtt";
+import { z } from "zod";
 import { loadConfig } from "./config.js";
 
 /**
@@ -144,14 +157,24 @@ const INSTRUCTIONS = [
   "`notifications/claude/channel`. Each event surfaces as a `<channel>` tag",
   "with `event_type`, optional `thread_id`, and optional `agent_id` attributes.",
   "",
-  "Event types:",
-  "  - consultation_new: another agent has opened a consultation thread.",
-  "  - consultation_message: a new message landed on a thread you may care about.",
-  "  - agent_status: an agent came online or went offline.",
+  "Event types you will see:",
+  "  - consultation_new (a.k.a. consultation_opened): another agent has opened",
+  "    a consultation thread. This is the primary reason to reply — surface",
+  "    context, propose a resolution, or just acknowledge.",
+  "  - consultation_message: a new message landed on a thread. Reply when the",
+  "    message asks you a question or otherwise requests input; otherwise treat",
+  "    as ambient context.",
+  "  - agent_status: an agent came online or went offline. READ-ONLY — do not",
+  "    reply to status events.",
   "",
-  "Treat these as ambient awareness, not commands. Phase 1 is push-only — there",
-  "is no reply tool exposed on this channel. To reply, use the coordinator's",
-  "regular MCP tools (e.g. `post_to_thread`) from your main MCP server.",
+  "To reply into a thread, call the `post_to_thread` tool with the `thread_id`",
+  "from the `<channel>` tag and your message in `content`. This publishes",
+  "directly onto the coordinator's MQTT bus and reaches every other subscriber",
+  "(including agents waiting on `wait_for_message`). No HTTP round-trip needed.",
+  "",
+  "Treat channel events as ambient awareness. Reply only when the event",
+  "genuinely warrants it; this channel is a low-noise coordination surface,",
+  "not a chat room.",
 ].join("\n");
 
 export interface ChannelServerHandle {
@@ -161,6 +184,93 @@ export interface ChannelServerHandle {
   ready: Promise<void>;
   stop: () => Promise<void>;
 }
+
+/**
+ * Default agent_id stamped onto channel-originated replies. The daemon's
+ * audit trail uses this to attribute messages to the channel surface (rather
+ * than to whichever agent_id Claude might guess). Callers can override at
+ * tool-call time via the optional `agent_id` argument.
+ */
+export const CHANNEL_REPLY_AGENT_ID = "channel";
+
+/**
+ * Default `type` field for channel-originated replies on the
+ * `coordinator/<org>/consultations/<id>/messages` topic. Matches the
+ * `MessageType` union in `src/types.ts` (kept as a string so this file does
+ * not pull in daemon types).
+ */
+const CHANNEL_REPLY_MESSAGE_TYPE = "context";
+
+/**
+ * Build the wire-level MQTT publish args for a `post_to_thread` reply.
+ * Exported so unit tests can assert on the exact topic + payload without
+ * spinning up a broker. Mirrors `MqttBridge.publishMessage` in `src/`.
+ */
+export function buildReplyPublish(input: {
+  org: string;
+  thread_id: string;
+  agent_id: string;
+  content: string;
+}): { topic: string; payload: string; opts: { qos: 0 | 1 | 2; retain: boolean } } {
+  return {
+    topic: `coordinator/${input.org}/consultations/${input.thread_id}/messages`,
+    payload: JSON.stringify({
+      agent_id: input.agent_id,
+      type: CHANNEL_REPLY_MESSAGE_TYPE,
+      content: input.content,
+    }),
+    // QoS 0, no retain — matches MqttBridge.publishMessage (high-frequency
+    // chat-style traffic, lossy-OK). Retain would be actively wrong: a future
+    // subscriber would receive a stale "channel reply" on connect.
+    opts: { qos: 0, retain: false },
+  };
+}
+
+/**
+ * zod schema for the `post_to_thread` tool's arguments. Exported so unit
+ * tests can assert validation behaviour (e.g. missing `thread_id` is
+ * rejected) without spinning up an MCP transport.
+ */
+export const PostToThreadArgsSchema = z.object({
+  thread_id: z.string().min(1, "thread_id is required"),
+  content: z.string().min(1, "content is required"),
+  agent_id: z.string().min(1).optional(),
+});
+
+export type PostToThreadArgs = z.infer<typeof PostToThreadArgsSchema>;
+
+const POST_TO_THREAD_TOOL_DESCRIPTION =
+  'Reply into a consultation thread when the channel surfaces a ' +
+  '<channel event_type="consultation_opened" thread_id="...">. Use to add ' +
+  "context, propose a resolution, or just acknowledge the thread.";
+
+/**
+ * JSON Schema for `post_to_thread`'s `inputSchema`. Hand-written rather than
+ * generated from `PostToThreadArgsSchema` because the SDK's `ListTools`
+ * response wants a raw JSON Schema object, and the project's zod-v3 surface
+ * doesn't ship a `toJSONSchema` helper. Kept tightly in sync with the zod
+ * schema above — both list `thread_id` and `content` as required.
+ */
+const POST_TO_THREAD_INPUT_SCHEMA = {
+  type: "object",
+  properties: {
+    thread_id: {
+      type: "string",
+      description: "Thread ID from the <channel> tag's thread_id attribute.",
+    },
+    content: {
+      type: "string",
+      description: "The message body to post into the thread.",
+    },
+    agent_id: {
+      type: "string",
+      description:
+        "Optional override for the author attribution. Defaults to 'channel' so audit logs track channel-originated replies distinctly.",
+    },
+  },
+  required: ["thread_id", "content"],
+  additionalProperties: false,
+} as const;
 
 /**
  * Build the Server + MQTT client. Exported so tests can spin one up without
@@ -174,21 +284,39 @@ export function buildChannelServer(opts: {
   // AUTH_ENABLED and this process has been issued a token by some other means.
   username?: string;
   password?: string;
+  /**
+   * Org slug used to namespace the `coordinator/<org>/...` topic when
+   * publishing replies. Defaults to `"default"` (matches MqttBridge's default
+   * and `examples/python-mqtt/`). Only affects publish — subscriptions still
+   * use a `+` wildcard so the channel sees events from every org on the
+   * broker.
+   */
+  org?: string;
   /** Optional stderr logger; defaults to console.error so it surfaces under stdio. */
   log?: (msg: string, ...rest: unknown[]) => void;
 }): ChannelServerHandle {
   const log = opts.log ?? ((m, ...rest) => console.error(`[channel] ${m}`, ...rest));
+  const org = opts.org ?? "default";
 
   const server = new Server(
-    { name: "mcp-coordinator-channel", version: "0.1.0" },
+    { name: "mcp-coordinator-channel", version: "0.2.0" },
     {
       // Channels capability is experimental in the spec — declare it so
-      // Claude Code's channel host recognises the server. NOTE: we
-      // intentionally do NOT declare `tools` — Phase 1 is push-only.
+      // Claude Code's channel host recognises the server. Phase 2 adds:
+      //   - `experimental.tools: {}` — signals to a Channels-aware host that
+      //     this server's tools belong to the channel surface (not the main
+      //     MCP toolbelt). This is the symbolic declaration the spec asks
+      //     for.
+      //   - top-level `tools: {}` — the MCP SDK's `assertRequestHandlerCapability`
+      //     checks `_capabilities.tools` (not the experimental subkey) before
+      //     allowing `tools/list` and `tools/call` handlers. Required for the
+      //     `post_to_thread` registration below to actually be invocable.
       capabilities: {
         experimental: {
           "claude/channel": {},
+          tools: {},
         },
+        tools: {},
       },
       instructions: INSTRUCTIONS,
     },
@@ -202,6 +330,92 @@ export function buildChannelServer(opts: {
     username: opts.username,
     password: opts.password,
     reconnectPeriod: 2000,
+  });
+
+  // ─── Phase 2: tool registration ─────────────────────────────────────────
+  //
+  // `tools/list` and `tools/call` handlers for the single `post_to_thread`
+  // reply tool. Implementation publishes to MQTT directly — the channel
+  // process never speaks HTTP to the daemon. This keeps the transport
+  // surface minimal (stdio in, MQTT out) and aligns with the daemon's
+  // "MQTT is the canonical bus" contract.
+
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({
+    tools: [
+      {
+        name: "post_to_thread",
+        description: POST_TO_THREAD_TOOL_DESCRIPTION,
+        inputSchema: POST_TO_THREAD_INPUT_SCHEMA,
+      },
+    ],
+  }));
+
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    if (request.params.name !== "post_to_thread") {
+      return {
+        isError: true,
+        content: [
+          {
+            type: "text" as const,
+            text: `Unknown tool: ${request.params.name}. The channel server only exposes 'post_to_thread'.`,
+          },
+        ],
+      };
+    }
+
+    const parsed = PostToThreadArgsSchema.safeParse(request.params.arguments ?? {});
+    if (!parsed.success) {
+      // Surface validation failures as a tool-level error rather than an MCP
+      // protocol error: the model can read the message, correct the call,
+      // and retry. Throwing here would tear down the whole tools/call.
+      return {
+        isError: true,
+        content: [
+          {
+            type: "text" as const,
+            text: `Invalid arguments for post_to_thread: ${parsed.error.message}`,
+          },
+        ],
+      };
+    }
+
+    const { thread_id, content, agent_id } = parsed.data;
+    const { topic, payload, opts: publishOpts } = buildReplyPublish({
+      org,
+      thread_id,
+      agent_id: agent_id ?? CHANNEL_REPLY_AGENT_ID,
+      content,
+    });
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        client.publish(topic, payload, publishOpts, (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log("post_to_thread publish failed", msg);
+      return {
+        isError: true,
+        content: [
+          {
+            type: "text" as const,
+            text: `Failed to publish reply to MQTT broker: ${msg}`,
+          },
+        ],
+      };
+    }
+
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: `Posted to thread ${thread_id} as ${agent_id ?? CHANNEL_REPLY_AGENT_ID}.`,
+        },
+      ],
+    };
   });
 
   // Three topic patterns from the spec / issue #130.
@@ -290,7 +504,11 @@ export function createChannelCommand(): Command {
     )
     .option("--mqtt-username <user>", "MQTT username (optional, only when daemon has AUTH_ENABLED)")
     .option("--mqtt-password <pass>", "MQTT password / JWT (optional)")
-    .action(async (rawOpts: { brokerUrl?: string; mqttUsername?: string; mqttPassword?: string }) => {
+    .option(
+      "--org <slug>",
+      "Org slug used when publishing replies via post_to_thread (defaults to env COORDINATOR_ORG or 'default')",
+    )
+    .action(async (rawOpts: { brokerUrl?: string; mqttUsername?: string; mqttPassword?: string; org?: string }) => {
       // Resolve broker URL: flag > env > config-derived default.
       // The daemon exposes MQTT on a separate TCP port from HTTP. Until the
       // daemon publishes the MQTT port via config.json explicitly, we default
@@ -307,6 +525,7 @@ export function createChannelCommand(): Command {
         brokerUrl,
         username: rawOpts.mqttUsername ?? process.env.COORDINATOR_MQTT_USER,
         password: rawOpts.mqttPassword ?? process.env.COORDINATOR_MQTT_PASSWORD,
+        org: rawOpts.org ?? process.env.COORDINATOR_ORG,
       });
 
       const transport = new StdioServerTransport();

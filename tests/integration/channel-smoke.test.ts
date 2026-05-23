@@ -179,4 +179,160 @@ describe("channel CLI — smoke (MQTT → notifications/claude/channel)", () => 
     // catch that here as a contract assertion rather than a confusing failure.
     expect(NotificationSchema).toBeDefined();
   });
+
+  // ─── Phase 2: post_to_thread reply tool ─────────────────────────────────
+  //
+  // End-to-end: call the tool via the MCP client and verify the resulting
+  // MQTT publish lands on the broker with the expected topic + payload.
+  // Subscribes via a second mqtt.js client connected to the same broker.
+  it("exposes post_to_thread on tools/list and publishes a real MQTT message when called", async () => {
+    expect(client).not.toBeNull();
+    if (!client) return;
+
+    // Confirm the tool surface advertises post_to_thread.
+    const tools = await client.listTools();
+    const reply = tools.tools.find((t) => t.name === "post_to_thread");
+    expect(reply, `expected post_to_thread in tools/list; got ${tools.tools.map((t) => t.name).join(",")}`).toBeDefined();
+    expect(reply!.description).toMatch(/consultation_opened/);
+
+    // Subscribe to the messages topic on the broker so we can observe the
+    // publish triggered by the tools/call below.
+    const subscriber = mqtt.connect(`mqtt://127.0.0.1:${brokerPort}`, {
+      clientId: `reply-tool-subscriber-${Date.now()}`,
+      clean: true,
+    });
+    await new Promise<void>((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error("subscriber connect timeout")), 5000);
+      subscriber.on("connect", () => {
+        clearTimeout(t);
+        resolve();
+      });
+      subscriber.on("error", (err) => {
+        clearTimeout(t);
+        reject(err);
+      });
+    });
+
+    const messageTopic = "coordinator/default/consultations/thr-reply-1/messages";
+    const seen: Array<{ topic: string; payload: string }> = [];
+    subscriber.on("message", (topic, payload) => {
+      seen.push({ topic, payload: payload.toString("utf-8") });
+    });
+    await new Promise<void>((resolve, reject) => {
+      subscriber.subscribe(messageTopic, { qos: 0 }, (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    // Drive the tool through the real MCP client.
+    const result = await client.callTool({
+      name: "post_to_thread",
+      arguments: {
+        thread_id: "thr-reply-1",
+        content: "integration smoke reply from the channel",
+      },
+    });
+
+    // The SDK normalises a tools/call response into { content: [...] }.
+    expect(result.isError).toBeFalsy();
+
+    // Wait for the broker to deliver the message back to our subscriber.
+    const deadline = Date.now() + 5000;
+    let match: { topic: string; payload: string } | undefined;
+    while (Date.now() < deadline) {
+      match = seen.find((m) => m.topic === messageTopic);
+      if (match) break;
+      await new Promise<void>((r) => setTimeout(r, 50));
+    }
+
+    expect(
+      match,
+      `did not receive MQTT publish on ${messageTopic}; got: ${JSON.stringify(seen)}`,
+    ).toBeDefined();
+    const decoded = JSON.parse(match!.payload) as Record<string, unknown>;
+    expect(decoded.agent_id).toBe("channel");
+    expect(decoded.type).toBe("context");
+    expect(decoded.content).toBe("integration smoke reply from the channel");
+
+    await new Promise<void>((resolve) => subscriber.end(true, {}, () => resolve()));
+  }, 20_000);
+
+  it("publishes a reply to a broker-side subscriber via the mock-broker helper", async () => {
+    // Same test as above but uses createMockMqttBroker's helpers as a sanity
+    // check — gives maintainers a copy-pasteable shape that uses the harness
+    // utilities rather than raw mqtt.js. Keeps both code paths exercised.
+    const { createMockMqttBroker } = await import("../helpers/channel-test-harness.js");
+    const mockBroker = await createMockMqttBroker({ org: "altorg" });
+    try {
+      const messageTopic = "coordinator/altorg/consultations/thr-alt-1/messages";
+      const seen: Array<{ topic: string; payload: string }> = [];
+      mockBroker.publisher.on("message", (topic, payload) => {
+        seen.push({ topic, payload: payload.toString("utf-8") });
+      });
+      await new Promise<void>((resolve, reject) => {
+        mockBroker.publisher.subscribe(messageTopic, { qos: 0 }, (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+
+      // Spin up a second channel subprocess against this broker, with --org
+      // pointing at "altorg" so its post_to_thread publishes there.
+      const { createChannelHarness } = await import("../helpers/channel-test-harness.js");
+      const tsxBin = path.join(
+        REPO_ROOT,
+        "node_modules",
+        ".bin",
+        process.platform === "win32" ? "tsx.CMD" : "tsx",
+      );
+      const altHarness = await createChannelHarness({
+        command: tsxBin,
+        args: [
+          path.join(REPO_ROOT, "cli", "index.ts"),
+          "channel",
+          "--broker-url",
+          mockBroker.url,
+          "--org",
+          "altorg",
+        ],
+      });
+      try {
+        // Give the channel subprocess time to wire up its MQTT subs before
+        // we drive a tool call. (Subscriptions aren't strictly required for
+        // a publish-side test, but the spawned process needs MQTT to be
+        // connected so the publish callback fires.)
+        await new Promise<void>((r) => setTimeout(r, 1500));
+
+        const result = await altHarness.client.callTool({
+          name: "post_to_thread",
+          arguments: {
+            thread_id: "thr-alt-1",
+            content: "alt-org reply",
+            agent_id: "channel-tester",
+          },
+        });
+        expect(result.isError).toBeFalsy();
+
+        const deadline = Date.now() + 5000;
+        let match: { topic: string; payload: string } | undefined;
+        while (Date.now() < deadline) {
+          match = seen.find((m) => m.topic === messageTopic);
+          if (match) break;
+          await new Promise<void>((r) => setTimeout(r, 50));
+        }
+        expect(
+          match,
+          `did not receive MQTT publish on ${messageTopic}; got: ${JSON.stringify(seen)}`,
+        ).toBeDefined();
+        const decoded = JSON.parse(match!.payload) as Record<string, unknown>;
+        expect(decoded.agent_id).toBe("channel-tester");
+        expect(decoded.content).toBe("alt-org reply");
+      } finally {
+        await altHarness.cleanup();
+      }
+    } finally {
+      await mockBroker.cleanup();
+    }
+  }, 30_000);
 });
