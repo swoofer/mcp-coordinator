@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.11.0](https://github.com/swoofer/mcp-coordinator/compare/v0.10.9...v0.11.0) (2026-05-23)
+
+
+### Bug Fixes
+
+* **ci:** docker-publish emits correct semver tags on workflow_dispatch ([#121](https://github.com/swoofer/mcp-coordinator/issues/121)) ([c93f8ea](https://github.com/swoofer/mcp-coordinator/commit/c93f8ea4d2e6f92c3f8155fb2153122ea2182406))
+* **cli:** wrap loadConfig at doctor + init call sites (closes [#109](https://github.com/swoofer/mcp-coordinator/issues/109)) ([#118](https://github.com/swoofer/mcp-coordinator/issues/118)) ([93d8d07](https://github.com/swoofer/mcp-coordinator/commit/93d8d07c5d2f13adf7355f8f33b11b28842a1a54))
+
+
+### Documentation
+
+* clarify global install + warn against npm install in empty folder ([#115](https://github.com/swoofer/mcp-coordinator/issues/115)) ([6725cab](https://github.com/swoofer/mcp-coordinator/commit/6725cab215f8f791b2f05daee7dc26593cee6a8f))
+* complete pnpm migration in ops + onboarding (followup to [#117](https://github.com/swoofer/mcp-coordinator/issues/117)) ([#120](https://github.com/swoofer/mcp-coordinator/issues/120)) ([f0456fb](https://github.com/swoofer/mcp-coordinator/commit/f0456fbe83aaaa554f344909da256f0425a668b0))
+* pin docker-compose example to ghcr.io/.../mcp-coordinator:0.10.9 ([#122](https://github.com/swoofer/mcp-coordinator/issues/122)) ([2af90ab](https://github.com/swoofer/mcp-coordinator/commit/2af90ab4a5473f5e4220bf7045bc88a709d52996))
+
+
+### Maintenance
+
+* bump to v0.11.0 — aggregate of pnpm + docker + tooling work ([1f1e4c8](https://github.com/swoofer/mcp-coordinator/commit/1f1e4c8e0ce2bf1bd0e5c924639ad95b937298e3))
+
 ## [0.10.9](https://github.com/swoofer/mcp-coordinator/compare/v0.10.8...v0.10.9) (2026-05-22)
 
 
