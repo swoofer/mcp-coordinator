@@ -2,7 +2,8 @@
 # ---------------------------------------------------------------------------
 # mcp-coordinator — production image
 # Two-stage build keeps the runtime image small (~150MB) by leaving the dev
-# toolchain (typescript, tsx, vitest) and the npm cache in the builder stage.
+# toolchain (typescript, tsx, vitest) and the package-manager cache in the
+# builder stage.
 # ---------------------------------------------------------------------------
 
 # ---- Stage 1: builder ------------------------------------------------------
@@ -10,19 +11,23 @@
 # never ships; only its dist/ + production node_modules are copied forward.
 FROM node:22-alpine AS builder
 
+# Corepack ships with Node 22 — enable it so the `packageManager` field in
+# package.json (pnpm@<version>) is honored without a separate install.
+RUN corepack enable
+
 WORKDIR /build
 
 # Copy manifest first so this layer caches as long as deps don't change.
-# Subsequent code edits won't bust npm install.
-COPY package.json package-lock.json ./
+# Subsequent code edits won't bust pnpm install.
+COPY package.json pnpm-lock.yaml ./
 
 # Install build tools for tree-sitter native bindings (node-gyp).
 # These are needed when prebuilt binaries are unavailable on Alpine/musl.
 RUN apk add --no-cache python3 make g++
 
-# `npm ci` is reproducible (uses the lockfile) and faster than `npm install`
-# in CI/Docker. We need devDependencies here for tsc, so no --omit=dev.
-RUN npm ci --no-audit --no-fund
+# `pnpm install --frozen-lockfile` is reproducible and fast in CI/Docker.
+# We need devDependencies here for tsc, so no --prod.
+RUN pnpm install --frozen-lockfile
 
 # Copy the rest of the sources needed for `tsc`.
 # We deliberately do NOT copy tests, docs, or .git — see .dockerignore.
@@ -31,11 +36,10 @@ COPY src ./src
 COPY cli ./cli
 
 # Produce dist/src and dist/cli per tsconfig "outDir".
-RUN npm run build
+RUN pnpm build
 
-# Re-resolve node_modules with production-only deps. We need a dedicated
-# directory because the builder's node_modules above contains devDeps.
-RUN npm prune --omit=dev
+# Re-resolve node_modules with production-only deps via `pnpm prune`.
+RUN pnpm prune --prod
 
 
 # ---- Stage 2: runtime ------------------------------------------------------

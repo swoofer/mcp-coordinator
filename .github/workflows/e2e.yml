@@ -20,18 +20,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: "npm"
+          cache: "pnpm"
 
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
 
       # --with-deps installs the Linux system libs Chromium needs (fonts,
       # libnss, libdrm, etc.) so the headless browser actually launches.
-      - run: npx playwright install --with-deps chromium
+      - run: pnpm exec playwright install --with-deps chromium
 
-      - run: npx playwright test
+      - run: pnpm exec playwright test
         env:
           CI: "true"
 
