@@ -19,7 +19,19 @@ if (isMainModule) {
     const services = createServices({ dataDir: DATA_DIR });
     const log = services.logger;
 
-    const server = createMcpServer(services);
+    // STDIO mode is unauthenticated by contract — the trust boundary is "the
+    // user spawned this binary", same as any local stdio MCP server. We pass
+    // a getSessionClaims that returns synthetic legacy claims for every call
+    // (the empty-string sessionId is the stdio sentinel; see fix #133).
+    // Mirrors the AUTH_ENABLED=false synthetic-claims path in
+    // src/serve-http.ts:315-317.
+    const server = createMcpServer(services, () => ({
+      sub: "stdio-local",
+      user_id: "stdio-local",
+      org: "default",
+      role: "admin",
+      jti: "stdio-local",
+    }));
     const transport = new StdioServerTransport();
     await server.connect(transport);
     log.info("mcp-coordinator running on stdio (no MQTT broker in stdio mode)");

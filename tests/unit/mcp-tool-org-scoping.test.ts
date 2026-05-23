@@ -154,16 +154,11 @@ describe("getSessionClaims getter contract", () => {
 // ─── agents-tools: register_agent ────────────────────────────────────────────
 
 describe("agents-tools: register_agent", () => {
-  it("throws when sessionId is absent", async () => {
-    const server = new McpServer({ name: "test", version: "0" });
-    const getter = (_sid: string): AuthClaims | null => null;
-    registerAgentTools(server, services, silentLogger, getter);
-    const handler = getHandler(server, "register_agent");
-    await expect(
-      handler({ agent_id: "a1", name: "Agent1", modules: [] }, fakeExtra(undefined))
-    ).rejects.toThrow("MCP tool requires a session");
-  });
-
+  // Note: the "throws when sessionId is absent" case used to live here.
+  // Removed in #133: handlers now resolve claims via `extra.sessionId ?? ""`
+  // and let `getSessionClaims` decide what to return. The "absent
+  // sessionId + null getter" path is functionally the same as "present
+  // sessionId + null getter" — see the next test, which still covers it.
   it("throws when claims are absent for sessionId", async () => {
     const server = new McpServer({ name: "test", version: "0" });
     const getter = (_sid: string): AuthClaims | null => null;
@@ -219,15 +214,7 @@ describe("agents-tools: register_agent", () => {
 // ─── files-tools ─────────────────────────────────────────────────────────────
 
 describe("files-tools: hot_files", () => {
-  it("throws when sessionId is absent", async () => {
-    const server = new McpServer({ name: "test", version: "0" });
-    registerFilesTools(server, services, silentLogger, () => null);
-    const handler = getHandler(server, "hot_files");
-    await expect(
-      handler({ since_minutes: 30 }, fakeExtra(undefined))
-    ).rejects.toThrow("MCP tool requires a session");
-  });
-
+  // "absent sessionId" case removed in #133 — see agents-tools describe block.
   it("throws when claims missing", async () => {
     const server = new McpServer({ name: "test", version: "0" });
     registerFilesTools(server, services, silentLogger, () => null);
@@ -257,15 +244,7 @@ describe("files-tools: hot_files", () => {
 // ─── dependencies-tools ──────────────────────────────────────────────────────
 
 describe("dependencies-tools: set_dependency_map / get_blast_radius", () => {
-  it("throws when sessionId absent", async () => {
-    const server = new McpServer({ name: "test", version: "0" });
-    registerDependenciesTools(server, services, silentLogger, () => null);
-    const handler = getHandler(server, "set_dependency_map");
-    await expect(
-      handler({ modules: "{}" }, fakeExtra(undefined))
-    ).rejects.toThrow("MCP tool requires a session");
-  });
-
+  // "absent sessionId" case removed in #133 — see agents-tools describe block.
   it("sets map under claims.org", async () => {
     const server = new McpServer({ name: "test", version: "0" });
     const claims: AuthClaims = { sub: "a1", user_id: "u1", org: "org-dep", role: "agent", jti: "j1" };

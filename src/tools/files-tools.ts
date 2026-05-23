@@ -19,9 +19,7 @@ export function registerFilesTools(
   server.tool("hot_files", "List files modified by multiple agents", {
     since_minutes: z.number().optional(),
   }, async ({ since_minutes }, extra) => {
-    const sessionId = extra.sessionId;
-    if (!sessionId) throw new Error("MCP tool requires a session");
-    const claims = getSessionClaims(sessionId);
+    const claims = getSessionClaims(extra.sessionId ?? "");
     if (!claims) throw new Error("Session has no captured claims (auth bug)");
     const files = fileTracker.getHotFiles(claims.org, since_minutes || 30);
     return { content: [{ type: "text", text: JSON.stringify(files) }] };
@@ -30,9 +28,7 @@ export function registerFilesTools(
   server.tool("get_session_files", "Get files modified in a session", {
     session_id: z.string(),
   }, async ({ session_id }, extra) => {
-    const sessionId = extra.sessionId;
-    if (!sessionId) throw new Error("MCP tool requires a session");
-    const claims = getSessionClaims(sessionId);
+    const claims = getSessionClaims(extra.sessionId ?? "");
     if (!claims) throw new Error("Session has no captured claims (auth bug)");
     const files = fileTracker.getBySession(claims.org, session_id);
     return { content: [{ type: "text", text: JSON.stringify(files) }] };
@@ -43,9 +39,7 @@ export function registerFilesTools(
     agent_id: z.string(),
     within_minutes: z.number().optional(),
   }, async ({ file_path, agent_id, within_minutes }, extra) => {
-    const sessionId = extra.sessionId;
-    if (!sessionId) throw new Error("MCP tool requires a session");
-    const claims = getSessionClaims(sessionId);
+    const claims = getSessionClaims(extra.sessionId ?? "");
     if (!claims) throw new Error("Session has no captured claims (auth bug)");
     const result = fileTracker.checkFileConflict(claims.org, file_path, agent_id, within_minutes || 30);
     return { content: [{ type: "text", text: JSON.stringify(result) }] };

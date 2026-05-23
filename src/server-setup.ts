@@ -151,13 +151,18 @@ export function createServices(config: CoordinatorConfig): CoordinatorServices {
 
 /** Create a new McpServer bound to the shared services (one per MCP session).
  *
- * @param getSessionClaims - Looks up per-session claims by sessionId. In STDIO
- *   mode there are no sessions so this defaults to a no-op that always returns
- *   null, which causes tool handlers to throw "Session has no captured claims"
- *   (expected — STDIO mode is single-tenant and unauthenticated; tool callers
- *   in that mode should rely on the AUTH_ENABLED=false synthetic-claims path
- *   added to authenticateMcpRequest, which is not invoked for STDIO).
- *   Pass a real getter in serve-http.ts's streamable-HTTP path.
+ * @param getSessionClaims - Looks up per-session claims by sessionId.
+ *   - HTTP mode: serve-http.ts passes a getter backed by the per-request
+ *     captureClaimsForMcpRequest middleware (sessionId from mcp-session-id
+ *     header).
+ *   - STDIO mode: src/index.ts passes a getter that ignores the sessionId
+ *     and returns synthetic legacy claims keyed by org='default'. The
+ *     sessionId passed to handlers in stdio mode is the empty string (see
+ *     #133); the getter doesn't care which sentinel comes in.
+ *   Default getter (used by tests that construct the server bare) returns
+ *   null for every lookup, which surfaces as "Session has no captured
+ *   claims" at the handler — the right behavior for "you forgot to wire
+ *   getSessionClaims".
  */
 export function createMcpServer(
   services: CoordinatorServices,

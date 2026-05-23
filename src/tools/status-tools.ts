@@ -22,9 +22,7 @@ export function registerStatusTools(
   const { registry, consultation, fileTracker, mqttBridge } = services;
 
   server.tool("coordinator_status", "Full system status", {}, async (_args, extra) => {
-    const sessionId = extra.sessionId;
-    if (!sessionId) throw new Error("MCP tool requires a session");
-    const claims = getSessionClaims(sessionId);
+    const claims = getSessionClaims(extra.sessionId ?? "");
     if (!claims) throw new Error("Session has no captured claims (auth bug)");
     const online = registry.listOnline(claims.org);
     const openThreads = consultation.listThreads(claims.org, { status: "open" });
@@ -47,9 +45,7 @@ export function registerStatusTools(
     min_peers: z.number().optional(),
     timeout_seconds: z.number().optional(),
   }, async ({ agent_id, min_peers, timeout_seconds }, extra) => {
-    const sessionId = extra.sessionId;
-    if (!sessionId) throw new Error("MCP tool requires a session");
-    const claims = getSessionClaims(sessionId);
+    const claims = getSessionClaims(extra.sessionId ?? "");
     if (!claims) throw new Error("Session has no captured claims (auth bug)");
     const targetPeers = min_peers ?? 1;
     const timeoutMs = (timeout_seconds ?? 30) * 1000;
