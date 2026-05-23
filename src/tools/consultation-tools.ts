@@ -196,7 +196,7 @@ export function registerConsultationTools(
   });
 
   server.tool("list_threads", "List consultation threads", {
-    status: z.string().optional(),
+    status: z.enum(["open", "resolving", "closed", "cancelled"]).optional(),
     agent_id: z.string().optional(),
     module: z.string().optional(),
     assigned_to_me: z.string().optional().describe("Filter to threads claimable by this agent_id: open pool (assigned_to NULL) OR directed to me. Use for worker agents receiving directed dispatches."),
