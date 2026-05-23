@@ -23,6 +23,11 @@ jobs:
   release:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Surface release-please outputs to the docker job below so it can decide
+    # whether a release was actually cut and which tag to push to GHCR.
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
@@ -57,3 +62,24 @@ jobs:
         if: ${{ steps.release.outputs.release_created || inputs.publish_only == 'true' }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # Chained Docker publish on every release-please cut. A tag push from
+  # release-please's GITHUB_TOKEN does NOT trigger docker-publish.yml's
+  # `push: tags` event (GitHub anti-recursive workflow policy). Calling
+  # docker-publish.yml as a reusable workflow runs it in the same overall
+  # run as `release`, so no token gymnastics are needed.
+  #
+  # Gated on `release_created` so this is a no-op on every push that
+  # ONLY moves the release-please tracking PR — we only build+push when
+  # there's a real release.
+  docker:
+    needs: release
+    if: ${{ needs.release.outputs.release_created == 'true' }}
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    uses: ./.github/workflows/docker-publish.yml
+    with:
+      tag: ${{ needs.release.outputs.tag_name }}
+    secrets: inherit

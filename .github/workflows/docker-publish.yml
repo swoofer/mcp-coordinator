@@ -11,6 +11,17 @@ on:
         description: "Git tag to build from (e.g. v0.10.9)"
         required: true
         type: string
+  # Called from release.yml after release-please tags + npm publish
+  # complete, so the GHCR push runs in the same workflow run as the
+  # release. (GitHub's anti-recursive policy means a tag push from
+  # GITHUB_TOKEN does NOT trigger the `push: tags` path above — without
+  # this hook the Docker image would only update on manual dispatch.)
+  workflow_call:
+    inputs:
+      tag:
+        description: "Git tag to build from"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -63,8 +74,8 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable=${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
-            type=match,pattern=v(\d+\.\d+\.\d+),group=1,value=${{ inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' }}
-            type=match,pattern=v(\d+\.\d+),group=1,value=${{ inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' }}
+            type=match,pattern=v(\d+\.\d+\.\d+),group=1,value=${{ inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' }}
+            type=match,pattern=v(\d+\.\d+),group=1,value=${{ inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' }}
 
       - name: Build and push (linux/amd64, linux/arm64)
         uses: docker/build-push-action@v6
