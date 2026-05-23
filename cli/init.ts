@@ -109,15 +109,58 @@ export function createInitCommand(): Command {
       const dir = ensureConfigDir();
       console.log(`Config directory: ${dir}`);
 
+      // loadConfig() throws on a malformed existing config.json (see #108).
+      // For init that's a UX regression: init's whole job is to write a
+      // fresh config, so a corrupt existing file should be exactly what
+      // init recovers from -- not a blocker. We wrap with a try/catch
+      // here, warn on stderr, and fall back to the same defaults
+      // cli/config.ts uses internally. The throw in cli/config.ts is
+      // preserved (correct contract for server/start, encryption/migrate,
+      // etc. -- those callers should fail loud). See issue #109.
+      const DEFAULTS_FOR_INIT = {
+        server: { port: 3100, data_dir: join(dir, "data") },
+        defaults: { coordinator_url: "http://localhost:3100" },
+      };
+      const safeLoadConfig = (): ReturnType<typeof loadConfig> => {
+        try {
+          return loadConfig();
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error(
+            `Warning: existing config.json is malformed and will be overwritten with defaults.\n  ${msg}`,
+          );
+          return DEFAULTS_FOR_INIT;
+        }
+      };
+
       const configPath = join(dir, "config.json");
       if (!existsSync(configPath)) {
-        saveConfig(loadConfig());
+        // File doesn't exist -- loadConfig() returns defaults and doesn't
+        // throw, but use the safe wrapper defensively (race-safe).
+        saveConfig(safeLoadConfig());
         console.log(`Wrote default config:    ${configPath}`);
       } else {
-        console.log(`Config already exists:   ${configPath} (untouched)`);
+        // File exists -- if it parses, leave it untouched. If it's malformed,
+        // recover by overwriting with defaults (#109).
+        let parsed = false;
+        try {
+          loadConfig();
+          parsed = true;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error(
+            `Warning: existing config.json is malformed and will be overwritten with defaults.\n  ${msg}`,
+          );
+        }
+        if (parsed) {
+          console.log(`Config already exists:   ${configPath} (untouched)`);
+        } else {
+          saveConfig(DEFAULTS_FOR_INIT);
+          console.log(`Rewrote config.json with defaults: ${configPath}`);
+        }
       }
 
-      const config = loadConfig();
+      const config = safeLoadConfig();
       const url = opts.url ?? `http://localhost:${config.server.port}/mcp`;
 
       const snippet = {
