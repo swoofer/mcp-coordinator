@@ -38,7 +38,7 @@
     "applicationCategory": "DeveloperApplication",
     "applicationSubCategory": "AI Agent Coordination",
     "operatingSystem": "Linux, macOS, Windows",
-    "softwareVersion": "0.10.4",
+    "softwareVersion": "0.11.0",
     "license": "https://opensource.org/licenses/MIT",
     "codeRepository": "https://github.com/swoofer/mcp-coordinator",
     "programmingLanguage": ["JavaScript", "Node.js"],
@@ -1635,7 +1635,7 @@
 <section id="hero">
   <div class="container">
     <div class="hero-eyebrow">
-      <span data-i18n="hero.eyebrow">Open Source &middot; MIT &middot; v0.10.4</span>
+      <span data-i18n="hero.eyebrow">Open Source &middot; MIT &middot; v0.11.0</span>
     </div>
     <h1 data-i18n="hero.h1">Zero conflicts. Every agent aligned.</h1>
     <p class="hero-subtitle" data-i18n="hero.subtitle">5 agents, 1 codebase, 0 merge conflicts. The MCP server that keeps parallel Claude Code, Cursor, and Cline agents aligned.</p>
@@ -2270,7 +2270,7 @@
         <div class="agent-status"><span class="dot dot-green" aria-hidden="true"></span> Beta &mdash; idle</div>
         <div class="agent-status"><span class="dot dot-yellow" aria-hidden="true"></span> Gamma &mdash; waiting</div>
         <div class="agent-status"><span class="dot dot-red" aria-hidden="true"></span> Delta &mdash; offline</div>
-        <div class="agent-status" style="margin-left: auto; color: var(--muted); font-size: 0.8rem;" data-i18n="start.dash.meta">mcp-coordinator v0.10.4 &middot; quota 62%</div>
+        <div class="agent-status" style="margin-left: auto; color: var(--muted); font-size: 0.8rem;" data-i18n="start.dash.meta">mcp-coordinator v0.11.0 &middot; quota 62%</div>
       </div>
       <div class="dash-timeline">
         <div><span class="tl-time">09:41:02</span> <span class="tl-blue">Alpha</span> announced: "Add updated_at to User" &rarr; types.ts, user.service.ts</div>
@@ -2358,7 +2358,7 @@
   <div class="container">
     <div class="text-center">
       <h2 class="section-title" data-i18n="compliance.title">Enterprise &amp; Compliance</h2>
-      <p class="section-sub" data-i18n="compliance.intro">Built for compliance from the foundation up. v0.10.4 ships full Phase 2 OAuth 2.1, multi-IdP SSO, and SHA-256 audit log tamper-evidence — the capabilities regulated-industry and SOC 2 Type II deployments actually need to assemble an audit dossier.</p>
+      <p class="section-sub" data-i18n="compliance.intro">Built for compliance from the foundation up. v0.11.0 ships full Phase 2 OAuth 2.1, multi-IdP SSO, and SHA-256 audit log tamper-evidence — the capabilities regulated-industry and SOC 2 Type II deployments actually need to assemble an audit dossier.</p>
     </div>
 
     <div class="compliance-table-wrap fade-in">
@@ -2727,7 +2727,7 @@
         <p class="timeline-meta">
           <span data-i18n="roadmap.v10.date">Shipped May 2026</span>
           <span aria-hidden="true">·</span>
-          <a href="https://github.com/swoofer/mcp-coordinator/releases/tag/v0.10.4" target="_blank" rel="noopener noreferrer" data-i18n="roadmap.v10.link" aria-label="v0.10.4 release on GitHub">v0.10.4 release</a>
+          <a href="https://github.com/swoofer/mcp-coordinator/releases/tag/v0.10.9" target="_blank" rel="noopener noreferrer" data-i18n="roadmap.v10.link" aria-label="v0.10.9 release on GitHub">v0.10.9 release</a>
         </p>
       </div>
 
@@ -2744,26 +2744,26 @@
       </div>
 
       <div class="timeline-item">
-        <div class="timeline-dot dot-planned" aria-hidden="true"></div>
-        <div class="timeline-badge badge-planned" data-i18n="roadmap.badge.planned">Planned</div>
+        <div class="timeline-dot dot-done" aria-hidden="true"></div>
+        <div class="timeline-badge badge-done" data-i18n="roadmap.badge.done">Shipped</div>
         <h4 data-i18n="roadmap.encrest.title">Encryption-at-rest for IdP tokens</h4>
-        <p data-i18n="roadmap.encrest.desc">Envelope encryption for <code>users.idp_access_token</code> and <code>users.idp_refresh_token</code>. Master key via env var; per-row DEK derived via HKDF. Required for SOC 2 Type II readiness on deployments that store long-lived IdP credentials. Hooked into the existing <code>EncryptionProvider</code> interface shipped in v0.7.</p>
+        <p data-i18n="roadmap.encrest.desc">Envelope encryption for <code>users.idp_access_token</code> and <code>users.idp_refresh_token</code>. Master key via <code>COORDINATOR_ENCRYPTION_KEY</code>; per-row DEK derived via HKDF. Shipped in v0.10.5 with column-level rotation support and a self-healing decrypt path for graceful key migration.</p>
         <p class="timeline-meta">
-          <span data-i18n="roadmap.encrest.date">Targeting v0.10.x</span>
+          <span data-i18n="roadmap.encrest.date">Shipped May 2026 (v0.10.5)</span>
           <span aria-hidden="true">·</span>
-          <a href="https://github.com/swoofer/mcp-coordinator/issues?q=is%3Aissue+label%3Aencryption-at-rest" target="_blank" rel="noopener noreferrer" data-i18n="roadmap.encrest.link" aria-label="encryption-at-rest issues on GitHub">Follow on GitHub</a>
+          <a href="https://github.com/swoofer/mcp-coordinator/releases/tag/v0.10.5" target="_blank" rel="noopener noreferrer" data-i18n="roadmap.encrest.link" aria-label="v0.10.5 release on GitHub">v0.10.5 release</a>
         </p>
       </div>
 
       <div class="timeline-item">
-        <div class="timeline-dot dot-planned" aria-hidden="true"></div>
-        <div class="timeline-badge badge-planned" data-i18n="roadmap.badge.planned">Planned</div>
-        <h4 data-i18n="roadmap.postgres.title">Postgres adapter for regulated multi-instance workloads</h4>
-        <p data-i18n="roadmap.postgres.desc">Drop-in <code>PostgresAdapter</code> alongside the existing better-sqlite3 / bun:sqlite backends. Unlocks horizontal scaling behind a load balancer and managed-RDBMS compliance posture (PITR, backup, encryption-at-storage). Scope-honest design doc captures the 8-week migration cost (168 sync→async callsites + SQL dialect translation).</p>
+        <div class="timeline-dot dot-done" aria-hidden="true"></div>
+        <div class="timeline-badge badge-done" data-i18n="roadmap.badge.done">Shipped</div>
+        <h4 data-i18n="roadmap.v11.title">v0.11 — pnpm migration + official Docker image</h4>
+        <p data-i18n="roadmap.v11.desc">Tooling stack moved from npm to pnpm (Corepack-managed) for faster, deterministic installs and a stricter dep tree. Official multi-arch Docker image now published to GitHub Container Registry (<code>ghcr.io/swoofer/mcp-coordinator</code>) on every release tag with provenance and SBOM attestation. <code>server status</code> exit code now reflects daemon health for clean shell scripting. FK constraints added on coordinator tables to prevent orphan rows on org delete. 5 npm-audit findings cleared (uuid, qs).</p>
         <p class="timeline-meta">
-          <span data-i18n="roadmap.postgres.date">Targeting v0.11</span>
+          <span data-i18n="roadmap.v11.date">Shipped May 2026</span>
           <span aria-hidden="true">·</span>
-          <a href="https://github.com/swoofer/mcp-coordinator/blob/main/docs/superpowers/specs/2026-05-16-postgres-adapter-design.md" target="_blank" rel="noopener noreferrer" data-i18n="roadmap.postgres.link" aria-label="Postgres adapter design spec">Read the design spec</a>
+          <a href="https://github.com/swoofer/mcp-coordinator/releases/tag/v0.11.0" target="_blank" rel="noopener noreferrer" data-i18n="roadmap.v11.link" aria-label="v0.11.0 release on GitHub">v0.11.0 release</a>
         </p>
       </div>
 
@@ -2804,7 +2804,7 @@
     <a href="https://github.com/sponsors/swoofer" target="_blank" rel="noopener noreferrer">Sponsor</a>
     <a href="https://buymeacoffee.com/swoofer" target="_blank" rel="noopener noreferrer">Buy Me A Coffee</a>
   </div>
-  <p data-i18n="footer.text">MIT License &nbsp;·&nbsp; Built with <a href="https://claude.ai/code" target="_blank" rel="noopener noreferrer">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v0.10.4</p>
+  <p data-i18n="footer.text">MIT License &nbsp;·&nbsp; Built with <a href="https://claude.ai/code" target="_blank" rel="noopener noreferrer">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v0.11.0</p>
 </footer>
 
 <script>
@@ -2905,7 +2905,7 @@
       "nav.install": "Install",
       "nav.roadmap": "Roadmap",
       "nav.getstarted": "Get Started",
-      "hero.eyebrow": "Open Source &middot; MIT &middot; v0.10.4",
+      "hero.eyebrow": "Open Source &middot; MIT &middot; v0.11.0",
       "hero.h1": "Zero conflicts. Every agent aligned.",
       "hero.subtitle": "5 agents, 1 codebase, 0 merge conflicts. The MCP server that keeps parallel Claude Code, Cursor, and Cline agents aligned.",
       "hero.stat.latency": "&lt;50ms push latency",
@@ -3074,7 +3074,7 @@
       "start.alt": "<strong>Prefer Docker?</strong> Pull the multi-arch image instead: <code class=\"ic\">docker pull ghcr.io/swoofer/mcp-coordinator:0.11.0</code>. A working compose stack with Caddy auto-TLS ships at <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose\">examples/docker-compose/</a>.",
       "start.note": "<code class=\"ic\">git worktree add ../feature-x main</code> and run each agent in its own worktree &mdash; mcp-coordinator handles \"who's editing types.ts\"; worktrees handle \"no two agents fighting the same inode.\"",
       "start.dash.title": "What you'll see in 60 seconds",
-      "start.dash.meta": "mcp-coordinator v0.10.4 &middot; quota 62%",
+      "start.dash.meta": "mcp-coordinator v0.11.0 &middot; quota 62%",
       "start.dash.aria": "Sample dashboard view: four agents tracked live, with a conflict resolved in 38 seconds",
       "start.cta.star": "Star on GitHub",
       "start.cta.issue": "Open an issue",
@@ -3166,19 +3166,19 @@
       "roadmap.v10.title": "v0.10 — GitHub App + OIDC defense-in-depth + per-provider allowlist strategies",
       "roadmap.v10.desc": "First-class <code>GitHubAppProvider</code> sibling to the OAuth App, with auto-refresh of 8h user-to-server tokens via <code>refreshIdpToken</code>. OIDC <code>nonce</code> claim verification (Core 1.0 §3.1.2.1) guards against <code>id_token</code> replay. Four allowlist strategies — <code>memberships</code> / <code>idp_org_id</code> / <code>id_token_groups</code> / <code>none</code> — auto-selected per provider so Google Workspace deploys off the <code>hd</code> claim, OIDC off configurable <code>groups</code> path, GitHub App off either user orgs or installation footprint. 1740 tests across 119 passing files.",
       "roadmap.v10.date": "Shipped May 2026",
-      "roadmap.v10.link": "v0.10.4 release",
+      "roadmap.v10.link": "v0.10.9 release",
       "roadmap.llm.title": "LLM Reasoner — gray-zone arbitration (opt-in)",
       "roadmap.llm.desc": "Gated opt-in layer for ambiguous conflicts. Ships after 1 month of v0.5.0 telemetry validates ROI.",
       "roadmap.llm.date": "In design · gated on v0.5.0 telemetry",
       "roadmap.llm.link": "Follow on GitHub",
       "roadmap.encrest.title": "Encryption-at-rest for IdP tokens",
-      "roadmap.encrest.desc": "Envelope encryption for <code>users.idp_access_token</code> and <code>users.idp_refresh_token</code>. Master key via env var; per-row DEK derived via HKDF. Required for SOC 2 Type II readiness on deployments that store long-lived IdP credentials. Hooked into the existing <code>EncryptionProvider</code> interface shipped in v0.7.",
-      "roadmap.encrest.date": "Targeting v0.10.x",
-      "roadmap.encrest.link": "Follow on GitHub",
-      "roadmap.postgres.title": "Postgres adapter for regulated multi-instance workloads",
-      "roadmap.postgres.desc": "Drop-in <code>PostgresAdapter</code> alongside the existing better-sqlite3 / bun:sqlite backends. Unlocks horizontal scaling behind a load balancer and managed-RDBMS compliance posture (PITR, backup, encryption-at-storage). Scope-honest design doc captures the 8-week migration cost (168 sync→async callsites + SQL dialect translation).",
-      "roadmap.postgres.date": "Targeting v0.11",
-      "roadmap.postgres.link": "Read the design spec",
+      "roadmap.encrest.desc": "Envelope encryption for <code>users.idp_access_token</code> and <code>users.idp_refresh_token</code>. Master key via <code>COORDINATOR_ENCRYPTION_KEY</code>; per-row DEK derived via HKDF. Shipped in v0.10.5 with column-level rotation support and a self-healing decrypt path for graceful key migration.",
+      "roadmap.encrest.date": "Shipped May 2026 (v0.10.5)",
+      "roadmap.encrest.link": "v0.10.5 release",
+      "roadmap.v11.title": "v0.11 — pnpm migration + official Docker image",
+      "roadmap.v11.desc": "Tooling stack moved from npm to pnpm (Corepack-managed) for faster, deterministic installs and a stricter dep tree. Official multi-arch Docker image now published to GitHub Container Registry (<code>ghcr.io/swoofer/mcp-coordinator</code>) on every release tag with provenance and SBOM attestation. <code>server status</code> exit code now reflects daemon health for clean shell scripting. FK constraints added on coordinator tables to prevent orphan rows on org delete. 5 npm-audit findings cleared (uuid, qs).",
+      "roadmap.v11.date": "Shipped May 2026",
+      "roadmap.v11.link": "v0.11.0 release",
       "roadmap.v1_0.title": "v1.0 — Stable API + cross-repo coordination",
       "roadmap.v1_0.desc": "Frozen public API, versioned REST endpoints, migration guides. Coordination across multiple repositories from a single MQTT broker. Phase 5 multi-instance via Redis pub/sub for membership cache invalidation + token_epoch reads + rate-limit + sweeper leader election.",
       "roadmap.v1_0.date": "Date TBD",
@@ -3187,7 +3187,7 @@
       "roadmap.harbor.desc": "Native integration with Anthropic's forthcoming server-side push channel (internally tracked as <code>tengu_harbor</code>). Listener code already lives alongside the MQTT bridge. The moment it ships, mcp-coordinator plugs in.",
       "roadmap.harbor.date": "Date TBD · upstream-gated",
       "roadmap.harbor.link": "Follow on GitHub",
-      "footer.text": "MIT License &nbsp;·&nbsp; Built with <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v0.10.4",
+      "footer.text": "MIT License &nbsp;·&nbsp; Built with <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v0.11.0",
       // === Deprecated keys preserved for backwards-compat (old taxonomy) ===
       "why.title": "Why MCP Coordinator?",
       "why.subtitle": "Run five agents on the same repo without merge conflicts, duplicated work, or silent regressions.",
@@ -3317,7 +3317,7 @@
       "roadmap.v07.date": "Shipped May 2026",
       "roadmap.v07.link": "v0.7.0 release",
       "compliance.title": "Enterprise &amp; Compliance",
-      "compliance.intro": "Built for compliance from the foundation up. v0.10.4 ships full Phase 2 OAuth 2.1, multi-IdP SSO, and SHA-256 audit log tamper-evidence — the capabilities regulated-industry and SOC 2 Type II deployments actually need to assemble an audit dossier.",
+      "compliance.intro": "Built for compliance from the foundation up. v0.11.0 ships full Phase 2 OAuth 2.1, multi-IdP SSO, and SHA-256 audit log tamper-evidence — the capabilities regulated-industry and SOC 2 Type II deployments actually need to assemble an audit dossier.",
       "compliance.th.capability": "Capability",
       "compliance.th.status": "Status",
       "compliance.th.aligned": "Aligned with",
@@ -3370,7 +3370,7 @@
       "nav.roadmap": "Feuille de route",
       "nav.getstarted": "Commencer",
       "nav.compliance": "Conformité",
-      "hero.eyebrow": "Open Source &middot; MIT &middot; v0.10.4",
+      "hero.eyebrow": "Open Source &middot; MIT &middot; v0.11.0",
       "hero.h1": "Zéro conflit. Tous les agents alignés.",
       "hero.subtitle": "Serveur MCP clé en main qui permet à des agents Claude Code, Cursor ou Cline en parallèle d'annoncer leur travail, détecter les conflits et atteindre un consensus — avant de toucher à votre code.",
       "hero.stat.latency": "Latence push &lt;50 ms",
@@ -3533,7 +3533,7 @@
       "start.alt": "<strong>Vous préférez Docker ?</strong> Pull plutôt l'image multi-arch : <code class=\"ic\">docker pull ghcr.io/swoofer/mcp-coordinator:0.11.0</code>. Une stack compose complète avec Caddy auto-TLS est fournie dans <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose\">examples/docker-compose/</a>.",
       "start.note": "<code class=\"ic\">git worktree add ../feature-x main</code> et lancez chaque agent dans son propre worktree &mdash; mcp-coordinator gère \"qui édite types.ts\" ; les worktrees gèrent \"deux agents qui ne se battent pas sur la même inode.\"",
       "start.dash.title": "Ce que vous verrez en 60 secondes",
-      "start.dash.meta": "mcp-coordinator v0.10.4 &middot; quota 62%",
+      "start.dash.meta": "mcp-coordinator v0.11.0 &middot; quota 62%",
       "start.dash.aria": "Vue exemple du dashboard : quatre agents suivis en direct, avec un conflit résolu en 38 secondes",
       "start.cta.star": "Mettre une étoile sur GitHub",
       "start.cta.issue": "Ouvrir une issue",
@@ -3633,25 +3633,13 @@
       "roadmap.v10.title": "v0.10 — GitHub App + défense en profondeur OIDC + stratégies d'allowlist par provider",
       "roadmap.v10.desc": "<code>GitHubAppProvider</code> first-class à côté de l'OAuth App, avec auto-refresh des tokens user-to-server de 8h via <code>refreshIdpToken</code>. Vérification du claim OIDC <code>nonce</code> (Core 1.0 §3.1.2.1) contre le replay d'<code>id_token</code>. Quatre stratégies d'allowlist — <code>memberships</code> / <code>idp_org_id</code> / <code>id_token_groups</code> / <code>none</code> — auto-sélectionnées par provider, ainsi Google Workspace s'appuie sur le claim <code>hd</code>, OIDC sur un chemin <code>groups</code> configurable, GitHub App sur les orgs utilisateur ou l'empreinte d'installation. 1740 tests sur 119 fichiers passants.",
       "roadmap.v10.date": "Livré en mai 2026",
-      "roadmap.v10.link": "Release v0.10.4",
-      "roadmap.encrest.title": "Chiffrement au repos pour les tokens IdP",
-      "roadmap.encrest.desc": "Chiffrement par enveloppe pour <code>users.idp_access_token</code> et <code>users.idp_refresh_token</code>. Clé maîtresse via variable d'environnement ; DEK par ligne dérivée via HKDF. Requis pour la préparation SOC 2 Type II sur les déploiements qui stockent des credentials IdP à longue durée de vie. Branché sur l'interface <code>EncryptionProvider</code> existante livrée en v0.7.",
-      "roadmap.encrest.date": "Visé pour v0.10.x",
-      "roadmap.encrest.link": "Suivre sur GitHub",
-      "roadmap.postgres.title": "Adaptateur Postgres pour charges multi-instances régulées",
-      "roadmap.postgres.desc": "<code>PostgresAdapter</code> drop-in aux côtés des backends existants better-sqlite3 / bun:sqlite. Débloque le scaling horizontal derrière un load balancer et une posture de conformité RDBMS managée (PITR, sauvegarde, chiffrement au stockage). Document de conception scope-honest qui chiffre le coût de migration à 8 semaines (168 callsites sync→async + traduction du dialecte SQL).",
-      "roadmap.postgres.date": "Visé pour v0.11",
-      "roadmap.postgres.link": "Lire la spécification de conception",
-      "roadmap.v1_0.title": "v1.0 — API stable + coordination cross-repo",
-      "roadmap.v1_0.desc": "API publique gelée, endpoints REST versionnés, guides de migration. Coordination sur plusieurs repositories depuis un broker unique. Multi-instance Phase 5 via Redis pub/sub pour l'invalidation du cache de membership + lectures de token_epoch + rate-limit + élection de leader du sweeper.",
-      "roadmap.v1_0.date": "Date à définir",
-      "roadmap.v1_0.link": "Suivre sur GitHub",
+      "roadmap.v10.link": "Release v0.10.9",
       "roadmap.harbor.title": "Push server-gated (quand ce sera disponible)",
       "roadmap.harbor.desc": "Intégration native avec le futur canal de push server-side d'Anthropic (suivi en interne sous le nom <code class=\"ic\">tengu_harbor</code>). Le code listener vit déjà à côté du bridge MQTT — dès que ça sort, mcp-coordinator se branche.",
       "roadmap.harbor.date": "Date à définir · dépend de l'amont",
       "roadmap.harbor.link": "Suivre sur GitHub",
       "compliance.title": "Entreprise &amp; Conformité",
-      "compliance.intro": "Conçu pour la conformité depuis la fondation. v0.10.4 livre OAuth 2.1 Phase 2 complet, SSO multi-IdP et inviolabilité du journal d'audit via SHA-256 &mdash; les capacités dont les déploiements en industries régulées et SOC 2 Type II ont réellement besoin pour constituer un dossier d'audit.",
+      "compliance.intro": "Conçu pour la conformité depuis la fondation. v0.11.0 livre OAuth 2.1 Phase 2 complet, SSO multi-IdP et inviolabilité du journal d'audit via SHA-256 &mdash; les capacités dont les déploiements en industries régulées et SOC 2 Type II ont réellement besoin pour constituer un dossier d'audit.",
       "compliance.th.capability": "Capacité",
       "compliance.th.status": "Statut",
       "compliance.th.aligned": "Aligné avec",
@@ -3692,7 +3680,7 @@
       "compliance.row.retention.status": "Sweeper livré &middot; UI future",
       "compliance.row.retention.aligned": "SOC 2 &middot; Minimisation RGPD",
       "compliance.disclaimer": "mcp-coordinator n'est <strong>pas certifié SOC 2</strong> &mdash; la certification est un travail d'auditeur, pas de code. Nous livrons les crochets architecturaux (isolation multi-tenant, audit log, interface de chiffrement) pour que les équipes en quête d'audit aient une longueur d'avance, mais la certification elle-même reste le processus de votre équipe.",
-      "footer.text": "Licence MIT &nbsp;·&nbsp; Construit avec <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v0.10.4",
+      "footer.text": "Licence MIT &nbsp;·&nbsp; Construit avec <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v0.11.0",
       "why.title": "Pourquoi MCP Coordinator ?",
       "why.subtitle": "Faites tourner cinq agents sur le même repo, sans conflit de merge, sans travail dupliqué, sans régression silencieuse.",
       "why.block1.title": "Plusieurs agents, un seul processus aligné",
@@ -3831,7 +3819,7 @@
       "nav.install": "Instalar",
       "nav.roadmap": "Hoja de ruta",
       "nav.getstarted": "Empezar",
-      "hero.eyebrow": "Código abierto &middot; MIT &middot; v0.10.4",
+      "hero.eyebrow": "Código abierto &middot; MIT &middot; v0.11.0",
       "hero.h1": "Cero conflictos. Cada agente alineado.",
       "hero.subtitle": "Servidor MCP plug-and-play que permite a agentes paralelos de Claude Code, Cursor o Cline anunciar su trabajo, detectar conflictos y alcanzar consenso — antes de tocar su código.",
       "hero.stat.latency": "&lt;50ms de latencia push",
@@ -3994,7 +3982,7 @@
       "start.alt": "<strong>¿Prefieres Docker?</strong> Haz pull de la imagen multi-arch: <code class=\"ic\">docker pull ghcr.io/swoofer/mcp-coordinator:0.11.0</code>. Un stack compose completo con Caddy auto-TLS está en <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose\">examples/docker-compose/</a>.",
       "start.note": "<code class=\"ic\">git worktree add ../feature-x main</code> y ejecuta cada agente en su propio worktree &mdash; mcp-coordinator maneja \"quién está editando types.ts\"; los worktrees manejan \"que dos agentes no peleen por el mismo inode.\"",
       "start.dash.title": "Lo que verás en 60 segundos",
-      "start.dash.meta": "mcp-coordinator v0.10.4 &middot; cuota 62%",
+      "start.dash.meta": "mcp-coordinator v0.11.0 &middot; cuota 62%",
       "start.dash.aria": "Vista de dashboard de muestra: cuatro agentes rastreados en vivo, con un conflicto resuelto en 38 segundos",
       "start.cta.star": "Dale una estrella en GitHub",
       "start.cta.issue": "Abrir un issue",
@@ -4071,7 +4059,7 @@
       "roadmap.harbor.desc": "Integración nativa con el próximo canal push del lado del servidor de Anthropic (rastreado internamente como <code class=\"ic\">tengu_harbor</code>). El código del listener ya convive junto al bridge MQTT — en cuanto se publique, mcp-coordinator se enchufa.",
       "roadmap.harbor.date": "Fecha por definir · sujeto a upstream",
       "roadmap.harbor.link": "Seguir en GitHub",
-      "footer.text": "Licencia MIT &nbsp;·&nbsp; Construido con <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v0.10.4",
+      "footer.text": "Licencia MIT &nbsp;·&nbsp; Construido con <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v0.11.0",
       "why.title": "¿Por qué MCP Coordinator?",
       "why.subtitle": "Ejecute cinco agentes en el mismo repositorio sin conflictos de merge, trabajo duplicado ni regresiones silenciosas.",
       "why.block1.title": "Varios agentes, un solo proceso alineado",
@@ -4211,7 +4199,7 @@
       "roadmap.v07.date": "Lanzado en mayo de 2026",
       "roadmap.v07.link": "Lanzamiento v0.7.0",
       "compliance.title": "Empresa y cumplimiento",
-      "compliance.intro": "Construido para el cumplimiento desde la base. v0.10.4 entrega Phase 2 OAuth 2.1 completo, SSO multi-IdP y evidencia de manipulación del audit log con SHA-256 — las capacidades que los despliegues en industrias reguladas y SOC 2 Type II realmente necesitan para preparar un dossier de auditoría.",
+      "compliance.intro": "Construido para el cumplimiento desde la base. v0.11.0 entrega Phase 2 OAuth 2.1 completo, SSO multi-IdP y evidencia de manipulación del audit log con SHA-256 — las capacidades que los despliegues en industrias reguladas y SOC 2 Type II realmente necesitan para preparar un dossier de auditoría.",
       "compliance.th.capability": "Capacidad",
       "compliance.th.status": "Estado",
       "compliance.th.aligned": "Alineado con",
@@ -4261,19 +4249,7 @@
       "roadmap.v10.title": "v0.10 — GitHub App + defensa en profundidad OIDC + estrategias de allowlist por proveedor",
       "roadmap.v10.desc": "<code>GitHubAppProvider</code> de primer nivel hermano de la OAuth App, con auto-refresco de tokens user-to-server de 8h vía <code>refreshIdpToken</code>. Verificación de claim <code>nonce</code> OIDC (Core 1.0 §3.1.2.1) protege contra replay de <code>id_token</code>. Cuatro estrategias de allowlist — <code>memberships</code> / <code>idp_org_id</code> / <code>id_token_groups</code> / <code>none</code> — auto-seleccionadas por proveedor, de modo que los despliegues Google Workspace usan el claim <code>hd</code>, OIDC usa una ruta <code>groups</code> configurable, GitHub App usa orgs de usuario o huella de instalación. 1740 tests en 119 archivos pasando.",
       "roadmap.v10.date": "Lanzado en mayo de 2026",
-      "roadmap.v10.link": "Lanzamiento v0.10.4",
-      "roadmap.encrest.title": "Cifrado en reposo para tokens IdP",
-      "roadmap.encrest.desc": "Cifrado envelope para <code>users.idp_access_token</code> y <code>users.idp_refresh_token</code>. Clave maestra vía variable de entorno; DEK por fila derivada vía HKDF. Requerido para preparación SOC 2 Type II en despliegues que almacenan credenciales IdP de larga duración. Enganchado en la interfaz <code>EncryptionProvider</code> entregada en v0.7.",
-      "roadmap.encrest.date": "Objetivo v0.10.x",
-      "roadmap.encrest.link": "Seguir en GitHub",
-      "roadmap.postgres.title": "Adaptador Postgres para cargas multi-instancia reguladas",
-      "roadmap.postgres.desc": "<code>PostgresAdapter</code> drop-in junto a los backends existentes better-sqlite3 / bun:sqlite. Desbloquea el escalado horizontal detrás de un load balancer y la postura de cumplimiento RDBMS gestionado (PITR, backup, cifrado-en-almacenamiento). El documento de diseño honesto-en-alcance captura el coste de migración de 8 semanas (168 callsites sync→async + traducción del dialecto SQL).",
-      "roadmap.postgres.date": "Objetivo v0.11",
-      "roadmap.postgres.link": "Leer el documento de diseño",
-      "compliance.row.oauth.cap": "OAuth 2.1 + device flow RFC 8628 + sesiones por cookie + tokens de servicio (Phase 2)",
-      "compliance.row.oauth.status": "Lanzado v0.8",
-      "compliance.row.oauth.aligned": "SOC 2 CC6.1 &middot; CC6.6 &middot; CC6.7",
-      "compliance.row.multiidp.cap": "SSO multi-IdP — GitHub OAuth App + GitHub App + Google + OIDC genérico",
+      "roadmap.v10.link": "Lanzamiento v0.10.9",
       "compliance.row.multiidp.status": "Lanzado v0.9 &rarr; v0.10",
       "compliance.row.multiidp.aligned": "SOC 2 CC6.1 &middot; identidad centralizada",
       "compliance.row.auditchain.cap": "Cadena de hash SHA-256 en cada fila de <code>audit_log</code> (evidencia de manipulación)",
@@ -4293,7 +4269,7 @@
       "nav.install": "Installation",
       "nav.roadmap": "Roadmap",
       "nav.getstarted": "Loslegen",
-      "hero.eyebrow": "Open Source &middot; MIT &middot; v0.10.4",
+      "hero.eyebrow": "Open Source &middot; MIT &middot; v0.11.0",
       "hero.h1": "Null Konflikte. Jeder Agent abgestimmt.",
       "hero.subtitle": "Drop-in MCP-Server, mit dem parallele Claude-Code-, Cursor- oder Cline-Agenten ihre Arbeit ankündigen, Konflikte erkennen und zu einem Konsens kommen — bevor sie eine einzige Zeile Ihres Codes anfassen.",
       "hero.stat.latency": "&lt;50 ms Push-Latenz",
@@ -4456,7 +4432,7 @@
       "start.alt": "<strong>Bevorzugen Sie Docker?</strong> Ziehen Sie stattdessen das Multi-Arch-Image: <code class=\"ic\">docker pull ghcr.io/swoofer/mcp-coordinator:0.11.0</code>. Ein vollständiger Compose-Stack mit Caddy auto-TLS liegt unter <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose\">examples/docker-compose/</a>.",
       "start.note": "<code class=\"ic\">git worktree add ../feature-x main</code> und führe jeden Agenten in seinem eigenen Worktree aus &mdash; mcp-coordinator regelt \"wer bearbeitet types.ts\"; Worktrees regeln \"keine zwei Agenten kämpfen um dieselbe Inode.\"",
       "start.dash.title": "Was du in 60 Sekunden siehst",
-      "start.dash.meta": "mcp-coordinator v0.10.4 &middot; Quota 62%",
+      "start.dash.meta": "mcp-coordinator v0.11.0 &middot; Quota 62%",
       "start.dash.aria": "Beispiel-Dashboard-Ansicht: vier Agenten live verfolgt, mit einem in 38 Sekunden gelösten Konflikt",
       "start.cta.star": "Auf GitHub starren",
       "start.cta.issue": "Issue eröffnen",
@@ -4533,7 +4509,7 @@
       "roadmap.harbor.desc": "Native Integration mit dem kommenden Server-Side-Push-Kanal von Anthropic (intern als <code class=\"ic\">tengu_harbor</code> geführt). Listener-Code liegt bereits neben der MQTT-Bridge — sobald er ausgeliefert wird, klinkt sich mcp-coordinator ein.",
       "roadmap.harbor.date": "Datum offen · upstream-abhängig",
       "roadmap.harbor.link": "Auf GitHub folgen",
-      "footer.text": "MIT-Lizenz &nbsp;·&nbsp; Gebaut mit <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v0.10.4",
+      "footer.text": "MIT-Lizenz &nbsp;·&nbsp; Gebaut mit <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v0.11.0",
       "why.title": "Warum MCP Coordinator?",
       "why.subtitle": "Fünf Agenten auf demselben Repo betreiben — ohne Merge-Konflikte, doppelte Arbeit oder stille Regressionen.",
       "why.block1.title": "Mehrere Agenten, ein abgestimmter Prozess",
@@ -4673,7 +4649,7 @@
       "roadmap.v07.date": "Veröffentlicht im Mai 2026",
       "roadmap.v07.link": "v0.7.0 Release",
       "compliance.title": "Enterprise &amp; Compliance",
-      "compliance.intro": "Von Grund auf für Compliance gebaut. v0.10.4 liefert vollständiges Phase 2 OAuth 2.1, Multi-IdP SSO und SHA-256 Audit-Log-Tamper-Evidence — die Fähigkeiten, die regulierte Branchen und SOC 2 Type II Deployments tatsächlich brauchen, um ein Audit-Dossier zusammenzustellen.",
+      "compliance.intro": "Von Grund auf für Compliance gebaut. v0.11.0 liefert vollständiges Phase 2 OAuth 2.1, Multi-IdP SSO und SHA-256 Audit-Log-Tamper-Evidence — die Fähigkeiten, die regulierte Branchen und SOC 2 Type II Deployments tatsächlich brauchen, um ein Audit-Dossier zusammenzustellen.",
       "compliance.th.capability": "Fähigkeit",
       "compliance.th.status": "Status",
       "compliance.th.aligned": "Ausgerichtet auf",
@@ -4723,19 +4699,7 @@
       "roadmap.v10.title": "v0.10 — GitHub App + OIDC Defense-in-Depth + Per-Provider-Allowlist-Strategien",
       "roadmap.v10.desc": "First-Class <code>GitHubAppProvider</code> als Geschwister zur OAuth App, mit Auto-Refresh von 8h User-to-Server-Tokens via <code>refreshIdpToken</code>. Verifikation des OIDC <code>nonce</code>-Claims (Core 1.0 §3.1.2.1) schützt vor <code>id_token</code>-Replay. Vier Allowlist-Strategien — <code>memberships</code> / <code>idp_org_id</code> / <code>id_token_groups</code> / <code>none</code> — automatisch pro Provider ausgewählt, sodass Google Workspace über den <code>hd</code>-Claim, OIDC über konfigurierbaren <code>groups</code>-Pfad und GitHub App entweder über User-Orgs oder Installation-Footprint laufen. 1740 Tests in 119 bestehenden Dateien.",
       "roadmap.v10.date": "Veröffentlicht im Mai 2026",
-      "roadmap.v10.link": "v0.10.4 Release",
-      "roadmap.encrest.title": "Encryption-at-rest für IdP-Tokens",
-      "roadmap.encrest.desc": "Envelope-Verschlüsselung für <code>users.idp_access_token</code> und <code>users.idp_refresh_token</code>. Master-Key über Env-Var; Per-Row-DEK via HKDF abgeleitet. Erforderlich für SOC 2 Type II Readiness bei Deployments, die langlebige IdP-Credentials speichern. Eingehängt in das bestehende <code>EncryptionProvider</code>-Interface, das in v0.7 ausgeliefert wurde.",
-      "roadmap.encrest.date": "Ziel v0.10.x",
-      "roadmap.encrest.link": "Auf GitHub folgen",
-      "roadmap.postgres.title": "Postgres-Adapter für regulierte Multi-Instance-Workloads",
-      "roadmap.postgres.desc": "Drop-in <code>PostgresAdapter</code> neben den bestehenden better-sqlite3 / bun:sqlite Backends. Ermöglicht horizontale Skalierung hinter einem Load Balancer und Compliance-Posture für Managed-RDBMS (PITR, Backup, Encryption-at-Storage). Scope-ehrliches Design-Dokument erfasst die 8-wöchigen Migrationskosten (168 sync→async Callsites + SQL-Dialekt-Übersetzung).",
-      "roadmap.postgres.date": "Ziel v0.11",
-      "roadmap.postgres.link": "Design-Spec lesen",
-      "compliance.row.oauth.cap": "OAuth 2.1 + RFC 8628 Device-Flow + Cookie-Sessions + Service-Tokens (Phase 2)",
-      "compliance.row.oauth.status": "Veröffentlicht v0.8",
-      "compliance.row.oauth.aligned": "SOC 2 CC6.1 &middot; CC6.6 &middot; CC6.7",
-      "compliance.row.multiidp.cap": "Multi-IdP SSO — GitHub OAuth App + GitHub App + Google + generisches OIDC",
+      "roadmap.v10.link": "v0.10.9 Release",
       "compliance.row.multiidp.status": "Veröffentlicht v0.9 &rarr; v0.10",
       "compliance.row.multiidp.aligned": "SOC 2 CC6.1 &middot; zentralisierte Identität",
       "compliance.row.auditchain.cap": "SHA-256 Hash-Chain auf jeder <code>audit_log</code>-Zeile (Tamper-Evidence)",
@@ -4755,7 +4719,7 @@
       "nav.install": "安装",
       "nav.roadmap": "路线图",
       "nav.getstarted": "开始使用",
-      "hero.eyebrow": "开源 &middot; MIT &middot; v0.10.4",
+      "hero.eyebrow": "开源 &middot; MIT &middot; v0.11.0",
       "hero.h1": "零冲突。每个 agent 对齐。",
       "hero.subtitle": "即插即用的 MCP 服务器,让并行运行的 Claude Code、Cursor 或 Cline agent 在动手改代码之前先宣告工作、检测冲突、达成共识。",
       "hero.stat.latency": "&lt;50ms 推送延迟",
@@ -4918,7 +4882,7 @@
       "start.alt": "<strong>更喜欢 Docker?</strong> 改为拉取多架构镜像:<code class=\"ic\">docker pull ghcr.io/swoofer/mcp-coordinator:0.11.0</code>。完整的 compose 栈(带 Caddy auto-TLS)位于 <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose\">examples/docker-compose/</a>。",
       "start.note": "<code class=\"ic\">git worktree add ../feature-x main</code>,让每个 agent 在自己的 worktree 里运行&mdash;&mdash;mcp-coordinator 处理\"谁在编辑 types.ts\";worktree 处理\"两个 agent 别抢同一个 inode\"。",
       "start.dash.title": "60 秒后你会看到的画面",
-      "start.dash.meta": "mcp-coordinator v0.10.4 &middot; 配额 62%",
+      "start.dash.meta": "mcp-coordinator v0.11.0 &middot; 配额 62%",
       "start.dash.aria": "示例 dashboard 视图:实时跟踪 4 个 agent,一次冲突在 38 秒内得到解决",
       "start.cta.star": "在 GitHub 上 Star",
       "start.cta.issue": "提一个 issue",
@@ -4995,7 +4959,7 @@
       "roadmap.harbor.desc": "原生集成 Anthropic 即将推出的服务端 push 通道(内部代号 <code class=\"ic\">tengu_harbor</code>)。监听器代码已和 MQTT 桥接器并存——一旦上线,mcp-coordinator 即插即用。",
       "roadmap.harbor.date": "日期待定 · 受上游限制",
       "roadmap.harbor.link": "在 GitHub 上关注",
-      "footer.text": "MIT 许可证 &nbsp;·&nbsp; 用 <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> 构建 &nbsp;·&nbsp; MCP Coordinator v0.10.4",
+      "footer.text": "MIT 许可证 &nbsp;·&nbsp; 用 <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> 构建 &nbsp;·&nbsp; MCP Coordinator v0.11.0",
       "why.title": "为什么选择 MCP Coordinator?",
       "why.subtitle": "在同一 repo 上跑五个 agent,不出现合并冲突、不重复劳动、不遗留隐性回归。",
       "why.block1.title": "多个 agent,一个对齐的流程",
@@ -5145,19 +5109,7 @@
       "roadmap.v10.title": "v0.10——GitHub App + OIDC 纵深防御 + 每提供商白名单策略",
       "roadmap.v10.desc": "一等的 <code>GitHubAppProvider</code>,与 OAuth App 并列,通过 <code>refreshIdpToken</code> 自动刷新 8 小时的 user-to-server 令牌。OIDC <code>nonce</code> 声明验证(Core 1.0 §3.1.2.1)防御 <code>id_token</code> 重放。四种白名单策略——<code>memberships</code> / <code>idp_org_id</code> / <code>id_token_groups</code> / <code>none</code>——按提供商自动选择,Google Workspace 部署基于 <code>hd</code> 声明,OIDC 基于可配置的 <code>groups</code> 路径,GitHub App 基于用户组织或安装范围。1740 个测试,119 个文件全部通过。",
       "roadmap.v10.date": "2026 年 5 月发布",
-      "roadmap.v10.link": "v0.10.4 发布",
-      "roadmap.encrest.title": "IdP 令牌的静态加密",
-      "roadmap.encrest.desc": "针对 <code>users.idp_access_token</code> 和 <code>users.idp_refresh_token</code> 的信封加密。主密钥通过环境变量;每行 DEK 通过 HKDF 派生。对于存储长期 IdP 凭证的部署,这是 SOC 2 Type II 就绪的必要条件。挂接在 v0.7 上线的现有 <code>EncryptionProvider</code> 接口上。",
-      "roadmap.encrest.date": "目标 v0.10.x",
-      "roadmap.encrest.link": "在 GitHub 上关注",
-      "roadmap.postgres.title": "面向受监管多实例工作负载的 Postgres 适配器",
-      "roadmap.postgres.desc": "可直接替换的 <code>PostgresAdapter</code>,与现有的 better-sqlite3 / bun:sqlite 后端并存。解锁负载均衡器后的水平扩展和托管 RDBMS 合规姿态(PITR、备份、存储层加密)。诚实评估的设计文档记录了 8 周的迁移成本(168 个 sync→async 调用点 + SQL 方言翻译)。",
-      "roadmap.postgres.date": "目标 v0.11",
-      "roadmap.postgres.link": "阅读设计规范",
-      "compliance.title": "企业与合规",
-      "compliance.intro": "从基础开始为合规而构建。v0.10.4 交付完整的 Phase 2 OAuth 2.1、多 IdP SSO,以及 SHA-256 审计日志防篡改证据——这些正是受监管行业和 SOC 2 Type II 部署在组装审计材料时真正需要的能力。",
-      "compliance.th.capability": "能力",
-      "compliance.th.status": "状态",
+      "roadmap.v10.link": "v0.10.9 发布",
       "compliance.th.aligned": "对齐于",
       "compliance.row.tenant.cap": "多租户 <code>org_id</code> 隔离覆盖 14 张表",
       "compliance.row.tenant.status": "v0.7 已发布",
@@ -5217,7 +5169,7 @@
       "nav.install": "インストール",
       "nav.roadmap": "ロードマップ",
       "nav.getstarted": "始める",
-      "hero.eyebrow": "オープンソース &middot; MIT &middot; v0.10.4",
+      "hero.eyebrow": "オープンソース &middot; MIT &middot; v0.11.0",
       "hero.h1": "競合ゼロ。すべてのエージェントが揃う。",
       "hero.subtitle": "並列で動く Claude Code、Cursor、Cline のエージェントが、コードに触れる前に作業を宣言し、競合を検出し、合意に至るためのドロップイン MCP サーバーです。",
       "hero.stat.latency": "プッシュ遅延 &lt;50ms",
@@ -5380,7 +5332,7 @@
       "start.alt": "<strong>Docker をお使いの場合は?</strong> 代わりにマルチアーキ対応イメージを pull してください: <code class=\"ic\">docker pull ghcr.io/swoofer/mcp-coordinator:0.11.0</code>。Caddy auto-TLS 付きの完全な compose スタックが <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose\">examples/docker-compose/</a> にあります。",
       "start.note": "<code class=\"ic\">git worktree add ../feature-x main</code> を実行し、各エージェントを自身のワークツリーで動かしてください&mdash;mcp-coordinator は「誰が types.ts を編集しているか」を扱い、ワークツリーは「2 体のエージェントが同じ inode を取り合わない」を扱います。",
       "start.dash.title": "60 秒で見えるもの",
-      "start.dash.meta": "mcp-coordinator v0.10.4 &middot; クォータ 62%",
+      "start.dash.meta": "mcp-coordinator v0.11.0 &middot; クォータ 62%",
       "start.dash.aria": "サンプルダッシュボードビュー: 4 体のエージェントをライブで追跡、競合は 38 秒で解決",
       "start.cta.star": "GitHub でスター",
       "start.cta.issue": "Issue を起票",
@@ -5457,7 +5409,7 @@
       "roadmap.harbor.desc": "Anthropic が予定するサーバーサイドプッシュチャネル (社内では <code class=\"ic\">tengu_harbor</code> として追跡) とのネイティブ統合。リスナーコードはすでに MQTT ブリッジの隣に存在します——出荷された瞬間に mcp-coordinator は接続できます。",
       "roadmap.harbor.date": "日付未定 · 上流依存",
       "roadmap.harbor.link": "GitHub でフォロー",
-      "footer.text": "MIT License &nbsp;·&nbsp; <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> で構築 &nbsp;·&nbsp; MCP Coordinator v0.10.4",
+      "footer.text": "MIT License &nbsp;·&nbsp; <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> で構築 &nbsp;·&nbsp; MCP Coordinator v0.11.0",
       "why.title": "なぜ MCP Coordinator か?",
       "why.subtitle": "5 体のエージェントを同じリポジトリで走らせても、マージ競合・重複作業・サイレントリグレッションは発生しません。",
       "why.block1.title": "複数のエージェント、ひとつの揃ったプロセス",
@@ -5607,19 +5559,7 @@
       "roadmap.v10.title": "v0.10 —— GitHub App + OIDC 多層防御 + プロバイダー別 allowlist 戦略",
       "roadmap.v10.desc": "OAuth App と並ぶファーストクラスの <code>GitHubAppProvider</code>、<code>refreshIdpToken</code> による 8 時間 user-to-server トークンの自動更新付き。OIDC <code>nonce</code> クレーム検証 (Core 1.0 §3.1.2.1) により <code>id_token</code> リプレイを防止。4 つの allowlist 戦略——<code>memberships</code> / <code>idp_org_id</code> / <code>id_token_groups</code> / <code>none</code>——をプロバイダー別に自動選択。Google Workspace は <code>hd</code> クレーム、OIDC は設定可能な <code>groups</code> パス、GitHub App はユーザー組織またはインストール footprint から判定します。119 ファイルにわたる 1740 テストがパス。",
       "roadmap.v10.date": "2026 年 5 月リリース",
-      "roadmap.v10.link": "v0.10.4 リリース",
-      "roadmap.encrest.title": "IdP トークンの保存時暗号化",
-      "roadmap.encrest.desc": "<code>users.idp_access_token</code> および <code>users.idp_refresh_token</code> のエンベロープ暗号化。マスターキーは環境変数経由、行ごとの DEK は HKDF で導出。長期 IdP 資格情報を保管するデプロイの SOC 2 Type II 準備に必要です。v0.7 で出荷された既存の <code>EncryptionProvider</code> インターフェースに接続されます。",
-      "roadmap.encrest.date": "v0.10.x を目標",
-      "roadmap.encrest.link": "GitHub でフォロー",
-      "roadmap.postgres.title": "規制対象マルチインスタンスワークロード向け Postgres アダプター",
-      "roadmap.postgres.desc": "既存の better-sqlite3 / bun:sqlite バックエンドと並ぶドロップイン <code>PostgresAdapter</code>。ロードバランサー背後での水平スケーリングと、マネージド RDBMS のコンプライアンス姿勢 (PITR、バックアップ、ストレージ暗号化) を可能にします。Scope-honest な設計ドキュメントが 8 週間の移行コスト (168 の sync→async コールサイト + SQL 方言の翻訳) を見積もっています。",
-      "roadmap.postgres.date": "v0.11 を目標",
-      "roadmap.postgres.link": "設計仕様を読む",
-      "compliance.title": "エンタープライズとコンプライアンス",
-      "compliance.intro": "基盤からコンプライアンスを念頭に設計されています。v0.10.4 は完全な Phase 2 OAuth 2.1、マルチ IdP SSO、SHA-256 監査ログ改ざん検知を出荷しました——規制業界や SOC 2 Type II デプロイが監査資料を整えるために実際に必要な機能です。",
-      "compliance.th.capability": "機能",
-      "compliance.th.status": "ステータス",
+      "roadmap.v10.link": "v0.10.9 リリース",
       "compliance.th.aligned": "整合性",
       "compliance.row.tenant.cap": "14 のテーブルにまたがるマルチテナント <code>org_id</code> 分離",
       "compliance.row.tenant.status": "v0.7 リリース済み",
