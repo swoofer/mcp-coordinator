@@ -28,8 +28,12 @@ describe("consultation-tools: list_threads schema", () => {
 
     expect(schema.safeParse({}).success).toBe(true);
     expect(schema.safeParse({ status: "open" }).success).toBe(true);
-    expect(schema.safeParse({ status: "closed" }).success).toBe(true);
+    expect(schema.safeParse({ status: "resolving" }).success).toBe(true);
+    expect(schema.safeParse({ status: "resolved" }).success).toBe(true);
+    expect(schema.safeParse({ status: "cancelled" }).success).toBe(true);
+    expect(schema.safeParse({ status: "poisoned" }).success).toBe(true);
+    expect(schema.safeParse({ status: "closed" }).success).toBe(false);
     expect(schema.safeParse({ status: "Open" }).success).toBe(false);
-    expect(schema.safeParse({ status: "closed " }).success).toBe(false);
+    expect(schema.safeParse({ status: "resolved " }).success).toBe(false);
   });
 });
