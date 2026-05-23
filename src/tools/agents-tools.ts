@@ -21,9 +21,7 @@ export function registerAgentTools(
     name: z.string(),
     modules: z.array(z.string()),
   }, async ({ agent_id, name, modules }, extra) => {
-    const sessionId = extra.sessionId;
-    if (!sessionId) throw new Error("MCP tool requires a session");
-    const claims = getSessionClaims(sessionId);
+    const claims = getSessionClaims(extra.sessionId ?? "");
     if (!claims) throw new Error("Session has no captured claims (auth bug)");
     mcpLog.info({ tool: "register_agent", agent_id, name, module_count: modules.length }, "Tool called");
     const agent = registry.register(claims.org, agent_id, name, modules);
@@ -35,9 +33,7 @@ export function registerAgentTools(
   server.tool("list_agents", "List registered agents", {
     online_only: z.boolean().optional(),
   }, async ({ online_only }, extra) => {
-    const sessionId = extra.sessionId;
-    if (!sessionId) throw new Error("MCP tool requires a session");
-    const claims = getSessionClaims(sessionId);
+    const claims = getSessionClaims(extra.sessionId ?? "");
     if (!claims) throw new Error("Session has no captured claims (auth bug)");
     const agents = online_only ? registry.listOnline(claims.org) : registry.listAll(claims.org);
     return { content: [{ type: "text", text: JSON.stringify(agents) }] };
@@ -48,9 +44,7 @@ export function registerAgentTools(
     current_file: z.string().optional(),
     current_thread: z.string().optional(),
   }, async ({ agent_id, current_file, current_thread }, extra) => {
-    const sessionId = extra.sessionId;
-    if (!sessionId) throw new Error("MCP tool requires a session");
-    const claims = getSessionClaims(sessionId);
+    const claims = getSessionClaims(extra.sessionId ?? "");
     if (!claims) throw new Error("Session has no captured claims (auth bug)");
     registry.heartbeat(claims.org, agent_id);
     activityTracker.heartbeat(claims.org, agent_id, {
@@ -66,9 +60,7 @@ export function registerAgentTools(
   });
 
   server.tool("agent_activity", "Get activity status for all online agents", {}, async (_args, extra) => {
-    const sessionId = extra.sessionId;
-    if (!sessionId) throw new Error("MCP tool requires a session");
-    const claims = getSessionClaims(sessionId);
+    const claims = getSessionClaims(extra.sessionId ?? "");
     if (!claims) throw new Error("Session has no captured claims (auth bug)");
     const activities = activityTracker.listAll(claims.org, { idleAfterMinutes: 5 });
     return { content: [{ type: "text", text: JSON.stringify(activities) }] };

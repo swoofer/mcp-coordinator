@@ -45,9 +45,7 @@ export function registerConsultationTools(
     target_symbols: z.array(z.string().max(256)).max(200).optional()
       .describe("Qualified symbol names you intend to touch (e.g. 'UserService.getById'). Used by Layer 0.5 to annotate same-file overlaps."),
   }, async ({ agent_id, subject, plan, target_modules, target_files, depends_on_files, exports_affected, keep_open, assigned_to, target_symbols }, extra) => {
-    const sessionId = extra.sessionId;
-    if (!sessionId) throw new Error("MCP tool requires a session");
-    const claims = getSessionClaims(sessionId);
+    const claims = getSessionClaims(extra.sessionId ?? "");
     if (!claims) throw new Error("Session has no captured claims (auth bug)");
     mcpLog.info({ tool: "announce_work", agent_id, subject, target_modules, target_files, assigned_to }, "Tool called");
 
@@ -94,9 +92,7 @@ export function registerConsultationTools(
     context_snapshot: z.string().optional(),
     in_reply_to: z.string().optional(),
   }, async ({ thread_id, agent_id, agent_name, type, content, context_snapshot, in_reply_to }, extra) => {
-    const sessionId = extra.sessionId;
-    if (!sessionId) throw new Error("MCP tool requires a session");
-    const claims = getSessionClaims(sessionId);
+    const claims = getSessionClaims(extra.sessionId ?? "");
     if (!claims) throw new Error("Session has no captured claims (auth bug)");
     mcpLog.info({ tool: "post_to_thread", thread_id, agent_id, type }, "Tool called");
     const msg = consultation.postToThread(claims.org, {
@@ -118,9 +114,7 @@ export function registerConsultationTools(
     summary: z.string(),
     plan: z.string().optional(),
   }, async ({ thread_id, agent_id, summary }, extra) => {
-    const sessionId = extra.sessionId;
-    if (!sessionId) throw new Error("MCP tool requires a session");
-    const claims = getSessionClaims(sessionId);
+    const claims = getSessionClaims(extra.sessionId ?? "");
     if (!claims) throw new Error("Session has no captured claims (auth bug)");
     mcpLog.info({ tool: "propose_resolution", thread_id, agent_id }, "Tool called");
     consultation.proposeResolution(claims.org, thread_id, agent_id, summary);
@@ -134,9 +128,7 @@ export function registerConsultationTools(
     thread_id: z.string(),
     agent_id: z.string(),
   }, async ({ thread_id, agent_id }, extra) => {
-    const sessionId = extra.sessionId;
-    if (!sessionId) throw new Error("MCP tool requires a session");
-    const claims = getSessionClaims(sessionId);
+    const claims = getSessionClaims(extra.sessionId ?? "");
     if (!claims) throw new Error("Session has no captured claims (auth bug)");
     mcpLog.info({ tool: "approve_resolution", thread_id, agent_id }, "Tool called");
     const agentInfo = registry.get(claims.org, agent_id);
@@ -150,9 +142,7 @@ export function registerConsultationTools(
     agent_id: z.string(),
     reason: z.string(),
   }, async ({ thread_id, agent_id, reason }, extra) => {
-    const sessionId = extra.sessionId;
-    if (!sessionId) throw new Error("MCP tool requires a session");
-    const claims = getSessionClaims(sessionId);
+    const claims = getSessionClaims(extra.sessionId ?? "");
     if (!claims) throw new Error("Session has no captured claims (auth bug)");
     mcpLog.info({ tool: "contest_resolution", thread_id, agent_id }, "Tool called");
     consultation.contestResolution(claims.org, thread_id, agent_id, reason);
@@ -165,9 +155,7 @@ export function registerConsultationTools(
     agent_id: z.string(),
     summary: z.string(),
   }, async ({ thread_id, agent_id, summary }, extra) => {
-    const sessionId = extra.sessionId;
-    if (!sessionId) throw new Error("MCP tool requires a session");
-    const claims = getSessionClaims(sessionId);
+    const claims = getSessionClaims(extra.sessionId ?? "");
     if (!claims) throw new Error("Session has no captured claims (auth bug)");
     mcpLog.info({ tool: "close_thread", thread_id, agent_id }, "Tool called");
     consultation.closeThread(claims.org, thread_id, agent_id, summary);
@@ -179,9 +167,7 @@ export function registerConsultationTools(
     agent_id: z.string(),
     reason: z.string().optional(),
   }, async ({ thread_id, agent_id, reason }, extra) => {
-    const sessionId = extra.sessionId;
-    if (!sessionId) throw new Error("MCP tool requires a session");
-    const claims = getSessionClaims(sessionId);
+    const claims = getSessionClaims(extra.sessionId ?? "");
     if (!claims) throw new Error("Session has no captured claims (auth bug)");
     mcpLog.info({ tool: "cancel_thread", thread_id, agent_id }, "Tool called");
     consultation.cancelThread(claims.org, thread_id, agent_id, reason ?? undefined);
@@ -192,9 +178,7 @@ export function registerConsultationTools(
   server.tool("get_thread", "Get a thread with all messages", {
     thread_id: z.string(),
   }, async ({ thread_id }, extra) => {
-    const sessionId = extra.sessionId;
-    if (!sessionId) throw new Error("MCP tool requires a session");
-    const claims = getSessionClaims(sessionId);
+    const claims = getSessionClaims(extra.sessionId ?? "");
     if (!claims) throw new Error("Session has no captured claims (auth bug)");
     const result = consultation.getThreadWithMessages(claims.org, thread_id);
     mcpLog.debug({ tool: "get_thread", thread_id, message_count: result?.messages.length }, "Tool called");
@@ -205,9 +189,7 @@ export function registerConsultationTools(
     agent_id: z.string(),
     since: z.string().optional(),
   }, async ({ agent_id, since }, extra) => {
-    const sessionId = extra.sessionId;
-    if (!sessionId) throw new Error("MCP tool requires a session");
-    const claims = getSessionClaims(sessionId);
+    const claims = getSessionClaims(extra.sessionId ?? "");
     if (!claims) throw new Error("Session has no captured claims (auth bug)");
     const updates = consultation.getThreadUpdates(claims.org, agent_id, since ?? undefined);
     return { content: [{ type: "text", text: JSON.stringify(updates) }] };
@@ -219,9 +201,7 @@ export function registerConsultationTools(
     module: z.string().optional(),
     assigned_to_me: z.string().optional().describe("Filter to threads claimable by this agent_id: open pool (assigned_to NULL) OR directed to me. Use for worker agents receiving directed dispatches."),
   }, async ({ status, agent_id, module, assigned_to_me }, extra) => {
-    const sessionId = extra.sessionId;
-    if (!sessionId) throw new Error("MCP tool requires a session");
-    const claims = getSessionClaims(sessionId);
+    const claims = getSessionClaims(extra.sessionId ?? "");
     if (!claims) throw new Error("Session has no captured claims (auth bug)");
     const threads = consultation.listThreads(claims.org, { status, agent_id, module, assigned_to_me });
     mcpLog.debug({ tool: "list_threads", status, agent_id, module, assigned_to_me, result_count: threads.length }, "Tool called");
@@ -234,9 +214,7 @@ export function registerConsultationTools(
     file_path: z.string().optional().describe("Repo-relative file path."),
     summary: z.string(),
   }, async ({ session_id, agent_id, file_path, summary }, extra) => {
-    const sessionId = extra.sessionId;
-    if (!sessionId) throw new Error("MCP tool requires a session");
-    const claims = getSessionClaims(sessionId);
+    const claims = getSessionClaims(extra.sessionId ?? "");
     if (!claims) throw new Error("Session has no captured claims (auth bug)");
     const result = consultation.logActionSummary(claims.org, { session_id, agent_id, file_path, summary });
     sseEmitter.emit("action_summary", { agent_id, file_path, summary }, { org_id: claims.org });

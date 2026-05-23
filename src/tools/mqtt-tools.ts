@@ -26,9 +26,7 @@ export function registerMqttTools(
     agent_id: z.string(),
     timeout_seconds: z.number().optional(),
   }, async ({ agent_id, timeout_seconds }, extra) => {
-    const sessionId = extra.sessionId;
-    if (!sessionId) throw new Error("MCP tool requires a session");
-    const claims = getSessionClaims(sessionId);
+    const claims = getSessionClaims(extra.sessionId ?? "");
     if (!claims) throw new Error("Session has no captured claims (auth bug)");
     const timeoutMs = (timeout_seconds || 15) * 1000;
     const msg = await mqttBridge.waitForMessage(agent_id, timeoutMs);
@@ -41,9 +39,7 @@ export function registerMqttTools(
   server.tool("get_queued_messages", "Get all queued MQTT messages without blocking", {
     agent_id: z.string(),
   }, async ({ agent_id }, extra) => {
-    const sessionId = extra.sessionId;
-    if (!sessionId) throw new Error("MCP tool requires a session");
-    const claims = getSessionClaims(sessionId);
+    const claims = getSessionClaims(extra.sessionId ?? "");
     if (!claims) throw new Error("Session has no captured claims (auth bug)");
     const messages = mqttBridge.getQueuedMessages(agent_id);
     return { content: [{ type: "text", text: JSON.stringify(messages) }] };
@@ -53,9 +49,7 @@ export function registerMqttTools(
     topic: z.string(),
     payload: z.string(),
   }, async ({ topic, payload }, extra) => {
-    const sessionId = extra.sessionId;
-    if (!sessionId) throw new Error("MCP tool requires a session");
-    const claims = getSessionClaims(sessionId);
+    const claims = getSessionClaims(extra.sessionId ?? "");
     if (!claims) throw new Error("Session has no captured claims (auth bug)");
     mqttBridge.mqttPublish(topic, payload);
     return { content: [{ type: "text", text: "published" }] };
