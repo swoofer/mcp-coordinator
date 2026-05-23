@@ -65,9 +65,22 @@ After step 4, every Claude Code (or other MCP-compatible) session connected to t
 | **Global** _(default above)_ | Long-running daemon, ops | `npm install -g mcp-coordinator` | `mcp-coordinator <cmd>` |
 | **`npx` (zero install)** | One-shot try, CI scripts | _(none)_ | `npx mcp-coordinator <cmd>` |
 | **Local to a project** | Pinning a version per repo | `cd your-project && npm install mcp-coordinator` | `npx mcp-coordinator <cmd>` from project root |
+| **Docker** _(multi-arch)_ | Container-first deployments, k8s | `docker pull ghcr.io/swoofer/mcp-coordinator:0.11.0` | `docker run ghcr.io/swoofer/mcp-coordinator:0.11.0 <cmd>` |
 | **Single-file binary** | No Node available, easiest deploy | [GitHub Release tarball](https://github.com/swoofer/mcp-coordinator/releases) | `./mcp-coordinator <cmd>` |
 
 > ⚠️ **Don't `npm install mcp-coordinator` in an empty folder.** Without a `package.json` in the current directory, npm walks up the directory tree looking for one and installs *there* — not where you ran the command. Symptom: the install completes successfully but your folder still looks empty. Either use `-g` (global), use `npx` (no install), or `cd` into a real project directory that has its own `package.json` first.
+
+### Running via Docker
+
+The image is published to GitHub Container Registry on every release tag — multi-arch (linux/amd64 + linux/arm64), with provenance and SBOM attestation. Three tag tracks:
+
+| Tag | Use case |
+|---|---|
+| `ghcr.io/swoofer/mcp-coordinator:0.11.0` | Pinned exact version — recommended for production |
+| `ghcr.io/swoofer/mcp-coordinator:0.11` | Auto-bumps within the 0.11.x patch series |
+| `ghcr.io/swoofer/mcp-coordinator:latest` | Tip of releases — fine for trying out, avoid in prod |
+
+A working compose stack (coordinator + Caddy auto-TLS + GitHub OAuth) ships at [`examples/docker-compose/`](./examples/docker-compose/). For a Kubernetes CronJob example doing JWT secret rotation, see [`docs/ops/auto-rotation.md`](./docs/ops/auto-rotation.md).
 
 ---
 
