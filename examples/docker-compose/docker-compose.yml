@@ -8,7 +8,7 @@ services:
     # reproducible — bump the tag when you upgrade. Alternatives:
     #   :0.10        — auto-bumps within the 0.10.x series
     #   :latest      — always the most recent release (not advised in prod)
-    image: ghcr.io/swoofer/mcp-coordinator:0.10.9
+    image: ghcr.io/swoofer/mcp-coordinator:0.11.0
     env_file: .env
     volumes:
       - coordinator-data:/data
