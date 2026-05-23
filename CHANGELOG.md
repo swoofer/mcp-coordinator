@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.13.0](https://github.com/swoofer/mcp-coordinator/compare/v0.12.0...v0.13.0) (2026-05-23)
+
+
+### Features
+
+* **channels:** Phase 2 reply tool — `post_to_thread` over MQTT ([#130](https://github.com/swoofer/mcp-coordinator/issues/130)) ([#145](https://github.com/swoofer/mcp-coordinator/issues/145)) ([5f9a861](https://github.com/swoofer/mcp-coordinator/commit/5f9a861d395368e5ec8b29f4d1756d6f82185bcc))
+
+
+### Bug Fixes
+
+* **ci:** docker-publish tag gating works for workflow_call (chained release path) ([#142](https://github.com/swoofer/mcp-coordinator/issues/142)) ([4b8df67](https://github.com/swoofer/mcp-coordinator/commit/4b8df67e928178b978f06bb1ca01c9406b6c7a5b))
+* **mcp:** correct list_threads status enum to match ThreadStatus type ([#144](https://github.com/swoofer/mcp-coordinator/issues/144)) ([afb390d](https://github.com/swoofer/mcp-coordinator/commit/afb390d0a60d3d690604ec785208fe4d70e8fd9c))
+
+
+### Documentation
+
+* add operating-modes guide (polling vs push) + README pointer ([#146](https://github.com/swoofer/mcp-coordinator/issues/146)) ([0f0c90c](https://github.com/swoofer/mcp-coordinator/commit/0f0c90ce4226616113dfdf4675692937ba8f5fdd))
+* surface "polling vs push" choice in README + HTML landing ([#147](https://github.com/swoofer/mcp-coordinator/issues/147)) ([071a234](https://github.com/swoofer/mcp-coordinator/commit/071a234d3126bce5c409f1e05885b9591dd0bbc2))
+
 ## [0.12.0](https://github.com/swoofer/mcp-coordinator/compare/v0.11.0...v0.12.0) (2026-05-23)
 
 
