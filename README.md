@@ -1376,20 +1376,26 @@ Working-files in-flight tracking, tree-sitter symbol annotations across 15 langu
 ## Development
 
 ```bash
-# Tests (392 passing across 35+ files)
-npm test
-npm run test:watch
+# This repo uses pnpm (>= 9). Run `corepack enable` once; the
+# packageManager field in package.json pins the version.
+
+# Install
+pnpm install
+
+# Tests
+pnpm test
+pnpm test:watch
 
 # Dev coordinator (tsx, hot reload)
-npm run dev          # HTTP / SSE on port 3100
-npm run dev:stdio    # stdio mode
+pnpm dev          # HTTP / SSE on port 3100
+pnpm dev:stdio    # stdio mode
 
 # CLI in dev
-npm run cli -- server start
-npm run cli -- dashboard
+pnpm cli -- server start
+pnpm cli -- dashboard
 
 # TypeScript build → dist/
-npm run build
+pnpm build
 
 # Standalone binary (requires Bun)
 bun build --compile cli/index.ts --outfile bin/mcp-coordinator

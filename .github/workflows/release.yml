@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       publish_only:
-        description: "Skip release-please and just npm publish from main HEAD"
+        description: "Skip release-please and just publish to npm from main HEAD"
         required: false
         default: "false"
         type: choice
@@ -34,20 +34,26 @@ jobs:
       - uses: actions/checkout@v4
         if: ${{ steps.release.outputs.release_created || inputs.publish_only == 'true' }}
 
+      - uses: pnpm/action-setup@v4
+        if: ${{ steps.release.outputs.release_created || inputs.publish_only == 'true' }}
+
       - uses: actions/setup-node@v4
         if: ${{ steps.release.outputs.release_created || inputs.publish_only == 'true' }}
         with:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
-          cache: "npm"
+          cache: "pnpm"
 
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
         if: ${{ steps.release.outputs.release_created || inputs.publish_only == 'true' }}
 
-      - run: npm run build
+      - run: pnpm build
         if: ${{ steps.release.outputs.release_created || inputs.publish_only == 'true' }}
 
-      - run: npm publish
+      # `--no-git-checks` skips pnpm's pre-publish branch+clean checks
+      # (we don't need them — release-please already produced the release
+      # commit and CI is the canonical place to publish from).
+      - run: pnpm publish --no-git-checks
         if: ${{ steps.release.outputs.release_created || inputs.publish_only == 'true' }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

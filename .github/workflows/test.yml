@@ -20,19 +20,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: "npm"
+          cache: "pnpm"
 
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
 
-      - run: npm test
+      - run: pnpm test
 
-      - run: npm run build
+      - run: pnpm build
 
   # Smoke test: a fresh contributor without native build tools (no Rust
-  # toolchain, no python-distutils) must still be able to `npm run build`.
+  # toolchain, no python-distutils) must still be able to `pnpm build`.
   # Catches regressions where new code accidentally hard-depends on an
   # optionalDependency like `tree-sitter`.
   build-no-native:
@@ -41,11 +43,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: "npm"
+          cache: "pnpm"
 
-      - run: npm install --omit=optional --no-audit --no-fund
+      - run: pnpm install --frozen-lockfile --ignore-scripts
 
-      - run: npm run build
+      - run: pnpm build
