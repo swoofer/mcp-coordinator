@@ -73,6 +73,8 @@ Requires Node.js 20+. Step 2 is idempotent — re-running `init` won't overwrite
 
 After step 4, every Claude Code (or other MCP-compatible) session connected to this coordinator can call all 26 tools (`register_agent`, `announce_work`, `post_to_thread`, `coordinator_status`, ...). For the full multi-Claude or team setup, see the [usage guide](./docs/usage.md).
 
+> 🔀 **Two ways to consume coordination state** — agents can either *poll* the daemon's MCP tools (default, works since v0.6) or accept *push* events through the Channels sidecar (v0.12+, research preview). Most users start with polling and add Channels later when they want real-time reactivity. See [`docs/operating-modes.md`](./docs/operating-modes.md) for the side-by-side comparison and decision guide.
+
 ### Other install styles
 
 | Style | When to use | Install | Invoke as |
