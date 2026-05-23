@@ -44,20 +44,27 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # docker/metadata-action's semver matchers read `github.ref` — which
+      # is `refs/tags/vX.Y.Z` on tag push but `refs/heads/main` on
+      # workflow_dispatch (the `tag` input only affects checkout, not the
+      # metadata-action's view of the build context). The `type=match`
+      # directives below let us pass the version via the `value` parameter,
+      # so manual dispatch produces the same tag set as a real tag push.
+      #
+      # `:latest` is intentionally NOT promoted on workflow_dispatch — that
+      # protects against accidentally shifting :latest backwards when
+      # retrying a publish of an older release.
       - name: Derive image tags
         id: meta
         uses: docker/metadata-action@v5
         with:
-          # GHCR image name: ghcr.io/swoofer/mcp-coordinator
           images: ghcr.io/${{ github.repository }}
-          # Tag layout:
-          #   v0.10.9        -> 0.10.9, 0.10, latest
-          #   workflow_dispatch with tag input -> same, derived from input
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=latest,enable=${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+            type=match,pattern=v(\d+\.\d+\.\d+),group=1,value=${{ inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' }}
+            type=match,pattern=v(\d+\.\d+),group=1,value=${{ inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' }}
 
       - name: Build and push (linux/amd64, linux/arm64)
         uses: docker/build-push-action@v6
