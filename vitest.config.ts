@@ -2,7 +2,11 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    include: ["tests/**/*.test.ts"],
+    // Include both `.test.ts` (the main suite) and `*-self-test.ts` (harness
+    // wiring proofs that live alongside the helpers they exercise). Self-test
+    // files use the explicit suffix so they're easy to spot in `git ls-files`
+    // but still picked up by the runner.
+    include: ["tests/**/*.test.ts", "tests/**/*-self-test.ts"],
     fileParallelism: false,
     coverage: {
       provider: "v8",
