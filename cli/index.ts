@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import { createServerProgram } from "./server/index.js";
+import { createChannelCommand } from "./channel.js";
 import { createDashboardCommand } from "./dashboard.js";
 import { createInitCommand } from "./init.js";
 import { createDoctorCommand } from "./doctor.js";
@@ -18,6 +19,7 @@ program
 
 program.addCommand(createInitCommand());
 program.addCommand(createServerProgram());
+program.addCommand(createChannelCommand());
 program.addCommand(createDashboardCommand());
 program.addCommand(createDoctorCommand());
 program.addCommand(createUninstallCommand());
