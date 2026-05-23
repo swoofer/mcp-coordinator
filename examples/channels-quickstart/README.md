@@ -3,12 +3,16 @@
 This example wires `mcp-coordinator` into Claude Code's [Channels](https://code.claude.com/docs/en/channels)
 feature so that consultation, agent, and thread events arrive in your session
 as `<channel>` tags — no polling, no MCP tool call required to receive them.
+Claude can also reply into a consultation thread without leaving the channel
+surface via the `post_to_thread` tool the channel server exposes.
 
 > **Research preview.** Channels currently ships behind
 > `--dangerously-load-development-channels` in Claude Code. The API may change.
-> The `mcp-coordinator channel` subcommand documented here is Phase 1: push-only.
-> There is no reply tool yet — Claude reads the events and decides whether to
-> respond using the existing MCP tools (`post_to_thread`, `announce_work`, ...).
+> The `mcp-coordinator channel` subcommand documented here is push + reply:
+> Phase 1 (push) streams events from the daemon into the session, Phase 2
+> (reply) lets Claude post messages back via the `post_to_thread` tool — both
+> over MQTT, no HTTP round-trip. Phase 3 (permission relay, out-of-session
+> injection) remains deferred.
 
 ## Prerequisites
 
@@ -107,9 +111,37 @@ Inside your Claude Code session you should now see something like:
 </channel>
 ```
 
-Claude can now reason about the event and, if relevant, call `post_to_thread`
-or `announce_work` via the regular MCP tools to participate in the
-consultation.
+Claude can now reason about the event and, if relevant, reply directly into
+the thread by calling the channel server's `post_to_thread` tool — no need
+to leave the channel surface or use the daemon's main MCP toolbelt.
+
+## 7. Reply into the thread from inside the session
+
+When Claude sees the `<channel event_type="consultation_opened">` tag above,
+it can post back into the thread by calling the `post_to_thread` tool that
+the channel server registers. A typical reply call looks like:
+
+```jsonc
+// Claude → channel server (tools/call)
+{
+  "name": "post_to_thread",
+  "arguments": {
+    "thread_id": "demo-thread-1",
+    "content": "Acknowledged — I'm looking at src/auth right now, will hold off on edits until you confirm scope.",
+    "agent_id": "channel"   // optional, defaults to "channel"
+  }
+}
+```
+
+The channel server publishes the message onto
+`coordinator/<org>/consultations/demo-thread-1/messages` over MQTT — the same
+topic the daemon's `post_to_thread` MCP tool uses — so every other subscriber
+(other agents on `wait_for_message`, the dashboard, the audit log) sees the
+reply as if it came from any other coordination participant. No HTTP call,
+no extra server.
+
+Override `--org <slug>` on `mcp-coordinator channel` (or set
+`COORDINATOR_ORG`) when running against a non-default org.
 
 ## Troubleshooting
 
