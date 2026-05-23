@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.12.0](https://github.com/swoofer/mcp-coordinator/compare/v0.11.0...v0.12.0) (2026-05-23)
+
+
+### Features
+
+* **channels:** Phase 1 push-only channel CLI ([#130](https://github.com/swoofer/mcp-coordinator/issues/130)) ([#141](https://github.com/swoofer/mcp-coordinator/issues/141)) ([ffe4c38](https://github.com/swoofer/mcp-coordinator/commit/ffe4c3869441217024c075f788d3bd76fd79553c))
+
+
+### Bug Fixes
+
+* **stdio:** MCP tool calls work in stdio mode (closes [#133](https://github.com/swoofer/mcp-coordinator/issues/133)) ([#135](https://github.com/swoofer/mcp-coordinator/issues/135)) ([ce54a85](https://github.com/swoofer/mcp-coordinator/commit/ce54a850530282da2cbb1fca1ae1efb98a6d56f2))
+* validate list_threads status ([#132](https://github.com/swoofer/mcp-coordinator/issues/132)) ([e7cedad](https://github.com/swoofer/mcp-coordinator/commit/e7cedad3fc59f91b92ff748b8500f2c9f587e9e0))
+
+
+### Documentation
+
+* bump example pins to mcp-coordinator:0.11.0 ([#123](https://github.com/swoofer/mcp-coordinator/issues/123)) ([a6e3b19](https://github.com/swoofer/mcp-coordinator/commit/a6e3b19b086a2a6fb2cb1aad8fa1bd0510c31b0e))
+* **channels:** event catalog for [#130](https://github.com/swoofer/mcp-coordinator/issues/130) Phase 1 scoping ([#138](https://github.com/swoofer/mcp-coordinator/issues/138)) ([418235d](https://github.com/swoofer/mcp-coordinator/commit/418235da06663450931214a4eeaff486d6103a41))
+* **channels:** quickstart example + README section for [#130](https://github.com/swoofer/mcp-coordinator/issues/130) ([#137](https://github.com/swoofer/mcp-coordinator/issues/137)) ([a5f03df](https://github.com/swoofer/mcp-coordinator/commit/a5f03dfc25d989092a0c343f1a96c122b978af54))
+* **channels:** reference plugin patterns study for [#130](https://github.com/swoofer/mcp-coordinator/issues/130) ([#139](https://github.com/swoofer/mcp-coordinator/issues/139)) ([c369ac3](https://github.com/swoofer/mcp-coordinator/commit/c369ac347d09d94718882e2ba75020f00c326648))
+* **html:** bump landing page to v0.11.0, update outdated roadmap cards ([#127](https://github.com/swoofer/mcp-coordinator/issues/127)) ([208ecc2](https://github.com/swoofer/mcp-coordinator/commit/208ecc21fb74340800894f5dce7b8dd8d11b42ff))
+* **html:** correct harbor roadmap card — tengu_harbor shipped as Channels ([#131](https://github.com/swoofer/mcp-coordinator/issues/131)) ([4df99fa](https://github.com/swoofer/mcp-coordinator/commit/4df99fab412d22997926e9f808a3290a0a97dae7))
+* **html:** translate encrest roadmap card into FR, ES, DE, ZH, JA ([#129](https://github.com/swoofer/mcp-coordinator/issues/129)) ([8028a2c](https://github.com/swoofer/mcp-coordinator/commit/8028a2cf0262b4587d042b714ef82668fa6be0c5))
+* **html:** translate v0.11 roadmap card into FR, ES, DE, ZH, JA ([#128](https://github.com/swoofer/mcp-coordinator/issues/128)) ([86495ad](https://github.com/swoofer/mcp-coordinator/commit/86495ad9e00b0736576a20798033cd308729b590))
+* **readme:** rework as pitch — extract usage walkthroughs, drop CHANGELOG dupes ([#136](https://github.com/swoofer/mcp-coordinator/issues/136)) ([4b29afd](https://github.com/swoofer/mcp-coordinator/commit/4b29afd1f1a56baebd6891cf42f7b218c6b511fc))
+* surface Docker install option in README and landing page ([#126](https://github.com/swoofer/mcp-coordinator/issues/126)) ([1d94c92](https://github.com/swoofer/mcp-coordinator/commit/1d94c92c768d50f30d1e663f26f67a68a566f616))
+
 ## [0.11.0](https://github.com/swoofer/mcp-coordinator/compare/v0.10.9...v0.11.0) (2026-05-23)
 
 
