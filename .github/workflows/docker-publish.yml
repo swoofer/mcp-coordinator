@@ -56,15 +56,23 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       # docker/metadata-action's semver matchers read `github.ref` — which
-      # is `refs/tags/vX.Y.Z` on tag push but `refs/heads/main` on
-      # workflow_dispatch (the `tag` input only affects checkout, not the
-      # metadata-action's view of the build context). The `type=match`
-      # directives below let us pass the version via the `value` parameter,
-      # so manual dispatch produces the same tag set as a real tag push.
+      # is `refs/tags/vX.Y.Z` only on a direct tag push. workflow_dispatch
+      # and workflow_call both run with the caller's `github.ref` (typically
+      # `refs/heads/main`), so the semver matchers don't fire in those
+      # cases. The `type=match` directives below take the version from
+      # `inputs.tag` instead, which is set in both event types.
       #
-      # `:latest` is intentionally NOT promoted on workflow_dispatch — that
-      # protects against accidentally shifting :latest backwards when
-      # retrying a publish of an older release.
+      # Gate: when `inputs.tag` is set, we're in workflow_dispatch or
+      # workflow_call. Don't gate on `github.event_name` — for reusable
+      # workflows, that value reflects the CALLER's event (typically
+      # `push`), not `workflow_call`. Asking the input directly is the
+      # only reliable signal.
+      #
+      # `:latest` is intentionally NOT promoted on workflow_dispatch /
+      # workflow_call — that protects against accidentally shifting
+      # `:latest` backwards when retrying a publish of an older release.
+      # The chained release-please path passes the new release tag via
+      # workflow_call, so :latest still updates on real tag pushes.
       - name: Derive image tags
         id: meta
         uses: docker/metadata-action@v5
@@ -74,8 +82,8 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable=${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
-            type=match,pattern=v(\d+\.\d+\.\d+),group=1,value=${{ inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' }}
-            type=match,pattern=v(\d+\.\d+),group=1,value=${{ inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' }}
+            type=match,pattern=v(\d+\.\d+\.\d+),group=1,value=${{ inputs.tag }},enable=${{ inputs.tag != '' }}
+            type=match,pattern=v(\d+\.\d+),group=1,value=${{ inputs.tag }},enable=${{ inputs.tag != '' }}
 
       - name: Build and push (linux/amd64, linux/arm64)
         uses: docker/build-push-action@v6
