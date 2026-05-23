@@ -94,7 +94,7 @@ describe("cli/doctor — malformed config.json is a diagnostic, not a crash (iss
 
     // The combined stdout should include a FAIL diagnostic for config.json,
     // and the parse-error text from loadConfig() must appear in the detail.
-    const out = logSpy.mock.calls.map((c) => c.join(" ")).join("\n");
+    const out = logSpy.mock.calls.map((c: unknown[]) => c.join(" ")).join("\n");
     expect(out).toMatch(/\[FAIL\]\s+config\.json/);
     expect(out).toMatch(/invalid:.*Failed to parse/);
   });
@@ -130,7 +130,7 @@ describe("cli/doctor — malformed config.json is a diagnostic, not a crash (iss
       // expected: process.exit sentinel
     }
 
-    const out = logSpy.mock.calls.map((c) => c.join(" ")).join("\n");
+    const out = logSpy.mock.calls.map((c: unknown[]) => c.join(" ")).join("\n");
     // The pid-file check runs after the config.json check. If doctor aborted
     // on the loadConfig throw, this line would be absent.
     expect(out).toMatch(/pid-file/);
@@ -200,8 +200,8 @@ describe("cli/init — malformed config.json is overwritten with a warning (issu
     await cmd.parseAsync(["node", "init"]);
 
     // Warning may go to console.warn or console.error (stderr) — accept either.
-    const warnCalls = warnSpy.mock.calls.map((c) => c.join(" ")).join("\n");
-    const errCalls = errSpy.mock.calls.map((c) => c.join(" ")).join("\n");
+    const warnCalls = warnSpy.mock.calls.map((c: unknown[]) => c.join(" ")).join("\n");
+    const errCalls = errSpy.mock.calls.map((c: unknown[]) => c.join(" ")).join("\n");
     const combined = warnCalls + "\n" + errCalls;
     expect(combined).toMatch(/malformed|invalid|overwrit/i);
     expect(combined).toMatch(/config\.json|Failed to parse/);
