@@ -6,9 +6,11 @@ certificates automatically via Let's Encrypt.
 
 Stack:
 
-- `coordinator` -- runs `npx mcp-coordinator@latest server start` on
-  `node:22-alpine`. Listens on `:3000` inside the compose network.
-  Data lives in the `coordinator-data` named volume.
+- `coordinator` -- pulls the multi-arch image
+  `ghcr.io/swoofer/mcp-coordinator:latest` published from this repo's
+  Dockerfile on every release tag. Listens on `:3100` inside the
+  compose network. Data lives in the `coordinator-data` named volume.
+  Pin to a specific version (e.g. `:0.10.9`) for production.
 - `caddy` -- terminates TLS, proxies HTTP/1.1 + HTTP/2 + SSE to the
   coordinator. Persists certs and ACME state in the `caddy-data` and
   `caddy-config` named volumes.

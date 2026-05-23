@@ -1,0 +1,77 @@
+name: Docker publish
+
+on:
+  push:
+    tags: ["v*"]
+  # Manual lever — useful if a tag was already pushed but the registry
+  # publish needs a retry (transient GHCR auth failure, etc.).
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Git tag to build from (e.g. v0.10.9)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+concurrency:
+  # Don't cancel in progress — a partial registry push is worse than a
+  # second concurrent push that no-ops on already-pushed layers.
+  group: docker-publish-${{ github.ref }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Set up QEMU (for cross-arch emulation)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          # GHCR image name: ghcr.io/swoofer/mcp-coordinator
+          images: ghcr.io/${{ github.repository }}
+          # Tag layout:
+          #   v0.10.9        -> 0.10.9, 0.10, latest
+          #   workflow_dispatch with tag input -> same, derived from input
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+
+      - name: Build and push (linux/amd64, linux/arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # GitHub Actions cache backend — speeds up the second arch by
+          # ~3-5min after the first one warms it. Scoped per workflow.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # Provenance attestation: GHCR shows the build came from this
+          # workflow on this repo. Same posture as npm publish provenance.
+          provenance: true
+          sbom: true
