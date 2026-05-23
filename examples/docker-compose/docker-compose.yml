@@ -4,9 +4,11 @@ services:
   coordinator:
     # Published from this repo's main on every release tag — see
     # .github/workflows/docker-publish.yml. Multi-arch (linux/amd64 +
-    # linux/arm64). Pin to a specific version (e.g. :0.10.9) in
-    # production; :latest tracks the most recent release.
-    image: ghcr.io/swoofer/mcp-coordinator:latest
+    # linux/arm64). Pinned to an exact version so this example is
+    # reproducible — bump the tag when you upgrade. Alternatives:
+    #   :0.10        — auto-bumps within the 0.10.x series
+    #   :latest      — always the most recent release (not advised in prod)
+    image: ghcr.io/swoofer/mcp-coordinator:0.10.9
     env_file: .env
     volumes:
       - coordinator-data:/data
