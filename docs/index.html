@@ -2260,6 +2260,7 @@
       </div>
     </div>
     <p class="install-alt text-center" data-i18n="start.alt"><strong>Prefer Docker?</strong> Pull the multi-arch image instead: <code>docker pull ghcr.io/swoofer/mcp-coordinator:0.11.0</code>. A working compose stack with Caddy auto-TLS ships at <a href="https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose">examples/docker-compose/</a>.</p>
+    <p class="install-alt text-center" data-i18n="start.modes"><strong>Want real-time push instead of polling?</strong> Add the Channels sidecar (v0.12+ research preview) so coordination events arrive as <code>&lt;channel&gt;</code> tags in your Claude Code session between turns. See the <a href="https://github.com/swoofer/mcp-coordinator/blob/main/docs/operating-modes.md">polling-vs-push decision guide</a> and the <a href="https://github.com/swoofer/mcp-coordinator/tree/main/examples/channels-quickstart">channels-quickstart example</a>.</p>
     <p class="install-note text-center" data-i18n="start.note"><code>git worktree add ../feature-x main</code> and run each agent in its own worktree &mdash; mcp-coordinator handles "who's editing types.ts"; worktrees handle "no two agents fighting the same inode."</p>
 
     <!-- Dashboard preview -->
@@ -3072,6 +3073,7 @@
       "start.step4.title": "Verify and open",
       "start.step4.desc": "The <code class=\"ic\">doctor</code> command checks config, server, MCP responses, and MQTT connections, then opens the dashboard at <code class=\"ic\">localhost:3100/dashboard</code>.",
       "start.alt": "<strong>Prefer Docker?</strong> Pull the multi-arch image instead: <code class=\"ic\">docker pull ghcr.io/swoofer/mcp-coordinator:0.11.0</code>. A working compose stack with Caddy auto-TLS ships at <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose\">examples/docker-compose/</a>.",
+      "start.modes": "<strong>Want real-time push instead of polling?</strong> Add the Channels sidecar (v0.12+ research preview) so coordination events arrive as <code class=\"ic\">&lt;channel&gt;</code> tags in your Claude Code session between turns. See the <a href=\"https://github.com/swoofer/mcp-coordinator/blob/main/docs/operating-modes.md\">polling-vs-push decision guide</a> and the <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/channels-quickstart\">channels-quickstart example</a>.",
       "start.note": "<code class=\"ic\">git worktree add ../feature-x main</code> and run each agent in its own worktree &mdash; mcp-coordinator handles \"who's editing types.ts\"; worktrees handle \"no two agents fighting the same inode.\"",
       "start.dash.title": "What you'll see in 60 seconds",
       "start.dash.meta": "mcp-coordinator v0.11.0 &middot; quota 62%",
@@ -3531,6 +3533,7 @@
       "start.step4.title": "Vérifier et ouvrir",
       "start.step4.desc": "La commande <code class=\"ic\">doctor</code> vérifie la config, le serveur, les réponses MCP et les connexions MQTT, puis ouvre le dashboard sur <code class=\"ic\">localhost:3100/dashboard</code>.",
       "start.alt": "<strong>Vous préférez Docker ?</strong> Pull plutôt l'image multi-arch : <code class=\"ic\">docker pull ghcr.io/swoofer/mcp-coordinator:0.11.0</code>. Une stack compose complète avec Caddy auto-TLS est fournie dans <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose\">examples/docker-compose/</a>.",
+      "start.modes": "<strong>Vous voulez du push temps réel plutôt que du polling ?</strong> Ajoutez le sidecar Channels (v0.12+ research preview) pour que les événements de coordination arrivent comme tags <code class=\"ic\">&lt;channel&gt;</code> dans votre session Claude Code entre les tours. Voir le <a href=\"https://github.com/swoofer/mcp-coordinator/blob/main/docs/operating-modes.md\">guide de décision polling-vs-push</a> et l'<a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/channels-quickstart\">exemple channels-quickstart</a>.",
       "start.note": "<code class=\"ic\">git worktree add ../feature-x main</code> et lancez chaque agent dans son propre worktree &mdash; mcp-coordinator gère \"qui édite types.ts\" ; les worktrees gèrent \"deux agents qui ne se battent pas sur la même inode.\"",
       "start.dash.title": "Ce que vous verrez en 60 secondes",
       "start.dash.meta": "mcp-coordinator v0.11.0 &middot; quota 62%",
@@ -3988,6 +3991,7 @@
       "start.step4.title": "Verificar y abrir",
       "start.step4.desc": "El comando <code class=\"ic\">doctor</code> chequea config, servidor, respuestas MCP y conexiones MQTT, luego abre el dashboard en <code class=\"ic\">localhost:3100/dashboard</code>.",
       "start.alt": "<strong>¿Prefieres Docker?</strong> Haz pull de la imagen multi-arch: <code class=\"ic\">docker pull ghcr.io/swoofer/mcp-coordinator:0.11.0</code>. Un stack compose completo con Caddy auto-TLS está en <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose\">examples/docker-compose/</a>.",
+      "start.modes": "<strong>¿Quieres push en tiempo real en vez de polling?</strong> Añade el sidecar Channels (v0.12+ research preview) para que los eventos de coordinación lleguen como etiquetas <code class=\"ic\">&lt;channel&gt;</code> en tu sesión de Claude Code entre turnos. Mira la <a href=\"https://github.com/swoofer/mcp-coordinator/blob/main/docs/operating-modes.md\">guía de decisión polling-vs-push</a> y el <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/channels-quickstart\">ejemplo channels-quickstart</a>.",
       "start.note": "<code class=\"ic\">git worktree add ../feature-x main</code> y ejecuta cada agente en su propio worktree &mdash; mcp-coordinator maneja \"quién está editando types.ts\"; los worktrees manejan \"que dos agentes no peleen por el mismo inode.\"",
       "start.dash.title": "Lo que verás en 60 segundos",
       "start.dash.meta": "mcp-coordinator v0.11.0 &middot; cuota 62%",
@@ -4446,6 +4450,7 @@
       "start.step4.title": "Prüfen und öffnen",
       "start.step4.desc": "Der <code class=\"ic\">doctor</code>-Befehl prüft Konfig, Server, MCP-Antworten und MQTT-Verbindungen, dann öffnet er das Dashboard auf <code class=\"ic\">localhost:3100/dashboard</code>.",
       "start.alt": "<strong>Bevorzugen Sie Docker?</strong> Ziehen Sie stattdessen das Multi-Arch-Image: <code class=\"ic\">docker pull ghcr.io/swoofer/mcp-coordinator:0.11.0</code>. Ein vollständiger Compose-Stack mit Caddy auto-TLS liegt unter <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose\">examples/docker-compose/</a>.",
+      "start.modes": "<strong>Möchten Sie Echtzeit-Push statt Polling?</strong> Fügen Sie den Channels-Sidecar (v0.12+ Research Preview) hinzu, sodass Coordination-Events als <code class=\"ic\">&lt;channel&gt;</code>-Tags in Ihrer Claude-Code-Session zwischen den Turns ankommen. Siehe den <a href=\"https://github.com/swoofer/mcp-coordinator/blob/main/docs/operating-modes.md\">Polling-vs-Push-Entscheidungsleitfaden</a> und das <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/channels-quickstart\">channels-quickstart-Beispiel</a>.",
       "start.note": "<code class=\"ic\">git worktree add ../feature-x main</code> und führe jeden Agenten in seinem eigenen Worktree aus &mdash; mcp-coordinator regelt \"wer bearbeitet types.ts\"; Worktrees regeln \"keine zwei Agenten kämpfen um dieselbe Inode.\"",
       "start.dash.title": "Was du in 60 Sekunden siehst",
       "start.dash.meta": "mcp-coordinator v0.11.0 &middot; Quota 62%",
@@ -4904,6 +4909,7 @@
       "start.step4.title": "验证并打开",
       "start.step4.desc": "<code class=\"ic\">doctor</code> 命令检查 config、服务器、MCP 响应和 MQTT 连接,然后在 <code class=\"ic\">localhost:3100/dashboard</code> 打开 dashboard。",
       "start.alt": "<strong>更喜欢 Docker?</strong> 改为拉取多架构镜像:<code class=\"ic\">docker pull ghcr.io/swoofer/mcp-coordinator:0.11.0</code>。完整的 compose 栈(带 Caddy auto-TLS)位于 <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose\">examples/docker-compose/</a>。",
+      "start.modes": "<strong>想要实时推送而不是轮询?</strong> 添加 Channels 边车(v0.12+ research preview),让协调事件以 <code class=\"ic\">&lt;channel&gt;</code> 标签的形式在轮次之间到达您的 Claude Code 会话。参见 <a href=\"https://github.com/swoofer/mcp-coordinator/blob/main/docs/operating-modes.md\">polling-vs-push 决策指南</a>和 <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/channels-quickstart\">channels-quickstart 示例</a>。",
       "start.note": "<code class=\"ic\">git worktree add ../feature-x main</code>,让每个 agent 在自己的 worktree 里运行&mdash;&mdash;mcp-coordinator 处理\"谁在编辑 types.ts\";worktree 处理\"两个 agent 别抢同一个 inode\"。",
       "start.dash.title": "60 秒后你会看到的画面",
       "start.dash.meta": "mcp-coordinator v0.11.0 &middot; 配额 62%",
@@ -5362,6 +5368,7 @@
       "start.step4.title": "確認して開く",
       "start.step4.desc": "<code class=\"ic\">doctor</code> コマンドが config、サーバー、MCP 応答、MQTT 接続をチェックし、その後 <code class=\"ic\">localhost:3100/dashboard</code> でダッシュボードを開きます。",
       "start.alt": "<strong>Docker をお使いの場合は?</strong> 代わりにマルチアーキ対応イメージを pull してください: <code class=\"ic\">docker pull ghcr.io/swoofer/mcp-coordinator:0.11.0</code>。Caddy auto-TLS 付きの完全な compose スタックが <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose\">examples/docker-compose/</a> にあります。",
+      "start.modes": "<strong>ポーリングではなくリアルタイム push がお望みですか?</strong> Channels サイドカー (v0.12+ research preview) を追加すれば、コーディネーションイベントが <code class=\"ic\">&lt;channel&gt;</code> タグとしてターン間で Claude Code セッションに届きます。<a href=\"https://github.com/swoofer/mcp-coordinator/blob/main/docs/operating-modes.md\">polling-vs-push 決定ガイド</a>と <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/channels-quickstart\">channels-quickstart のサンプル</a>をご覧ください。",
       "start.note": "<code class=\"ic\">git worktree add ../feature-x main</code> を実行し、各エージェントを自身のワークツリーで動かしてください&mdash;mcp-coordinator は「誰が types.ts を編集しているか」を扱い、ワークツリーは「2 体のエージェントが同じ inode を取り合わない」を扱います。",
       "start.dash.title": "60 秒で見えるもの",
       "start.dash.meta": "mcp-coordinator v0.11.0 &middot; クォータ 62%",
