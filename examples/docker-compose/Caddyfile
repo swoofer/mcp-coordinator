@@ -1,5 +1,5 @@
 {$COORDINATOR_PUBLIC_DOMAIN} {
-    reverse_proxy coordinator:3000 {
+    reverse_proxy coordinator:3100 {
         # SSE + WebSocket: disable buffering so server-sent events stream
         # to clients in real time instead of being chunked by Caddy.
         flush_interval -1

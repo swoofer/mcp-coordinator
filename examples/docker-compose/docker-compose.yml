@@ -2,19 +2,19 @@ version: "3.9"
 
 services:
   coordinator:
-    image: node:22-alpine
-    working_dir: /app
-    command: sh -c "npx mcp-coordinator@latest server start"
+    # Published from this repo's main on every release tag — see
+    # .github/workflows/docker-publish.yml. Multi-arch (linux/amd64 +
+    # linux/arm64). Pin to a specific version (e.g. :0.10.9) in
+    # production; :latest tracks the most recent release.
+    image: ghcr.io/swoofer/mcp-coordinator:latest
     env_file: .env
     volumes:
-      - coordinator-data:/app/data
+      - coordinator-data:/data
     networks: [internal]
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://localhost:3000/healthz || exit 1"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
+    # The Dockerfile already defines a HEALTHCHECK against :3100/health;
+    # compose will pick it up automatically. Override here only if you
+    # remap the internal port.
 
   caddy:
     image: caddy:2-alpine
