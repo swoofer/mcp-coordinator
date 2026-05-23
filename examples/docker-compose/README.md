@@ -7,10 +7,13 @@ certificates automatically via Let's Encrypt.
 Stack:
 
 - `coordinator` -- pulls the multi-arch image
-  `ghcr.io/swoofer/mcp-coordinator:latest` published from this repo's
+  `ghcr.io/swoofer/mcp-coordinator:0.10.9` published from this repo's
   Dockerfile on every release tag. Listens on `:3100` inside the
   compose network. Data lives in the `coordinator-data` named volume.
-  Pin to a specific version (e.g. `:0.10.9`) for production.
+  Pinned to an exact version for reproducibility — bump the tag in
+  `docker-compose.yml` when you upgrade. Use `:0.10` for auto-bumps
+  within the 0.10.x series, or `:latest` for tip-of-main (not advised
+  for production).
 - `caddy` -- terminates TLS, proxies HTTP/1.1 + HTTP/2 + SSE to the
   coordinator. Persists certs and ACME state in the `caddy-data` and
   `caddy-config` named volumes.
@@ -131,16 +134,20 @@ upstream MCP HTTP transport requires real-time SSE flushing.
 
 ## Upgrading
 
-The image is `node:22-alpine` and the coordinator is pulled via
-`npx mcp-coordinator@latest` at container start. To upgrade to a new
-coordinator release:
+The `coordinator` service pulls the published image
+`ghcr.io/swoofer/mcp-coordinator:<tag>`. To upgrade:
 
 ```sh
-docker compose restart coordinator
+# Edit docker-compose.yml — bump the image tag, e.g.:
+#   image: ghcr.io/swoofer/mcp-coordinator:0.10.10
+docker compose pull coordinator     # fetch the new image
+docker compose up -d coordinator    # recreate with the new image
 ```
 
-That re-runs `npx`, which fetches the latest published version. To
-pin a specific version, edit the `command:` in docker-compose.yml.
+For automatic bumps within a minor series, use the moving tag
+`ghcr.io/swoofer/mcp-coordinator:0.10` and `docker compose pull` will
+fetch new patches as they ship. Avoid `:latest` in production — it
+silently jumps minor and major versions when those release.
 
 ## What this example does NOT include
 

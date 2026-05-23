@@ -117,7 +117,7 @@ spec:
           restartPolicy: OnFailure
           containers:
           - name: rotator
-            image: ghcr.io/swoofer/mcp-coordinator:latest
+            image: ghcr.io/swoofer/mcp-coordinator:0.10.9
             command: ["/bin/sh", "-c"]
             args:
             - |
