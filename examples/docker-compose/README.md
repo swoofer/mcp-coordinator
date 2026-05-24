@@ -7,12 +7,12 @@ certificates automatically via Let's Encrypt.
 Stack:
 
 - `coordinator` -- pulls the multi-arch image
-  `ghcr.io/swoofer/mcp-coordinator:0.11.0` published from this repo's
+  `ghcr.io/swoofer/mcp-coordinator:0.13.0` published from this repo's
   Dockerfile on every release tag. Listens on `:3100` inside the
   compose network. Data lives in the `coordinator-data` named volume.
   Pinned to an exact version for reproducibility — bump the tag in
-  `docker-compose.yml` when you upgrade. Use `:0.10` for auto-bumps
-  within the 0.10.x series, or `:latest` for tip-of-main (not advised
+  `docker-compose.yml` when you upgrade. Use `:0.13` for auto-bumps
+  within the 0.13.x series, or `:latest` for tip-of-main (not advised
   for production).
 - `caddy` -- terminates TLS, proxies HTTP/1.1 + HTTP/2 + SSE to the
   coordinator. Persists certs and ACME state in the `caddy-data` and
