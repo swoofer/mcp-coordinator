@@ -6,9 +6,9 @@ services:
     # .github/workflows/docker-publish.yml. Multi-arch (linux/amd64 +
     # linux/arm64). Pinned to an exact version so this example is
     # reproducible — bump the tag when you upgrade. Alternatives:
-    #   :0.10        — auto-bumps within the 0.10.x series
+    #   :0.13        — auto-bumps within the 0.13.x series
     #   :latest      — always the most recent release (not advised in prod)
-    image: ghcr.io/swoofer/mcp-coordinator:0.11.0
+    image: ghcr.io/swoofer/mcp-coordinator:0.13.0
     env_file: .env
     volumes:
       - coordinator-data:/data
