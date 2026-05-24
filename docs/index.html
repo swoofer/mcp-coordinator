@@ -2804,18 +2804,6 @@
         </p>
       </div>
 
-      <div class="timeline-item">
-        <div class="timeline-dot dot-planned" aria-hidden="true"></div>
-        <div class="timeline-badge badge-planned" data-i18n="roadmap.badge.planned">Planned</div>
-        <h4 data-i18n="roadmap.harbor.title">Claude Code Channels integration</h4>
-        <p data-i18n="roadmap.harbor.desc">Anthropic's server-side push (formerly tracked internally as <code>tengu_harbor</code>) shipped as <a href="https://code.claude.com/docs/en/channels-reference" target="_blank" rel="noopener noreferrer">Claude Code Channels</a> in research preview (v2.1.80+). A dedicated <code>mcp-coordinator channel</code> stdio process will subscribe to the broker and push consultation events, agent status changes, and conflicts directly into your Claude Code session via the <code>claude/channel</code> capability — no polling, no separate MQTT subscriber. Integration work tracked on GitHub.</p>
-        <p class="timeline-meta">
-          <span data-i18n="roadmap.harbor.date">In design · upstream in research preview</span>
-          <span aria-hidden="true">·</span>
-          <a href="https://github.com/swoofer/mcp-coordinator/issues?q=is%3Aissue+label%3Achannels" target="_blank" rel="noopener noreferrer" data-i18n="roadmap.harbor.link" aria-label="Channels integration issues on GitHub">Follow on GitHub</a>
-        </p>
-      </div>
-
     </div>
   </div>
 </section>
@@ -3217,10 +3205,6 @@
       "roadmap.v1_0.desc": "Frozen public API, versioned REST endpoints, migration guides. Coordination across multiple repositories from a single MQTT broker. Phase 5 multi-instance via Redis pub/sub for membership cache invalidation + token_epoch reads + rate-limit + sweeper leader election.",
       "roadmap.v1_0.date": "Date TBD",
       "roadmap.v1_0.link": "Follow on GitHub",
-      "roadmap.harbor.title": "Claude Code Channels integration",
-      "roadmap.harbor.desc": "Anthropic's server-side push (formerly tracked internally as <code>tengu_harbor</code>) shipped as <a href=\"https://code.claude.com/docs/en/channels-reference\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code Channels</a> in research preview (v2.1.80+). A dedicated <code>mcp-coordinator channel</code> stdio process will subscribe to the broker and push consultation events, agent status changes, and conflicts directly into your Claude Code session via the <code>claude/channel</code> capability — no polling, no separate MQTT subscriber. Integration work tracked on GitHub.",
-      "roadmap.harbor.date": "In design · upstream in research preview",
-      "roadmap.harbor.link": "Follow on GitHub",
       "footer.text": "MIT License &nbsp;·&nbsp; Built with <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v0.13.0",
       // === Deprecated keys preserved for backwards-compat (old taxonomy) ===
       "why.title": "Why MCP Coordinator?",
@@ -3685,10 +3669,6 @@
       "roadmap.v13.desc": "Les channels deviennent bidirectionnels : un nouvel outil <code>post_to_thread</code> permet à une session Claude Code de répondre directement dans un thread de consultation via MQTT. CI : le chaînage <code>release.yml &rarr; docker-publish.yml</code> via <code>workflow_call</code> publie maintenant automatiquement l'image multi-arch sur GHCR à chaque tag de release sans dispatch manuel (la cause racine était un gating sur le mauvais champ d'événement). Nouveau guide operating-modes (polling vs push) qui détaille le choix ; enum de statut <code>list_threads</code> corrigé pour les intégrateurs externes.",
       "roadmap.v13.date": "Livré en mai 2026",
       "roadmap.v13.link": "Release v0.13.0",
-      "roadmap.harbor.title": "Intégration Claude Code Channels",
-      "roadmap.harbor.desc": "Le push server-side d'Anthropic (jadis suivi en interne sous le nom <code class=\"ic\">tengu_harbor</code>) a été livré sous le nom <a href=\"https://code.claude.com/docs/en/channels-reference\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code Channels</a> en research preview (v2.1.80+). Un process stdio dédié <code class=\"ic\">mcp-coordinator channel</code> souscrira au broker et poussera les events de consultation, changements de statut d'agent et conflits directement dans votre session Claude Code via la capability <code class=\"ic\">claude/channel</code> — sans polling, sans subscriber MQTT séparé. Travail d'intégration suivi sur GitHub.",
-      "roadmap.harbor.date": "En conception · upstream en research preview",
-      "roadmap.harbor.link": "Suivre sur GitHub",
       "compliance.title": "Entreprise &amp; Conformité",
       "compliance.intro": "Conçu pour la conformité depuis la fondation. v0.11.0 livre OAuth 2.1 Phase 2 complet, SSO multi-IdP et inviolabilité du journal d'audit via SHA-256 &mdash; les capacités dont les déploiements en industries régulées et SOC 2 Type II ont réellement besoin pour constituer un dossier d'audit.",
       "compliance.th.capability": "Capacité",
@@ -4107,10 +4087,6 @@
       "roadmap.v1_0.desc": "API pública congelada, endpoints REST versionados, guías de migración. Coordinación entre múltiples repositorios desde un solo broker. Multi-instancia Phase 5 vía Redis pub/sub para invalidación de caché de membresía + lecturas <code>token_epoch</code> + rate-limit + elección de líder del sweeper.",
       "roadmap.v1_0.date": "Fecha por definir",
       "roadmap.v1_0.link": "Seguir en GitHub",
-      "roadmap.harbor.title": "Integración Claude Code Channels",
-      "roadmap.harbor.desc": "El push del lado del servidor de Anthropic (rastreado internamente como <code class=\"ic\">tengu_harbor</code>) se lanzó como <a href=\"https://code.claude.com/docs/en/channels-reference\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code Channels</a> en research preview (v2.1.80+). Un proceso stdio dedicado <code class=\"ic\">mcp-coordinator channel</code> se suscribirá al broker y enviará eventos de consulta, cambios de estado de agentes y conflictos directamente a tu sesión de Claude Code vía la capability <code class=\"ic\">claude/channel</code> — sin polling, sin suscriptor MQTT separado. Trabajo de integración rastreado en GitHub.",
-      "roadmap.harbor.date": "En diseño · upstream en research preview",
-      "roadmap.harbor.link": "Seguir en GitHub",
       "footer.text": "Licencia MIT &nbsp;·&nbsp; Construido con <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v0.13.0",
       "why.title": "¿Por qué MCP Coordinator?",
       "why.subtitle": "Ejecute cinco agentes en el mismo repositorio sin conflictos de merge, trabajo duplicado ni regresiones silenciosas.",
@@ -4574,10 +4550,6 @@
       "roadmap.v1_0.desc": "Eingefrorene öffentliche API, versionierte REST-Endpoints, Migrationsleitfäden. Koordination über mehrere Repositories hinweg von einem einzigen Broker aus.",
       "roadmap.v1_0.date": "Datum offen",
       "roadmap.v1_0.link": "Auf GitHub folgen",
-      "roadmap.harbor.title": "Claude Code Channels Integration",
-      "roadmap.harbor.desc": "Anthropics Server-Side-Push (intern als <code class=\"ic\">tengu_harbor</code> geführt) wurde als <a href=\"https://code.claude.com/docs/en/channels-reference\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code Channels</a> in Research Preview (v2.1.80+) ausgeliefert. Ein dedizierter stdio-Prozess <code class=\"ic\">mcp-coordinator channel</code> wird den Broker abonnieren und Consultation-Events, Agent-Status-Änderungen und Konflikte direkt in Ihre Claude-Code-Session pushen — über die <code class=\"ic\">claude/channel</code>-Capability, ohne Polling, ohne separaten MQTT-Subscriber. Integrationsarbeit auf GitHub verfolgt.",
-      "roadmap.harbor.date": "In Design · Upstream in Research Preview",
-      "roadmap.harbor.link": "Auf GitHub folgen",
       "footer.text": "MIT-Lizenz &nbsp;·&nbsp; Gebaut mit <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v0.13.0",
       "why.title": "Warum MCP Coordinator?",
       "why.subtitle": "Fünf Agenten auf demselben Repo betreiben — ohne Merge-Konflikte, doppelte Arbeit oder stille Regressionen.",
@@ -5041,10 +5013,6 @@
       "roadmap.v1_0.desc": "冻结的公共 API、版本化的 REST 端点、迁移指南。从单一 MQTT broker 协调多个仓库。Phase 5 多实例通过 Redis pub/sub 实现成员缓存失效 + token_epoch 读取 + 限流 + 清理器领导者选举。",
       "roadmap.v1_0.date": "日期待定",
       "roadmap.v1_0.link": "在 GitHub 上关注",
-      "roadmap.harbor.title": "Claude Code Channels 集成",
-      "roadmap.harbor.desc": "Anthropic 的服务端推送(原内部代号 <code class=\"ic\">tengu_harbor</code>)已作为 <a href=\"https://code.claude.com/docs/en/channels-reference\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code Channels</a> 在 research preview(v2.1.80+)中发布。专用的 <code class=\"ic\">mcp-coordinator channel</code> stdio 进程将订阅 broker,通过 <code class=\"ic\">claude/channel</code> capability 将咨询事件、agent 状态变化和冲突直接推送到你的 Claude Code 会话——无需轮询,无需独立的 MQTT 订阅者。集成工作在 GitHub 上跟踪。",
-      "roadmap.harbor.date": "设计中 · 上游处于 research preview",
-      "roadmap.harbor.link": "在 GitHub 上关注",
       "footer.text": "MIT 许可证 &nbsp;·&nbsp; 用 <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> 构建 &nbsp;·&nbsp; MCP Coordinator v0.13.0",
       "why.title": "为什么选择 MCP Coordinator?",
       "why.subtitle": "在同一 repo 上跑五个 agent,不出现合并冲突、不重复劳动、不遗留隐性回归。",
@@ -5508,10 +5476,6 @@
       "roadmap.v1_0.desc": "公開 API の凍結、バージョン管理された REST エンドポイント、マイグレーションガイド。単一の MQTT ブローカーから複数リポジトリにまたがる連携を提供します。Phase 5 マルチインスタンスは Redis pub/sub によるメンバーシップキャッシュの無効化 + token_epoch 読み取り + レートリミット + sweeper のリーダー選出を実現します。",
       "roadmap.v1_0.date": "日付未定",
       "roadmap.v1_0.link": "GitHub でフォロー",
-      "roadmap.harbor.title": "Claude Code Channels 統合",
-      "roadmap.harbor.desc": "Anthropic のサーバーサイドプッシュ (社内では <code class=\"ic\">tengu_harbor</code> として追跡されていたもの) は <a href=\"https://code.claude.com/docs/en/channels-reference\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code Channels</a> として research preview (v2.1.80+) で出荷されました。専用の <code class=\"ic\">mcp-coordinator channel</code> stdio プロセスがブローカーを購読し、<code class=\"ic\">claude/channel</code> capability 経由でコンサルテーションイベント、エージェントの状態変更、コンフリクトを Claude Code セッションに直接プッシュします — ポーリングや別途の MQTT サブスクライバー不要。統合作業は GitHub で追跡しています。",
-      "roadmap.harbor.date": "設計中 · 上流は research preview",
-      "roadmap.harbor.link": "GitHub でフォロー",
       "footer.text": "MIT License &nbsp;·&nbsp; <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> で構築 &nbsp;·&nbsp; MCP Coordinator v0.13.0",
       "why.title": "なぜ MCP Coordinator か?",
       "why.subtitle": "5 体のエージェントを同じリポジトリで走らせても、マージ競合・重複作業・サイレントリグレッションは発生しません。",
@@ -5762,7 +5726,10 @@
   const savedLang = localStorage.getItem('lang') || navigator.language.slice(0, 2);
   const initLang = supportedLangs.includes(savedLang) ? savedLang : 'en';
   if (initLang === 'en') { document.documentElement.lang = 'en'; document.querySelector('.lang-btn[data-lang="en"]').classList.add('active'); }
-  else { (window.requestIdleCallback || setTimeout)(() => setLanguage(initLang), 0); }
+  else {
+    const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 0));
+    idle(() => setLanguage(initLang));
+  }
 </script>
 
 </body>
