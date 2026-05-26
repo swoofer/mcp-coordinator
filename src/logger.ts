@@ -46,10 +46,13 @@ function createConsoleLogger(level: string, bindings: Record<string, unknown> = 
 }
 
 // Pino-based logger (dev mode, richer output)
-function createPinoLogger(level: string): Logger {
+function createPinoLogger(level: string, json: boolean): Logger {
   const pino = require("pino");
   const isDev = process.env.NODE_ENV === "development";
-  const transport = isDev
+  // pino-pretty is only used in dev. `json=true` (from --log-json or
+  // COORDINATOR_LOG_JSON=true) forces NDJSON even in dev for log aggregators.
+  const usePretty = isDev && !json;
+  const transport = usePretty
     ? { target: "pino-pretty", options: { colorize: true, translateTime: "SYS:HH:mm:ss" } }
     : undefined;
   return pino({ level, transport });
@@ -58,19 +61,24 @@ function createPinoLogger(level: string): Logger {
 export interface LoggerOptions {
   level?: string;
   pretty?: boolean;
+  /** Force NDJSON output (disable pino-pretty). Falls back to
+   *  COORDINATOR_LOG_JSON=true when not provided. */
+  json?: boolean;
 }
 
 export function createLogger(options?: LoggerOptions): Logger {
   const level = options?.level || process.env.LOG_LEVEL || "info";
+  const json = options?.json ?? (process.env.COORDINATOR_LOG_JSON === "true");
 
-  // Use console logger in Bun compiled binary (pino uses thread-stream which breaks)
+  // Use console logger in Bun compiled binary (pino uses thread-stream which breaks).
+  // Console logger always emits NDJSON, so --log-json is a no-op there.
   if (typeof (globalThis as Record<string, unknown>).Bun !== "undefined") {
     return createConsoleLogger(level);
   }
 
   // Use pino in Node.js (dev/test)
   try {
-    return createPinoLogger(level);
+    return createPinoLogger(level, json);
   } catch {
     return createConsoleLogger(level);
   }
