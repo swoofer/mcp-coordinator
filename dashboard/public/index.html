@@ -188,7 +188,8 @@
         <div class="panel-title" style="margin-bottom:0;">Timeline</div>
         <div style="display:flex;gap:6px;">
           <button id="btn-verbose" onclick="toggleVerbose()" style="background:#1e293b;border:1px solid #334155;color:#94a3b8;font-size:11px;padding:3px 10px;border-radius:4px;cursor:pointer;">Détails</button>
-          <button onclick="clearTimeline()" style="background:#1e293b;border:1px solid #334155;color:#94a3b8;font-size:11px;padding:3px 10px;border-radius:4px;cursor:pointer;">Clear</button>
+          <button onclick="clearTimeline()" title="Vide l'UI locale uniquement (le serveur garde son état)" style="background:#1e293b;border:1px solid #334155;color:#94a3b8;font-size:11px;padding:3px 10px;border-radius:4px;cursor:pointer;">Clear UI</button>
+          <button onclick="resetServer()" title="DESTRUCTIF — efface l'état serveur, casse les agents en cours" style="background:#1e293b;border:1px solid #7f1d1d;color:#fca5a5;font-size:11px;padding:3px 10px;border-radius:4px;cursor:pointer;">Reset Server</button>
         </div>
       </div>
       <div id="no-events">En attente d'événements...</div>
@@ -1003,6 +1004,9 @@
     }
 
     function clearTimeline() {
+      // UI-only clear — does NOT touch the server. Safe to click while agents
+      // are running. (Previously this also POSTed /api/reset which destroyed
+      // the agents table and broke any in-flight announce via FK violation.)
       document.getElementById('events').innerHTML = '';
       state.metrics = { threads: 0, conflicts: 0, resolved: 0, totalTime: 0, totalTokens: 0, auto_resolved: 0, timeout: 0, consensus: 0 };
       state.agents = {};
@@ -1011,8 +1015,25 @@
       updateMetrics();
       updateAgents();
       renderTokenBudget();
-      // Reset server events
-      fetch(`${COORDINATOR_URL}/api/reset`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+    }
+
+    function resetServer() {
+      // Destructive: wipes the coordinator DB (agents, threads, events, …).
+      // Running agents will fail their next announce with FK violation.
+      const activeCount = Object.keys(state.agents || {}).length;
+      const msg = activeCount > 0
+        ? `⚠️ ${activeCount} agent(s) actif(s) détecté(s) côté UI.\n\nReset Server efface TOUT l'état du coordinator (agents, threads, events). Les agents en cours vont planter à leur prochain announce (SQLITE_CONSTRAINT_FOREIGNKEY).\n\nContinuer quand même ?`
+        : 'Reset Server efface TOUT l\'état du coordinator (agents, threads, events). À utiliser uniquement entre deux runs.\n\nContinuer ?';
+      if (!confirm(msg)) return;
+      fetch(`${COORDINATOR_URL}/api/reset`, { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+        .then(r => {
+          if (!r.ok) {
+            r.json().then(j => alert(`Reset refusé par le serveur: ${j.error || r.status}`)).catch(() => alert(`Reset refusé: HTTP ${r.status}`));
+            return;
+          }
+          clearTimeline();
+        })
+        .catch(err => alert(`Reset failed: ${err.message}`));
     }
 
     // ── Token usage tracking + rendering ──────────────────────────────
