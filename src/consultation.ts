@@ -73,7 +73,12 @@ export class Consultation {
 
     const messageCount = (db.prepare("SELECT COUNT(*) as count FROM thread_messages WHERE thread_id = ?").get(threadId) as { count: number }).count;
 
-    const durationMs = thread ? Date.now() - new Date(thread.created_at).getTime() : undefined;
+    // SQLite stores CURRENT_TIMESTAMP as "YYYY-MM-DD HH:MM:SS" in UTC with
+    // no TZ suffix. V8's Date() parses such strings as LOCAL time, which on
+    // a non-UTC host (e.g. America/Toronto) yields a negative durationMs by
+    // the host's offset (~ -3h50min in summer). Append the Z so the
+    // constructor reads it as UTC — same pattern as agent-activity.ts:90.
+    const durationMs = thread ? Date.now() - new Date(thread.created_at.replace(" ", "T") + "Z").getTime() : undefined;
     this.log.info({
       thread_id: threadId,
       resolution_type: type,
