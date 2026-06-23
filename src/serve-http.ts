@@ -87,6 +87,12 @@ const REDIS_URL = process.env.COORDINATOR_REDIS_URL || "";
 // Unique instance identity for distributed locks (boot migration, sweeper
 // leadership, MQTT-offline dedup).
 const INSTANCE_ID = `${os.hostname()}-${process.pid}-${randomUUID().slice(0, 8)}`;
+// External-broker support: run with an external MQTT broker instead of the
+// embedded Aedes one. Default keeps the embedded broker (upstream behavior).
+const MQTT_EMBEDDED = process.env.COORDINATOR_MQTT_EMBEDDED !== "false";
+const MQTT_URL = process.env.COORDINATOR_MQTT_URL || "";
+const MQTT_USERNAME = process.env.COORDINATOR_MQTT_USERNAME || undefined;
+const MQTT_PASSWORD = process.env.COORDINATOR_MQTT_PASSWORD || undefined;
 const AUTH_ENABLED = process.env.COORDINATOR_AUTH_ENABLED === "true";
 const JWT_SECRET = process.env.COORDINATOR_JWT_SECRET || "";
 // Capture whether the env var was EXPLICITLY set at startup. Do not derive this
@@ -883,8 +889,12 @@ interface MqttWiring {
 
 async function wireMqtt(
   opts: MqttWiring,
-): Promise<{ broker: Awaited<ReturnType<typeof startEmbeddedMqttBroker>> }> {
+): Promise<{ broker: Awaited<ReturnType<typeof startEmbeddedMqttBroker>> | undefined }> {
   const { mqttTcpPort, mqttWsPath, httpServer, log, redis } = opts;
+  // External-broker support: when COORDINATOR_MQTT_EMBEDDED=false, skip
+  // starting the embedded Aedes broker and connect the internal bridge to
+  // the externally configured URL instead. Default (unset) keeps the
+  // embedded broker — upstream behavior unchanged.
   // Start the embedded MQTT broker (TCP + WebSocket on HTTP upgrade).
   // Awaiting ensures the TCP listener is fully bound before we connect our
   // own client or tell users the coordinator is ready.
@@ -894,29 +904,31 @@ async function wireMqtt(
   // Only install the verifier (and therefore the ACL hooks) when auth is enabled.
   // Without this guard, AUTH_ENABLED=false would still reject anonymous v0.6
   // MQTT clients at the authenticate hook, breaking backward compatibility.
-  const broker = await startEmbeddedMqttBroker({
-    tcpPort: mqttTcpPort,
-    httpServer,
-    wsPath: mqttWsPath,
-    logger: log.child({ component: "mqtt-broker" }),
-    ...(AUTH_ENABLED
-      ? {
-          authenticate: async (
-            _username: string | undefined,
-            password: Buffer | undefined,
-          ): Promise<MqttAuthResult> => {
-            if (!password) return { ok: false };
-            try {
-              const { verifyTokenStrict } = await import("./auth.js");
-              const { claims } = await verifyTokenStrict(password.toString("utf-8"));
-              return { ok: true as const, org: claims.org };
-            } catch {
-              return { ok: false };
+  const broker = MQTT_EMBEDDED
+    ? await startEmbeddedMqttBroker({
+        tcpPort: mqttTcpPort,
+        httpServer,
+        wsPath: mqttWsPath,
+        logger: log.child({ component: "mqtt-broker" }),
+        ...(AUTH_ENABLED
+          ? {
+              authenticate: async (
+                _username: string | undefined,
+                password: Buffer | undefined,
+              ): Promise<MqttAuthResult> => {
+                if (!password) return { ok: false };
+                try {
+                  const { verifyTokenStrict } = await import("./auth.js");
+                  const { claims } = await verifyTokenStrict(password.toString("utf-8"));
+                  return { ok: true as const, org: claims.org };
+                } catch {
+                  return { ok: false };
+                }
+              },
             }
-          },
-        }
-      : {}),
-  });
+          : {}),
+      })
+    : undefined;
 
   // B3: when AUTH_ENABLED, the internal coordinator client must authenticate
   // too. Mint a short-lived admin token for the bridge.
@@ -924,9 +936,9 @@ async function wireMqtt(
     ? await createToken("coordinator-internal", "admin", "1h")
     : undefined;
   await services.mqttBridge.connect({
-    url: `mqtt://127.0.0.1:${mqttTcpPort}`,
-    username: AUTH_ENABLED ? "coordinator-internal" : undefined,
-    password: internalToken,
+    url: MQTT_URL || `mqtt://127.0.0.1:${mqttTcpPort}`,
+    username: AUTH_ENABLED ? "coordinator-internal" : MQTT_USERNAME,
+    password: AUTH_ENABLED ? internalToken : MQTT_PASSWORD,
     // P1 fix: stable agent identity for LWT topic
     // (`coordinator/agents/coordinator-internal/status`).
     agentId: "coordinator-internal",
@@ -976,7 +988,10 @@ interface ShutdownDeps {
   retentionSweeper: Sweeper;
   registerRateLimiter: IRateLimiter;
   httpServer: import("node:http").Server;
-  broker: Awaited<ReturnType<typeof startEmbeddedMqttBroker>>;
+  /** External-broker support: undefined when COORDINATOR_MQTT_EMBEDDED=false
+   *  (nothing to close — the bridge disconnect above already tears down our
+   *  client connection to the externally managed broker). */
+  broker: Awaited<ReturnType<typeof startEmbeddedMqttBroker>> | undefined;
   mcpSessionSweepHandle: NodeJS.Timeout;
   log: Logger;
   registerSignalHandlers: boolean;
@@ -1050,7 +1065,7 @@ function wireShutdown(deps: ShutdownDeps): () => Promise<void> {
       log.warn({ err }, "Error disconnecting MQTT bridge");
     }
     try {
-      await broker.close();
+      if (broker) await broker.close();
     } catch (err) {
       log.warn({ err }, "Error closing MQTT broker");
     }
@@ -1335,8 +1350,10 @@ async function startServerInner(opts?: ServerOptions): Promise<ServerHandle> {
           mcp: `POST http://localhost:${port}/mcp`,
           rest: `POST http://localhost:${port}/api/*`,
           sse: `GET http://localhost:${port}/api/events`,
-          mqtt_tcp: `mqtt://127.0.0.1:${mqttTcpPort}`,
-          mqtt_ws: `ws://localhost:${port}${mqttWsPath}`,
+          mqtt_tcp: MQTT_URL || `mqtt://127.0.0.1:${mqttTcpPort}`,
+          mqtt_ws: MQTT_EMBEDDED
+            ? `ws://localhost:${port}${mqttWsPath}`
+            : "(embedded broker disabled)",
         },
         "Coordinator v3 started",
       );
