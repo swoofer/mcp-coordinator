@@ -139,7 +139,18 @@ export class MqttBridge {
         // Topic: coordinator/<orgId>/agents/<agentId>/status → parts[2]="agents", parts[3]=agentId, parts[4]="status"
         if (parts[2] === "agents" && parts[4] === "status") {
           const agentId = parts[3];
-          const status = message.toString();
+          // Presence payloads are JSON ({status:"online"|"offline", ...}) — from
+          // registerAgent/publishAgentOffline and the LWT. Parse the JSON status;
+          // fall back to the raw string for older/raw clients that publish a bare
+          // "offline". Without this the offline branch never fired for the
+          // coordinator's own JSON offline/LWT messages.
+          let status = message.toString();
+          try {
+            const parsed = JSON.parse(status);
+            if (parsed && typeof parsed.status === "string") status = parsed.status;
+          } catch {
+            /* not JSON — treat the payload as the raw status string */
+          }
           if (status === "offline") {
             // performance-05: remove the departed agent's listener + queue
             // here, inside the bridge itself, so cleanup doesn't depend on
@@ -256,7 +267,13 @@ export class MqttBridge {
     this.lastRetainedConsultationThreadId.delete(orgId);
   }
 
-  publishMessage(orgId: string, threadId: string, agentId: string, type: string, content: string): void {
+  publishMessage(
+    orgId: string,
+    threadId: string,
+    agentId: string,
+    type: string,
+    content: string,
+  ): void {
     if (!this.client || !this.connected) return;
     // QoS 0: high-frequency chat-style traffic, lossy-OK.
     this.client.publish(
@@ -307,7 +324,12 @@ export class MqttBridge {
     );
   }
 
-  publishTaskCompleted(orgId: string, threadId: string, completedBy: string, summary: string): void {
+  publishTaskCompleted(
+    orgId: string,
+    threadId: string,
+    completedBy: string,
+    summary: string,
+  ): void {
     if (!this.client || !this.connected) return;
     // P1 fix: QoS 1 — completion is a coordination state-change.
     this.client.publish(
@@ -354,7 +376,11 @@ export class MqttBridge {
     return this.listeners.size;
   }
 
-  async waitForMessage(orgId: string, agentId: string, timeoutMs: number): Promise<QueuedMessage | null> {
+  async waitForMessage(
+    orgId: string,
+    agentId: string,
+    timeoutMs: number,
+  ): Promise<QueuedMessage | null> {
     this.registerListener(orgId, agentId);
     const listener = this.listeners.get(this.listenerKey(orgId, agentId))!;
 
