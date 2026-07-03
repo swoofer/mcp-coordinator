@@ -7,8 +7,8 @@ import type { CoordinatorServices } from "./server-setup.js";
  * Before this fix, the REST endpoint (`/api/register` in handle-rest.ts)
  * and the MCP tool (`register_agent` in tools/agents-tools.ts) duplicated
  * the same 2-3 lines — registry.register + sseEmitter "agent_online" — but
- * only the MCP path additionally called `mqttBridge.registerAgent(agentId,
- * name)`, which publishes the agent's retained "online" status to
+ * only the MCP path additionally called `mqttBridge.registerAgent(orgId,
+ * agentId, name)`, which publishes the agent's retained "online" status to
  * `coordinator/<org>/agents/<id>/status`. An agent registered over REST was
  * therefore never visible as online to MQTT subscribers (essaim, external
  * dashboards) — no comment/rationale was found suggesting this was
@@ -32,6 +32,6 @@ export function runRegisterFlow(
   const { registry, sseEmitter, mqttBridge } = services;
   const agent = registry.register(orgId, agentId, name, modules);
   sseEmitter.emit("agent_online", { agent_id: agentId, name, modules }, { org_id: orgId });
-  mqttBridge.registerAgent(agentId, name);
+  mqttBridge.registerAgent(orgId, agentId, name);
   return agent;
 }

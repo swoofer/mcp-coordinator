@@ -9,10 +9,9 @@ import type { AuthClaims } from "../auth.js";
  * wait_for_message, get_queued_messages, mqtt_publish.
  * Replaces what used to be a standalone mqtt-mcp-bridge sidecar.
  *
- * Note (Task 23.5): the MqttBridge message-queue API is keyed by agent_id,
- * not by org. MQTT topic scoping and per-org ACLs are deferred to Task 22.
- * We still require valid session claims here so callers are authenticated,
- * even though the underlying bridge calls don't yet filter by claims.org.
+ * Task 22: the MqttBridge message-queue API is keyed by (org, agent_id) —
+ * every call below threads claims.org through so a caller can never wait
+ * for, drain, or publish into another tenant's queue/topic namespace.
  */
 
 /**
@@ -69,7 +68,7 @@ export function registerMqttTools(
       if (!mqttBridge.isConnected()) return mqttNotConnectedResult();
       const cappedSeconds = Math.min(timeout_seconds || 15, MAX_WAIT_TIMEOUT_SECONDS);
       const timeoutMs = cappedSeconds * 1000;
-      const msg = await mqttBridge.waitForMessage(agent_id, timeoutMs);
+      const msg = await mqttBridge.waitForMessage(claims.org, agent_id, timeoutMs);
       if (msg) {
         return { content: [{ type: "text", text: JSON.stringify(msg) }] };
       }
@@ -88,7 +87,7 @@ export function registerMqttTools(
       const claims = getSessionClaims(extra.sessionId ?? "");
       if (!claims) throw new Error("Session has no captured claims (auth bug)");
       if (!mqttBridge.isConnected()) return mqttNotConnectedResult();
-      const messages = mqttBridge.getQueuedMessages(agent_id);
+      const messages = mqttBridge.getQueuedMessages(claims.org, agent_id);
       return { content: [{ type: "text", text: JSON.stringify(messages) }] };
     },
   );
@@ -110,7 +109,7 @@ export function registerMqttTools(
       const claims = getSessionClaims(extra.sessionId ?? "");
       if (!claims) throw new Error("Session has no captured claims (auth bug)");
       if (!mqttBridge.isConnected()) return mqttNotConnectedResult();
-      mqttBridge.mqttPublish(topic, payload);
+      mqttBridge.mqttPublish(claims.org, topic, payload);
       return { content: [{ type: "text", text: "published" }] };
     },
   );

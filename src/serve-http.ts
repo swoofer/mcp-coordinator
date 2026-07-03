@@ -943,20 +943,21 @@ async function wireMqtt(
     // (`coordinator/agents/coordinator-internal/status`).
     agentId: "coordinator-internal",
   });
-  services.mqttBridge.onOffline((agentId) => {
-    // TODO(Task 22): MQTT topics carry no org_id today, so setOffline("default", id) silently
-    // no-ops for any agent registered under a non-default org. Acceptable in single-tenant Phase 1
-    // (everything is "default"); becomes a correctness bug the moment multi-org goes live. Task 22
-    // (MQTT topic scoping + Aedes ACL hook) will thread the real org from the topic prefix.
+  services.mqttBridge.onOffline((orgId, agentId) => {
+    // Task 22: the org is recovered from the MQTT topic prefix
+    // (`coordinator/<org>/agents/<id>/status`) and threaded through here, so
+    // the registry mutation and SSE emit target the agent's real tenant
+    // instead of a hard-coded "default". Presence is now published under the
+    // real org too (agents-tools registerAgent), so this topic carries the
+    // correct org.
     const processDeparture = () => {
-      services.registry.setOffline("default", agentId);
-      services.consultation.handleAgentDeparture(agentId);
+      services.registry.setOffline(orgId, agentId);
+      services.consultation.handleAgentDeparture(orgId, agentId);
       // Clear in-flight working_files AFTER consultation cleanup so any future
       // consultation logic that might inspect working_files state for this agent
       // sees the pre-cleanup view.
       services.workingFiles.clearForAgent(agentId);
-      // TODO(Task 22): MQTT offline path has no org_id context; using "default" for single-tenant Phase 1.
-      services.sseEmitter.emit("agent_offline", { agent_id: agentId }, { org_id: "default" });
+      services.sseEmitter.emit("agent_offline", { agent_id: agentId }, { org_id: orgId });
     };
     if (!redis) {
       processDeparture();
@@ -967,7 +968,7 @@ async function wireMqtt(
     // processor — the DB mutations are idempotent, but double-processing
     // would duplicate SSE/resolution side effects. On Redis error, process
     // anyway (idempotence makes duplicates benign; a lost departure is not).
-    void acquireLock(redis.client, `coordinator:offline:default:${agentId}`, 10, INSTANCE_ID)
+    void acquireLock(redis.client, `coordinator:offline:${orgId}:${agentId}`, 10, INSTANCE_ID)
       .then((won) => {
         if (won) processDeparture();
       })

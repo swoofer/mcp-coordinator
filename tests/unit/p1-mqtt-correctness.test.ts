@@ -76,7 +76,7 @@ beforeEach(() => {
 describe("P1 — MQTT QoS 1 for state-change publishes", () => {
   it("publishTaskClaimed publishes with qos:1", async () => {
     const bridge = await makeConnectedBridge();
-    bridge.publishTaskClaimed("thread-123", "agent-A");
+    bridge.publishTaskClaimed("default", "thread-123", "agent-A");
     const call = publishCalls.find(
       (c) => c.topic === "coordinator/default/consultations/thread-123/claimed",
     );
@@ -86,7 +86,7 @@ describe("P1 — MQTT QoS 1 for state-change publishes", () => {
 
   it("publishTaskCompleted publishes with qos:1", async () => {
     const bridge = await makeConnectedBridge();
-    bridge.publishTaskCompleted("thread-456", "agent-B", "all good");
+    bridge.publishTaskCompleted("default", "thread-456", "agent-B", "all good");
     const call = publishCalls.find(
       (c) => c.topic === "coordinator/default/consultations/thread-456/completed",
     );
@@ -96,7 +96,7 @@ describe("P1 — MQTT QoS 1 for state-change publishes", () => {
 
   it("publishConsultation publishes with qos:1", async () => {
     const bridge = await makeConnectedBridge();
-    bridge.publishConsultation("thread-789", "agent-C", "subject", ["mod1"]);
+    bridge.publishConsultation("default", "thread-789", "agent-C", "subject", ["mod1"]);
     const call = publishCalls.find((c) => c.topic === "coordinator/default/consultations/new");
     expect(call).toBeDefined();
     expect(call!.options?.qos).toBe(1);
@@ -104,7 +104,7 @@ describe("P1 — MQTT QoS 1 for state-change publishes", () => {
 
   it("publishResolution publishes with qos:1", async () => {
     const bridge = await makeConnectedBridge();
-    bridge.publishResolution("thread-xyz", "resolved", "all good");
+    bridge.publishResolution("default", "thread-xyz", "resolved", "all good");
     const call = publishCalls.find(
       (c) => c.topic === "coordinator/default/consultations/thread-xyz/status",
     );
@@ -114,7 +114,7 @@ describe("P1 — MQTT QoS 1 for state-change publishes", () => {
 
   it("publishMessage stays at QoS 0 (high-frequency, lossy-OK)", async () => {
     const bridge = await makeConnectedBridge();
-    bridge.publishMessage("thread-1", "agent-X", "comment", "hi");
+    bridge.publishMessage("default", "thread-1", "agent-X", "comment", "hi");
     const call = publishCalls.find(
       (c) => c.topic === "coordinator/default/consultations/thread-1/messages",
     );
@@ -135,7 +135,7 @@ describe("P1 — MQTT QoS 1 for state-change publishes", () => {
 describe("P1 — retained consultations/new", () => {
   it("publishConsultation publishes with retain:true", async () => {
     const bridge = await makeConnectedBridge();
-    bridge.publishConsultation("thread-A", "agent-1", "subj", ["mod"]);
+    bridge.publishConsultation("default", "thread-A", "agent-1", "subj", ["mod"]);
     const call = publishCalls.find((c) => c.topic === "coordinator/default/consultations/new");
     expect(call).toBeDefined();
     expect(call!.options?.retain).toBe(true);
@@ -143,10 +143,10 @@ describe("P1 — retained consultations/new", () => {
 
   it("clearRetainedConsultation publishes empty payload with retain:true", async () => {
     const bridge = await makeConnectedBridge();
-    bridge.publishConsultation("thread-A", "agent-1", "subj", ["mod"]);
+    bridge.publishConsultation("default", "thread-A", "agent-1", "subj", ["mod"]);
     publishCalls.length = 0; // forget the publish above
 
-    bridge.clearRetainedConsultation("thread-A");
+    bridge.clearRetainedConsultation("default", "thread-A");
     const clear = publishCalls.find((c) => c.topic === "coordinator/default/consultations/new");
     expect(clear).toBeDefined();
     // Empty payload signals "clear retained".
@@ -158,11 +158,11 @@ describe("P1 — retained consultations/new", () => {
 
   it("clearRetainedConsultation is a no-op when threadId doesn't match", async () => {
     const bridge = await makeConnectedBridge();
-    bridge.publishConsultation("thread-A", "agent-1", "subj", ["mod"]);
+    bridge.publishConsultation("default", "thread-A", "agent-1", "subj", ["mod"]);
     publishCalls.length = 0;
 
     // Stale resolve callback for an old thread that's already been overwritten.
-    bridge.clearRetainedConsultation("stale-thread");
+    bridge.clearRetainedConsultation("default", "stale-thread");
     expect(
       publishCalls.find((c) => c.topic === "coordinator/default/consultations/new"),
     ).toBeUndefined();
@@ -170,16 +170,16 @@ describe("P1 — retained consultations/new", () => {
 
   it("a newer publishConsultation overwrites the retained slot (next clear by older threadId is no-op)", async () => {
     const bridge = await makeConnectedBridge();
-    bridge.publishConsultation("thread-old", "agent-1", "subj", ["mod"]);
-    bridge.publishConsultation("thread-new", "agent-2", "subj2", ["mod"]);
+    bridge.publishConsultation("default", "thread-old", "agent-1", "subj", ["mod"]);
+    bridge.publishConsultation("default", "thread-new", "agent-2", "subj2", ["mod"]);
     publishCalls.length = 0;
 
-    bridge.clearRetainedConsultation("thread-old"); // stale
+    bridge.clearRetainedConsultation("default", "thread-old"); // stale
     expect(
       publishCalls.find((c) => c.topic === "coordinator/default/consultations/new"),
     ).toBeUndefined();
 
-    bridge.clearRetainedConsultation("thread-new"); // matches latest retain
+    bridge.clearRetainedConsultation("default", "thread-new"); // matches latest retain
     expect(
       publishCalls.find((c) => c.topic === "coordinator/default/consultations/new"),
     ).toBeDefined();
@@ -223,7 +223,7 @@ describe("P1 — Last Will & Testament on connect", () => {
 describe("P1 — backward-compat: existing publishes still produce the right shape", () => {
   it("publishTaskClaimed payload still includes thread metadata + ISO timestamp", async () => {
     const bridge = await makeConnectedBridge();
-    bridge.publishTaskClaimed("t-1", "agent-X");
+    bridge.publishTaskClaimed("default", "t-1", "agent-X");
     const call = publishCalls.find(
       (c) => c.topic === "coordinator/default/consultations/t-1/claimed",
     )!;
@@ -236,7 +236,7 @@ describe("P1 — backward-compat: existing publishes still produce the right sha
 
   it("publishConsultation payload still has thread_id, agent_id, subject, target_modules", async () => {
     const bridge = await makeConnectedBridge();
-    bridge.publishConsultation("t-2", "agent-Y", "my subject", ["modA", "modB"]);
+    bridge.publishConsultation("default", "t-2", "agent-Y", "my subject", ["modA", "modB"]);
     const call = publishCalls.find((c) => c.topic === "coordinator/default/consultations/new")!;
     const payload = JSON.parse(call.payload.toString());
     expect(payload).toEqual({
