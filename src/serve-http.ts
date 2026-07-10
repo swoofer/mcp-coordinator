@@ -357,6 +357,7 @@ export interface ServerOptions {
  */
 export interface ServerHandle {
   port: number;
+  httpServer: import("node:http").Server;
   stop: () => Promise<void>;
 }
 
@@ -654,13 +655,15 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
   // Wait for the HTTP server to be actually listening before resolving the
   // returned handle. Otherwise callers (tests, essaim) may try to connect
   // before the port is bound.
+  const bindHost = process.env.COORDINATOR_BIND?.trim() || "127.0.0.1";
   await new Promise<void>((resolve, reject) => {
     const onError = (err: Error) => reject(err);
     httpServer.once("error", onError);
-    httpServer.listen(port, () => {
+    httpServer.listen(port, bindHost, () => {
       httpServer.off("error", onError);
       log.info({
         port,
+        host: bindHost,
         mcp: `POST http://localhost:${port}/mcp`,
         rest: `POST http://localhost:${port}/api/*`,
         sse: `GET http://localhost:${port}/api/events`,
@@ -748,7 +751,7 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
     process.once("SIGINT", () => onSignal("SIGINT"));
   }
 
-  return { port, stop };
+  return { port, httpServer, stop };
 }
 
 // Auto-start when run directly (not imported)
