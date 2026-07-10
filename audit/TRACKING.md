@@ -1,4 +1,4 @@
-# Suivi de remédiation de l'audit v0.13.0 — TRACKING
+✅ | ✅ | ✅ | ✅ | ✅ | ✅ 3671d7b |✅ | ✅ | ✅ | ✅ | ✅ | ✅ 3671d7b |# Suivi de remédiation de l'audit v0.13.0 — TRACKING
 
 **Source :** `audit/` (119 constats) · **Spec :** `docs/superpowers/specs/2026-07-04-audit-remediation-design.md` · **Plan :** `docs/superpowers/plans/2026-07-04-audit-remediation.md`
 
@@ -20,8 +20,8 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | | High (13) | Med (46) | Low (42) | Info (18) | **Total (119)** |
 |--|:--:|:--:|:--:|:--:|:--:|
-| **Fermés ✅** | 0 | 0 | 0 | 0 | **0 / 119** |
-| **Rounds cochés** | — | — | — | — | **0 / 595** |
+| **Fermés ✅** | 2 | 0 | 0 | 0 | **2 / 119** |
+| **Rounds cochés** | — | — | — | — | **10 / 595** |
 
 > Mettre à jour ce tableau à chaque tâche fermée. 595 = 119 × 5 rounds.
 
@@ -32,10 +32,10 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | # | ID | Sév | Eff | Constat | R1 | R2 | R3 | R4 | R5 | Statut |
 |---|----|-----|-----|---------|----|----|----|----|----|--------|
-| 1 | `documentation-01` | 🔴 High | S | COORDINATOR_BIND documenté mais inexistant, et le bind par défaut anno | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 1 | `documentation-01` | 🔴 High | S | COORDINATOR_BIND documenté mais inexistant, et le bind par défaut anno | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 3671d7b |
 | 2 | `protocole-mcp-02` | 🔴 High | M | Streamable HTTP : aucune validation de l'en-tête Origin (« MUST » de l | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 3 | `securite-auth-01` | 🔴 High | M | Confusion de type de jeton : un refresh-token est accepté comme jeton  | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 4 | `securite-surface-01` | 🔴 High | S | Le serveur HTTP écoute sur toutes les interfaces ; COORDINATOR_BIND (d | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 4 | `securite-surface-01` | 🔴 High | S | Le serveur HTTP écoute sur toutes les interfaces ; COORDINATOR_BIND (d | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 3671d7b |
 | 5 | `architecture-05` | 🟠 Med | S | L'allowlist env du mode daemon a dérivé : OAuth Phase 2 et rotation JW | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 6 | `protocole-mcp-04` | 🟠 Med | M | Les outils MCP ignorent claims.sub : n'importe quel appelant authentif | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 7 | `securite-surface-02` | 🟠 Med | S | /metrics servi sans authentification ; le handler /metrics/auth (local | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
