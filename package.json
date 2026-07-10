@@ -48,6 +48,7 @@
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
+    "test:ci": "vitest run --coverage",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "cli": "tsx cli/index.ts",
