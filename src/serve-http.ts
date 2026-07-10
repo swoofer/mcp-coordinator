@@ -20,6 +20,7 @@ import { handleRest as handleRestExt, type RestContext } from "./http/handle-res
 import { handleLivez, handleReadyz, handleHealth } from "./http/handle-health.js";
 import { serveMetrics } from "./metrics.js";
 import { parseBody as parseBodyShared, json as jsonShared, jsonAuthError as jsonAuthErrorShared } from "./http/utils.js";
+import { isAllowedOrigin } from "./http/origin.js";
 import { assessPlanQuality } from "./plan-quality.js";
 import type { CoordinatorEvent } from "./types.js";
 import { getVersion } from "../cli/version.js";
@@ -419,11 +420,23 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
     const url = req.url || "";
 
     // CORS preflight
+    // protocole-mcp-02 / securite-surface-06: never reflect "*" — validate the
+    // Origin header (MCP spec MUST + DNS-rebinding hardening) and echo back
+    // only an allowed Origin. Non-browser callers (no Origin header at all)
+    // are unaffected. Disallowed cross-site Origins get a 403, not a
+    // same-response allow-all.
     if (req.method === "OPTIONS") {
+      const origin = req.headers.origin;
+      if (!isAllowedOrigin(origin, process.env.COORDINATOR_PUBLIC_URL)) {
+        res.writeHead(403, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Origin not allowed" }));
+        return;
+      }
       res.writeHead(204, {
-        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Origin": origin ?? "*",
         "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type, mcp-session-id, Authorization",
+        ...(origin ? { Vary: "Origin" } : {}),
       });
       res.end();
       return;
@@ -531,6 +544,16 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
           await handleAuth(req, res);
         }
       } else if (url === "/mcp") {
+        // protocole-mcp-02: MCP spec MUST — validate Origin on every request
+        // to the Streamable HTTP transport, not just the OPTIONS preflight.
+        // No-Origin requests (curl, the MCP SDK's HTTP client — never sets
+        // Origin) are unaffected; only a present-and-disallowed Origin is
+        // rejected.
+        if (!isAllowedOrigin(req.headers.origin, process.env.COORDINATOR_PUBLIC_URL)) {
+          res.writeHead(403, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Origin not allowed" }));
+          return;
+        }
         const sessionId = req.headers["mcp-session-id"] as string | undefined;
 
         if (sessionId && sessions.has(sessionId)) {
@@ -548,7 +571,26 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
           const authenticatedAgent = claims.sub;
 
           // Create transport + server
-          const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => randomUUID() });
+          // securite-surface-06: enableDnsRebindingProtection is defense-in-depth
+          // on top of the Origin check above (deprecated-but-functional SDK
+          // option; the SDK's own docs point at "external middleware" for this,
+          // which is exactly what the check above is). allowedOrigins only
+          // needs to cover the known-safe static set since anything else was
+          // already rejected before we got here.
+          const allowedOriginsForTransport = [
+            `http://localhost:${port}`,
+            `http://127.0.0.1:${port}`,
+            `http://[::1]:${port}`,
+          ];
+          const publicUrlEnv = process.env.COORDINATOR_PUBLIC_URL;
+          if (publicUrlEnv) {
+            try { allowedOriginsForTransport.push(new URL(publicUrlEnv).origin); } catch { /* malformed COORDINATOR_PUBLIC_URL — ignore */ }
+          }
+          const transport = new StreamableHTTPServerTransport({
+            sessionIdGenerator: () => randomUUID(),
+            enableDnsRebindingProtection: true,
+            allowedOrigins: allowedOriginsForTransport,
+          });
           // Task 23.5: pass a getter so tool handlers can look up per-session claims.
           const mcpServer = createMcpServer(services, (sid) => sessionClaims.get(sid) ?? null);
           await mcpServer.connect(transport);
