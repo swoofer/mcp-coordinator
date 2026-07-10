@@ -20,8 +20,8 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | | High (13) | Med (46) | Low (42) | Info (18) | **Total (119)** |
 |--|:--:|:--:|:--:|:--:|:--:|
-| **Fermés ✅** | 2 | 0 | 0 | 0 | **2 / 119** |
-| **Rounds cochés** | — | — | — | — | **10 / 595** |
+| **Fermés ✅** | 3 | 0 | 1 | 0 | **4 / 119** |
+| **Rounds cochés** | — | — | — | — | **20 / 595** |
 
 > Mettre à jour ce tableau à chaque tâche fermée. 595 = 119 × 5 rounds.
 
@@ -33,7 +33,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | # | ID | Sév | Eff | Constat | R1 | R2 | R3 | R4 | R5 | Statut |
 |---|----|-----|-----|---------|----|----|----|----|----|--------|
 | 1 | `documentation-01` | 🔴 High | S | COORDINATOR_BIND documenté mais inexistant, et le bind par défaut anno | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 3671d7b |
-| 2 | `protocole-mcp-02` | 🔴 High | M | Streamable HTTP : aucune validation de l'en-tête Origin (« MUST » de l | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 2 | `protocole-mcp-02` | 🔴 High | M | Streamable HTTP : aucune validation de l'en-tête Origin (« MUST » de l | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ f8f6227 |
 | 3 | `securite-auth-01` | 🔴 High | M | Confusion de type de jeton : un refresh-token est accepté comme jeton  | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 4 | `securite-surface-01` | 🔴 High | S | Le serveur HTTP écoute sur toutes les interfaces ; COORDINATOR_BIND (d | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 3671d7b |
 | 5 | `architecture-05` | 🟠 Med | S | L'allowlist env du mode daemon a dérivé : OAuth Phase 2 et rotation JW | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
@@ -45,7 +45,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 11 | `securite-auth-04` | 🟡 Low | S | Le rôle n'est pas re-dérivé depuis la base lors de la rotation de refr | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 12 | `securite-surface-04` | 🟡 Low | S | Logger Phase 1 sans redaction des secrets (les deux loggers divergent) | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 13 | `securite-surface-05` | 🟡 Low | S | Endpoint Phase 1 /api/auth/register sans rate-limiting ni lockout | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 14 | `securite-surface-06` | 🟡 Low | S | CORS wildcard générique et transport du JWT via ?token= sur les GET | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 14 | `securite-surface-06` | 🟡 Low | S | CORS wildcard générique et transport du JWT via ?token= sur les GET | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ f8f6227 |
 | 15 | `securite-surface-07` | 🟡 Low | S | En-têtes de sécurité absents sur le dashboard principal et les réponse | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 16 | `protocole-mcp-12` | ⚪ Info | M | Auth du endpoint /mcp non conforme à la spec d'autorisation MCP : pas  | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 17 | `securite-auth-05` | ⚪ Info | S | L'échappatoire COORDINATOR_INSECURE_COOKIES est inerte pour les cookie | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
