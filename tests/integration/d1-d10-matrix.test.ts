@@ -237,6 +237,7 @@ async function mintSessionAccessJWT(opts: MintAccessOpts = {}): Promise<string> 
     active_org_id: opts.active_org_id ?? "org-acme-001",
     family_id: opts.family_id ?? "fam-1",
     role: opts.role ?? "member",
+    typ: "access",
   };
   if (opts.serviceAccount) claims.service_account = true;
   return new SignJWT(claims)
@@ -266,6 +267,7 @@ async function mintTestRefreshJWT(opts: MintRefreshOpts = {}): Promise<string> {
     sub: opts.sub ?? "u-admin-acme",
     active_org_id: opts.active_org_id ?? "org-acme-001",
     family_id: opts.family_id ?? "fam-1",
+    typ: "refresh",
   };
   if (opts.parent_jti) claims.parent_jti = opts.parent_jti;
   return new SignJWT(claims)

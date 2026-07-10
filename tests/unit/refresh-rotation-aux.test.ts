@@ -215,6 +215,7 @@ async function mintRefresh(opts: MintOpts = {}): Promise<string> {
     sub: opts.sub ?? "u-alice",
     active_org_id: opts.orgId ?? "org-acme",
     family_id: opts.familyId ?? "fam-root",
+    typ: "refresh",
   };
   if (opts.serviceAccount) claims.service_account = true;
   const builder = new SignJWT(claims)

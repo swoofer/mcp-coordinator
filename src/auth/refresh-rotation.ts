@@ -107,6 +107,7 @@ interface ParsedRefreshClaims {
   exp: number;
   iss: string;
   service_account?: boolean;
+  typ?: string;
 }
 
 async function parseFormBody(req: IncomingMessage): Promise<Record<string, string>> {
@@ -435,6 +436,19 @@ export async function refreshTokenGrant(
     audit("auth.invalid_token", {
       tier: 2,
       metadata: { reason: (err as Error).message },
+    });
+    writeOAuthError(res, "invalid_grant", "Token verification failed");
+    return;
+  }
+
+  // securite-auth-01: reject token-type confusion. An access token (or a
+  // legacy token minted before this fix, which carries no `typ` claim at
+  // all) must never be accepted at the refresh-rotation endpoint —
+  // fail-closed: only typ === "refresh" is accepted here.
+  if (claims.typ !== "refresh") {
+    audit("auth.invalid_token", {
+      tier: 2,
+      metadata: { reason: "wrong_token_type" },
     });
     writeOAuthError(res, "invalid_grant", "Token verification failed");
     return;
