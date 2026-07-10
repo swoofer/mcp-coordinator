@@ -96,26 +96,39 @@ Puis modifier `.github/workflows/test.yml` ligne 32 :
 - Modify: `docs/usage.md:49`, `.env.example` (aligner la doc)
 - Test: `tests/integration/bind-host.test.ts` (créer)
 
+**⚠️ Vérifié contre le code réel (2026-07-04) :** `ServerHandle` (serve-http.ts:358) = `{ port, stop }` — **n'expose PAS `httpServer`**. Le test ci-dessous **exige** qu'on l'ajoute (fait en R2). `ServerOptions` (serve-http.ts:327) porte bien `port`/`mqttTcpPort`/`mqttWsPath`. `httpServer.listen` est bien appelé sans host (serve-http.ts:660) → bind sur toutes interfaces confirmé.
+
 **Interfaces :**
-- Produces : `startServer` lit `COORDINATOR_BIND` (défaut `127.0.0.1`) et le passe à `httpServer.listen(port, host, cb)`.
+- Produces : `ServerHandle` gagne un champ `httpServer: import("node:http").Server` ; `startServer` lit `COORDINATOR_BIND` (défaut `127.0.0.1`) et le passe à `httpServer.listen(port, host, cb)`.
 
 - [ ] **R1 (Reproduction) :** Écrire le test d'intégration qui échoue :
 ```ts
 // tests/integration/bind-host.test.ts
-import { describe, it, expect, afterEach } from "vitest";
-import { startServer } from "../../src/serve-http.js";
-import { AddressInfo } from "node:net";
+import { it, expect, afterEach } from "vitest";
+import { startServer, type ServerHandle } from "../../src/serve-http.js";
+import type { AddressInfo } from "node:net";
 
-let handle: Awaited<ReturnType<typeof startServer>> | undefined;
+let handle: ServerHandle | undefined;
 afterEach(async () => { await handle?.stop(); handle = undefined; delete process.env.COORDINATOR_BIND; });
 
 it("binds to 127.0.0.1 by default (not 0.0.0.0)", async () => {
-  handle = await startServer({ port: 0, mqttTcpPort: 0 });
+  handle = await startServer({ port: 0, mqttTcpPort: 0, mqttWsPath: "/mqtt" });
+  // NB : dépend de l'ajout de `httpServer` au handle (R2). Sans lui, ce test ne compile pas — c'est voulu (rouge).
   const addr = handle.httpServer.address() as AddressInfo;
   expect(addr.address).toBe("127.0.0.1");
 });
 ```
-- [ ] **R2 (Correction) :** Dans `src/serve-http.ts`, avant le bloc `httpServer.listen` (~656), résoudre le host, et passer en 2e argument :
+- [ ] **R2 (Correction) :** Deux changements dans `src/serve-http.ts`.
+  1. Étendre l'interface `ServerHandle` (ligne 358) pour exposer le serveur (nécessaire au test, utile aux embedders) :
+```ts
+export interface ServerHandle {
+  port: number;
+  httpServer: import("node:http").Server;
+  stop: () => Promise<void>;
+}
+```
+  … et ajouter `httpServer` à l'objet retourné par `startServer` (le `return { port, ..., stop }`).
+  2. Avant le bloc `httpServer.listen` (~656), résoudre le host et le passer en 2e argument :
 ```ts
 const bindHost = process.env.COORDINATOR_BIND?.trim() || "127.0.0.1";
 // ...
@@ -125,7 +138,7 @@ httpServer.listen(port, bindHost, () => {
   resolve();
 });
 ```
-S'assurer que `ServerHandle` expose `httpServer` (sinon l'ajouter au handle retourné). `tsc --noEmit` propre.
+`tsc --noEmit` propre.
 - [ ] **R3 (Intégration) :** `pnpm vitest run tests/integration/bind-host.test.ts` → PASS. Ajouter un cas `COORDINATOR_BIND=0.0.0.0` qui vérifie que l'override fonctionne.
 - [ ] **R4 (Régression) :** `pnpm vitest run --coverage` + `tsc --noEmit` + 5 lints.
 - [ ] **R5 (Adversarial) :** Démarrer le vrai serveur (`pnpm dev`) sur une machine du LAN, `curl http://<ip-lan>:<port>/livez` depuis une autre machine → **connexion refusée** ; `curl http://127.0.0.1:<port>/livez` → 200. Corriger `docs/usage.md:49` et `.env.example` pour refléter le vrai défaut. `/verify`.
@@ -169,20 +182,26 @@ Dans le préflight OPTIONS (`serve-http.ts:421`), remplacer `"*"` par l'origin r
 
 ### Task 1.3 : Distinguer access-token et refresh-token par un claim `typ` (`securite-auth-01`, 🔴 High)
 
+**⚠️ Vérifié contre le code réel (2026-07-04) :** `verifyPhase2SessionCookie` (auth.ts:254) est **interne (non exportée)** — un test ne peut pas l'importer. Entrée publique réelle = `authenticateRequest(req, opts)` (auth.ts:379), qui appelle `verifyPhase2SessionCookie` (auth.ts:412 pour le cookie `__Host-coordinator_session`, auth.ts:453 pour le Bearer). Le mint Phase 2 est `mintAccessJWT`/`mintRefreshJWT` (auth/jwt-mint.ts). Le contrôle `typ` doit donc être posé dans `verifyPhase2SessionCookie` (chemin accès/session) et dans le chemin de vérif refresh (refresh-rotation.ts), et testé via `authenticateRequest`.
+
 **Files:**
 - Modify: `src/auth/jwt-mint.ts` (ajouter `typ` au payload des deux mints)
-- Modify: `src/auth.ts` (~346, chemin de vérification de session/accès : rejeter `typ !== "access"`) + le chemin de vérification refresh (rejeter `typ !== "refresh"`)
-- Test: `tests/unit/token-type-confusion.test.ts`
+- Modify: `src/auth.ts` (dans `verifyPhase2SessionCookie`, ~254-346 : rejeter `typ !== "access"`) + `src/auth/refresh-rotation.ts` (chemin de vérif refresh : rejeter `typ !== "refresh"`)
+- Test: `tests/unit/token-type-confusion.test.ts` (pilote `authenticateRequest`, l'entrée publique)
 
 **Interfaces :**
-- Produces : `mintAccessJWT` émet `typ: "access"`, `mintRefreshJWT` émet `typ: "refresh"` ; les vérificateurs rejettent le mauvais `typ`.
+- Produces : `mintAccessJWT` émet `typ: "access"`, `mintRefreshJWT` émet `typ: "refresh"` ; `verifyPhase2SessionCookie` (via `authenticateRequest`) rejette un jeton dont `typ !== "access"`.
 
-- [ ] **R1 (Reproduction) :** Test qui échoue — minter un refresh-token, le présenter comme cookie de session, et prouver qu'il est **accepté** aujourd'hui :
+- [ ] **R1 (Reproduction) :** Test qui échoue via l'**entrée publique** `authenticateRequest` — minter un refresh-token, le présenter comme cookie de session, prouver qu'il est **accepté** aujourd'hui. Construire une requête `IncomingMessage` factice portant le cookie `__Host-coordinator_session=<refreshJwt>` (réutiliser le helper de forge de requête des tests auth existants ; sinon un `{ headers: { cookie: ... }, method: "GET", url: "/api/..." } as IncomingMessage`). Le claims du refresh doit être un objet réel (`{ sub, active_org_id, family_id }`, cf. `RefreshTokenClaims` dans jwt-mint.ts), et `registry`/`issuer` viennent du setup de test Phase 2 (voir `tests/` OAuth existants) :
 ```ts
-it("rejects a refresh token presented as a session/access token", async () => {
-  const { jwt } = await mintRefreshJWT({ claims: {...}, registry, issuer, ttlSeconds: 3600 });
-  const result = await verifyPhase2SessionCookie(jwt, ctx); // chemin réel d'accès
-  expect(result.ok).toBe(false); // échoue AVANT le fix (accepté)
+it("rejects a refresh token presented as a session cookie", async () => {
+  const { jwt } = await mintRefreshJWT({
+    claims: { sub: "u1", active_org_id: "org1", family_id: "fam1" },
+    registry, issuer, ttlSeconds: 3600,
+  });
+  const req = forgeReq({ cookie: `__Host-coordinator_session=${jwt}` }); // helper de test
+  const result = await authenticateRequest(req, { authEnabled: true });
+  expect(result.ok).toBe(false); // ROUGE avant le fix : actuellement accepté
 });
 ```
 - [ ] **R2 (Correction) :** Dans `jwt-mint.ts`, ajouter le claim au payload :
