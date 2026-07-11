@@ -23,3 +23,6 @@ sdk/node_modules
 test-results/
 playwright-report/
 pw-output.log
+
+# Superpowers subagent-driven-development scratch (briefs/reports/ledger)
+/.superpowers/
