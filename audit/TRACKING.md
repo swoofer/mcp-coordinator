@@ -20,7 +20,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | | High (13) | Med (46) | Low (42) | Info (18) | **Total (119)** |
 |--|:--:|:--:|:--:|:--:|:--:|
-| **Fermés ✅** | 12 | 22 | 19 | 3 | **56 / 119** |
+| **Fermés ✅** | 12 | 24 | 22 | 3 | **61 / 119** |
 | **Rounds cochés** | — | — | — | — | **270 / 595** |
 
 > Mettre à jour ce tableau à chaque tâche fermée. 595 = 119 × 5 rounds.
@@ -59,14 +59,14 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 2 | `documentation-02` | 🔴 High | M | /metrics/auth et COORDINATOR_METRICS_BEARER documentés partout mais l' | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ c87ee56 |
 | 3 | `protocole-mcp-01` | 🔴 High | S | Mode stdio : logs applicatifs écrits sur stdout, en violation du trans | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ a470112 |
 | 4 | `protocole-mcp-03` | 🔴 High | S | Endpoints documentés, testés et consommés par le SDK/doctor jamais câb | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 6236a10 |
-| 5 | `protocole-mcp-05` | 🟠 Med | S | set_dependency_map : paramètre JSON double-encodé, sans description de | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 5 | `protocole-mcp-05` | 🟠 Med | S | set_dependency_map : paramètre JSON double-encodé, sans description de | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 0f97fc3 |
 | 6 | `protocole-mcp-06` | 🟠 Med | S | Mode stdio : les outils MQTT sont exposés mais mentent silencieusement | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 7 | `protocole-mcp-07` | 🟠 Med | M | Sessions Streamable HTTP jamais expirées : fuite des Maps sessions/ses | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 846d6f1 |
-| 8 | `protocole-mcp-08` | 🟡 Low | S | get_thread (et lectures similaires) retourne le texte « null » pour un | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 9 | `protocole-mcp-09` | 🟡 Low | S | README documente un outil MCP « introspection » qui n'existe pas ; com | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 10 | `protocole-mcp-10` | 🟡 Low | M | Aucun outil n'a d'annotations (readOnlyHint/destructiveHint), de title | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 8 | `protocole-mcp-08` | 🟡 Low | S | get_thread (et lectures similaires) retourne le texte « null » pour un | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 0f97fc3 |
+| 9 | `protocole-mcp-09` | 🟡 Low | S | README documente un outil MCP « introspection » qui n'existe pas ; com | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ docs#162 |
+| 10 | `protocole-mcp-10` | 🟡 Low | M | Aucun outil n'a d'annotations (readOnlyHint/destructiveHint), de title | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 0f97fc3 |
 | 11 | `protocole-mcp-11` | 🟡 Low | M | Résumabilité Streamable HTTP absente (pas d'eventStore) et Mcp-Session | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 12 | `protocole-mcp-14` | 🟡 Low | S | Outils bloquants (wait_for_peers, wait_for_message) sans borne supérie | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 12 | `protocole-mcp-14` | 🟡 Low | S | Outils bloquants (wait_for_peers, wait_for_message) sans borne supérie | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 0f97fc3 |
 | 13 | `protocole-mcp-13` | ⚪ Info | S | mcpName déclaré mais aucune trace de publication au registre MCP (pas  | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 
 ### PR 3 — CI/CD & dépendances (24 constats)
