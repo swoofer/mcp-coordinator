@@ -374,6 +374,13 @@ export interface ServerHandle {
    * the Phase1-vs-Phase2 wiring decision.
    */
   sweeper: Sweeper;
+  /**
+   * performance-07 / protocole-mcp-07: manually trigger one idle-MCP-session
+   * eviction pass without waiting for the 60s interval. Returns the number
+   * of sessions evicted. Mirrors `sweeper.runPass()` above — same reasoning:
+   * tests need a deterministic hook, not a real-timer race.
+   */
+  sweepMcpSessions: () => number;
 }
 
 export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
@@ -439,6 +446,54 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
   // Task 23.5: per-session claims map. Populated when a session is opened or
   // re-verified (mid-session JWT rotation); evicted when the transport closes.
   const sessionClaims = new Map<string, AuthClaims>();
+  // performance-07 / protocole-mcp-07: last-activity timestamp (ms epoch) per
+  // session. Updated on every request carrying a known mcp-session-id (and
+  // when a session is first opened). Today `sessions`/`sessionClaims` are
+  // ONLY evicted via transport.onclose, which assumes a clean DELETE/close
+  // from the client — a client that vanishes (crash, network drop) leaks its
+  // transport + McpServer + claims forever. The idle sweeper below closes
+  // (not just deletes) sessions that go quiet longer than the TTL.
+  const sessionLastActivity = new Map<string, number>();
+  const MCP_SESSION_TTL_MS = parseInt(
+    process.env.COORDINATOR_MCP_SESSION_TTL_MS || String(30 * 60 * 1000),
+    10,
+  );
+  const MCP_SESSION_SWEEP_INTERVAL_MS = 60_000;
+
+  /**
+   * Evict sessions idle longer than MCP_SESSION_TTL_MS. Closes the transport
+   * (transport.close() -> fires onclose -> evicts sessions/sessionClaims/
+   * sessionLastActivity together) rather than just deleting map entries, so
+   * the underlying SSE stream / socket resources are actually released, not
+   * merely forgotten. Idempotent: re-running before onclose has fired for a
+   * prior call is harmless (close() on an already-closing transport is a
+   * no-op on the SDK side); entries with no matching transport are pruned
+   * defensively. Returns the number of sessions evicted this pass.
+   */
+  function sweepIdleMcpSessions(): number {
+    const now = Date.now();
+    let evicted = 0;
+    for (const [sid, lastActivity] of sessionLastActivity.entries()) {
+      if (now - lastActivity <= MCP_SESSION_TTL_MS) continue;
+      const transport = sessions.get(sid);
+      if (transport) {
+        evicted++;
+        transport.close().catch((err) => {
+          mcpLog.warn({ err, session_id: sid }, "Error closing idle MCP session");
+        });
+      } else {
+        // Defensive: shouldn't happen (kept in sync with `sessions`), but
+        // don't let a stale activity entry linger either way.
+        sessionLastActivity.delete(sid);
+      }
+    }
+    return evicted;
+  }
+
+  const mcpSessionSweepHandle = setInterval(() => {
+    sweepIdleMcpSessions();
+  }, MCP_SESSION_SWEEP_INTERVAL_MS);
+  if (typeof mcpSessionSweepHandle.unref === "function") mcpSessionSweepHandle.unref();
 
   const httpServer = createServer(async (req, res) => {
     const requestId = resolveRequestId(req.headers["x-request-id"]);
@@ -642,6 +697,10 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
           // Task 23.5: update stored claims to support mid-session JWT rotation.
           // The latest verified claims always win.
           sessionClaims.set(sessionId, claims);
+          // performance-07: any authenticated request against a known session
+          // counts as activity — resets the idle clock so the sweeper leaves
+          // it alone.
+          sessionLastActivity.set(sessionId, Date.now());
           await sessions.get(sessionId)!.handleRequest(req, res);
         } else if (req.method === "POST" && !sessionId) {
           // New-session branch — also gated.
@@ -672,16 +731,24 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
           });
           // Task 23.5: pass a getter so tool handlers can look up per-session claims.
           const mcpServer = createMcpServer(services, (sid) => sessionClaims.get(sid) ?? null);
-          await mcpServer.connect(transport);
 
+          // performance-07 / protocole-mcp-07: set onclose BEFORE connect() so
+          // the SDK's own wrapping (Protocol#connect chains whatever onclose
+          // is already present, then runs its own McpServer-side cleanup)
+          // actually fires. Assigning onclose AFTER connect() — as this code
+          // used to — silently clobbers the SDK's wrapped handler, so the
+          // McpServer's internal state (pending handlers, abort controllers)
+          // never got cleaned up on close, transport eviction or not.
           transport.onclose = () => {
             const sid = transport.sessionId;
             if (sid) {
               sessions.delete(sid);
               sessionClaims.delete(sid); // Task 23.5: evict claims on session close
+              sessionLastActivity.delete(sid);
             }
             mcpLog.info({ session_id: sid, remaining: sessions.size }, "MCP session closed");
           };
+          await mcpServer.connect(transport);
 
           await transport.handleRequest(req, res);
 
@@ -689,6 +756,7 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
           if (sid) {
             sessions.set(sid, transport);
             sessionClaims.set(sid, claims); // Task 23.5: stash claims after sessionId is assigned
+            sessionLastActivity.set(sid, Date.now());
             mcpLog.info({ session_id: sid, total: sessions.size, agent_id: authenticatedAgent }, "MCP session opened");
           }
         } else {
@@ -864,6 +932,11 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
       log.warn({ err }, "Error stopping working-files sweeper");
     }
     try {
+      clearInterval(mcpSessionSweepHandle);
+    } catch (err) {
+      log.warn({ err }, "Error stopping MCP session idle sweeper");
+    }
+    try {
       const { closeDb } = await import("./database.js");
       closeDb?.();
     } catch (err) {
@@ -886,7 +959,7 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
     process.once("SIGINT", () => onSignal("SIGINT"));
   }
 
-  return { port, httpServer, stop, sweeper: retentionSweeper };
+  return { port, httpServer, stop, sweeper: retentionSweeper, sweepMcpSessions: sweepIdleMcpSessions };
 }
 
 // Auto-start when run directly (not imported)
