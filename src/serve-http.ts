@@ -22,7 +22,7 @@ import { handleHealthz, handleHealthReady } from "./http/health.js";
 import { handleDiscovery } from "./discovery.js";
 import { serveMetrics } from "./metrics.js";
 import { handleMetrics } from "./http/metrics.js";
-import { parseBody as parseBodyShared, json as jsonShared, jsonAuthError as jsonAuthErrorShared } from "./http/utils.js";
+import { parseBody as parseBodyShared, json as jsonShared, jsonAuthError as jsonAuthErrorShared, metricRoute } from "./http/utils.js";
 import { isAllowedOrigin } from "./http/origin.js";
 import { assessPlanQuality } from "./plan-quality.js";
 import type { CoordinatorEvent } from "./types.js";
@@ -708,10 +708,15 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
 
         if (url.startsWith("/api/") && (req.method === "POST" || req.method === "GET")) {
           await handleRest(req, res, authResult.claims);
-          services.metrics.recordHttpRequest((url.split("?")[0] || ""), res.statusCode || 0);
+          // performance-03: normalize id-like segments so cardinality is bounded
+          // by route TEMPLATES, not by distinct ids ever seen. See src/http/utils.ts.
+          services.metrics.recordHttpRequest(metricRoute(url.split("?")[0] || ""), res.statusCode || 0);
         } else {
           json(res, { error: "not found" }, 404);
-          services.metrics.recordHttpRequest((url.split("?")[0] || ""), 404);
+          // performance-03: a 404 is, by definition, an unmatched path — never
+          // give it a dynamic label (unbounded cardinality from prober/scanner
+          // traffic). Use a single constant label instead.
+          services.metrics.recordHttpRequest("<unmatched>", 404);
         }
       }
     } catch (err) {

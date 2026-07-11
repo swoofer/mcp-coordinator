@@ -68,3 +68,44 @@ export function jsonAuthError(res: ServerResponse, authResult: Exclude<AuthResul
   }
   json(res, { error: authResult.error }, authResult.status);
 }
+
+// performance-03: id-like path segments would otherwise become a Prometheus
+// label VALUE, giving each distinct id (uuid, thread id, agent id, ...) its
+// own unbounded time series. These three shapes cover the id-bearing REST
+// routes in handle-rest.ts (consultation thread ids, agent ids) plus any
+// numeric id scheme, without touching plain route words (e.g. "agents",
+// "threads-active") so REST route templates stay distinguishable.
+const UUID_SEGMENT_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+const LONG_HEX_SEGMENT_RE = /^[0-9a-fA-F]{16,}$/;
+const LONG_NUMERIC_SEGMENT_RE = /^\d{4,}$/;
+
+/**
+ * Normalize a raw request path into a BOUNDED label for Prometheus metrics.
+ *
+ * Path segments that look like an opaque id (UUID, long hex string, long
+ * numeric id) are collapsed to the literal `:id`, so the resulting label is
+ * bounded by the number of route TEMPLATES the server exposes, not by the
+ * number of distinct ids ever seen. Segments that don't match any id shape
+ * (e.g. `agents`, `threads-active`) are left as-is, so real REST routes
+ * remain distinguishable in the metric.
+ *
+ * See performance-03: passing the raw request path as a label value gives
+ * every distinct path (including 404s on arbitrary prober paths) its own
+ * Prometheus time series — unbounded cardinality, eventual OOM.
+ */
+export function metricRoute(path: string): string {
+  return path
+    .split("/")
+    .map((segment) => {
+      if (segment === "") return segment;
+      if (
+        UUID_SEGMENT_RE.test(segment) ||
+        LONG_HEX_SEGMENT_RE.test(segment) ||
+        LONG_NUMERIC_SEGMENT_RE.test(segment)
+      ) {
+        return ":id";
+      }
+      return segment;
+    })
+    .join("/");
+}
