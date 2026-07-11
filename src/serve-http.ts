@@ -18,6 +18,8 @@ import { canResetDb } from "./reset-guard.js";
 import { safeJoinUnderRoot } from "./path-guard.js";
 import { handleRest as handleRestExt, type RestContext } from "./http/handle-rest.js";
 import { handleLivez, handleReadyz, handleHealth } from "./http/handle-health.js";
+import { handleHealthz, handleHealthReady } from "./http/health.js";
+import { handleDiscovery } from "./discovery.js";
 import { serveMetrics } from "./metrics.js";
 import { parseBody as parseBodyShared, json as jsonShared, jsonAuthError as jsonAuthErrorShared } from "./http/utils.js";
 import { isAllowedOrigin } from "./http/origin.js";
@@ -548,6 +550,29 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
           jwtSecretSet: JWT_SECRET_EXPLICITLY_SET,
         });
         services.metrics.recordHttpRequest("/health", 200);
+      } else if (url === "/healthz") {
+        // architecture-01: alias consumed by the SDK/doctor (cli/doctor.ts
+        // probe 1 — HEAD /healthz). Distinct handler from /livez: same
+        // alive-only semantics but the minimal { status: "alive" } body the
+        // SDK's HealthzResponse type expects, per T29's src/http/health.ts.
+        handleHealthz(req, res);
+        services.metrics.recordHttpRequest("/healthz", 200);
+      } else if (url === "/health/ready") {
+        // architecture-01: alias consumed by the SDK/doctor (cli/doctor.ts
+        // probes 6/7 — audit_queue depth + sweeper circuit). NOT the same
+        // handler as /readyz: /readyz reports db+mqtt+tree_sitter+git_cochange
+        // (Phase 1 dependency readiness), while /health/ready reports
+        // db+audit_queue+sweeper+draining (Phase 2 auth-flow readiness) —
+        // the exact shape sdk/src/types.ts::HealthReadyResponse documents.
+        await handleHealthReady(req, res);
+        services.metrics.recordHttpRequest("/health/ready", res.statusCode || 0);
+      } else if (url === "/.well-known/oauth-authorization-server" && phase2Bootstrap) {
+        // protocole-mcp-03: RFC 8414 discovery doc, gated on Phase 2 actually
+        // being active. When OAuth is off there is no metadata to serve —
+        // falls through to the generic 404 below rather than leaking the
+        // route's existence/shape to an unauthenticated prober.
+        handleDiscovery(req, res, phase2Bootstrap.context.publicUrl);
+        services.metrics.recordHttpRequest("/.well-known/oauth-authorization-server", 200);
       } else if (url === "/metrics" && req.method === "GET") {
         await serveMetrics(req, res, services, services.metrics);
         services.metrics.recordHttpRequest("/metrics", 200);
