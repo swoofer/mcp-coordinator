@@ -58,7 +58,7 @@ jobs:
       # `--no-git-checks` skips pnpm's pre-publish branch+clean checks
       # (we don't need them — release-please already produced the release
       # commit and CI is the canonical place to publish from).
-      - run: pnpm publish --no-git-checks
+      - run: pnpm publish --no-git-checks --provenance
         if: ${{ steps.release.outputs.release_created || inputs.publish_only == 'true' }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -82,4 +82,16 @@ jobs:
     uses: ./.github/workflows/docker-publish.yml
     with:
       tag: ${{ needs.release.outputs.tag_name }}
-    secrets: inherit
+
+  # Chained binary release on every release-please cut. Same anti-recursive
+  # rationale as `docker` above: a tag push from release-please's
+  # GITHUB_TOKEN does NOT trigger release-binaries.yml's `push: tags` event,
+  # so without this hook no binaries get attached to the GitHub release.
+  binaries:
+    needs: release
+    if: ${{ needs.release.outputs.release_created == 'true' }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release-binaries.yml
+    with:
+      tag: ${{ needs.release.outputs.tag_name }}
