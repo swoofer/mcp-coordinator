@@ -23,14 +23,15 @@ interface BucketState {
  * Refill model: bucket starts full ({@link RateLimitConfig.per} tokens).
  * Each `check` call consumes 1 token if available; refill rate is
  * `per / window_seconds` tokens per second. `sweep()` evicts buckets
- * whose absolute lifetime expired (callers run it on the sweeper cadence —
- * T28; until then any caller can invoke it).
+ * whose absolute lifetime expired; `startSweeper()` wires it to a periodic
+ * timer (performance-06) so callers don't have to invoke it manually.
  *
  * Phase 5 multi-instance: swap to Redis-backed limiter via DI; this
  * interface stays unchanged.
  */
 export class RateLimiter {
   private buckets = new Map<string, BucketState>();
+  private sweeperHandle: ReturnType<typeof setInterval> | null = null;
 
   constructor(private readonly clock: Clock) {}
 
@@ -114,8 +115,10 @@ export class RateLimiter {
   }
 
   /**
-   * Sweep expired buckets. Returns number of entries deleted. Phase 2 callers
-   * may invoke on any cadence; T28 sweeper wires it to the 60s tick.
+   * Sweep expired buckets. Returns number of entries deleted. Callers may
+   * invoke on any cadence; {@link startSweeper} wires this to a periodic
+   * timer (performance-06 — this used to be a phantom guard: the method
+   * existed but nothing ever called it, so `buckets` grew unbounded).
    */
   sweep(): number {
     const now = this.clock.now();
@@ -127,6 +130,28 @@ export class RateLimiter {
       }
     }
     return deleted;
+  }
+
+  /**
+   * Start periodic sweeping of expired buckets (performance-06). Idempotent
+   * — a second call while already running is a no-op. The timer is
+   * `unref()`'d so it never keeps the process alive on its own, and is
+   * meant to be stopped via {@link stopSweeper} at teardown (mirrors
+   * WorkingFilesTracker.startSweeper / Consultation.startTimeoutSweeper).
+   */
+  startSweeper(intervalMs = 60_000): void {
+    if (this.sweeperHandle) return;
+    this.sweeperHandle = setInterval(() => {
+      this.sweep();
+    }, intervalMs);
+    this.sweeperHandle.unref();
+  }
+
+  /** Stop the periodic sweeper. Safe to call multiple times / when unstarted. */
+  stopSweeper(): void {
+    if (!this.sweeperHandle) return;
+    clearInterval(this.sweeperHandle);
+    this.sweeperHandle = null;
   }
 
   /** Test helper: current bucket count. */

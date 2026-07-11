@@ -128,6 +128,12 @@ export function bootPhase2(
   }
   const signingKeys = buildJwtKeyRegistry(secretBuf, prevSecretBuf);
   const rateLimiter = new RateLimiter(clock);
+  // performance-06: sweep() existed but nothing ever called it, so `buckets`
+  // grew unbounded (one entry per unauth'd IP/key hitting rate-limited
+  // endpoints). Wire it here, next to construction — this is the only place
+  // RateLimiter is instantiated — so lifecycle stays local instead of
+  // threading a start call through server-setup.
+  rateLimiter.startSweeper();
   const membershipCache = new MembershipCache(clock);
 
   // GHES support (v0.8.1-P2): both optional. Unset/empty → GitHubProvider
@@ -339,6 +345,9 @@ export function bootPhase2(
       // T06c: clear the plaintext-reminder interval first (idempotent,
       // safe across multiple shutdown invocations in tests).
       stopReminder();
+      // performance-06: stop the RateLimiter bucket sweeper alongside the
+      // other Phase 2 timers. stopSweeper() is idempotent.
+      rateLimiter.stopSweeper();
       sweeper.stop();
       await sweeper.drain(DRAIN_TIMEOUT_MS);
       const queue = getAuditQueue();

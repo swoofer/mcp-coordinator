@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { Clock } from "../../src/auth/clock.js";
 import { RateLimiter } from "../../src/auth/rate-limit.js";
 
@@ -192,5 +192,76 @@ describe("RateLimiter.sweep + reset + size", () => {
     expect(limiter.size()).toBe(2);
     limiter.reset();
     expect(limiter.size()).toBe(0);
+  });
+});
+
+// performance-06: sweep() existed but nothing ever called it on a cadence
+// (comment used to say "T28 sweeper wires it to the 60s tick" — never
+// happened), so `buckets` grew without bound (one entry per unauth'd IP/key).
+describe("RateLimiter.startSweeper / stopSweeper (performance-06)", () => {
+  afterEach(() => {
+    limiter.stopSweeper();
+    vi.useRealTimers();
+  });
+
+  it("leak reproduction: with no sweeper running, expired buckets are NOT auto-evicted", () => {
+    const cfg = { per: 1, window_seconds: 60 };
+    limiter.check("a", cfg);
+    limiter.check("b", cfg);
+    clock.advance(120); // both buckets now expired
+    // No startSweeper() call and no manual sweep() — size stays at N forever.
+    expect(limiter.size()).toBe(2);
+  });
+
+  it("startSweeper wires a periodic tick that evicts expired buckets", () => {
+    vi.useFakeTimers();
+    const cfg = { per: 1, window_seconds: 60 };
+    limiter.check("a", cfg);
+    limiter.check("b", cfg);
+    expect(limiter.size()).toBe(2);
+
+    limiter.startSweeper(1000);
+    clock.advance(120); // expire the buckets per the injected Clock
+    vi.advanceTimersByTime(1000); // fire one tick
+
+    expect(limiter.size()).toBe(0);
+  });
+
+  it("does not sweep buckets that have not expired (rate-limiting stays functional)", () => {
+    vi.useFakeTimers();
+    const cfg = { per: 1, window_seconds: 60 };
+    limiter.check("a", cfg); // expires_at = now + 60
+    expect(limiter.check("a", cfg).allowed).toBe(false); // bucket drained
+
+    limiter.startSweeper(1000);
+    clock.advance(30); // well within the 60s window — still active
+    vi.advanceTimersByTime(1000);
+
+    expect(limiter.size()).toBe(1);
+    // And the limit is still enforced for "a" — sweeping didn't reset it.
+    expect(limiter.check("a", cfg).allowed).toBe(false);
+  });
+
+  it("is idempotent: a second call does not start a second interval", () => {
+    vi.useFakeTimers();
+    const setIntervalSpy = vi.spyOn(global, "setInterval");
+    limiter.startSweeper(1000);
+    limiter.startSweeper(1000);
+    expect(setIntervalSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("stopSweeper halts further ticks", () => {
+    vi.useFakeTimers();
+    const cfg = { per: 1, window_seconds: 60 };
+    limiter.check("a", cfg);
+    limiter.startSweeper(1000);
+    limiter.stopSweeper();
+    clock.advance(120);
+    vi.advanceTimersByTime(5000);
+    expect(limiter.size()).toBe(1); // no tick fired, nothing swept
+  });
+
+  it("stopSweeper is safe to call when never started", () => {
+    expect(() => limiter.stopSweeper()).not.toThrow();
   });
 });
