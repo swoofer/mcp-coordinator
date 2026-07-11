@@ -224,6 +224,7 @@ async function mintSessionJWT(opts: SessionMintOpts = {}): Promise<string> {
   const claims: Record<string, unknown> = {
     active_org_id: opts.active_org_id ?? "org-acme",
     role: opts.role ?? "member",
+    typ: "access",
   };
   if (opts.family_id !== undefined) claims.family_id = opts.family_id;
   return new SignJWT(claims)
@@ -251,6 +252,7 @@ async function mintRefreshJWT(opts: RefreshMintOpts = {}): Promise<string> {
   return new SignJWT({
     active_org_id: opts.active_org_id ?? "org-acme",
     family_id: opts.family_id ?? "fam-root",
+    typ: "refresh",
   })
     .setProtectedHeader({ alg: "HS256", kid: "hs256-v1" })
     .setIssuer(ISSUER)

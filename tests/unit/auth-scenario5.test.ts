@@ -52,6 +52,7 @@ async function mintSessionJWT(opts: MintOpts = {}): Promise<string> {
     active_org_id: opts.active_org_id ?? "org-acme",
     family_id: opts.family_id ?? "fam-1",
     role: opts.role ?? "member",
+    typ: "access",
   };
   if (opts.serviceAccount) claims.service_account = true;
 

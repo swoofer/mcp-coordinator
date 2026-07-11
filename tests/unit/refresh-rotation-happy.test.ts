@@ -125,6 +125,7 @@ function seedUser(
   id = "u-alice",
   orgId = "org-acme",
   tokenEpoch = 0,
+  role = "member",
 ): void {
   getDb()
     .prepare(
@@ -133,7 +134,7 @@ function seedUser(
           idp_access_token, role, last_login_at, token_epoch)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-    .run(id, orgId, "alice@example.com", "github", "gh-100", "tok", "member", "0", tokenEpoch);
+    .run(id, orgId, "alice@example.com", "github", "gh-100", "tok", role, "0", tokenEpoch);
 }
 
 /**
@@ -198,6 +199,7 @@ async function mintRefresh(opts: MintOpts = {}): Promise<string> {
     sub: opts.sub ?? "u-alice",
     active_org_id: opts.orgId ?? "org-acme",
     family_id: opts.familyId ?? "fam-root",
+    typ: "refresh",
   };
   if (opts.serviceAccount) claims.service_account = true;
 
@@ -636,5 +638,135 @@ describe("refreshTokenGrant — happy path", () => {
       makeCtx({ publicUrl: `${ISSUER}/` }),
     );
     expect(res.statusCode).toBe(200);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Role re-derivation from DB at rotation time (securite-auth-04)
+// ---------------------------------------------------------------------------
+//
+// Prior behavior: the successor access-token's role was hardcoded to
+// "member" regardless of the user's actual DB role. This silently
+// downgraded admins on every refresh AND never reflected a role change
+// (promotion or demotion) made after the original login. Fixed: the
+// handler re-derives role from `users.role` at rotation time, with a
+// fail-closed ("member") fallback for absent/invalid values — LEAST
+// PRIVILEGE, matching verifyToken's pattern in src/auth.ts.
+describe("refreshTokenGrant — role re-derivation from DB (securite-auth-04)", () => {
+  function decodeAccessRole(accessToken: string): unknown {
+    const parts = accessToken.split(".");
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+    return payload.role;
+  }
+
+  function setUserRole(id: string, role: string): void {
+    getDb().prepare("UPDATE users SET role = ? WHERE id = ?").run(role, id);
+  }
+
+  it("admin user in DB → rotated access token carries role=admin (not hardcoded member)", async () => {
+    seedOrg();
+    seedUser("u-alice", "org-acme", 0, "admin");
+    const token = await mintRefresh({ jti: "jti-role-admin" });
+    seedRefreshRow("jti-role-admin");
+    const req = mockRequest({ refresh_token: token }, { ip: "10.0.0.1", userAgent: "ua/1" });
+    const res = mockResponse();
+    await refreshTokenGrant(req, res as unknown as ServerResponse, makeCtx());
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body!);
+    expect(decodeAccessRole(body.access_token)).toBe("admin");
+  });
+
+  it("member user in DB → rotated access token carries role=member", async () => {
+    seedOrg();
+    seedUser("u-alice", "org-acme", 0, "member");
+    const token = await mintRefresh({ jti: "jti-role-member" });
+    seedRefreshRow("jti-role-member");
+    const req = mockRequest({ refresh_token: token }, { ip: "10.0.0.1", userAgent: "ua/1" });
+    const res = mockResponse();
+    await refreshTokenGrant(req, res as unknown as ServerResponse, makeCtx());
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body!);
+    expect(decodeAccessRole(body.access_token)).toBe("member");
+  });
+
+  it("admin demoted to member in DB between refreshes → new access token reflects demotion, does NOT retain admin", async () => {
+    seedOrg();
+    seedUser("u-alice", "org-acme", 0, "admin");
+    const token = await mintRefresh({ jti: "jti-role-demoted" });
+    seedRefreshRow("jti-role-demoted");
+    // Demotion happens in the DB after the refresh-token was minted but
+    // before it's redeemed — e.g. an admin revokes this user's privileges
+    // mid-session.
+    setUserRole("u-alice", "member");
+    const req = mockRequest({ refresh_token: token }, { ip: "10.0.0.1", userAgent: "ua/1" });
+    const res = mockResponse();
+    await refreshTokenGrant(req, res as unknown as ServerResponse, makeCtx());
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body!);
+    expect(decodeAccessRole(body.access_token)).toBe("member");
+  });
+
+  it("service user in DB → rotated access token carries role=service", async () => {
+    // users.role='service' is a legitimate value (parity with
+    // AccessTokenClaims / verifyToken). Such a user reaching rotation is
+    // unusual (service *tokens* short-circuit earlier on the JWT
+    // service_account claim), but a human account flagged role=service
+    // must re-derive faithfully rather than be coerced.
+    seedOrg();
+    seedUser("u-alice", "org-acme", 0, "service");
+    const token = await mintRefresh({ jti: "jti-role-service" });
+    seedRefreshRow("jti-role-service");
+    const req = mockRequest({ refresh_token: token }, { ip: "10.0.0.1", userAgent: "ua/1" });
+    const res = mockResponse();
+    await refreshTokenGrant(req, res as unknown as ServerResponse, makeCtx());
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body!);
+    expect(decodeAccessRole(body.access_token)).toBe("service");
+  });
+
+  // `users.role` is `NOT NULL` so a role VALUE outside admin|member|service
+  // can only arise from corrupted/legacy data — the fail-closed branch must
+  // still refuse to trust it.
+  it("user.role is an unrecognized value in DB → fail-closed fallback role=member (no elevation)", async () => {
+    seedOrg();
+    seedUser("u-alice", "org-acme", 0, "admin");
+    const token = await mintRefresh({ jti: "jti-role-invalid" });
+    seedRefreshRow("jti-role-invalid");
+    setUserRole("u-alice", "superadmin");
+    const req = mockRequest({ refresh_token: token }, { ip: "10.0.0.1", userAgent: "ua/1" });
+    const res = mockResponse();
+    await refreshTokenGrant(req, res as unknown as ServerResponse, makeCtx());
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body!);
+    expect(decodeAccessRole(body.access_token)).toBe("member");
+  });
+
+  // Adversarial (R5): the users row is entirely absent at rotation time —
+  // e.g. legacy/orphaned refresh_tokens rows predating FK enforcement, or a
+  // hard-deleted account. FK is toggled off for the duration of the handler
+  // call so the successor-row INSERT still lands; this exercises the
+  // `userRow?.role` absent branch. The re-derivation MUST fail closed to
+  // "member" (LEAST PRIVILEGE) — never elevate on missing source-of-truth.
+  it("user row absent from users table → fail-closed fallback role=member (no elevation)", async () => {
+    seedOrg();
+    seedUser("u-alice", "org-acme", 0, "admin");
+    const token = await mintRefresh({ jti: "jti-role-absent" });
+    seedRefreshRow("jti-role-absent");
+    // Delete the user (FK off so the orphaned refresh_tokens row survives),
+    // then run the whole rotation with FK still off so the successor INSERT
+    // does not trip the users(id) foreign key. Restored in finally.
+    const db = getDb();
+    db.exec("PRAGMA foreign_keys = OFF");
+    try {
+      db.prepare("DELETE FROM users WHERE id = ?").run("u-alice");
+      const req = mockRequest({ refresh_token: token }, { ip: "10.0.0.1", userAgent: "ua/1" });
+      const res = mockResponse();
+      await refreshTokenGrant(req, res as unknown as ServerResponse, makeCtx());
+      expect(res.statusCode).toBe(200);
+      const body = JSON.parse(res.body!);
+      expect(decodeAccessRole(body.access_token)).toBe("member");
+    } finally {
+      db.exec("PRAGMA foreign_keys = ON");
+    }
   });
 });

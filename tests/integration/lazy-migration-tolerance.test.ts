@@ -178,6 +178,7 @@ it("plaintext idp_access_token row + key set → refresh succeeds; row becomes e
     sub: "u-alice",
     active_org_id: "org-acme",
     family_id: "fam-root",
+    typ: "refresh",
   })
     .setProtectedHeader({ alg: "HS256", kid: "hs256-v1" })
     .setIssuer(ISSUER)

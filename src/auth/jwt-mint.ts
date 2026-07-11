@@ -36,7 +36,10 @@ export interface MintAccessJWTOptions {
 // Mint a signed access JWT. HS256 pinned, kid in header. Pure function.
 export async function mintAccessJWT(opts: MintAccessJWTOptions): Promise<string> {
   const jti = opts.jti ?? crypto.randomUUID();
-  const builder = new SignJWT({ ...opts.claims })
+  // securite-auth-01: mark this JWT as an access token so verifiers can
+  // reject a stolen/misrouted refresh token presented as a session/Bearer
+  // credential (token-type confusion).
+  const builder = new SignJWT({ ...opts.claims, typ: "access" })
     .setProtectedHeader({ alg: "HS256", kid: opts.registry.current.kid })
     .setIssuer(opts.issuer)
     .setJti(jti);
@@ -84,7 +87,10 @@ export async function mintRefreshJWT(
   opts: MintRefreshJWTOptions,
 ): Promise<MintedRefreshJWT> {
   const jti = opts.jti ?? crypto.randomUUID();
-  const builder = new SignJWT({ ...opts.claims })
+  // securite-auth-01: mark this JWT as a refresh token so verifiers can
+  // reject it if presented at an access-token consumer (session cookie /
+  // Bearer) instead of the refresh-rotation endpoint.
+  const builder = new SignJWT({ ...opts.claims, typ: "refresh" })
     .setProtectedHeader({ alg: "HS256", kid: opts.registry.current.kid })
     .setIssuer(opts.issuer)
     .setJti(jti);

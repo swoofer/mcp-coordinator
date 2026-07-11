@@ -285,7 +285,28 @@ async function verifyPhase2SessionCookie(
       jti?: string;
       iat?: number;
       service_account?: boolean;
+      typ?: string;
     };
+
+    // securite-auth-01: reject token-type confusion. A refresh-token
+    // carries typ:"refresh" (or, for tokens minted before this fix, no
+    // `typ` claim at all) and must never be accepted as a session
+    // cookie / Bearer credential. Fail-closed: tokens without a `typ`
+    // claim are treated as legacy and rejected too (see task-1.3 report
+    // for the compat rationale) — this endpoint only accepts
+    // typ === "access".
+    if (claims.typ !== "access") {
+      audit("auth.invalid_token", {
+        tier: 2,
+        metadata: { reason: "wrong_token_type" },
+      });
+      return {
+        ok: false,
+        status: 401,
+        error: "Invalid session",
+        wwwAuthenticate: bearerAuthHeader("invalid_token", "Invalid session"),
+      };
+    }
 
     if (!claims.sub) {
       audit("auth.invalid_token", { tier: 2, metadata: { reason: "missing_sub" } });

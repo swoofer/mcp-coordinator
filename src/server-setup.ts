@@ -53,7 +53,7 @@ export interface CoordinatorServices {
 export function createServices(config: CoordinatorConfig): CoordinatorServices {
   initDatabase(config.dataDir);
 
-  const logger = createLogger();
+  const logger = createLogger({ stdio: config.stdio });
 
   const metrics = new Metrics();
 

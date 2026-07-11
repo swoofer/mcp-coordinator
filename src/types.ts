@@ -176,4 +176,10 @@ export interface CoordinatorConfig {
   authEnabled?: boolean;
   jwtSecret?: string;
   jwtExpiry?: string;
+  /**
+   * MCP stdio transport mode: stdout is reserved for JSON-RPC protocol
+   * messages, so the logger routes ALL levels to stderr instead. Set by the
+   * stdio entrypoint (src/index.ts) only — HTTP mode leaves this unset.
+   */
+  stdio?: boolean;
 }

@@ -216,7 +216,7 @@ function seedDeviceRow(opts: DeviceRowOpts = {}): {
 
 async function mintSessionJWT(sub = "u-alice", orgId = "org-acme"): Promise<string> {
   const iat = clock.now();
-  return new SignJWT({ active_org_id: orgId, role: "member" })
+  return new SignJWT({ active_org_id: orgId, role: "member", typ: "access" })
     .setProtectedHeader({ alg: "HS256", kid: "hs256-v1" })
     .setIssuer(ISSUER)
     .setSubject(sub)

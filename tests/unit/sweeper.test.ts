@@ -72,6 +72,59 @@ const SCHEMA = `
     metadata_json     TEXT,
     created_at        TEXT NOT NULL DEFAULT '2026-01-01 00:00:00'
   );
+
+  -- Phase 1 tables (performance-01): TEXT ISO-8601 timestamps, no retention
+  -- before this task. layer_firings uses fired_at, the other four use
+  -- created_at.
+  CREATE TABLE file_activity (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id  TEXT NOT NULL,
+    agent_id    TEXT NOT NULL,
+    agent_name  TEXT,
+    tool_name   TEXT NOT NULL,
+    file_path   TEXT NOT NULL,
+    module      TEXT,
+    created_at  TEXT DEFAULT '2026-01-01 00:00:00'
+  );
+
+  CREATE TABLE events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    type        TEXT NOT NULL,
+    payload     TEXT NOT NULL,
+    created_at  TEXT DEFAULT '2026-01-01 00:00:00'
+  );
+
+  CREATE TABLE thread_messages (
+    id                TEXT PRIMARY KEY,
+    thread_id         TEXT NOT NULL,
+    agent_id          TEXT NOT NULL,
+    agent_name        TEXT,
+    type              TEXT NOT NULL,
+    content           TEXT NOT NULL,
+    context_snapshot  TEXT,
+    in_reply_to       TEXT,
+    round             INTEGER NOT NULL,
+    token_estimate    INTEGER DEFAULT 0,
+    created_at        TEXT DEFAULT '2026-01-01 00:00:00'
+  );
+
+  CREATE TABLE action_summaries (
+    id          TEXT PRIMARY KEY,
+    session_id  TEXT NOT NULL,
+    agent_id    TEXT NOT NULL,
+    file_path   TEXT,
+    summary     TEXT NOT NULL,
+    created_at  TEXT DEFAULT '2026-01-01 00:00:00'
+  );
+
+  CREATE TABLE layer_firings (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    thread_id  TEXT,
+    layer      TEXT NOT NULL,
+    score      INTEGER NOT NULL,
+    agent_id   TEXT,
+    fired_at   TEXT DEFAULT '2026-01-01 00:00:00'
+  );
 `;
 
 let db: Database.Database;
@@ -119,6 +172,50 @@ function seedAudit(action: string, createdAtEpoch: number): void {
   db.prepare(
     `INSERT INTO audit_log (action, outcome, created_at) VALUES (?, 'success', ?)`,
   ).run(action, isoFromEpoch(createdAtEpoch));
+}
+
+// ───── Phase 1 table seed helpers (performance-01) ─────
+let fileActivitySeq = 0;
+function seedFileActivity(createdAtEpoch: number): void {
+  fileActivitySeq++;
+  db.prepare(
+    `INSERT INTO file_activity (session_id, agent_id, tool_name, file_path, created_at)
+     VALUES (?, 'a1', 'Read', ?, ?)`,
+  ).run(`s-${fileActivitySeq}`, `f-${fileActivitySeq}.ts`, isoFromEpoch(createdAtEpoch));
+}
+
+let eventsSeq = 0;
+function seedEvent(createdAtEpoch: number): void {
+  eventsSeq++;
+  db.prepare(`INSERT INTO events (type, payload, created_at) VALUES (?, '{}', ?)`).run(
+    `evt-${eventsSeq}`,
+    isoFromEpoch(createdAtEpoch),
+  );
+}
+
+let threadMessagesSeq = 0;
+function seedThreadMessage(createdAtEpoch: number): void {
+  threadMessagesSeq++;
+  db.prepare(
+    `INSERT INTO thread_messages (id, thread_id, agent_id, type, content, round, created_at)
+     VALUES (?, 't1', 'a1', 'message', 'hi', 1, ?)`,
+  ).run(`tm-${threadMessagesSeq}`, isoFromEpoch(createdAtEpoch));
+}
+
+let actionSummariesSeq = 0;
+function seedActionSummary(createdAtEpoch: number): void {
+  actionSummariesSeq++;
+  db.prepare(
+    `INSERT INTO action_summaries (id, session_id, agent_id, summary, created_at)
+     VALUES (?, 's1', 'a1', 'did a thing', ?)`,
+  ).run(`as-${actionSummariesSeq}`, isoFromEpoch(createdAtEpoch));
+}
+
+function seedLayerFiring(firedAtEpoch: number): void {
+  db.prepare(
+    `INSERT INTO layer_firings (thread_id, layer, score, agent_id, fired_at)
+     VALUES ('t1', 'L1', 1, 'a1', ?)`,
+  ).run(isoFromEpoch(firedAtEpoch));
 }
 
 beforeEach(() => {
@@ -294,6 +391,138 @@ describe("Sweeper — audit_log Tier 2", () => {
     expect(
       (db.prepare("SELECT COUNT(*) AS c FROM audit_log").get() as { c: number }).c,
     ).toBe(1);
+  });
+});
+
+// ───── Phase 1 tables (performance-01) ─────
+describe("Sweeper — file_activity (created_at, default 7d)", () => {
+  it("deletes rows older than file_activity_retention_days (default 7)", () => {
+    seedFileActivity(clock.now() - 10 * 86400);
+    sweeper.runPass();
+    expect(
+      (db.prepare("SELECT COUNT(*) AS c FROM file_activity").get() as { c: number }).c,
+    ).toBe(0);
+    expect(sweeper.metrics.rowsDeletedByTable.file_activity).toBe(1);
+  });
+
+  it("keeps rows within the 7d window", () => {
+    seedFileActivity(clock.now() - 3 * 86400);
+    sweeper.runPass();
+    expect(
+      (db.prepare("SELECT COUNT(*) AS c FROM file_activity").get() as { c: number }).c,
+    ).toBe(1);
+    expect(sweeper.metrics.rowsDeletedByTable.file_activity).toBe(0);
+  });
+});
+
+describe("Sweeper — events (created_at, default 7d)", () => {
+  it("deletes rows older than events_retention_days (default 7)", () => {
+    seedEvent(clock.now() - 10 * 86400);
+    sweeper.runPass();
+    expect((db.prepare("SELECT COUNT(*) AS c FROM events").get() as { c: number }).c).toBe(0);
+    expect(sweeper.metrics.rowsDeletedByTable.events).toBe(1);
+  });
+
+  it("keeps rows within the 7d window", () => {
+    seedEvent(clock.now() - 3 * 86400);
+    sweeper.runPass();
+    expect((db.prepare("SELECT COUNT(*) AS c FROM events").get() as { c: number }).c).toBe(1);
+    expect(sweeper.metrics.rowsDeletedByTable.events).toBe(0);
+  });
+});
+
+describe("Sweeper — thread_messages (created_at, default 30d)", () => {
+  it("deletes rows older than thread_messages_retention_days (default 30)", () => {
+    seedThreadMessage(clock.now() - 40 * 86400);
+    sweeper.runPass();
+    expect(
+      (db.prepare("SELECT COUNT(*) AS c FROM thread_messages").get() as { c: number }).c,
+    ).toBe(0);
+    expect(sweeper.metrics.rowsDeletedByTable.thread_messages).toBe(1);
+  });
+
+  it("keeps rows within the 30d window", () => {
+    seedThreadMessage(clock.now() - 20 * 86400);
+    sweeper.runPass();
+    expect(
+      (db.prepare("SELECT COUNT(*) AS c FROM thread_messages").get() as { c: number }).c,
+    ).toBe(1);
+    expect(sweeper.metrics.rowsDeletedByTable.thread_messages).toBe(0);
+  });
+});
+
+describe("Sweeper — action_summaries (created_at, default 30d)", () => {
+  it("deletes rows older than action_summaries_retention_days (default 30)", () => {
+    seedActionSummary(clock.now() - 40 * 86400);
+    sweeper.runPass();
+    expect(
+      (db.prepare("SELECT COUNT(*) AS c FROM action_summaries").get() as { c: number }).c,
+    ).toBe(0);
+    expect(sweeper.metrics.rowsDeletedByTable.action_summaries).toBe(1);
+  });
+
+  it("keeps rows within the 30d window", () => {
+    seedActionSummary(clock.now() - 20 * 86400);
+    sweeper.runPass();
+    expect(
+      (db.prepare("SELECT COUNT(*) AS c FROM action_summaries").get() as { c: number }).c,
+    ).toBe(1);
+    expect(sweeper.metrics.rowsDeletedByTable.action_summaries).toBe(0);
+  });
+});
+
+describe("Sweeper — layer_firings (fired_at, default 30d)", () => {
+  it("deletes rows older than layer_firings_retention_days (default 30) using fired_at, not created_at", () => {
+    seedLayerFiring(clock.now() - 40 * 86400);
+    sweeper.runPass();
+    expect(
+      (db.prepare("SELECT COUNT(*) AS c FROM layer_firings").get() as { c: number }).c,
+    ).toBe(0);
+    expect(sweeper.metrics.rowsDeletedByTable.layer_firings).toBe(1);
+  });
+
+  it("keeps rows within the 30d window", () => {
+    seedLayerFiring(clock.now() - 20 * 86400);
+    sweeper.runPass();
+    expect(
+      (db.prepare("SELECT COUNT(*) AS c FROM layer_firings").get() as { c: number }).c,
+    ).toBe(1);
+    expect(sweeper.metrics.rowsDeletedByTable.layer_firings).toBe(0);
+  });
+});
+
+// ───── R5(1): retention boundary — just-under kept, just-over deleted ─────
+describe("Sweeper — Phase 1 retention boundaries", () => {
+  it("file_activity: a row 1s inside the 7d window is kept, a row 1s past it is deleted", () => {
+    const retentionSeconds = 7 * 86400;
+    seedFileActivity(clock.now() - retentionSeconds + 1); // just under → keep
+    seedFileActivity(clock.now() - retentionSeconds - 1); // just over → delete
+    sweeper.runPass();
+    expect(
+      (db.prepare("SELECT COUNT(*) AS c FROM file_activity").get() as { c: number }).c,
+    ).toBe(1);
+    expect(sweeper.metrics.rowsDeletedByTable.file_activity).toBe(1);
+  });
+
+  it("layer_firings: a row 1s inside the 30d window is kept, a row 1s past it is deleted", () => {
+    const retentionSeconds = 30 * 86400;
+    seedLayerFiring(clock.now() - retentionSeconds + 1); // just under → keep
+    seedLayerFiring(clock.now() - retentionSeconds - 1); // just over → delete
+    sweeper.runPass();
+    expect(
+      (db.prepare("SELECT COUNT(*) AS c FROM layer_firings").get() as { c: number }).c,
+    ).toBe(1);
+    expect(sweeper.metrics.rowsDeletedByTable.layer_firings).toBe(1);
+  });
+});
+
+describe("Sweeper — Phase 1 retention env overrides", () => {
+  it("honours COORDINATOR_EVENTS_RETENTION_DAYS override", () => {
+    process.env.COORDINATOR_EVENTS_RETENTION_DAYS = "1";
+    seedEvent(clock.now() - 2 * 86400);
+    sweeper.runPass();
+    expect((db.prepare("SELECT COUNT(*) AS c FROM events").get() as { c: number }).c).toBe(0);
+    expect(sweeper.metrics.rowsDeletedByTable.events).toBe(1);
   });
 });
 

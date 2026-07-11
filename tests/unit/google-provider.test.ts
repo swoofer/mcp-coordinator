@@ -47,6 +47,8 @@ interface IdTokenOverrides {
   alg?: "RS256" | "HS256";
   kidOverride?: string;
   expSeconds?: number;
+  /** T55 parity: nonce claim baked into the id_token. */
+  nonce?: string;
 }
 
 async function makeIdToken(overrides: IdTokenOverrides = {}): Promise<string> {
@@ -56,6 +58,7 @@ async function makeIdToken(overrides: IdTokenOverrides = {}): Promise<string> {
   };
   if (overrides.name !== undefined) claims.name = overrides.name;
   if (overrides.hd !== undefined) claims.hd = overrides.hd;
+  if (overrides.nonce !== undefined) claims.nonce = overrides.nonce;
   const expSecondsFromNow = overrides.expSeconds ?? 3600;
   return new SignJWT(claims)
     .setProtectedHeader({
@@ -278,5 +281,97 @@ describe("GoogleProvider.listMemberships", () => {
     await expect(makeProvider().listMemberships("any-token")).rejects.toThrow(
       /hd-based allowlist/,
     );
+  });
+});
+
+describe("GoogleProvider nonce (securite-auth-02)", () => {
+  it("buildAuthUrl emits the nonce param when one is supplied", () => {
+    const url = makeProvider().buildAuthUrl(
+      "state-abc",
+      REDIRECT_URI,
+      "challenge-xyz",
+      "n-test-12345",
+    );
+    expect(new URL(url).searchParams.get("nonce")).toBe("n-test-12345");
+  });
+
+  it("buildAuthUrl omits nonce param when none supplied", () => {
+    const url = makeProvider().buildAuthUrl("state-abc", REDIRECT_URI);
+    expect(new URL(url).searchParams.has("nonce")).toBe(false);
+  });
+
+  it("exchangeCode happy path: id_token nonce matches supplied -> success", async () => {
+    const nonceValue = "n-good-1";
+    const idToken = await makeIdToken({ nonce: nonceValue });
+    server.use(
+      http.post(TOKEN_URL, () =>
+        HttpResponse.json({
+          access_token: "ya29.fake",
+          id_token: idToken,
+          token_type: "Bearer",
+        }),
+      ),
+    );
+    mountJwks();
+
+    const result = await makeProvider().exchangeCode(
+      "code-xyz", REDIRECT_URI, undefined, nonceValue,
+    );
+    expect(result.user.idp_user_id).toBe("111222333444555");
+  });
+
+  it("exchangeCode: id_token has a DIFFERENT nonce -> IdPTokenRevoked (replay/injection blocked)", async () => {
+    const idToken = await makeIdToken({ nonce: "n-IMPOSTOR" });
+    server.use(
+      http.post(TOKEN_URL, () =>
+        HttpResponse.json({
+          access_token: "ya29.fake",
+          id_token: idToken,
+          token_type: "Bearer",
+        }),
+      ),
+    );
+    mountJwks();
+
+    await expect(
+      makeProvider().exchangeCode("code-xyz", REDIRECT_URI, undefined, "n-EXPECTED"),
+    ).rejects.toBeInstanceOf(IdPTokenRevoked);
+  });
+
+  it("exchangeCode: id_token MISSING nonce claim entirely -> IdPTokenRevoked", async () => {
+    const idToken = await makeIdToken(); // no nonce baked in
+    server.use(
+      http.post(TOKEN_URL, () =>
+        HttpResponse.json({
+          access_token: "ya29.fake",
+          id_token: idToken,
+          token_type: "Bearer",
+        }),
+      ),
+    );
+    mountJwks();
+
+    await expect(
+      makeProvider().exchangeCode("code-xyz", REDIRECT_URI, undefined, "n-EXPECTED"),
+    ).rejects.toBeInstanceOf(IdPTokenRevoked);
+  });
+
+  it("exchangeCode: caller passes null nonce -> nonce check is skipped (CLI auth-code grant path)", async () => {
+    const idToken = await makeIdToken();
+    server.use(
+      http.post(TOKEN_URL, () =>
+        HttpResponse.json({
+          access_token: "ya29.fake",
+          id_token: idToken,
+          token_type: "Bearer",
+        }),
+      ),
+    );
+    mountJwks();
+
+    const result = await makeProvider().exchangeCode(
+      "code-xyz", REDIRECT_URI, undefined, null,
+    );
+    expect(result.user.idp_user_id).toBe("111222333444555");
   });
 });

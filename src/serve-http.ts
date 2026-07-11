@@ -18,8 +18,12 @@ import { canResetDb } from "./reset-guard.js";
 import { safeJoinUnderRoot } from "./path-guard.js";
 import { handleRest as handleRestExt, type RestContext } from "./http/handle-rest.js";
 import { handleLivez, handleReadyz, handleHealth } from "./http/handle-health.js";
+import { handleHealthz, handleHealthReady } from "./http/health.js";
+import { handleDiscovery } from "./discovery.js";
 import { serveMetrics } from "./metrics.js";
+import { handleMetrics } from "./http/metrics.js";
 import { parseBody as parseBodyShared, json as jsonShared, jsonAuthError as jsonAuthErrorShared } from "./http/utils.js";
+import { isAllowedOrigin } from "./http/origin.js";
 import { assessPlanQuality } from "./plan-quality.js";
 import type { CoordinatorEvent } from "./types.js";
 import { getVersion } from "../cli/version.js";
@@ -27,6 +31,8 @@ const VERSION = getVersion();
 import { startEmbeddedMqttBroker, type MqttAuthResult } from "./mqtt-broker.js";
 import { withRequestId, resolveRequestId } from "./auth/request-id.js";
 import { bootPhase2, type Phase2Bootstrap } from "./boot.js";
+import { Sweeper } from "./sweeper/index.js";
+import { realClock } from "./auth/clock.js";
 import { dispatchAuthRoutes } from "./http/auth-routes.js";
 import { getDb } from "./database.js";
 import type DatabaseT from "better-sqlite3";
@@ -357,7 +363,17 @@ export interface ServerOptions {
  */
 export interface ServerHandle {
   port: number;
+  httpServer: import("node:http").Server;
   stop: () => Promise<void>;
+  /**
+   * performance-01: the single live Sweeper instance running retention for
+   * this server — either bootPhase2's own instance (Phase 2 active) or one
+   * started here for Phase-1-only deployments. Exposed mainly so tests can
+   * trigger a real runPass() without waiting for the 60s timer; also usable
+   * by embedders that want retention observability without re-implementing
+   * the Phase1-vs-Phase2 wiring decision.
+   */
+  sweeper: Sweeper;
 }
 
 export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
@@ -405,6 +421,19 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
     log.info("Phase 2 OAuth enabled (dispatchAuthRoutes wired, sweeper running)");
   }
 
+  // performance-01: retention Sweeper. bootPhase2 already starts (and owns
+  // the teardown of) a Sweeper when Phase 2 is active — reuse that SAME
+  // instance rather than creating a second one (would double-run every
+  // DELETE pass). When Phase 2 is NOT active (Phase-1-only, the default
+  // mono-tenant deployment), bootPhase2 returns null and nothing sweeps
+  // retention today, so start our own instance here and own its teardown.
+  const retentionSweeper: Sweeper =
+    phase2Bootstrap?.sweeper ??
+    new Sweeper(getDb() as unknown as DatabaseT.Database, realClock);
+  if (!phase2Bootstrap) {
+    retentionSweeper.start();
+  }
+
   // Multi-session: one transport+server per MCP client session
   const sessions = new Map<string, StreamableHTTPServerTransport>();
   // Task 23.5: per-session claims map. Populated when a session is opened or
@@ -418,11 +447,23 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
     const url = req.url || "";
 
     // CORS preflight
+    // protocole-mcp-02 / securite-surface-06: never reflect "*" — validate the
+    // Origin header (MCP spec MUST + DNS-rebinding hardening) and echo back
+    // only an allowed Origin. Non-browser callers (no Origin header at all)
+    // are unaffected. Disallowed cross-site Origins get a 403, not a
+    // same-response allow-all.
     if (req.method === "OPTIONS") {
+      const origin = req.headers.origin;
+      if (!isAllowedOrigin(origin, process.env.COORDINATOR_PUBLIC_URL)) {
+        res.writeHead(403, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Origin not allowed" }));
+        return;
+      }
       res.writeHead(204, {
-        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Origin": origin ?? "*",
         "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type, mcp-session-id, Authorization",
+        ...(origin ? { Vary: "Origin" } : {}),
       });
       res.end();
       return;
@@ -496,9 +537,25 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
               "Cache-Control": "no-store",
             });
           } else {
+            // securite-surface-07: legacy dashboard assets (index.html and
+            // everything that isn't admin-scoped) get the SAFE subset of the
+            // admin baseline — nosniff, frame-options, referrer-policy — but
+            // deliberately NOT the strict CSP above. index.html is a ~63KB
+            // monolith with a single inline <script>; `script-src 'self'`
+            // would break it outright. Extracting that script is tracked
+            // separately (audit findings tests-05 / architecture-14) — until
+            // then, no CSP is safer than a CSP that either does nothing
+            // (missing 'unsafe-inline') or defeats the point (with it).
+            // X-Frame-Options: DENY is safe here too: nothing in this repo
+            // (or its docs) iframes the legacy dashboard, so there's no
+            // legitimate embedding to preserve. ACAO: * is left untouched —
+            // some deployments may have external clients depending on it.
             res.writeHead(200, {
               "Content-Type": contentTypes[ext] || "text/plain",
               "Access-Control-Allow-Origin": "*",
+              "X-Content-Type-Options": "nosniff",
+              "X-Frame-Options": "DENY",
+              "Referrer-Policy": "same-origin",
             });
           }
           res.end(content);
@@ -518,9 +575,45 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
           jwtSecretSet: JWT_SECRET_EXPLICITLY_SET,
         });
         services.metrics.recordHttpRequest("/health", 200);
+      } else if (url === "/healthz") {
+        // architecture-01: alias consumed by the SDK/doctor (cli/doctor.ts
+        // probe 1 — HEAD /healthz). Distinct handler from /livez: same
+        // alive-only semantics but the minimal { status: "alive" } body the
+        // SDK's HealthzResponse type expects, per T29's src/http/health.ts.
+        handleHealthz(req, res);
+        services.metrics.recordHttpRequest("/healthz", 200);
+      } else if (url === "/health/ready") {
+        // architecture-01: alias consumed by the SDK/doctor (cli/doctor.ts
+        // probes 6/7 — audit_queue depth + sweeper circuit). NOT the same
+        // handler as /readyz: /readyz reports db+mqtt+tree_sitter+git_cochange
+        // (Phase 1 dependency readiness), while /health/ready reports
+        // db+audit_queue+sweeper+draining (Phase 2 auth-flow readiness) —
+        // the exact shape sdk/src/types.ts::HealthReadyResponse documents.
+        await handleHealthReady(req, res);
+        services.metrics.recordHttpRequest("/health/ready", res.statusCode || 0);
+      } else if (url === "/.well-known/oauth-authorization-server" && phase2Bootstrap) {
+        // protocole-mcp-03: RFC 8414 discovery doc, gated on Phase 2 actually
+        // being active. When OAuth is off there is no metadata to serve —
+        // falls through to the generic 404 below rather than leaking the
+        // route's existence/shape to an unauthenticated prober.
+        handleDiscovery(req, res, phase2Bootstrap.context.publicUrl);
+        services.metrics.recordHttpRequest("/.well-known/oauth-authorization-server", 200);
       } else if (url === "/metrics" && req.method === "GET") {
         await serveMetrics(req, res, services, services.metrics);
         services.metrics.recordHttpRequest("/metrics", 200);
+      } else if (url === "/metrics/auth" && req.method === "GET" && phase2Bootstrap) {
+        // documentation-02 / securite-surface-02: the Phase 2 metrics
+        // registry (29 metrics — src/observability/metrics.ts), gated on
+        // Phase 2 actually being active (no registry to serve when it
+        // isn't — falls through to the generic 404 below, matching
+        // docs/ops/feature-flag-rollout.md's documented behavior). Access
+        // control (loopback OR bearer) is handled entirely inside
+        // handleMetrics; see src/http/metrics.ts.
+        await handleMetrics(req, res, {
+          localhostOnly: true,
+          bearerToken: process.env.COORDINATOR_METRICS_BEARER,
+        });
+        services.metrics.recordHttpRequest("/metrics/auth", res.statusCode || 200);
       } else if (url === "/api/events" && req.method === "GET") {
         await handleSse(req, res);
       } else if (url.startsWith("/api/auth/")) {
@@ -530,6 +623,16 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
           await handleAuth(req, res);
         }
       } else if (url === "/mcp") {
+        // protocole-mcp-02: MCP spec MUST — validate Origin on every request
+        // to the Streamable HTTP transport, not just the OPTIONS preflight.
+        // No-Origin requests (curl, the MCP SDK's HTTP client — never sets
+        // Origin) are unaffected; only a present-and-disallowed Origin is
+        // rejected.
+        if (!isAllowedOrigin(req.headers.origin, process.env.COORDINATOR_PUBLIC_URL)) {
+          res.writeHead(403, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Origin not allowed" }));
+          return;
+        }
         const sessionId = req.headers["mcp-session-id"] as string | undefined;
 
         if (sessionId && sessions.has(sessionId)) {
@@ -547,7 +650,26 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
           const authenticatedAgent = claims.sub;
 
           // Create transport + server
-          const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => randomUUID() });
+          // securite-surface-06: enableDnsRebindingProtection is defense-in-depth
+          // on top of the Origin check above (deprecated-but-functional SDK
+          // option; the SDK's own docs point at "external middleware" for this,
+          // which is exactly what the check above is). allowedOrigins only
+          // needs to cover the known-safe static set since anything else was
+          // already rejected before we got here.
+          const allowedOriginsForTransport = [
+            `http://localhost:${port}`,
+            `http://127.0.0.1:${port}`,
+            `http://[::1]:${port}`,
+          ];
+          const publicUrlEnv = process.env.COORDINATOR_PUBLIC_URL;
+          if (publicUrlEnv) {
+            try { allowedOriginsForTransport.push(new URL(publicUrlEnv).origin); } catch { /* malformed COORDINATOR_PUBLIC_URL — ignore */ }
+          }
+          const transport = new StreamableHTTPServerTransport({
+            sessionIdGenerator: () => randomUUID(),
+            enableDnsRebindingProtection: true,
+            allowedOrigins: allowedOriginsForTransport,
+          });
           // Task 23.5: pass a getter so tool handlers can look up per-session claims.
           const mcpServer = createMcpServer(services, (sid) => sessionClaims.get(sid) ?? null);
           await mcpServer.connect(transport);
@@ -654,13 +776,15 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
   // Wait for the HTTP server to be actually listening before resolving the
   // returned handle. Otherwise callers (tests, essaim) may try to connect
   // before the port is bound.
+  const bindHost = process.env.COORDINATOR_BIND?.trim() || "127.0.0.1";
   await new Promise<void>((resolve, reject) => {
     const onError = (err: Error) => reject(err);
     httpServer.once("error", onError);
-    httpServer.listen(port, () => {
+    httpServer.listen(port, bindHost, () => {
       httpServer.off("error", onError);
       log.info({
         port,
+        host: bindHost,
         mcp: `POST http://localhost:${port}/mcp`,
         rest: `POST http://localhost:${port}/api/*`,
         sse: `GET http://localhost:${port}/api/events`,
@@ -693,6 +817,15 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
         await phase2Bootstrap.shutdown();
       } catch (err) {
         log.warn({ err }, "Error during Phase 2 shutdown");
+      }
+    } else {
+      // performance-01: we own this Sweeper's lifecycle (Phase-1-only —
+      // bootPhase2 didn't run, so nothing else stops/drains it).
+      try {
+        retentionSweeper.stop();
+        await retentionSweeper.drain(5000);
+      } catch (err) {
+        log.warn({ err }, "Error stopping retention sweeper");
       }
     }
     try {
@@ -748,7 +881,7 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
     process.once("SIGINT", () => onSignal("SIGINT"));
   }
 
-  return { port, stop };
+  return { port, httpServer, stop, sweeper: retentionSweeper };
 }
 
 // Auto-start when run directly (not imported)

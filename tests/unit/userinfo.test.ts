@@ -177,6 +177,7 @@ async function mintSessionJWT(opts: SessionMintOpts = {}): Promise<string> {
   const claims: Record<string, unknown> = {
     active_org_id: opts.active_org_id ?? "org-acme",
     role: opts.role ?? "member",
+    typ: "access",
   };
   if (opts.family_id !== undefined) claims.family_id = opts.family_id;
   return new SignJWT(claims)

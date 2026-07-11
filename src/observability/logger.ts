@@ -1,35 +1,16 @@
 import type { Writable } from "node:stream";
 import pino, { type Logger as PinoLogger } from "pino";
+import { REDACT_PATHS } from "./redact-paths.js";
 
 /**
  * Phase 2 structured logger. Sensitive paths are redacted at the Pino
  * level — they will never appear in log output regardless of what
  * handler code logs.
  *
- * NR4 / V4 §11.3 redaction allowlist (17 paths):
+ * The allowlist itself lives in `./redact-paths.js` so it can be shared
+ * with the Phase 1 logger (`src/logger.ts`) without that module having to
+ * statically import this one (see the comment in `redact-paths.ts` for why).
  */
-const REDACT_PATHS: readonly string[] = [
-  // JWT + session secrets
-  "req.headers.authorization",
-  "req.headers.cookie",
-  "headers.authorization",
-  "headers.cookie",
-  "*.access_token",
-  "*.refresh_token",
-  "*.id_token",
-  "*.code_verifier",
-  "*.client_secret",
-  "*.idp_access_token",
-  "*.idp_refresh_token",
-  // Form bodies
-  "body.code",
-  "body.code_verifier",
-  "body.client_secret",
-  "body.refresh_token",
-  // Internal request scope
-  "req.idpAccessToken",
-  "req.session",
-];
 
 export type Logger = PinoLogger;
 

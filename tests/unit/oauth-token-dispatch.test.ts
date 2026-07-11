@@ -203,6 +203,7 @@ async function mintRefresh(opts: {
     sub: opts.sub ?? "u-alice",
     active_org_id: opts.orgId ?? "org-acme",
     family_id: opts.familyId ?? "fam-root",
+    typ: "refresh",
   };
   return new SignJWT(claims)
     .setProtectedHeader({ alg: "HS256", kid: "hs256-v1" })

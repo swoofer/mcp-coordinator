@@ -107,6 +107,7 @@ interface ParsedRefreshClaims {
   exp: number;
   iss: string;
   service_account?: boolean;
+  typ?: string;
 }
 
 async function parseFormBody(req: IncomingMessage): Promise<Record<string, string>> {
@@ -440,6 +441,19 @@ export async function refreshTokenGrant(
     return;
   }
 
+  // securite-auth-01: reject token-type confusion. An access token (or a
+  // legacy token minted before this fix, which carries no `typ` claim at
+  // all) must never be accepted at the refresh-rotation endpoint —
+  // fail-closed: only typ === "refresh" is accepted here.
+  if (claims.typ !== "refresh") {
+    audit("auth.invalid_token", {
+      tier: 2,
+      metadata: { reason: "wrong_token_type" },
+    });
+    writeOAuthError(res, "invalid_grant", "Token verification failed");
+    return;
+  }
+
   // 3. Service-account short-circuit. T19c will expand to verify the
   //    service token against the service_tokens table; T19a rejects
   //    flatly because service tokens never rotate.
@@ -549,7 +563,7 @@ export async function refreshTokenGrant(
   //    (or simply expire after token_epoch bump if admin chooses).
   const userRow = ctx.db
     .prepare(
-      "SELECT idp_access_token, idp_refresh_token, idp_provider, primary_org_id FROM users WHERE id = ?",
+      "SELECT idp_access_token, idp_refresh_token, idp_provider, primary_org_id, role FROM users WHERE id = ?",
     )
     .get(row.user_id) as
     | {
@@ -557,6 +571,7 @@ export async function refreshTokenGrant(
         idp_refresh_token: string | null;
         idp_provider: string;
         primary_org_id: string;
+        role?: string | null;
       }
     | undefined;
   // T09: AAD for envelope decryption requires the user's primary_org_id.
@@ -810,12 +825,22 @@ export async function refreshTokenGrant(
     return;
   }
 
-  // 10. Mint new pair sharing the family_id.
+  // 10. Mint new pair sharing the family_id. Re-derive role from `users`
+  //     (securite-auth-04): a hardcoded "member" here silently downgraded
+  //     admins on every refresh and never reflected DB-side role changes
+  //     (promotion or demotion). Fail-closed fallback to "member" for an
+  //     absent/invalid value (LEAST PRIVILEGE) mirrors verifyToken's
+  //     pattern in src/auth.ts — never elevate on missing/bad data.
+  const rawRole = userRow?.role;
+  const role: "admin" | "member" | "service" =
+    rawRole === "admin" || rawRole === "member" || rawRole === "service"
+      ? rawRole
+      : "member";
   const newPair = await mintTokenPair(ctx.db, ctx.clock, {
     user: {
       user_id: row.user_id,
       primary_org_id: row.org_id,
-      role: "member",
+      role,
     },
     registry: ctx.signingKeys,
     issuer: ctx.publicUrl.replace(/\/$/, ""),
