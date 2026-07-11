@@ -1,0 +1,18 @@
+# GitHub Pages (Jekyll) config for the site published from /docs.
+#
+# documentation-12: the docs/superpowers/ tree holds INTERNAL engineering
+# artifacts (design specs, implementation plans, and AI working drafts).
+# They belong in the repo for contributors but must NOT be published to the
+# public GitHub Pages site. `exclude` keeps them out of the built site while
+# leaving them versioned in the repository.
+#
+# Note: setting `exclude` replaces Jekyll's built-in default; the entries
+# below re-list the common defaults plus the internal docs tree.
+exclude:
+  - superpowers
+  - Gemfile
+  - Gemfile.lock
+  - node_modules
+  - vendor
+  - .sass-cache
+  - .jekyll-cache
