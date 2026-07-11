@@ -20,8 +20,8 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | | High (13) | Med (46) | Low (42) | Info (18) | **Total (119)** |
 |--|:--:|:--:|:--:|:--:|:--:|
-| **Fermés ✅** | 12 | 21 | 10 | 1 | **44 / 119** |
-| **Rounds cochés** | — | — | — | — | **210 / 595** |
+| **Fermés ✅** | 12 | 22 | 11 | 1 | **46 / 119** |
+| **Rounds cochés** | — | — | — | — | **220 / 595** |
 
 > Mettre à jour ce tableau à chaque tâche fermée. 595 = 119 × 5 rounds.
 > Note : sur les 10 fermés, 8 sont corrigés (5 rounds chacun = 40) ; 2 (protocole-mcp-04, securite-surface-03) sont **dispositionnés en risque-accepté + documenté** (threat-model, hors comptage 5-rounds).
@@ -160,8 +160,8 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 5 | `documentation-07` | 🟠 Med | S | README figé à v0.11.0 : tags Docker, compteurs de tests et section Sup | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 5484ba7 |
 | 6 | `documentation-08` | 🟠 Med | S | usage.md « Push vs polling » contredit le README et operating-modes.md | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 8fbb5e1 |
 | 7 | `documentation-09` | 🟠 Med | S | Variables COORDINATOR_LOGIN_LOCKOUT_* documentées mais codées en dur ( | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 8fbb5e1 |
-| 8 | `documentation-10` | 🟠 Med | S | Les commandes `server backup` / `server restore` existent mais ne sont | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 9 | `documentation-11` | 🟡 Low | S | Exemple custom-idp-provider périmé et auto-contradictoire (parle de v0 | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 8 | `documentation-10` | 🟠 Med | S | Les commandes `server backup` / `server restore` existent mais ne sont | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 1083f18 |
+| 9 | `documentation-11` | 🟡 Low | S | Exemple custom-idp-provider périmé et auto-contradictoire (parle de v0 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 1083f18 |
 | 10 | `documentation-12` | 🟡 Low | S | docs/ pollué : 132 fichiers internes (superpowers) publiés sur GitHub  | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 11 | `documentation-13` | 🟡 Low | S | Petits chiffres périmés disséminés : « 23 MCP tools » en commentaire,  | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 5484ba7 |
 | 12 | `documentation-14` | 🟡 Low | S | CONTRIBUTING.md n'explique pas comment reproduire localement le job Li | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 8fbb5e1 |
