@@ -165,12 +165,21 @@ describe("wsToDuplex — read backpressure (performance-04)", () => {
     ws.close = () => {};
 
     const duplex = wsToDuplex(asWebSocket(ws));
-    // No consumer attached yet — the internal read buffer fills up.
-    const chunk = Buffer.alloc(8192, 1); // default readableHighWaterMark is 16384
-    for (let i = 0; i < 6; i++) {
+    // wsToDuplex now sets an explicit readableHighWaterMark (see
+    // src/mqtt-broker.ts) instead of relying on Node's implicit stream
+    // default, which is not guaranteed to be the same across Node
+    // versions/platforms. Read it straight off the duplex and push enough
+    // data to exceed it several times over, so `push()` is guaranteed to
+    // report a full buffer regardless of any off-by-one in exactly how much
+    // headroom a single push has before crossing the threshold.
+    const hwm = duplex.readableHighWaterMark;
+    expect(hwm).toBeGreaterThan(0);
+    const chunk = Buffer.alloc(Math.ceil(hwm / 2), 1);
+    const messageCount = 10; // total pushed = 5x hwm — comfortably over the line
+    for (let i = 0; i < messageCount; i++) {
       ws.emit("message", chunk);
     }
-    expect(pauseCalls).toBeGreaterThan(0); // backpressure engaged before all 6 messages fit
+    expect(pauseCalls).toBeGreaterThan(0); // backpressure engaged before all messages fit
 
     // Now attach a consumer — aedes draining the duplex triggers read()
     // internally, which must resume the socket.
@@ -180,7 +189,7 @@ describe("wsToDuplex — read backpressure (performance-04)", () => {
     // No data is lost across the pause/resume cycle.
     await vi.waitFor(() => {
       const total = received.reduce((sum, b) => sum + b.length, 0);
-      expect(total).toBe(6 * 8192);
+      expect(total).toBe(messageCount * chunk.length);
     });
   });
 

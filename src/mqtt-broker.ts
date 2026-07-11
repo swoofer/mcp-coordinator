@@ -34,9 +34,18 @@ const MQTT_WS_MAX_PAYLOAD_BYTES = parseInt(
  *    `ws.pause()`/`ws.resume()` are no-ops when the socket isn't in a state
  *    where pausing/resuming applies (see `ws` lib), so this can't deadlock
  *    on a socket that's already closing/closed.
+ *
+ * `highWaterMark` is set explicitly (16 KiB — the same figure Node's
+ * Duplex/Readable/Writable defaults to when unset) rather than left
+ * implicit: it bounds the read/write buffers to a known size regardless of
+ * Node version/platform defaults, and makes the `push()`/`write()`
+ * backpressure threshold deterministic for tests.
  */
+const WS_DUPLEX_HIGH_WATER_MARK_BYTES = 16 * 1024;
+
 export function wsToDuplex(ws: WebSocket): Duplex {
   const duplex = new Duplex({
+    highWaterMark: WS_DUPLEX_HIGH_WATER_MARK_BYTES,
     read() {
       // aedes is ready for more data — release backpressure applied (if any)
       // in the "message" handler below.
