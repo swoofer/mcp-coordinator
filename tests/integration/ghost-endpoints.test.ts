@@ -14,10 +14,12 @@
  */
 import { describe, it, expect, afterEach } from "vitest";
 import http from "node:http";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { startServer, type ServerHandle } from "../../src/serve-http.js";
+import { handleMetrics } from "../../src/http/metrics.js";
 
 function getFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -46,6 +48,7 @@ const PHASE2_ENV_KEYS = [
   "COORDINATOR_GITHUB_CLIENT_SECRET",
   "COORDINATOR_PUBLIC_URL",
   "COORDINATOR_GITHUB_ORG",
+  "COORDINATOR_METRICS_BEARER",
 ] as const;
 
 describe("ghost-endpoint routing (architecture-01, protocole-mcp-03)", () => {
@@ -147,6 +150,107 @@ describe("ghost-endpoint routing (architecture-01, protocole-mcp-03)", () => {
       handle = await startServer({ port, dataDir, mqttTcpPort: await getFreePort(), mqttWsPath: "/mqtt" });
 
       const res = await fetch(`http://127.0.0.1:${port}/.well-known/oauth-authorization-server`);
+      expect(res.status).toBe(404);
+    });
+  });
+
+  // documentation-02 / securite-surface-02 — `/metrics/auth` (29 Phase 2
+  // metrics) is documented everywhere (README, onboarding, openapi, ops
+  // runbooks: access-review, audit-queue, sweeper-recovery, feature-flag)
+  // and its handler (`src/http/metrics.ts::handleMetrics`) is fully
+  // unit-tested (tests/unit/observability-metrics.test.ts) — but was never
+  // mounted in serve-http.ts's router, so it 404'd in real HTTP, and
+  // `COORDINATOR_METRICS_BEARER` was read nowhere. Same ghost-endpoint shape
+  // as the block above: exercise the *real* mounted route with real fetch(),
+  // not just the already-passing handler unit tests.
+  describe("Phase 2 (OAuth) active — /metrics/auth (documentation-02, securite-surface-02)", () => {
+    function setPhase2Env(port: number): string {
+      const publicUrl = `http://localhost:${port}`;
+      for (const k of PHASE2_ENV_KEYS) envSnapshot[k] = process.env[k];
+      process.env.COORDINATOR_OAUTH_ENABLED = "true";
+      process.env.COORDINATOR_JWT_SECRET = STRONG_SECRET;
+      process.env.COORDINATOR_GITHUB_CLIENT_ID = "test-client-id";
+      process.env.COORDINATOR_GITHUB_CLIENT_SECRET = "test-client-secret";
+      process.env.COORDINATOR_PUBLIC_URL = publicUrl;
+      process.env.COORDINATOR_GITHUB_ORG = "acme-ghost-endpoints";
+      delete process.env.COORDINATOR_METRICS_BEARER;
+      return publicUrl;
+    }
+
+    it("GET /metrics/auth from loopback returns 200 with the Phase 2 Prometheus body", async () => {
+      const port = await getFreePort();
+      setPhase2Env(port);
+      dataDir = mkdtempSync(path.join(tmpdir(), "ghost-endpoints-"));
+      handle = await startServer({ port, dataDir, mqttTcpPort: await getFreePort(), mqttWsPath: "/mqtt" });
+
+      const res = await fetch(`http://127.0.0.1:${port}/metrics/auth`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toContain("text/plain");
+      const body = await res.text();
+      // A Phase 2 metric name (src/observability/metrics.ts) — proves this
+      // is the Phase 2 registry, not Phase 1's /metrics.
+      expect(body).toContain("coordinator_auth_device_approved_total");
+    });
+
+    it("with COORDINATOR_METRICS_BEARER set and the correct Bearer header, returns 200", async () => {
+      const port = await getFreePort();
+      setPhase2Env(port);
+      process.env.COORDINATOR_METRICS_BEARER = "test-metrics-bearer-token";
+      dataDir = mkdtempSync(path.join(tmpdir(), "ghost-endpoints-"));
+      handle = await startServer({ port, dataDir, mqttTcpPort: await getFreePort(), mqttWsPath: "/mqtt" });
+
+      const res = await fetch(`http://127.0.0.1:${port}/metrics/auth`, {
+        headers: { Authorization: "Bearer test-metrics-bearer-token" },
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it("without COORDINATOR_METRICS_BEARER, a non-loopback caller with no Bearer is denied (403, no metrics leak)", async () => {
+      // A real non-loopback socket connection isn't reproducible from this
+      // test harness (loopback fetch() always reports 127.0.0.1 as the
+      // remoteAddress — see task-metricsauth-brief.md R3(b)). Exercise the
+      // exact handler + options serve-http.ts wires for this route
+      // (`{ localhostOnly: true, bearerToken: process.env.COORDINATOR_METRICS_BEARER }`)
+      // directly against a simulated non-loopback remoteAddress instead —
+      // the access-control matrix itself is already exhaustively unit-tested
+      // in tests/unit/observability-metrics.test.ts.
+      const port = await getFreePort();
+      setPhase2Env(port);
+      dataDir = mkdtempSync(path.join(tmpdir(), "ghost-endpoints-"));
+      handle = await startServer({ port, dataDir, mqttTcpPort: await getFreePort(), mqttWsPath: "/mqtt" });
+
+      let statusCode = 0;
+      let body = "";
+      const fakeReq = {
+        socket: { remoteAddress: "203.0.113.5" },
+        headers: {},
+      } as unknown as IncomingMessage;
+      const fakeRes = {
+        writeHead(code: number) {
+          statusCode = code;
+          return this;
+        },
+        end(chunk?: string) {
+          if (chunk) body += chunk;
+        },
+      } as unknown as ServerResponse;
+
+      await handleMetrics(fakeReq, fakeRes, {
+        localhostOnly: true,
+        bearerToken: process.env.COORDINATOR_METRICS_BEARER,
+      });
+
+      expect(statusCode).toBe(403);
+      expect(JSON.parse(body).code).toBe("FORBIDDEN");
+    });
+
+    it("negative: without Phase 2 (OAuth off), /metrics/auth 404s — matches docs/ops/feature-flag-rollout.md:229", async () => {
+      const port = await getFreePort();
+      dataDir = mkdtempSync(path.join(tmpdir(), "ghost-endpoints-"));
+      // COORDINATOR_OAUTH_ENABLED intentionally left unset.
+      handle = await startServer({ port, dataDir, mqttTcpPort: await getFreePort(), mqttWsPath: "/mqtt" });
+
+      const res = await fetch(`http://127.0.0.1:${port}/metrics/auth`);
       expect(res.status).toBe(404);
     });
   });

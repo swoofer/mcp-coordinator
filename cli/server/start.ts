@@ -90,6 +90,7 @@ export function buildDaemonEnv(
   // SSE tuning.
   fwd("COORDINATOR_MAX_SSE_CLIENTS", parentEnv.COORDINATOR_MAX_SSE_CLIENTS);
   fwd("COORDINATOR_SSE_HEARTBEAT_MS", parentEnv.COORDINATOR_SSE_HEARTBEAT_MS);
+  fwd("COORDINATOR_METRICS_BEARER", parentEnv.COORDINATOR_METRICS_BEARER);
 
   return childEnv;
 }

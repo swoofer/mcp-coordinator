@@ -21,6 +21,7 @@ import { handleLivez, handleReadyz, handleHealth } from "./http/handle-health.js
 import { handleHealthz, handleHealthReady } from "./http/health.js";
 import { handleDiscovery } from "./discovery.js";
 import { serveMetrics } from "./metrics.js";
+import { handleMetrics } from "./http/metrics.js";
 import { parseBody as parseBodyShared, json as jsonShared, jsonAuthError as jsonAuthErrorShared } from "./http/utils.js";
 import { isAllowedOrigin } from "./http/origin.js";
 import { assessPlanQuality } from "./plan-quality.js";
@@ -576,6 +577,19 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
       } else if (url === "/metrics" && req.method === "GET") {
         await serveMetrics(req, res, services, services.metrics);
         services.metrics.recordHttpRequest("/metrics", 200);
+      } else if (url === "/metrics/auth" && req.method === "GET" && phase2Bootstrap) {
+        // documentation-02 / securite-surface-02: the Phase 2 metrics
+        // registry (29 metrics — src/observability/metrics.ts), gated on
+        // Phase 2 actually being active (no registry to serve when it
+        // isn't — falls through to the generic 404 below, matching
+        // docs/ops/feature-flag-rollout.md's documented behavior). Access
+        // control (loopback OR bearer) is handled entirely inside
+        // handleMetrics; see src/http/metrics.ts.
+        await handleMetrics(req, res, {
+          localhostOnly: true,
+          bearerToken: process.env.COORDINATOR_METRICS_BEARER,
+        });
+        services.metrics.recordHttpRequest("/metrics/auth", res.statusCode || 200);
       } else if (url === "/api/events" && req.method === "GET") {
         await handleSse(req, res);
       } else if (url.startsWith("/api/auth/")) {
