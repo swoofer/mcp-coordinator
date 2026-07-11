@@ -20,8 +20,8 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | | High (13) | Med (46) | Low (42) | Info (18) | **Total (119)** |
 |--|:--:|:--:|:--:|:--:|:--:|
-| **Fermés ✅** | 12 | 13 | 7 | 0 | **32 / 119** |
-| **Rounds cochés** | — | — | — | — | **150 / 595** |
+| **Fermés ✅** | 12 | 14 | 8 | 0 | **34 / 119** |
+| **Rounds cochés** | — | — | — | — | **160 / 595** |
 
 > Mettre à jour ce tableau à chaque tâche fermée. 595 = 119 × 5 rounds.
 > Note : sur les 10 fermés, 8 sont corrigés (5 rounds chacun = 40) ; 2 (protocole-mcp-04, securite-surface-03) sont **dispositionnés en risque-accepté + documenté** (threat-model, hors comptage 5-rounds).
@@ -61,7 +61,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 4 | `protocole-mcp-03` | 🔴 High | S | Endpoints documentés, testés et consommés par le SDK/doctor jamais câb | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 6236a10 |
 | 5 | `protocole-mcp-05` | 🟠 Med | S | set_dependency_map : paramètre JSON double-encodé, sans description de | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 6 | `protocole-mcp-06` | 🟠 Med | S | Mode stdio : les outils MQTT sont exposés mais mentent silencieusement | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 7 | `protocole-mcp-07` | 🟠 Med | M | Sessions Streamable HTTP jamais expirées : fuite des Maps sessions/ses | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 7 | `protocole-mcp-07` | 🟠 Med | M | Sessions Streamable HTTP jamais expirées : fuite des Maps sessions/ses | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 846d6f1 |
 | 8 | `protocole-mcp-08` | 🟡 Low | S | get_thread (et lectures similaires) retourne le texte « null » pour un | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 9 | `protocole-mcp-09` | 🟡 Low | S | README documente un outil MCP « introspection » qui n'existe pas ; com | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 10 | `protocole-mcp-10` | 🟡 Low | M | Aucun outil n'a d'annotations (readOnlyHint/destructiveHint), de title | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
@@ -108,7 +108,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 4 | `performance-04` | 🟠 Med | M | Pont WebSocket→MQTT sans backpressure ni maxPayload : un consommateur  | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 5 | `performance-05` | 🟠 Med | S | Queues de listeners MqttBridge jamais nettoyées ni bornées : fuite mém | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 1e4daf2 |
 | 6 | `performance-06` | 🟠 Med | S | RateLimiter.sweep() n'est jamais appelé : la Map de buckets croît sans | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 1e4daf2 |
-| 7 | `performance-07` | 🟡 Low | M | Sessions MCP StreamableHTTP jamais expirées : transports + McpServer a | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 7 | `performance-07` | 🟡 Low | M | Sessions MCP StreamableHTTP jamais expirées : transports + McpServer a | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 846d6f1 |
 | 8 | `performance-08` | 🟡 Low | S | bench-audit-queue.ts cassé (dérive de schéma) : la suite perf a rouill | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 9 | `performance-09` | 🟡 Low | S | Sweep audit_log sur expression non indexable strftime('%s', created_at | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 10 | `performance-10` | ⚪ Info | S | PRAGMA synchronous laissé à FULL en mode WAL : un fsync par écriture a | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
