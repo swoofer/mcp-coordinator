@@ -12,9 +12,9 @@ backport exists.
 
 | Version  | Supported               |
 | -------- | ----------------------- |
-| 0.10.x   | Yes (current minor)     |
-| 0.9.x    | Yes                     |
-| < 0.9    | No                      |
+| 0.13.x   | Yes (current minor)     |
+| 0.12.x   | Yes                     |
+| < 0.12   | No                      |
 
 ## Reporting a vulnerability
 

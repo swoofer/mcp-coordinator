@@ -176,7 +176,7 @@ export function createMcpServer(
     version: VERSION,
   });
 
-  // S1: all 23 MCP tools registered via per-domain modules under src/tools/.
+  // S1: all 26 MCP tools registered via per-domain modules under src/tools/.
   // Each register*Tools function takes (server, services, mcpLog, getSessionClaims)
   // and wires its tool group. See src/tools/*.ts for behavior.
   // Task 23.5: getSessionClaims is threaded into each tool registration so

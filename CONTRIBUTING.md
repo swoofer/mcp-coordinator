@@ -42,6 +42,8 @@ This repo uses [pnpm](https://pnpm.io/) (>=9). Corepack picks the right version 
 - `pnpm test` — vitest suite (server + integration).
 - `pnpm build` — TypeScript compile to `dist/`.
 - `pnpm cli -- server start` — start the server in foreground (port 3100, MQTT 1883 by default).
+- `bash scripts/lint-run-all.sh` — runs the same custom lint scripts as CI's `Lint` job (`.github/workflows/lint.yml`): no-users-org-id, no-current-timestamp, no-audit-mutation, html-escape, no-direct-env-in-auth.
+- `pnpm exec tsc --noEmit` — the type-check step of the same `Lint` job.
 
 ## Architecture
 

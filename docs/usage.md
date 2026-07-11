@@ -145,13 +145,18 @@ The dashboard shows live who's doing what; the SQLite database persists threads 
 
 ## Push vs polling
 
-Vanilla Claude Code talks to mcp-coordinator over MCP (HTTP/stdio request-response). It **does not subscribe to MQTT**. That means events the coordinator publishes on MQTT (`coordinator/consultations/new`, etc.) are not auto-delivered to a Claude Code session — Claude has to **poll** the coordinator to discover new activity. The polling pattern is:
+By default, a vanilla Claude Code session talks to mcp-coordinator over MCP (HTTP request-response) and **does not subscribe to MQTT**. That means events the coordinator publishes on MQTT (`coordinator/consultations/new`, etc.) are not auto-delivered to that session — Claude has to **poll** the coordinator to discover new activity. The polling pattern is:
 
 - `announce_work` returns the thread ID immediately if a conflict is detected — that's the most important checkpoint
 - After that, periodic calls to `coordinator_status` / `list_threads` / `get_thread_updates` surface new posts on threads you're a participant in
 - The CLAUDE.md scaffolded by `mcp-coordinator init --write-claude-md` instructs Claude to do exactly this polling
 
-If you want **real-time push** (every coordination event interrupting Claude between turns instead of waiting for a poll), use [essaim](https://github.com/swoofer/essaim). essaim ships an agent-loop wrapper that subscribes to the MQTT broker and injects events into the turn flow automatically. mcp-coordinator alone supports the polling model — which is sufficient for most use cases (2-3 Claude sessions on a small team) and zero-config to set up.
+If you want **real-time push** (every coordination event interrupting Claude between turns instead of waiting for a poll), there are two ways to get it:
+
+- **Claude Code Channels** (v0.12+, research preview, no orchestrator required) — run `mcp-coordinator channel` as a stdio sidecar; a Channels-capable Claude Code (v2.1.80+, launched with `--dangerously-load-development-channels`) streams MQTT events into the session as `<channel>` tags and can reply via the channel's own `post_to_thread` tool. See [`operating-modes.md`](./operating-modes.md) for the full setup and a side-by-side comparison with polling.
+- **An orchestrator with its own agent loop**, e.g. [essaim](https://github.com/swoofer/essaim), which subscribes to the MQTT broker itself and injects events into the turn flow.
+
+Polling alone (no Channels, no orchestrator) is sufficient for most use cases (2-3 Claude sessions on a small team) and is zero-config to set up.
 
 ## End-to-end example — two Claudes coordinating
 
@@ -227,7 +232,7 @@ COORDINATOR_MQTT_TCP_PORT=12883 \
 mcp-coordinator server start --daemon --data-dir ./.mcp-coordinator-B
 ```
 
-The default `~/.mcp-coordinator/server.pid` only tracks ONE daemon at a time. For multi-instance runs, pass `--data-dir` explicitly to each instance — the PID file lives next to the data dir, so multiple instances don't fight over the same file. To stop a specific instance, `cd` to its data dir's parent and run `mcp-coordinator server stop` from there, OR `kill $(cat ./.mcp-coordinator-A/../server.pid)`.
+**Known limitation:** `--data-dir` only relocates the SQLite database — the PID file always lives at the fixed `~/.mcp-coordinator/server.pid`, regardless of `--data-dir`. Starting Project B's daemon overwrites Project A's PID file, so `mcp-coordinator server stop` / `mcp-coordinator server status` can only ever address the most recently started instance. To stop an earlier instance, note the PID printed in its start banner (`Coordinator started in background (PID <pid>, port <port>)`) and kill it directly, e.g. `kill <pid>` (Windows: `taskkill /PID <pid> /F`). There is currently no `--data-dir`-scoped stop/status command.
 
 In each project's `.mcp.json`, point at the project's coordinator:
 
