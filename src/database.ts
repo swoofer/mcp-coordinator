@@ -16,7 +16,7 @@ const require = createRequire(import.meta.url);
 
 let db: DatabaseAdapter;
 
-const CURRENT_USER_VERSION = 9;
+const CURRENT_USER_VERSION = 10;
 
 /**
  * Narrow type alias for the migration code paths in this file. The
@@ -338,6 +338,13 @@ function createBetterSqlite3(dataDir: string): DatabaseAdapter {
   const dbPath = path.join(dataDir, "coordinator.db");
   const raw = new Database(dbPath);
   raw.pragma("journal_mode = WAL");
+  // performance-10: WAL makes synchronous=NORMAL safe (SQLite docs) — the
+  // default FULL fsyncs on every write transaction, which is the dominant
+  // cost on hot write paths (audit_log inserts, thread messages, etc). Under
+  // WAL + NORMAL, SQLite only syncs at checkpoint boundaries; worst case on
+  // an OS crash (not an app crash) is losing the last few uncheckpointed
+  // transactions — no corruption risk. Acceptable for this workload.
+  raw.pragma("synchronous = NORMAL");
   raw.pragma("busy_timeout = 5000");
   raw.pragma("foreign_keys = ON");
   return raw as DatabaseAdapter;
@@ -349,6 +356,8 @@ function createBunSqlite(dataDir: string): DatabaseAdapter {
   const dbPath = path.join(dataDir, "coordinator.db");
   const raw = new Database(dbPath);
   raw.exec("PRAGMA journal_mode = WAL");
+  // performance-10: see synchronous=NORMAL rationale in createBetterSqlite3 above.
+  raw.exec("PRAGMA synchronous = NORMAL");
   raw.exec("PRAGMA busy_timeout = 5000");
   raw.exec("PRAGMA foreign_keys = ON");
   return raw as DatabaseAdapter;
@@ -826,6 +835,18 @@ export function initDatabase(dataDir: string): void {
   // post-copy `PRAGMA foreign_key_check` would fail). Counts are logged via
   // an audit_log row keyed `migration.org_fk_reparent`.
   migrateOrgsFkV9(db);
+
+  // ============================================================================
+  // v0.10 (performance-09): expression indexes on Sweeper scan predicates
+  // ============================================================================
+  // The Sweeper (src/sweeper/index.ts) ticks every 60s and deletes stale rows
+  // via `WHERE strftime('%s', created_at) < ?` (or `fired_at` for
+  // layer_firings) across 6 tables. strftime(...) is not indexable by a plain
+  // column index, so every tick did a full table scan. SQLite DOES support
+  // indexing an expression directly — the planner matches the same
+  // expression text in a WHERE clause and uses the index instead of
+  // scanning. This migration creates those 6 expression indexes.
+  migrateSweepIndexesV10(db);
 
   // v0.10.6 T03: if the pre-flight guard accepted duplicate org names via
   // COORDINATOR_ALLOW_DUPLICATE_ORG_NAMES=1, emit the Tier 1 audit row NOW —
@@ -1325,6 +1346,56 @@ function migrateOrgsFkV9(targetDb: DatabaseAdapter): void {
   } finally {
     targetDb.exec("PRAGMA foreign_keys = ON");
   }
+}
+
+/**
+ * v0.10 (performance-09): expression indexes for the Sweeper's scan
+ * predicates. The Sweeper (src/sweeper/index.ts) deletes stale rows every
+ * 60s via `WHERE strftime('%s', created_at) < ?` (and `fired_at` for
+ * layer_firings) across 6 tables: audit_log, file_activity, events,
+ * thread_messages, action_summaries, layer_firings. A plain column index
+ * on `created_at` cannot satisfy that predicate because the comparison is
+ * against the *result* of strftime(), not the column itself — SQLite falls
+ * back to a full table SCAN. An index built directly on the expression
+ * `strftime('%s', created_at)` lets the planner recognize the same
+ * expression text in the WHERE clause and do a SEARCH instead.
+ *
+ * Idempotent two ways: `CREATE INDEX IF NOT EXISTS` is idempotent on its
+ * own, and the `PRAGMA user_version` guard (mirroring the pattern used by
+ * migrateOrgsFkV9 above) skips the whole function once already applied, so
+ * boot doesn't re-issue 6 no-op statements on every start. Sets
+ * user_version = 10 LAST so a crash mid-migration re-runs cleanly next boot
+ * (CREATE INDEX IF NOT EXISTS makes a partial re-run harmless).
+ */
+function migrateSweepIndexesV10(targetDb: DatabaseAdapter): void {
+  const v = (targetDb as unknown as {
+    prepare: (sql: string) => { get: () => unknown };
+  })
+    .prepare("PRAGMA user_version")
+    .get() as { user_version: number } | undefined;
+  if ((v?.user_version ?? 0) >= 10) return;
+
+  targetDb.exec(
+    "CREATE INDEX IF NOT EXISTS idx_audit_log_created_epoch ON audit_log(strftime('%s', created_at))",
+  );
+  targetDb.exec(
+    "CREATE INDEX IF NOT EXISTS idx_file_activity_created_epoch ON file_activity(strftime('%s', created_at))",
+  );
+  targetDb.exec(
+    "CREATE INDEX IF NOT EXISTS idx_events_created_epoch ON events(strftime('%s', created_at))",
+  );
+  targetDb.exec(
+    "CREATE INDEX IF NOT EXISTS idx_thread_messages_created_epoch ON thread_messages(strftime('%s', created_at))",
+  );
+  targetDb.exec(
+    "CREATE INDEX IF NOT EXISTS idx_action_summaries_created_epoch ON action_summaries(strftime('%s', created_at))",
+  );
+  // layer_firings uses `fired_at`, NOT `created_at` (see sweeper/index.ts note).
+  targetDb.exec(
+    "CREATE INDEX IF NOT EXISTS idx_layer_firings_fired_epoch ON layer_firings(strftime('%s', fired_at))",
+  );
+
+  targetDb.exec("PRAGMA user_version = 10");
 }
 
 export function getDb(): DatabaseAdapter {
