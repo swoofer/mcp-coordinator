@@ -20,8 +20,8 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | | High (13) | Med (46) | Low (42) | Info (18) | **Total (119)** |
 |--|:--:|:--:|:--:|:--:|:--:|
-| **Fermés ✅** | 12 | 22 | 17 | 1 | **52 / 119** |
-| **Rounds cochés** | — | — | — | — | **250 / 595** |
+| **Fermés ✅** | 12 | 22 | 18 | 2 | **54 / 119** |
+| **Rounds cochés** | — | — | — | — | **260 / 595** |
 
 > Mettre à jour ce tableau à chaque tâche fermée. 595 = 119 × 5 rounds.
 > Note : sur les 10 fermés, 8 sont corrigés (5 rounds chacun = 40) ; 2 (protocole-mcp-04, securite-surface-03) sont **dispositionnés en risque-accepté + documenté** (threat-model, hors comptage 5-rounds).
@@ -110,8 +110,8 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 6 | `performance-06` | 🟠 Med | S | RateLimiter.sweep() n'est jamais appelé : la Map de buckets croît sans | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 1e4daf2 |
 | 7 | `performance-07` | 🟡 Low | M | Sessions MCP StreamableHTTP jamais expirées : transports + McpServer a | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 846d6f1 |
 | 8 | `performance-08` | 🟡 Low | S | bench-audit-queue.ts cassé (dérive de schéma) : la suite perf a rouill | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 9 | `performance-09` | 🟡 Low | S | Sweep audit_log sur expression non indexable strftime('%s', created_at | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 10 | `performance-10` | ⚪ Info | S | PRAGMA synchronous laissé à FULL en mode WAL : un fsync par écriture a | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 9 | `performance-09` | 🟡 Low | S | Sweep audit_log sur expression non indexable strftime('%s', created_at | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ ba6bd4c |
+| 10 | `performance-10` | ⚪ Info | S | PRAGMA synchronous laissé à FULL en mode WAL : un fsync par écriture a | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ ba6bd4c |
 | 11 | `performance-11` | ⚪ Info | S | Layer 4 du scorer : requêtes SQL par (fichier cible × agent) dans la b | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 
 ### PR 5 — Qualité & refactoring (30 constats)
