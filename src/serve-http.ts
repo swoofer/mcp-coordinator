@@ -22,7 +22,7 @@ import { handleHealthz, handleHealthReady } from "./http/health.js";
 import { handleDiscovery } from "./discovery.js";
 import { serveMetrics } from "./metrics.js";
 import { handleMetrics } from "./http/metrics.js";
-import { parseBody as parseBodyShared, json as jsonShared, jsonAuthError as jsonAuthErrorShared, metricRoute, decodeJwtPayload, safeEqual } from "./http/utils.js";
+import { parseBody as parseBodyShared, json as jsonShared, jsonAuthError as jsonAuthErrorShared, metricRoute, decodeJwtPayload, safeEqual, redactTokenParam } from "./http/utils.js";
 import { isAllowedOrigin } from "./http/origin.js";
 import { assessPlanQuality } from "./plan-quality.js";
 import type { CoordinatorEvent } from "./types.js";
@@ -33,6 +33,7 @@ import { withRequestId, resolveRequestId } from "./auth/request-id.js";
 import { bootPhase2, type Phase2Bootstrap } from "./boot.js";
 import { Sweeper } from "./sweeper/index.js";
 import { realClock } from "./auth/clock.js";
+import { RateLimiter, type RateLimitConfig } from "./auth/rate-limit.js";
 import { dispatchAuthRoutes } from "./http/auth-routes.js";
 import { getDb } from "./database.js";
 import type DatabaseT from "better-sqlite3";
@@ -70,11 +71,26 @@ const JWT_PREV_SECRET = process.env.COORDINATOR_JWT_PREV_SECRET || "";
 const REGISTRATION_SECRET = process.env.COORDINATOR_REGISTRATION_SECRET || "";
 const ADMIN_SECRET = process.env.COORDINATOR_ADMIN_SECRET || "";
 
+// securite-surface-05: /api/auth/register is Phase 1 and NOT authenticated
+// (agent_name + registration_secret only) — without a rate limit an attacker
+// can mass-register agents (registration_secret brute-force, or just quota
+// exhaustion once each successful call mints a JWT). 10 requests / 60s per
+// IP is generous enough for normal onboarding bursts while capping abuse.
+const REGISTER_RATE_LIMIT_CONFIG: RateLimitConfig = {
+  per: parseInt(process.env.COORDINATOR_REGISTER_RATE_LIMIT_PER || "10", 10),
+  window_seconds: parseInt(process.env.COORDINATOR_REGISTER_RATE_LIMIT_WINDOW_SECONDS || "60", 10),
+};
+
 let services: CoordinatorServices;
 let httpLog: Logger;
 let mcpLog: Logger;
 let authLog: Logger;
 let currentRunConfig: Record<string, unknown> | null = null;
+// securite-surface-05: set once per startServer() call — see registration
+// rate-limit wiring there. Reuses bootPhase2's RateLimiter (already swept)
+// when Phase 2 is active, mirroring the retentionSweeper reuse-or-own
+// pattern below; owns its own sweeper lifecycle otherwise.
+let registerRateLimiter: RateLimiter;
 
 // S1: parseBody and json moved to ./http/utils.js (shared with handle-rest.ts).
 // Re-bound to local names so the rest of this file (handleAuth, handleSse,
@@ -114,6 +130,19 @@ async function handleAuth(req: IncomingMessage, res: ServerResponse): Promise<vo
   }
 
   if (url === "/api/auth/register" && req.method === "POST") {
+    // securite-surface-05: per-IP token bucket, checked BEFORE credential
+    // validation so both failed AND successful attempts count against the
+    // same budget (an attacker with a valid registration_secret shouldn't
+    // be able to mass-mint agents any more than one brute-forcing it can).
+    const ip = req.socket.remoteAddress || "unknown";
+    const rateResult = registerRateLimiter.check(`register:${ip}`, REGISTER_RATE_LIMIT_CONFIG);
+    if (!rateResult.allowed) {
+      res.setHeader("Retry-After", String(rateResult.retry_after_seconds));
+      authLog.warn({ ip }, "Registration rate limit exceeded");
+      json(res, { error: "Too many registration attempts. Try again later." }, 429);
+      return;
+    }
+
     const { agent_name, registration_secret } = body as { agent_name: string; registration_secret: string };
 
     if (!agent_name || !registration_secret) {
@@ -441,6 +470,16 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
     retentionSweeper.start();
   }
 
+  // securite-surface-05: reuse bootPhase2's RateLimiter (Phase 2 active —
+  // its sweeper is already running, "register:" keys share the bucket map
+  // harmlessly with "lockout:" keys via namespacing) or own a dedicated
+  // instance + sweeper lifecycle for Phase-1-only deployments, same
+  // reuse-or-own shape as retentionSweeper above.
+  registerRateLimiter = phase2Bootstrap?.context.rateLimiter ?? new RateLimiter(realClock);
+  if (!phase2Bootstrap) {
+    registerRateLimiter.startSweeper();
+  }
+
   // Multi-session: one transport+server per MCP client session
   const sessions = new Map<string, StreamableHTTPServerTransport>();
   // Task 23.5: per-session claims map. Populated when a session is opened or
@@ -534,7 +573,7 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
         const handled = await dispatchAuthRoutes(req, res, phase2Bootstrap.context);
         if (handled) return;
       } catch (err) {
-        httpLog.error({ err, url: req.url }, "Phase 2 auth route error");
+        httpLog.error({ err, url: redactTokenParam(req.url || "") }, "Phase 2 auth route error");
         if (!res.headersSent) {
           json(res, { error: (err as Error).message }, 500);
         }
@@ -768,7 +807,7 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
         // database query by claims.org.
         const authResult = await authenticateRequest(req, { authEnabled: AUTH_ENABLED });
         if (!authResult.ok) {
-          authLog.warn({ reason: authResult.error, url, ip: req.socket.remoteAddress }, "Auth rejected");
+          authLog.warn({ reason: authResult.error, url: redactTokenParam(url), ip: req.socket.remoteAddress }, "Auth rejected");
           services.metrics.recordAuthRejected();
           jsonAuthError(res, authResult);
           return;
@@ -899,6 +938,13 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
         await retentionSweeper.drain(5000);
       } catch (err) {
         log.warn({ err }, "Error stopping retention sweeper");
+      }
+      // securite-surface-05: same reasoning — we only own the register
+      // RateLimiter's sweeper when Phase 2 didn't already start one.
+      try {
+        registerRateLimiter.stopSweeper();
+      } catch (err) {
+        log.warn({ err }, "Error stopping register rate-limit sweeper");
       }
     }
     try {

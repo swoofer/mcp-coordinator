@@ -83,9 +83,18 @@ export function setCookies(res: ServerResponse, cookies: string[]): void {
   res.setHeader("Set-Cookie", merged);
 }
 
-// Escape hatch for http:// non-localhost deployments behind an HTTPS reverse
-// proxy. Defaults to true (Secure) so the safe path is the default. T29 boot
-// validation emits the warning when this is flipped off.
+// securite-auth-05: NOT currently wired into hostCookie() below. hostCookie()
+// hardcodes `secure: true` unconditionally because every Phase 2 cookie
+// (SESSION_COOKIE_NAME, CSRF_COOKIE_NAME, STATE_COOKIE_NAME) is __Host--
+// prefixed, and RFC 6265bis §4.1.3 requires __Host- cookies to always carry
+// Secure — dropping it based on this flag would produce a cookie the
+// __Host- prefix contract forbids. This function is kept for a future
+// non-__Host- cookie type that could legitimately honor the flag; today,
+// setting COORDINATOR_INSECURE_COOKIES=true has NO effect on any cookie the
+// server actually sets. See boot.ts:warnOnInsecureCookiesFlag for the boot-
+// time warning that disarms the resulting footgun, and .env.example for the
+// operator-facing doc of what the flag actually does (bypasses the
+// COORDINATOR_PUBLIC_URL http://-non-localhost boot check — nothing more).
 export function getCookieSecureFlag(): boolean {
   return process.env.COORDINATOR_INSECURE_COOKIES !== "true";
 }

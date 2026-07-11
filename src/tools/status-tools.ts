@@ -14,6 +14,13 @@ import { safeJsonParse } from "../json-utils.js";
  * same org's registry. Neither surfaces system-global (cross-org) data, so
  * both require valid claims and use claims.org throughout.
  */
+/**
+ * protocole-mcp-14: wait_for_peers has no upper bound on the caller-supplied
+ * timeout_seconds, so a misbehaving/careless caller can request an
+ * effectively unbounded block. Cap it so the tool always returns.
+ */
+export const MAX_WAIT_TIMEOUT_SECONDS = 300;
+
 export function registerStatusTools(
   server: McpServer,
   services: CoordinatorServices,
@@ -22,7 +29,7 @@ export function registerStatusTools(
 ): void {
   const { registry, consultation, fileTracker, mqttBridge } = services;
 
-  server.tool("coordinator_status", "Full system status", {}, async (_args, extra) => {
+  server.tool("coordinator_status", "Full system status", {}, { readOnlyHint: true, title: "Coordinator status" }, async (_args, extra) => {
     const claims = getSessionClaims(extra.sessionId ?? "");
     if (!claims) throw new Error("Session has no captured claims (auth bug)");
     const online = registry.listOnline(claims.org);
@@ -42,14 +49,16 @@ export function registerStatusTools(
   });
 
   server.tool("wait_for_peers", "Block until at least N other online agents are registered, or timeout. Use before the first announce_work to avoid the race where one agent announces before peers have booted.", {
-    agent_id: z.string(),
-    min_peers: z.number().optional(),
-    timeout_seconds: z.number().optional(),
-  }, async ({ agent_id, min_peers, timeout_seconds }, extra) => {
+    agent_id: z.string().describe("ID of the agent waiting for peers (excluded from the peer count)."),
+    min_peers: z.number().optional().describe("Minimum number of other online agents to wait for. Defaults to 1."),
+    timeout_seconds: z.number().optional()
+      .describe(`How long to block, in seconds. Defaults to 30, capped at ${MAX_WAIT_TIMEOUT_SECONDS}.`),
+  }, { readOnlyHint: true, title: "Wait for peers" }, async ({ agent_id, min_peers, timeout_seconds }, extra) => {
     const claims = getSessionClaims(extra.sessionId ?? "");
     if (!claims) throw new Error("Session has no captured claims (auth bug)");
     const targetPeers = min_peers ?? 1;
-    const timeoutMs = (timeout_seconds ?? 30) * 1000;
+    const cappedSeconds = Math.min(timeout_seconds ?? 30, MAX_WAIT_TIMEOUT_SECONDS);
+    const timeoutMs = cappedSeconds * 1000;
     const pollIntervalMs = 1000;
     const startedAt = Date.now();
     mcpLog.info({ tool: "wait_for_peers", agent_id, min_peers: targetPeers, timeout_seconds: timeoutMs / 1000 }, "Tool called");

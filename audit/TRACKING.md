@@ -20,8 +20,8 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | | High (13) | Med (46) | Low (42) | Info (18) | **Total (119)** |
 |--|:--:|:--:|:--:|:--:|:--:|
-| **Fermés ✅** | 12 | 24 | 19 | 3 | **58 / 119** |
-| **Rounds cochés** | — | — | — | — | **280 / 595** |
+| **Fermés ✅** | 12 | 26 | 24 | 4 | **66 / 119** |
+| **Rounds cochés** | — | — | — | — | **295 / 595 (approx)** |
 
 > Mettre à jour ce tableau à chaque tâche fermée. 595 = 119 × 5 rounds.
 > Note : sur les 10 fermés, 8 sont corrigés (5 rounds chacun = 40) ; 2 (protocole-mcp-04, securite-surface-03) sont **dispositionnés en risque-accepté + documenté** (threat-model, hors comptage 5-rounds).
@@ -42,14 +42,14 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 7 | `securite-surface-02` | 🟠 Med | S | /metrics servi sans authentification ; le handler /metrics/auth (local | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ c87ee56 |
 | 8 | `securite-surface-03` | 🟠 Med | M | Isolation inter-agents absente sur les outils MCP MQTT (lecture de la  | ✅ | — | — | — | 📄 | 📄 différé+documenté bed5486 |
 | 9 | `securite-auth-02` | 🟡 Low | S | Le provider Google ne vérifie pas le nonce OIDC de l'id_token | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ eca4d2f |
-| 10 | `securite-auth-03` | 🟡 Low | M | Transport du JWT via query-string `?token=` sur les requêtes GET (SSE) | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 10 | `securite-auth-03` | 🟡 Low | M | Transport du JWT via query-string `?token=` sur les requêtes GET (SSE) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 177205b |
 | 11 | `securite-auth-04` | 🟡 Low | S | Le rôle n'est pas re-dérivé depuis la base lors de la rotation de refr | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 8e6ec78 |
 | 12 | `securite-surface-04` | 🟡 Low | S | Logger Phase 1 sans redaction des secrets (les deux loggers divergent) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 6482528 |
-| 13 | `securite-surface-05` | 🟡 Low | S | Endpoint Phase 1 /api/auth/register sans rate-limiting ni lockout | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 13 | `securite-surface-05` | 🟡 Low | S | Endpoint Phase 1 /api/auth/register sans rate-limiting ni lockout | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 177205b |
 | 14 | `securite-surface-06` | 🟡 Low | S | CORS wildcard générique et transport du JWT via ?token= sur les GET | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ f8f6227 |
 | 15 | `securite-surface-07` | 🟡 Low | S | En-têtes de sécurité absents sur le dashboard principal et les réponse | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ dc4bb3a |
 | 16 | `protocole-mcp-12` | ⚪ Info | M | Auth du endpoint /mcp non conforme à la spec d'autorisation MCP : pas  | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 17 | `securite-auth-05` | ⚪ Info | S | L'échappatoire COORDINATOR_INSECURE_COOKIES est inerte pour les cookie | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 17 | `securite-auth-05` | ⚪ Info | S | L'échappatoire COORDINATOR_INSECURE_COOKIES est inerte pour les cookie | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 177205b |
 
 ### PR 2 — Conformité MCP & endpoints fantômes (13 constats)
 
@@ -59,14 +59,14 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 2 | `documentation-02` | 🔴 High | M | /metrics/auth et COORDINATOR_METRICS_BEARER documentés partout mais l' | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ c87ee56 |
 | 3 | `protocole-mcp-01` | 🔴 High | S | Mode stdio : logs applicatifs écrits sur stdout, en violation du trans | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ a470112 |
 | 4 | `protocole-mcp-03` | 🔴 High | S | Endpoints documentés, testés et consommés par le SDK/doctor jamais câb | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 6236a10 |
-| 5 | `protocole-mcp-05` | 🟠 Med | S | set_dependency_map : paramètre JSON double-encodé, sans description de | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 5 | `protocole-mcp-05` | 🟠 Med | S | set_dependency_map : paramètre JSON double-encodé, sans description de | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 0f97fc3 |
 | 6 | `protocole-mcp-06` | 🟠 Med | S | Mode stdio : les outils MQTT sont exposés mais mentent silencieusement | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 7 | `protocole-mcp-07` | 🟠 Med | M | Sessions Streamable HTTP jamais expirées : fuite des Maps sessions/ses | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 846d6f1 |
-| 8 | `protocole-mcp-08` | 🟡 Low | S | get_thread (et lectures similaires) retourne le texte « null » pour un | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 9 | `protocole-mcp-09` | 🟡 Low | S | README documente un outil MCP « introspection » qui n'existe pas ; com | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 10 | `protocole-mcp-10` | 🟡 Low | M | Aucun outil n'a d'annotations (readOnlyHint/destructiveHint), de title | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 8 | `protocole-mcp-08` | 🟡 Low | S | get_thread (et lectures similaires) retourne le texte « null » pour un | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 0f97fc3 |
+| 9 | `protocole-mcp-09` | 🟡 Low | S | README documente un outil MCP « introspection » qui n'existe pas ; com | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ docs#162 |
+| 10 | `protocole-mcp-10` | 🟡 Low | M | Aucun outil n'a d'annotations (readOnlyHint/destructiveHint), de title | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 0f97fc3 |
 | 11 | `protocole-mcp-11` | 🟡 Low | M | Résumabilité Streamable HTTP absente (pas d'eventStore) et Mcp-Session | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 12 | `protocole-mcp-14` | 🟡 Low | S | Outils bloquants (wait_for_peers, wait_for_message) sans borne supérie | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 12 | `protocole-mcp-14` | 🟡 Low | S | Outils bloquants (wait_for_peers, wait_for_message) sans borne supérie | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 0f97fc3 |
 | 13 | `protocole-mcp-13` | ⚪ Info | S | mcpName déclaré mais aucune trace de publication au registre MCP (pas  | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 
 ### PR 3 — CI/CD & dépendances (24 constats)

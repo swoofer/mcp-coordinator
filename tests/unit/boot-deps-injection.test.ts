@@ -214,6 +214,59 @@ describe("bootPhase2(opts, deps) — db injection", () => {
   });
 });
 
+describe("bootPhase2(opts, deps) — securite-auth-05 INSECURE_COOKIES boot warning", () => {
+  // COORDINATOR_INSECURE_COOKIES only relaxes the PUBLIC_URL http://
+  // non-localhost boot gate; it does NOT change Phase 2 cookie output
+  // (hostCookie() always sets Secure for __Host--prefixed cookies). A
+  // developer setting the flag expecting it to "work" over plain HTTP
+  // gets a silent auth failure with no explanation — the boot-time
+  // warning (warnOnInsecureCookiesFlag in src/boot.ts) is the mitigation.
+  it("logs a warn when COORDINATOR_INSECURE_COOKIES=true (footgun disarmed)", () => {
+    const fakeLogger = makeFakeLogger();
+    const synthEnv = makeValidSynthEnv();
+    synthEnv.COORDINATOR_PUBLIC_URL = "http://example.com:3100";
+    synthEnv.COORDINATOR_INSECURE_COOKIES = "true";
+    const result = bootPhase2(
+      { enabled: true, db, clock },
+      { env: synthEnv, logger: fakeLogger as unknown as import("pino").Logger },
+    );
+    expect(result).not.toBeNull();
+    const warnCalls = fakeLogger.calls.filter((c) => c.level === "warn");
+    expect(warnCalls.length).toBeGreaterThan(0);
+    const messages = warnCalls.map((c) => String(c.args[0]));
+    expect(messages.some((m) => m.includes("COORDINATOR_INSECURE_COOKIES=true"))).toBe(true);
+    expect(messages.some((m) => m.toLowerCase().includes("secure"))).toBe(true);
+    void result!.shutdown();
+  });
+
+  it("does NOT log the warning when COORDINATOR_INSECURE_COOKIES is unset (default/safe path)", () => {
+    const fakeLogger = makeFakeLogger();
+    const synthEnv = makeValidSynthEnv(); // localhost PUBLIC_URL, no override needed
+    const result = bootPhase2(
+      { enabled: true, db, clock },
+      { env: synthEnv, logger: fakeLogger as unknown as import("pino").Logger },
+    );
+    expect(result).not.toBeNull();
+    const warnCalls = fakeLogger.calls.filter((c) => c.level === "warn");
+    expect(warnCalls.some((c) => String(c.args[0]).includes("COORDINATOR_INSECURE_COOKIES"))).toBe(false);
+    void result!.shutdown();
+  });
+
+  it("does NOT log the warning when COORDINATOR_INSECURE_COOKIES is set to a non-'true' value", () => {
+    const fakeLogger = makeFakeLogger();
+    const synthEnv = makeValidSynthEnv();
+    synthEnv.COORDINATOR_INSECURE_COOKIES = "false";
+    const result = bootPhase2(
+      { enabled: true, db, clock },
+      { env: synthEnv, logger: fakeLogger as unknown as import("pino").Logger },
+    );
+    expect(result).not.toBeNull();
+    const warnCalls = fakeLogger.calls.filter((c) => c.level === "warn");
+    expect(warnCalls.some((c) => String(c.args[0]).includes("COORDINATOR_INSECURE_COOKIES"))).toBe(false);
+    void result!.shutdown();
+  });
+});
+
 describe("bootPhase2(opts) — backward-compat (no deps argument)", () => {
   it("still works when deps is omitted entirely (reads process.env)", () => {
     // Repopulate process.env for this single case — deps omitted means

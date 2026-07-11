@@ -6,7 +6,7 @@ import { createHash } from "crypto";
 import { getDb } from "../database.js";
 import { runCommonAnnounceFlow } from "../announce-workflow.js";
 import { canResetDb } from "../reset-guard.js";
-import { parseBody, json } from "./utils.js";
+import { parseBody, json, redactTokenParam } from "./utils.js";
 import { normalizePath } from "../path-normalize.js";
 import { safeJsonParse } from "../json-utils.js";
 
@@ -50,10 +50,13 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
   const isPoll = url === "/api/hot-files" || url === "/api/threads-active" || url === "/api/status" || url === "/api/quota";
   // Note: /api/quota/refresh is NOT in the poll list — it's a manual user
   // action and deserves an info-level log for auditability.
+  // securite-auth-03: url may carry ?token=<jwt> on a GET request — mask
+  // before logging (see redactTokenParam doc in ./utils.ts).
+  const logUrl = redactTokenParam(url);
   if (isPoll) {
-    httpLog.debug({ method: req.method, url, agent_id: agentId }, "REST request");
+    httpLog.debug({ method: req.method, url: logUrl, agent_id: agentId }, "REST request");
   } else {
-    httpLog.info({ method: req.method, url, agent_id: agentId }, "REST request");
+    httpLog.info({ method: req.method, url: logUrl, agent_id: agentId }, "REST request");
   }
   const { registry, activityTracker, consultation, fileTracker, introspection, sseEmitter, mqttBridge, quotaCache } = services;
 
