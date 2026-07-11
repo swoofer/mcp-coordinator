@@ -45,7 +45,7 @@ mcp-coordinator fixes this by giving every agent a **shared nervous system over 
 
 Works **with or without** an orchestrator. Standalone with any MCP client (Claude Code, Cursor, Cline, Aider) — see the [usage guide](./docs/usage.md). Or pair with [essaim](https://github.com/swoofer/essaim) for pre-composed agent profiles, work-stealing templates, and a behavior catalog.
 
-> **1740+ tests across 170 files, passing on every release.** Feature-flagged auth means Phase 1 deployments stay byte-identical to v0.7.x — proven by a 31-case backcompat suite that runs in CI.
+> **2500+ tests across 750+ files, passing on every release.** Feature-flagged auth means Phase 1 deployments stay byte-identical to v0.7.x — proven by a 31-case backcompat suite that runs in CI.
 
 ---
 
@@ -82,7 +82,7 @@ After step 4, every Claude Code (or other MCP-compatible) session connected to t
 | **Global** _(default above)_ | Long-running daemon, ops | `npm install -g mcp-coordinator` | `mcp-coordinator <cmd>` |
 | **`npx` (zero install)** | One-shot try, CI scripts | _(none)_ | `npx mcp-coordinator <cmd>` |
 | **Local to a project** | Pinning a version per repo | `cd your-project && npm install mcp-coordinator` † | `npx mcp-coordinator <cmd>` from project root |
-| **Docker** _(multi-arch)_ | Container-first deployments, k8s | `docker pull ghcr.io/swoofer/mcp-coordinator:0.11.0` | `docker run ghcr.io/swoofer/mcp-coordinator:0.11.0 <cmd>` |
+| **Docker** _(multi-arch)_ | Container-first deployments, k8s | `docker pull ghcr.io/swoofer/mcp-coordinator:0.13.0` | `docker run ghcr.io/swoofer/mcp-coordinator:0.13.0 <cmd>` |
 | **Single-file binary** | No Node available, easiest deploy | [GitHub Release tarball](https://github.com/swoofer/mcp-coordinator/releases) | `./mcp-coordinator <cmd>` |
 
 <sub>† Local installs require a `package.json` in the working directory — if you're just trying it out, prefer `-g` or `npx`.</sub>
@@ -93,8 +93,8 @@ The image is published to GitHub Container Registry on every release tag — mul
 
 | Tag | Use case |
 |---|---|
-| `ghcr.io/swoofer/mcp-coordinator:0.11.0` | Pinned exact version — recommended for production |
-| `ghcr.io/swoofer/mcp-coordinator:0.11` | Auto-bumps within the 0.11.x patch series |
+| `ghcr.io/swoofer/mcp-coordinator:0.13.0` | Pinned exact version — recommended for production |
+| `ghcr.io/swoofer/mcp-coordinator:0.13` | Auto-bumps within the 0.13.x patch series |
 | `ghcr.io/swoofer/mcp-coordinator:latest` | Tip of releases — fine for trying out, avoid in prod |
 
 A working compose stack (coordinator + Caddy auto-TLS + GitHub OAuth) ships at [`examples/docker-compose/`](./examples/docker-compose/). For a Kubernetes CronJob example doing JWT secret rotation, see [`docs/ops/auto-rotation.md`](./docs/ops/auto-rotation.md).
@@ -214,7 +214,7 @@ Out of the box, zero config:
 | **IdP token encryption at rest** | Column-level AES-256-GCM on `users.idp_access_token` + `users.idp_refresh_token`, key fingerprint guard at boot |
 | **Admin UI** | Browser console at `/dashboard/admin.html` for org/user/allowlist management |
 | **Audit log** | Tier-1 (never-drop) + Tier-2 (batched) + SHA-256 hash chain for tamper-evidence |
-| **Prometheus / Grafana** | 29 metrics on `/metrics/auth`, Grafana dashboard JSON, alert rules YAML |
+| **Prometheus / Grafana** | 32 app-level metrics (auth, device flow, service tokens, IdP, audit, rate limiting) plus default Node process metrics on `/metrics/auth`, Grafana dashboard JSON, alert rules YAML |
 | **Database backend** | SQLite (default) → Postgres (planned, see [design spec](./docs/superpowers/specs/2026-05-16-postgres-adapter-design.md)) |
 
 </details>
@@ -233,7 +233,7 @@ Full version-by-version detail in [CHANGELOG.md](./CHANGELOG.md).
 | `coordinator_status` | Full snapshot — online agents, open threads, hot files, MQTT topics, Anthropic quota. Use it as a heartbeat poll. |
 | `wait_for_peers` | Block until N peers come online (or timeout) — useful when an orchestrator spawns a fleet and you need to avoid races before the first announce. |
 
-The in-server `introspection` tool returns the live schema for every tool — point any MCP client at it for runtime discovery.
+Any MCP client can discover the full tool schema at runtime via the standard `tools/list` MCP protocol call — no dedicated introspection tool needed.
 
 <details>
 <summary><b>All 26 tools</b> — agent registry, consultation, file tracking, dependency map, MQTT, status</summary>
@@ -455,7 +455,7 @@ Resolution priority (highest to lowest): CLI flag → env var → config.json �
 | `COORDINATOR_OAUTH_ENABLED` | `false` | Enable Phase 2 OAuth |
 | `MAX_QUOTA_PCT` | `95` | Pre-flight abort threshold for Anthropic quota |
 
-The complete annotated env reference (~70 variables including all Phase 2 OAuth / multi-IdP / hardening vars) lives in [`.env.example`](./.env.example) — copy-paste and fill in.
+The complete annotated env reference (50+ variables including all Phase 2 OAuth / multi-IdP / hardening vars) lives in [`.env.example`](./.env.example) — copy-paste and fill in.
 
 ---
 
@@ -524,7 +524,7 @@ Open an issue or PR on [GitHub](https://github.com/swoofer/mcp-coordinator).
 
 - **v1.0** — Multi-instance: Redis-backed cache invalidation + leader election for the sweeper and rate limiter.
 - **Postgres adapter** — for regulated multi-instance workloads. See [design spec](./docs/superpowers/specs/2026-05-16-postgres-adapter-design.md).
-- **SDK polish** — keytar keychain integration, Windows DPAPI for token file, named-profile TOML config.
+- **SDK polish** — Windows DPAPI encryption for the on-disk token file (keytar keychain integration and named-profile TOML config already shipped).
 
 Per-version detail for everything already shipped lives in [CHANGELOG.md](./CHANGELOG.md).
 
@@ -539,7 +539,7 @@ Per-version detail for everything already shipped lives in [CHANGELOG.md](./CHAN
 
 ## Support
 
-Built and maintained by [@swoofer](https://github.com/swoofer). v0.11.0 shipped with 1740+ tests and a growing list of external contributors.
+Built and maintained by [@swoofer](https://github.com/swoofer), with a large and growing automated test suite and a growing list of external contributors.
 
 If this project saves you time:
 
