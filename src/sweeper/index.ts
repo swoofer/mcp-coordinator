@@ -1,8 +1,9 @@
-// Sweeper module — periodic retention pruner for 6 Phase 2 tables.
+// Sweeper module — periodic retention pruner for 11 tables (6 Phase 2 +
+// 5 Phase 1; performance-01).
 // Spec refs: V4 §17.7 (sweeper design), V2 §C.12 (SQL examples).
 //
 // One setInterval ticks every 60s and runs a "chained pass": each chain
-// iteration executes 6 bounded `DELETE ... LIMIT 1000` statements. If a
+// iteration executes 11 bounded `DELETE ... LIMIT 1000` statements. If a
 // chain iteration deletes exactly BATCH_SIZE rows (signalling that more
 // stale rows likely remain), we immediately re-run, up to MAX_CHAINED_RUNS
 // iterations per tick. This drains backlogs without monopolizing the loop.
@@ -18,6 +19,14 @@
 //                               AND action IN TIER1_EVENTS
 //   6. audit_log Tier 2         strftime('%s', created_at) < cutoff
 //                               AND action IN TIER2_EVENTS
+//   7. file_activity            strftime('%s', created_at) < cutoff (7d)
+//   8. events                   strftime('%s', created_at) < cutoff (7d)
+//   9. thread_messages          strftime('%s', created_at) < cutoff (30d)
+//  10. action_summaries         strftime('%s', created_at) < cutoff (30d)
+//  11. layer_firings            strftime('%s', fired_at) < cutoff (30d) —
+//                               NOTE: this table's timestamp column is
+//                               `fired_at`, NOT `created_at` like the other
+//                               Phase 1 tables.
 //
 // Circuit-breaker: 5 consecutive errors halt the sweeper (stop()) and set
 // circuitOpen=true so T36 /health/ready can surface degraded state. Manual
@@ -34,9 +43,22 @@
 //
 // Configuration (via T44 getOrgSetting; respects per-org overrides → env
 // fallback → built-in default):
-//   refresh_retention_days        default 180  (revoked refresh_tokens TTL)
-//   audit_retention_days          default 365  (Tier 1 audit_log TTL)
-//   audit_tier2_retention_days    default 90   (Tier 2 audit_log TTL)
+//   refresh_retention_days           default 180  (revoked refresh_tokens TTL)
+//   audit_retention_days             default 365  (Tier 1 audit_log TTL)
+//   audit_tier2_retention_days       default 90   (Tier 2 audit_log TTL)
+//   file_activity_retention_days     default 7    (performance-01)
+//   events_retention_days            default 7    (performance-01)
+//   thread_messages_retention_days   default 30   (performance-01)
+//   action_summaries_retention_days  default 30   (performance-01)
+//   layer_firings_retention_days     default 30   (performance-01)
+//
+// WIRING NOTE (performance-01): this Sweeper is instantiated in TWO places
+// depending on deployment profile — never both at once for the same
+// process. src/boot.ts (bootPhase2) starts it when Phase 2 OAuth is active
+// (COORDINATOR_OAUTH_ENABLED=true); src/serve-http.ts (startServer) starts
+// its OWN instance only when bootPhase2 did NOT run (Phase-1-only, the
+// default mono-tenant deployment) so retention still runs there. See
+// src/serve-http.ts for the guard that prevents a double-start.
 
 import type Database from "better-sqlite3";
 import type { Clock } from "../auth/clock.js";
@@ -72,6 +94,11 @@ export class Sweeper {
     refresh_tokens_expired: 0,
     audit_log_tier1: 0,
     audit_log_tier2: 0,
+    file_activity: 0,
+    events: 0,
+    thread_messages: 0,
+    action_summaries: 0,
+    layer_firings: 0,
   };
 
   constructor(
@@ -122,7 +149,7 @@ export class Sweeper {
     }
   }
 
-  /** Run a single pass across all 6 tables. Returns total rows deleted. */
+  /** Run a single pass across all 11 tables. Returns total rows deleted. */
   private sweepAll(): number {
     const now = this.clock.now();
     const refreshRetentionDays = Number(
@@ -133,6 +160,21 @@ export class Sweeper {
     );
     const auditTier2RetentionDays = Number(
       getOrgSetting(this.db, null, "audit_tier2_retention_days", "90"),
+    );
+    const fileActivityRetentionDays = Number(
+      getOrgSetting(this.db, null, "file_activity_retention_days", "7"),
+    );
+    const eventsRetentionDays = Number(
+      getOrgSetting(this.db, null, "events_retention_days", "7"),
+    );
+    const threadMessagesRetentionDays = Number(
+      getOrgSetting(this.db, null, "thread_messages_retention_days", "30"),
+    );
+    const actionSummariesRetentionDays = Number(
+      getOrgSetting(this.db, null, "action_summaries_retention_days", "30"),
+    );
+    const layerFiringsRetentionDays = Number(
+      getOrgSetting(this.db, null, "layer_firings_retention_days", "30"),
     );
 
     let total = 0;
@@ -201,6 +243,47 @@ export class Sweeper {
       .run(String(auditTier2Cutoff), ...TIER2_EVENTS, BATCH_SIZE).changes;
     this._rowsDeletedByTable.audit_log_tier2 += tier2Deleted;
     total += tier2Deleted;
+
+    // 7. file_activity — TEXT ISO-8601 created_at (performance-01).
+    const fileActivityCutoff = now - fileActivityRetentionDays * SECONDS_PER_DAY;
+    const fileActivityDeleted = this.db
+      .prepare(`DELETE FROM file_activity WHERE strftime('%s', created_at) < ? LIMIT ?`)
+      .run(String(fileActivityCutoff), BATCH_SIZE).changes;
+    this._rowsDeletedByTable.file_activity += fileActivityDeleted;
+    total += fileActivityDeleted;
+
+    // 8. events — TEXT ISO-8601 created_at (performance-01).
+    const eventsCutoff = now - eventsRetentionDays * SECONDS_PER_DAY;
+    const eventsDeleted = this.db
+      .prepare(`DELETE FROM events WHERE strftime('%s', created_at) < ? LIMIT ?`)
+      .run(String(eventsCutoff), BATCH_SIZE).changes;
+    this._rowsDeletedByTable.events += eventsDeleted;
+    total += eventsDeleted;
+
+    // 9. thread_messages — TEXT ISO-8601 created_at (performance-01).
+    const threadMessagesCutoff = now - threadMessagesRetentionDays * SECONDS_PER_DAY;
+    const threadMessagesDeleted = this.db
+      .prepare(`DELETE FROM thread_messages WHERE strftime('%s', created_at) < ? LIMIT ?`)
+      .run(String(threadMessagesCutoff), BATCH_SIZE).changes;
+    this._rowsDeletedByTable.thread_messages += threadMessagesDeleted;
+    total += threadMessagesDeleted;
+
+    // 10. action_summaries — TEXT ISO-8601 created_at (performance-01).
+    const actionSummariesCutoff = now - actionSummariesRetentionDays * SECONDS_PER_DAY;
+    const actionSummariesDeleted = this.db
+      .prepare(`DELETE FROM action_summaries WHERE strftime('%s', created_at) < ? LIMIT ?`)
+      .run(String(actionSummariesCutoff), BATCH_SIZE).changes;
+    this._rowsDeletedByTable.action_summaries += actionSummariesDeleted;
+    total += actionSummariesDeleted;
+
+    // 11. layer_firings — TEXT ISO-8601 fired_at (⚠️ NOT created_at;
+    //     performance-01).
+    const layerFiringsCutoff = now - layerFiringsRetentionDays * SECONDS_PER_DAY;
+    const layerFiringsDeleted = this.db
+      .prepare(`DELETE FROM layer_firings WHERE strftime('%s', fired_at) < ? LIMIT ?`)
+      .run(String(layerFiringsCutoff), BATCH_SIZE).changes;
+    this._rowsDeletedByTable.layer_firings += layerFiringsDeleted;
+    total += layerFiringsDeleted;
 
     return total;
   }

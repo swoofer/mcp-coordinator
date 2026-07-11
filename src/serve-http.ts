@@ -31,6 +31,8 @@ const VERSION = getVersion();
 import { startEmbeddedMqttBroker, type MqttAuthResult } from "./mqtt-broker.js";
 import { withRequestId, resolveRequestId } from "./auth/request-id.js";
 import { bootPhase2, type Phase2Bootstrap } from "./boot.js";
+import { Sweeper } from "./sweeper/index.js";
+import { realClock } from "./auth/clock.js";
 import { dispatchAuthRoutes } from "./http/auth-routes.js";
 import { getDb } from "./database.js";
 import type DatabaseT from "better-sqlite3";
@@ -363,6 +365,15 @@ export interface ServerHandle {
   port: number;
   httpServer: import("node:http").Server;
   stop: () => Promise<void>;
+  /**
+   * performance-01: the single live Sweeper instance running retention for
+   * this server — either bootPhase2's own instance (Phase 2 active) or one
+   * started here for Phase-1-only deployments. Exposed mainly so tests can
+   * trigger a real runPass() without waiting for the 60s timer; also usable
+   * by embedders that want retention observability without re-implementing
+   * the Phase1-vs-Phase2 wiring decision.
+   */
+  sweeper: Sweeper;
 }
 
 export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
@@ -408,6 +419,19 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
   });
   if (phase2Bootstrap) {
     log.info("Phase 2 OAuth enabled (dispatchAuthRoutes wired, sweeper running)");
+  }
+
+  // performance-01: retention Sweeper. bootPhase2 already starts (and owns
+  // the teardown of) a Sweeper when Phase 2 is active — reuse that SAME
+  // instance rather than creating a second one (would double-run every
+  // DELETE pass). When Phase 2 is NOT active (Phase-1-only, the default
+  // mono-tenant deployment), bootPhase2 returns null and nothing sweeps
+  // retention today, so start our own instance here and own its teardown.
+  const retentionSweeper: Sweeper =
+    phase2Bootstrap?.sweeper ??
+    new Sweeper(getDb() as unknown as DatabaseT.Database, realClock);
+  if (!phase2Bootstrap) {
+    retentionSweeper.start();
   }
 
   // Multi-session: one transport+server per MCP client session
@@ -794,6 +818,15 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
       } catch (err) {
         log.warn({ err }, "Error during Phase 2 shutdown");
       }
+    } else {
+      // performance-01: we own this Sweeper's lifecycle (Phase-1-only —
+      // bootPhase2 didn't run, so nothing else stops/drains it).
+      try {
+        retentionSweeper.stop();
+        await retentionSweeper.drain(5000);
+      } catch (err) {
+        log.warn({ err }, "Error stopping retention sweeper");
+      }
     }
     try {
       await new Promise<void>((resolve) => httpServer.close(() => resolve()));
@@ -848,7 +881,7 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
     process.once("SIGINT", () => onSignal("SIGINT"));
   }
 
-  return { port, httpServer, stop };
+  return { port, httpServer, stop, sweeper: retentionSweeper };
 }
 
 // Auto-start when run directly (not imported)
