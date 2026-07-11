@@ -83,3 +83,17 @@ jobs:
     with:
       tag: ${{ needs.release.outputs.tag_name }}
     secrets: inherit
+
+  # Chained binary release on every release-please cut. Same anti-recursive
+  # rationale as `docker` above: a tag push from release-please's
+  # GITHUB_TOKEN does NOT trigger release-binaries.yml's `push: tags` event,
+  # so without this hook no binaries get attached to the GitHub release.
+  binaries:
+    needs: release
+    if: ${{ needs.release.outputs.release_created == 'true' }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release-binaries.yml
+    with:
+      tag: ${{ needs.release.outputs.tag_name }}
+    secrets: inherit

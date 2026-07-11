@@ -3,6 +3,17 @@ name: Release binaries
 on:
   push:
     tags: ["v*"]
+  # Called from release.yml after release-please tags + npm/Docker publish
+  # complete, so the binary build runs in the same workflow run as the
+  # release. (GitHub's anti-recursive policy means a tag push from
+  # GITHUB_TOKEN does NOT trigger the `push: tags` path above — without
+  # this hook, binaries would never be built for release-please cuts.)
+  workflow_call:
+    inputs:
+      tag:
+        description: "Git tag to build from"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -30,6 +41,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
 
       - uses: oven-sh/setup-bun@v2
 
@@ -75,7 +88,8 @@ jobs:
 
       - name: Package tarball
         run: |
-          VERSION=${GITHUB_REF_NAME#v}
+          TAG="${{ inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
           DIST_NAME="mcp-coordinator-${VERSION}-${{ matrix.platform }}-${{ matrix.arch }}"
           mkdir -p "dist/${DIST_NAME}/dashboard"
 
@@ -89,6 +103,7 @@ jobs:
       - name: Publish tarball to GH Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
           files: dist/*.tar.gz
           generate_release_notes: true
           fail_on_unmatched_files: true
