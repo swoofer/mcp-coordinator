@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import crypto from "node:crypto";
 import type { TokenSet } from "./types.js";
 
 export interface TokenStore {
@@ -29,6 +30,17 @@ export interface FileTokenStoreOptions {
  */
 export class FileTokenStore implements TokenStore {
   private readonly filePath: string;
+  // Serializes save() calls against this instance. `setTokens()` fires a
+  // save() without awaiting it, and a caller may immediately await
+  // `persistTokens()`, which calls save() again -- two legitimately
+  // concurrent writes to the same destination file. Without serialization,
+  // both write+rename their own (uniquely-named) tmp file to `filePath`
+  // concurrently: on POSIX the last rename silently "wins" (usually
+  // harmless since content is identical), but on Windows the second
+  // rename can throw EPERM because the destination was just replaced by
+  // the other in-flight rename. Chaining every save() through this queue
+  // means each write completes (rename included) before the next starts.
+  private writeQueue: Promise<unknown> = Promise.resolve();
 
   constructor(opts: FileTokenStoreOptions = {}) {
     this.filePath = opts.filePath ?? path.join(os.homedir(), ".mcp-coordinator", "tokens.json");
@@ -54,12 +66,20 @@ export class FileTokenStore implements TokenStore {
         /* best-effort */
       }
     }
-    const tmpPath = `${this.filePath}.tmp.${process.pid}`;
-    await fs.promises.writeFile(tmpPath, JSON.stringify(tokens, null, 2), {
-      encoding: "utf8",
-      mode: 0o600,
+    // Chain onto the write queue so this save() waits for any in-flight
+    // save() on this instance to fully finish (including its rename)
+    // before starting its own write+rename. `.catch(() => {})` on the
+    // prior tail means a failed earlier save doesn't block this one.
+    const task = this.writeQueue.catch(() => {}).then(async () => {
+      const tmpPath = `${this.filePath}.tmp.${process.pid}.${crypto.randomUUID()}`;
+      await fs.promises.writeFile(tmpPath, JSON.stringify(tokens, null, 2), {
+        encoding: "utf8",
+        mode: 0o600,
+      });
+      await fs.promises.rename(tmpPath, this.filePath);
     });
-    await fs.promises.rename(tmpPath, this.filePath);
+    this.writeQueue = task;
+    return task;
   }
 
   async clear(): Promise<void> {
