@@ -3,6 +3,97 @@ import { writeFileSync } from "fs";
 import { join } from "path";
 import { loadConfig, ensureConfigDir } from "../config.js";
 
+/**
+ * Builds the env object passed to the detached daemon child process.
+ *
+ * PURE function (no process.env reads/writes of its own) so the allowlist
+ * can be unit-tested directly instead of only via a mocked spawn(). Only
+ * the env vars explicitly `fwd()`-ed below reach the daemon — this is an
+ * intentional allowlist, NOT a blanket forward of the parent environment,
+ * so the daemon can never inherit unrelated parent-process secrets such as
+ * AWS_*, GITHUB_TOKEN, OPENAI_API_KEY, etc. When the server gains a new
+ * `process.env.COORDINATOR_*` read, add a matching `fwd()` line here.
+ */
+export function buildDaemonEnv(
+  parentEnv: NodeJS.ProcessEnv,
+  opts: { port: number; dataDir: string },
+): Record<string, string> {
+  const childEnv: Record<string, string> = {
+    PATH: parentEnv.PATH ?? "",
+    HOME: parentEnv.HOME ?? parentEnv.USERPROFILE ?? "",
+    PORT: String(opts.port),
+    COORDINATOR_DATA_DIR: opts.dataDir,
+  };
+  const fwd = (key: string, value: string | undefined): void => {
+    if (value !== undefined) childEnv[key] = value;
+  };
+  fwd("NODE_ENV", parentEnv.NODE_ENV);
+  fwd("LOG_LEVEL", parentEnv.LOG_LEVEL);
+  fwd("COORDINATOR_AUTH_ENABLED", parentEnv.COORDINATOR_AUTH_ENABLED);
+  fwd("COORDINATOR_JWT_SECRET", parentEnv.COORDINATOR_JWT_SECRET);
+  fwd("COORDINATOR_JWT_EXPIRY", parentEnv.COORDINATOR_JWT_EXPIRY);
+  fwd("COORDINATOR_REGISTRATION_SECRET", parentEnv.COORDINATOR_REGISTRATION_SECRET);
+  fwd("COORDINATOR_ADMIN_SECRET", parentEnv.COORDINATOR_ADMIN_SECRET);
+  fwd("COORDINATOR_MQTT_TCP_PORT", parentEnv.COORDINATOR_MQTT_TCP_PORT);
+  fwd("COORDINATOR_MQTT_WS_PATH", parentEnv.COORDINATOR_MQTT_WS_PATH);
+  fwd("COORDINATOR_REPO_ROOT", parentEnv.COORDINATOR_REPO_ROOT);
+  fwd("COORDINATOR_MAX_BODY_BYTES", parentEnv.COORDINATOR_MAX_BODY_BYTES);
+  fwd("COORDINATOR_WORKING_FILES_TTL_MIN", parentEnv.COORDINATOR_WORKING_FILES_TTL_MIN);
+  fwd("COORDINATOR_WORKING_FILES_SWEEP_INTERVAL_MS", parentEnv.COORDINATOR_WORKING_FILES_SWEEP_INTERVAL_MS);
+  fwd("COORDINATOR_LAYER4_SINCE_DAYS", parentEnv.COORDINATOR_LAYER4_SINCE_DAYS);
+  fwd("COORDINATOR_LAYER4_MAX_COMMITS", parentEnv.COORDINATOR_LAYER4_MAX_COMMITS);
+  fwd("COORDINATOR_LAYER4_REFRESH_INTERVAL_MS", parentEnv.COORDINATOR_LAYER4_REFRESH_INTERVAL_MS);
+  fwd("COORDINATOR_LAYER4_RETRY_MS", parentEnv.COORDINATOR_LAYER4_RETRY_MS);
+  // T06a: Phase 3 encryption envs. Forward only when set in parent.
+  fwd("COORDINATOR_ENCRYPTION_KEY", parentEnv.COORDINATOR_ENCRYPTION_KEY);
+  fwd("COORDINATOR_ALLOW_TOKEN_LOSS", parentEnv.COORDINATOR_ALLOW_TOKEN_LOSS);
+  fwd("COORDINATOR_TOKEN_LOSS_CONFIRM", parentEnv.COORDINATOR_TOKEN_LOSS_CONFIRM);
+  fwd("COORDINATOR_ALLOW_KEY_ROTATION", parentEnv.COORDINATOR_ALLOW_KEY_ROTATION);
+
+  // architecture-05: Phase 2 / OAuth / bind / SSE-tuning envs. Identified via
+  // authoritative grep of `process.env.COORDINATOR_*` (and `env.COORDINATOR_*`
+  // for boot.ts's injectable-env pattern) across src/. Without these, enabling
+  // OAuth or setting a bind address only "works" in foreground mode — the
+  // daemon silently boots Phase 1-only (COORDINATOR_OAUTH_ENABLED unset).
+  fwd("COORDINATOR_OAUTH_ENABLED", parentEnv.COORDINATOR_OAUTH_ENABLED);
+  fwd("COORDINATOR_PUBLIC_URL", parentEnv.COORDINATOR_PUBLIC_URL);
+  fwd("COORDINATOR_BIND", parentEnv.COORDINATOR_BIND);
+  fwd("COORDINATOR_INSECURE_COOKIES", parentEnv.COORDINATOR_INSECURE_COOKIES);
+  // GitHub OAuth provider (required for Phase 2) + GHES base URL overrides.
+  fwd("COORDINATOR_GITHUB_CLIENT_ID", parentEnv.COORDINATOR_GITHUB_CLIENT_ID);
+  fwd("COORDINATOR_GITHUB_CLIENT_SECRET", parentEnv.COORDINATOR_GITHUB_CLIENT_SECRET);
+  fwd("COORDINATOR_GITHUB_ORG", parentEnv.COORDINATOR_GITHUB_ORG);
+  fwd("COORDINATOR_GITHUB_AUTH_BASE_URL", parentEnv.COORDINATOR_GITHUB_AUTH_BASE_URL);
+  fwd("COORDINATOR_GITHUB_API_BASE_URL", parentEnv.COORDINATOR_GITHUB_API_BASE_URL);
+  // Google OAuth provider (opt-in).
+  fwd("COORDINATOR_GOOGLE_CLIENT_ID", parentEnv.COORDINATOR_GOOGLE_CLIENT_ID);
+  fwd("COORDINATOR_GOOGLE_CLIENT_SECRET", parentEnv.COORDINATOR_GOOGLE_CLIENT_SECRET);
+  // GitHub App provider (opt-in).
+  fwd("COORDINATOR_GITHUB_APP_CLIENT_ID", parentEnv.COORDINATOR_GITHUB_APP_CLIENT_ID);
+  fwd("COORDINATOR_GITHUB_APP_CLIENT_SECRET", parentEnv.COORDINATOR_GITHUB_APP_CLIENT_SECRET);
+  fwd("COORDINATOR_GITHUB_APP_NAME", parentEnv.COORDINATOR_GITHUB_APP_NAME);
+  fwd("COORDINATOR_GITHUB_APP_ALLOWLIST_SOURCE", parentEnv.COORDINATOR_GITHUB_APP_ALLOWLIST_SOURCE);
+  // Generic OIDC provider (opt-in).
+  fwd("COORDINATOR_OIDC_ISSUER_URL", parentEnv.COORDINATOR_OIDC_ISSUER_URL);
+  fwd("COORDINATOR_OIDC_CLIENT_ID", parentEnv.COORDINATOR_OIDC_CLIENT_ID);
+  fwd("COORDINATOR_OIDC_CLIENT_SECRET", parentEnv.COORDINATOR_OIDC_CLIENT_SECRET);
+  fwd("COORDINATOR_OIDC_GROUPS_CLAIM", parentEnv.COORDINATOR_OIDC_GROUPS_CLAIM);
+  // JWT rotation-overlap secrets (Phase 1 legacy name + Phase 2 name; see
+  // docs/ops/key-rotation.md).
+  fwd("COORDINATOR_JWT_PREV_SECRET", parentEnv.COORDINATOR_JWT_PREV_SECRET);
+  fwd("COORDINATOR_JWT_SECRET_PREV", parentEnv.COORDINATOR_JWT_SECRET_PREV);
+  fwd("COORDINATOR_JWT_SECRET_PREV_ROTATED_AT", parentEnv.COORDINATOR_JWT_SECRET_PREV_ROTATED_AT);
+  // Boot-time fail-closed guard overrides (explicit operator opt-in).
+  fwd("COORDINATOR_ALLOW_RESTORE", parentEnv.COORDINATOR_ALLOW_RESTORE);
+  fwd("COORDINATOR_ALLOW_DUPLICATE_ORG_NAMES", parentEnv.COORDINATOR_ALLOW_DUPLICATE_ORG_NAMES);
+  fwd("COORDINATOR_ALLOW_RESET", parentEnv.COORDINATOR_ALLOW_RESET);
+  // SSE tuning.
+  fwd("COORDINATOR_MAX_SSE_CLIENTS", parentEnv.COORDINATOR_MAX_SSE_CLIENTS);
+  fwd("COORDINATOR_SSE_HEARTBEAT_MS", parentEnv.COORDINATOR_SSE_HEARTBEAT_MS);
+
+  return childEnv;
+}
+
 export function createServerStartCommand(): Command {
   return new Command("start")
     .description("Start the coordination server")
@@ -59,41 +150,11 @@ export function createServerStartCommand(): Command {
         const isBun = typeof (globalThis as Record<string, unknown>).Bun !== "undefined";
         const cmd = isBun ? process.execPath : process.execPath;
         const args = isBun ? ["server", "start"] : [process.argv[1], "server", "start"];
-        // Only forward the env vars the daemon actually needs.
-        // Each var is read explicitly (no Object.keys / dynamic indexing into
-        // process.env) so the daemon can't inherit unrelated parent-process
-        // secrets such as AWS_*, GITHUB_TOKEN, OPENAI_API_KEY, etc.
-        const childEnv: Record<string, string> = {
-          PATH: process.env.PATH ?? "",
-          HOME: process.env.HOME ?? process.env.USERPROFILE ?? "",
-          PORT: String(port),
-          COORDINATOR_DATA_DIR: dataDir,
-        };
-        const fwd = (key: string, value: string | undefined): void => {
-          if (value !== undefined) childEnv[key] = value;
-        };
-        fwd("NODE_ENV", process.env.NODE_ENV);
-        fwd("LOG_LEVEL", process.env.LOG_LEVEL);
-        fwd("COORDINATOR_AUTH_ENABLED", process.env.COORDINATOR_AUTH_ENABLED);
-        fwd("COORDINATOR_JWT_SECRET", process.env.COORDINATOR_JWT_SECRET);
-        fwd("COORDINATOR_JWT_EXPIRY", process.env.COORDINATOR_JWT_EXPIRY);
-        fwd("COORDINATOR_REGISTRATION_SECRET", process.env.COORDINATOR_REGISTRATION_SECRET);
-        fwd("COORDINATOR_ADMIN_SECRET", process.env.COORDINATOR_ADMIN_SECRET);
-        fwd("COORDINATOR_MQTT_TCP_PORT", process.env.COORDINATOR_MQTT_TCP_PORT);
-        fwd("COORDINATOR_MQTT_WS_PATH", process.env.COORDINATOR_MQTT_WS_PATH);
-        fwd("COORDINATOR_REPO_ROOT", process.env.COORDINATOR_REPO_ROOT);
-        fwd("COORDINATOR_MAX_BODY_BYTES", process.env.COORDINATOR_MAX_BODY_BYTES);
-        fwd("COORDINATOR_WORKING_FILES_TTL_MIN", process.env.COORDINATOR_WORKING_FILES_TTL_MIN);
-        fwd("COORDINATOR_WORKING_FILES_SWEEP_INTERVAL_MS", process.env.COORDINATOR_WORKING_FILES_SWEEP_INTERVAL_MS);
-        fwd("COORDINATOR_LAYER4_SINCE_DAYS", process.env.COORDINATOR_LAYER4_SINCE_DAYS);
-        fwd("COORDINATOR_LAYER4_MAX_COMMITS", process.env.COORDINATOR_LAYER4_MAX_COMMITS);
-        fwd("COORDINATOR_LAYER4_REFRESH_INTERVAL_MS", process.env.COORDINATOR_LAYER4_REFRESH_INTERVAL_MS);
-        fwd("COORDINATOR_LAYER4_RETRY_MS", process.env.COORDINATOR_LAYER4_RETRY_MS);
-        // T06a: Phase 3 encryption envs. Forward only when set in parent.
-        fwd("COORDINATOR_ENCRYPTION_KEY", process.env.COORDINATOR_ENCRYPTION_KEY);
-        fwd("COORDINATOR_ALLOW_TOKEN_LOSS", process.env.COORDINATOR_ALLOW_TOKEN_LOSS);
-        fwd("COORDINATOR_TOKEN_LOSS_CONFIRM", process.env.COORDINATOR_TOKEN_LOSS_CONFIRM);
-        fwd("COORDINATOR_ALLOW_KEY_ROTATION", process.env.COORDINATOR_ALLOW_KEY_ROTATION);
+        // Only forward the env vars the daemon actually needs (see
+        // buildDaemonEnv's explicit allowlist above) — the daemon can't
+        // inherit unrelated parent-process secrets such as AWS_*,
+        // GITHUB_TOKEN, OPENAI_API_KEY, etc.
+        const childEnv = buildDaemonEnv(process.env, { port, dataDir });
         const child = spawn(cmd, args, {
           detached: true,
           stdio: ["ignore", logFd, logFd],
