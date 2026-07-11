@@ -1,6 +1,8 @@
 version: 2
 updates:
-  - package-ecosystem: "pnpm"
+  # Dependabot has no dedicated "pnpm" ecosystem — the "npm" ecosystem
+  # reads pnpm-lock.yaml (and npm/yarn lockfiles) at the given directory.
+  - package-ecosystem: "npm"
     directory: "/"
     schedule:
       interval: "weekly"
