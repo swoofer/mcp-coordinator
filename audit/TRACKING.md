@@ -20,8 +20,8 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | | High (13) | Med (46) | Low (42) | Info (18) | **Total (119)** |
 |--|:--:|:--:|:--:|:--:|:--:|
-| **Fermés ✅** | 3 | 0 | 1 | 0 | **4 / 119** |
-| **Rounds cochés** | — | — | — | — | **20 / 595** |
+| **Fermés ✅** | 4 | 0 | 1 | 0 | **5 / 119** |
+| **Rounds cochés** | — | — | — | — | **25 / 595** |
 
 > Mettre à jour ce tableau à chaque tâche fermée. 595 = 119 × 5 rounds.
 
@@ -34,7 +34,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 |---|----|-----|-----|---------|----|----|----|----|----|--------|
 | 1 | `documentation-01` | 🔴 High | S | COORDINATOR_BIND documenté mais inexistant, et le bind par défaut anno | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 3671d7b |
 | 2 | `protocole-mcp-02` | 🔴 High | M | Streamable HTTP : aucune validation de l'en-tête Origin (« MUST » de l | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ f8f6227 |
-| 3 | `securite-auth-01` | 🔴 High | M | Confusion de type de jeton : un refresh-token est accepté comme jeton  | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 3 | `securite-auth-01` | 🔴 High | M | Confusion de type de jeton : un refresh-token est accepté comme jeton  | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 34a5ffa+5c6fa04 |
 | 4 | `securite-surface-01` | 🔴 High | S | Le serveur HTTP écoute sur toutes les interfaces ; COORDINATOR_BIND (d | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 3671d7b |
 | 5 | `architecture-05` | 🟠 Med | S | L'allowlist env du mode daemon a dérivé : OAuth Phase 2 et rotation JW | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 6 | `protocole-mcp-04` | 🟠 Med | M | Les outils MCP ignorent claims.sub : n'importe quel appelant authentif | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
