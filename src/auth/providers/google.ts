@@ -99,7 +99,12 @@ export class GoogleProvider implements IdPProvider {
     this.jwks = createRemoteJWKSet(new URL(cfg.jwksUrl ?? DEFAULT_JWKS_URL));
   }
 
-  buildAuthUrl(state: string, redirectUri: string, codeChallenge?: string): string {
+  buildAuthUrl(
+    state: string,
+    redirectUri: string,
+    codeChallenge?: string,
+    nonce?: string,
+  ): string {
     const u = new URL(this.authorizeUrl);
     u.searchParams.set("client_id", this.cfg.clientId);
     u.searchParams.set("redirect_uri", redirectUri);
@@ -114,6 +119,12 @@ export class GoogleProvider implements IdPProvider {
       u.searchParams.set("code_challenge", codeChallenge);
       u.searchParams.set("code_challenge_method", "S256");
     }
+    // securite-auth-02: OIDC nonce (Core 1.0 §3.1.2.1), mirrors
+    // OIDCProvider.buildAuthUrl (oidc.ts). Bound to the oauth_state row
+    // by the caller; verified against id_token.nonce in exchangeCode.
+    if (nonce) {
+      u.searchParams.set("nonce", nonce);
+    }
     return u.toString();
   }
 
@@ -121,6 +132,7 @@ export class GoogleProvider implements IdPProvider {
     code: string,
     redirectUri: string,
     codeVerifier?: string,
+    nonce?: string | null,
   ): Promise<ExchangeCodeResult> {
     const body = new URLSearchParams({
       client_id: this.cfg.clientId,
@@ -188,6 +200,26 @@ export class GoogleProvider implements IdPProvider {
     }
 
     const claims = IdTokenClaimsSchema.parse(payload);
+
+    // securite-auth-02: nonce check, mirrors OIDCProvider.exchangeCode
+    // (oidc.ts). If the caller passed a nonce (the standard path from
+    // oauth-login -> oauth_state.nonce -> oauth-callback), it MUST
+    // match the id_token's nonce claim. Mismatch/absence indicates a
+    // replayed id_token issued for a different authorize request.
+    //
+    // If nonce is null/undefined, the caller is the CLI auth-code
+    // grant (which predates per-state nonce tracking) and we skip
+    // the check -- PKCE already provides proof-of-possession at the
+    // exchange step, so absence of nonce verification narrows but
+    // does not eliminate the residual risk.
+    if (nonce !== undefined && nonce !== null) {
+      // Read from the raw verified payload, not the zod-narrowed
+      // `claims` (which strips unknown keys including `nonce`).
+      const tokenNonce = (payload as { nonce?: unknown }).nonce;
+      if (typeof tokenNonce !== "string" || tokenNonce !== nonce) {
+        throw new IdPTokenRevoked();
+      }
+    }
 
     const user: IdpUserInfo = {
       idp_user_id: claims.sub,
