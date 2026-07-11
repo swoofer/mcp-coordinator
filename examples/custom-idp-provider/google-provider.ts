@@ -1,15 +1,21 @@
 /**
- * Example: Google OAuth 2.0 IdPProvider implementation.
+ * Example: minimal OAuth 2.0 IdPProvider implementation, shaped after
+ * Google's authorization-code flow.
  *
- * This file is a TEMPLATE -- copy into your fork of mcp-coordinator
- * and register via src/auth/providers/registry.ts at boot. Phase 2
- * ships with GitHubProvider only; multi-provider registration is
- * Phase 4.
- *
- * Tested against Google OAuth 2.0 (https://accounts.google.com).
- * For OIDC providers (Auth0, Okta, Azure AD), see oidc-provider.ts
- * (not included here; the structure is similar -- discover via the
- * OIDC Discovery doc at /.well-known/openid-configuration).
+ * mcp-coordinator ships GitHubProvider, GitHubAppProvider,
+ * GoogleProvider, AND a generic OIDCProvider built in (see
+ * `src/auth/providers/{github,github-app,google,oidc}.ts`) --
+ * production Google sign-in already uses `src/auth/providers/google.ts`,
+ * which additionally verifies the id_token signature against Google's
+ * JWKS rather than making a plain userinfo round-trip. This file is a
+ * TEMPLATE for a fully custom (non-OIDC-conformant) IdP that satisfies
+ * the `IdPProvider` interface via a userinfo-endpoint call instead --
+ * copy it into your fork and register via `src/auth/providers/registry.ts`
+ * at boot (see `README-add-to-registry.md` in this directory) only if
+ * your IdP isn't already covered by one of the built-ins. If your IdP
+ * speaks standard OIDC discovery (Auth0, Okta, Azure AD, Keycloak,
+ * Authentik), use the built-in `src/auth/providers/oidc.ts` instead of
+ * vendoring a new provider.
  *
  * Note: this file lives under examples/ which is OUTSIDE the
  * coordinator's tsconfig.json rootDir, so it is documentation-by-
@@ -51,11 +57,22 @@ const UserInfoSchema = z.object({
 });
 
 export class GoogleProvider implements IdPProvider {
-  readonly name = "google";
+  readonly name = "google-example";
+  /** This IdP has no GitHub-org equivalent, so the allowlist match
+   *  goes through `idp_org_id` (the Workspace `hd` claim) rather than
+   *  the default "memberships" strategy -- mirrors the real
+   *  `GoogleProvider` in `src/auth/providers/google.ts`. See
+   *  `AllowlistStrategy` in `src/auth/providers/types.ts`. */
+  readonly allowlistStrategy = "idp_org_id" as const;
 
   constructor(private readonly cfg: GoogleProviderConfig) {}
 
-  buildAuthUrl(state: string, redirectUri: string, codeChallenge?: string): string {
+  buildAuthUrl(
+    state: string,
+    redirectUri: string,
+    codeChallenge?: string,
+    nonce?: string,
+  ): string {
     const u = new URL("https://accounts.google.com/o/oauth2/v2/auth");
     u.searchParams.set("client_id", this.cfg.clientId);
     u.searchParams.set("redirect_uri", redirectUri);
@@ -67,6 +84,15 @@ export class GoogleProvider implements IdPProvider {
       u.searchParams.set("code_challenge", codeChallenge);
       u.searchParams.set("code_challenge_method", "S256");
     }
+    // Current IdPProvider interface (src/auth/providers/types.ts) passes
+    // a per-request `nonce` (OIDC Core 1.0 §3.1.2.1, defence-in-depth
+    // against id_token replay). Forward it whenever present; if your
+    // exchangeCode doesn't verify an id_token signature (as this
+    // example doesn't -- see note there), the nonce round-trip is
+    // still worth sending since real OIDC-conformant IdPs expect it.
+    if (nonce) {
+      u.searchParams.set("nonce", nonce);
+    }
     return u.toString();
   }
 
@@ -74,6 +100,7 @@ export class GoogleProvider implements IdPProvider {
     code: string,
     redirectUri: string,
     codeVerifier?: string,
+    _nonce?: string | null,
   ): Promise<ExchangeCodeResult> {
     const body = new URLSearchParams({
       client_id: this.cfg.clientId,
@@ -100,6 +127,15 @@ export class GoogleProvider implements IdPProvider {
     if (!tokenRes.ok) throw new Error(`Google exchange failed: ${tokenRes.status}`);
     const token = TokenSchema.parse(await tokenRes.json());
 
+    // NOTE: this example authenticates the user via a userinfo-endpoint
+    // round-trip instead of verifying the id_token's signature. That's
+    // a legitimate, simpler pattern for a hand-rolled OAuth 2.0 IdP,
+    // but it is NOT what the built-in `GoogleProvider`
+    // (src/auth/providers/google.ts) does -- that one verifies the
+    // id_token against Google's JWKS with `jose` and never calls
+    // /userinfo. If you're vendoring an IdP that issues a signed
+    // id_token, prefer verifying it directly (fewer round-trips, one
+    // less trust boundary) -- see google.ts for the reference pattern.
     const userRes = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
       headers: { Authorization: `Bearer ${token.access_token}` },
       signal: AbortSignal.timeout(5000),
@@ -114,27 +150,24 @@ export class GoogleProvider implements IdPProvider {
       idp_user_id: user.sub,
       email: user.email,
       name: user.name,
-      // idp_org_id intentionally undefined; mcp-coordinator's
-      // allowlist is per-GitHub-org. For Google: use `hd` (hosted
-      // domain) as a proxy by setting orgs.allowlist_github_org=<hd>.
-      // Or extend the schema with allowlist_google_hd (Phase 4
-      // territory).
+      // idp_org_id is the Workspace hosted-domain (`hd`) claim, matched
+      // against orgs.allowlist_idp_org_id per this provider's
+      // allowlistStrategy = "idp_org_id" above. Absent for personal
+      // @gmail.com accounts (no Workspace tenant).
+      idp_org_id: user.hd,
     };
     return { user: idp, accessToken: token.access_token };
   }
 
   async listMemberships(_accessToken: string): Promise<string[]> {
-    // Google has no direct equivalent of GitHub orgs. Options:
-    //   1. Use the user's `hd` (hosted domain) as a singleton "org"
-    //   2. Use Google Workspace Directory API (requires admin scope)
-    //   3. Hardcode allowlist by email domain in
-    //      orgs.allowlist_github_org
-    //
-    // Phase 4 will need to abstract the allowlist column to support
-    // multiple IdPs. For now this throws -- callers fall back to the
-    // hd-as-org pattern in exchangeCode above.
+    // Google has no direct equivalent of GitHub orgs, and this
+    // provider's allowlistStrategy is "idp_org_id" (see above), so
+    // listMemberships is never called by the allowlist check in normal
+    // operation. It's implemented as a hard failure rather than
+    // omitted so any code path that calls it unconditionally gets a
+    // clear stack trace instead of a silent empty-memberships denial.
     throw new Error(
-      "Google listMemberships not implemented; use hd-based allowlist instead",
+      "listMemberships not implemented; this provider uses the idp_org_id allowlist strategy instead",
     );
   }
 
@@ -147,7 +180,10 @@ export class GoogleProvider implements IdPProvider {
   // signatures matching DeviceCodeResponse / DevicePollResult from
   // src/auth/providers/types.ts -- the IdPProvider interface
   // declares them as optional, so absence here is fine for the
-  // browser-only auth-code path.
+  // browser-only auth-code path. refreshIdpToken is likewise optional
+  // and only worth implementing if your IdP issues expiring access
+  // tokens with a refresh token (Google's do, when access_type=offline
+  // is requested, as above).
   //
   // Type-only imports kept above so the references compile if you
   // uncomment skeleton stubs below.

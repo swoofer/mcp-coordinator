@@ -20,8 +20,8 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | | High (13) | Med (46) | Low (42) | Info (18) | **Total (119)** |
 |--|:--:|:--:|:--:|:--:|:--:|
-| **Fermés ✅** | 12 | 14 | 8 | 0 | **34 / 119** |
-| **Rounds cochés** | — | — | — | — | **160 / 595** |
+| **Fermés ✅** | 12 | 22 | 12 | 1 | **47 / 119** |
+| **Rounds cochés** | — | — | — | — | **225 / 595** |
 
 > Mettre à jour ce tableau à chaque tâche fermée. 595 = 119 × 5 rounds.
 > Note : sur les 10 fermés, 8 sont corrigés (5 rounds chacun = 40) ; 2 (protocole-mcp-04, securite-surface-03) sont **dispositionnés en risque-accepté + documenté** (threat-model, hors comptage 5-rounds).
@@ -153,19 +153,19 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | # | ID | Sév | Eff | Constat | R1 | R2 | R3 | R4 | R5 | Statut |
 |---|----|-----|-----|---------|----|----|----|----|----|--------|
-| 1 | `documentation-03` | 🟠 Med | S | Section « Anthropic Quota Pre-flight » du README : MAX_QUOTA_PCT inexi | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 2 | `documentation-04` | 🟠 Med | M | usage.md : le workflow multi-instances documenté est faux (le PID file | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 3 | `documentation-05` | 🟠 Med | S | Le README promet un outil MCP « introspection » qui n'existe pas | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 4 | `documentation-06` | 🟠 Med | S | SECURITY.md : table des versions supportées périmée de trois minors | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 5 | `documentation-07` | 🟠 Med | S | README figé à v0.11.0 : tags Docker, compteurs de tests et section Sup | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 6 | `documentation-08` | 🟠 Med | S | usage.md « Push vs polling » contredit le README et operating-modes.md | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 7 | `documentation-09` | 🟠 Med | S | Variables COORDINATOR_LOGIN_LOCKOUT_* documentées mais codées en dur ( | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 8 | `documentation-10` | 🟠 Med | S | Les commandes `server backup` / `server restore` existent mais ne sont | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 9 | `documentation-11` | 🟡 Low | S | Exemple custom-idp-provider périmé et auto-contradictoire (parle de v0 | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 10 | `documentation-12` | 🟡 Low | S | docs/ pollué : 132 fichiers internes (superpowers) publiés sur GitHub  | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 11 | `documentation-13` | 🟡 Low | S | Petits chiffres périmés disséminés : « 23 MCP tools » en commentaire,  | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 12 | `documentation-14` | 🟡 Low | S | CONTRIBUTING.md n'explique pas comment reproduire localement le job Li | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 13 | `documentation-15` | ⚪ Info | S | La roadmap du README liste comme futures des features SDK déjà livrées | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 1 | `documentation-03` | 🟠 Med | S | Section « Anthropic Quota Pre-flight » du README : MAX_QUOTA_PCT inexi | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 8fbb5e1 |
+| 2 | `documentation-04` | 🟠 Med | M | usage.md : le workflow multi-instances documenté est faux (le PID file | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 8fbb5e1 |
+| 3 | `documentation-05` | 🟠 Med | S | Le README promet un outil MCP « introspection » qui n'existe pas | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 5484ba7 |
+| 4 | `documentation-06` | 🟠 Med | S | SECURITY.md : table des versions supportées périmée de trois minors | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 5484ba7 |
+| 5 | `documentation-07` | 🟠 Med | S | README figé à v0.11.0 : tags Docker, compteurs de tests et section Sup | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 5484ba7 |
+| 6 | `documentation-08` | 🟠 Med | S | usage.md « Push vs polling » contredit le README et operating-modes.md | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 8fbb5e1 |
+| 7 | `documentation-09` | 🟠 Med | S | Variables COORDINATOR_LOGIN_LOCKOUT_* documentées mais codées en dur ( | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 8fbb5e1 |
+| 8 | `documentation-10` | 🟠 Med | S | Les commandes `server backup` / `server restore` existent mais ne sont | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 1083f18 |
+| 9 | `documentation-11` | 🟡 Low | S | Exemple custom-idp-provider périmé et auto-contradictoire (parle de v0 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 1083f18 |
+| 10 | `documentation-12` | 🟡 Low | S | docs/ pollué : 132 fichiers internes (superpowers) publiés sur GitHub  | ✅ | ✅ | ✅ | ✅ | ⏳ | ✅ HEAD (Pages@deploy) |
+| 11 | `documentation-13` | 🟡 Low | S | Petits chiffres périmés disséminés : « 23 MCP tools » en commentaire,  | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 5484ba7 |
+| 12 | `documentation-14` | 🟡 Low | S | CONTRIBUTING.md n'explique pas comment reproduire localement le job Li | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 8fbb5e1 |
+| 13 | `documentation-15` | ⚪ Info | S | La roadmap du README liste comme futures des features SDK déjà livrées | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 5484ba7 |
 
 ### PR 7 — DX & angles morts (11 constats)
 
