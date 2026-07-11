@@ -20,10 +20,11 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | | High (13) | Med (46) | Low (42) | Info (18) | **Total (119)** |
 |--|:--:|:--:|:--:|:--:|:--:|
-| **Fermés ✅** | 5 | 0 | 2 | 0 | **7 / 119** |
-| **Rounds cochés** | — | — | — | — | **35 / 595** |
+| **Fermés ✅** | 5 | 2 | 3 | 0 | **10 / 119** |
+| **Rounds cochés** | — | — | — | — | **40 / 595** |
 
 > Mettre à jour ce tableau à chaque tâche fermée. 595 = 119 × 5 rounds.
+> Note : sur les 10 fermés, 8 sont corrigés (5 rounds chacun = 40) ; 2 (protocole-mcp-04, securite-surface-03) sont **dispositionnés en risque-accepté + documenté** (threat-model, hors comptage 5-rounds).
 
 ---
 
@@ -37,12 +38,12 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 3 | `securite-auth-01` | 🔴 High | M | Confusion de type de jeton : un refresh-token est accepté comme jeton  | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 34a5ffa+5c6fa04 |
 | 4 | `securite-surface-01` | 🔴 High | S | Le serveur HTTP écoute sur toutes les interfaces ; COORDINATOR_BIND (d | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 3671d7b |
 | 5 | `architecture-05` | 🟠 Med | S | L'allowlist env du mode daemon a dérivé : OAuth Phase 2 et rotation JW | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 6 | `protocole-mcp-04` | 🟠 Med | M | Les outils MCP ignorent claims.sub : n'importe quel appelant authentif | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 6 | `protocole-mcp-04` | 🟠 Med | M | Les outils MCP ignorent claims.sub : n'importe quel appelant authentif | ✅ | — | — | — | 📄 | 📄 différé+documenté bed5486 |
 | 7 | `securite-surface-02` | 🟠 Med | S | /metrics servi sans authentification ; le handler /metrics/auth (local | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 8 | `securite-surface-03` | 🟠 Med | M | Isolation inter-agents absente sur les outils MCP MQTT (lecture de la  | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 8 | `securite-surface-03` | 🟠 Med | M | Isolation inter-agents absente sur les outils MCP MQTT (lecture de la  | ✅ | — | — | — | 📄 | 📄 différé+documenté bed5486 |
 | 9 | `securite-auth-02` | 🟡 Low | S | Le provider Google ne vérifie pas le nonce OIDC de l'id_token | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ eca4d2f |
 | 10 | `securite-auth-03` | 🟡 Low | M | Transport du JWT via query-string `?token=` sur les requêtes GET (SSE) | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 11 | `securite-auth-04` | 🟡 Low | S | Le rôle n'est pas re-dérivé depuis la base lors de la rotation de refr | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 11 | `securite-auth-04` | 🟡 Low | S | Le rôle n'est pas re-dérivé depuis la base lors de la rotation de refr | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 8e6ec78 |
 | 12 | `securite-surface-04` | 🟡 Low | S | Logger Phase 1 sans redaction des secrets (les deux loggers divergent) | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 13 | `securite-surface-05` | 🟡 Low | S | Endpoint Phase 1 /api/auth/register sans rate-limiting ni lockout | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 14 | `securite-surface-06` | 🟡 Low | S | CORS wildcard générique et transport du JWT via ?token= sur les GET | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ f8f6227 |
