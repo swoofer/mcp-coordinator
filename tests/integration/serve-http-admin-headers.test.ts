@@ -6,6 +6,14 @@
  * still ships with. Round 1 CRITICAL finding (V3 PATCH 6 + 7 + frontend
  * Round 2 finding #1).
  *
+ * Legacy (non-admin) dashboard assets originally shipped with NO security
+ * headers at all (just Content-Type + ACAO: *). securite-surface-07 added a
+ * SAFE baseline subset to that branch too — nosniff, X-Frame-Options: DENY,
+ * Referrer-Policy — while deliberately withholding the strict CSP (index.html
+ * has a large inline <script>; see src/serve-http.ts for the rationale and
+ * tests/integration/serve-http-legacy-security-headers.test.ts for the
+ * dedicated red/green coverage). `assertLegacyHeaders` below reflects that.
+ *
  * Strategy: spin up the real HTTP server (mirrors tests/unit/working-files-http
  * pattern) and write temporary admin asset fixtures into dashboard/public/
  * for the duration of the suite. Fixtures are removed in afterAll regardless
@@ -194,22 +202,29 @@ function assertLegacyHeaders(r: Resp, urlPath: string): void {
     r.headers["access-control-allow-origin"],
     `${urlPath} ACAO preserved`,
   ).toBe("*");
-  // And they must NOT have the admin-only hardened headers.
+  // securite-surface-07: legacy assets now get the SAFE subset of the admin
+  // baseline (nosniff, frame-options, referrer-policy) — see src/serve-http.ts
+  // for why a strict CSP is deliberately NOT included (inline-script monolith).
+  expect(
+    r.headers["x-content-type-options"],
+    `${urlPath} must have nosniff`,
+  ).toBe("nosniff");
+  expect(
+    r.headers["x-frame-options"],
+    `${urlPath} must have XFO`,
+  ).toBe("DENY");
+  expect(
+    r.headers["referrer-policy"],
+    `${urlPath} must have Referrer-Policy`,
+  ).toBe("same-origin");
+  // They must still NOT have the admin-only strict CSP / no-store caching.
   expect(
     r.headers["content-security-policy"],
     `${urlPath} must not have CSP`,
   ).toBeUndefined();
   expect(
-    r.headers["x-frame-options"],
-    `${urlPath} must not have XFO`,
-  ).toBeUndefined();
-  expect(
     r.headers["cache-control"],
     `${urlPath} must not have Cache-Control`,
-  ).toBeUndefined();
-  expect(
-    r.headers["referrer-policy"],
-    `${urlPath} must not have Referrer-Policy`,
   ).toBeUndefined();
 }
 

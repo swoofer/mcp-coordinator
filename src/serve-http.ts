@@ -510,9 +510,25 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
               "Cache-Control": "no-store",
             });
           } else {
+            // securite-surface-07: legacy dashboard assets (index.html and
+            // everything that isn't admin-scoped) get the SAFE subset of the
+            // admin baseline — nosniff, frame-options, referrer-policy — but
+            // deliberately NOT the strict CSP above. index.html is a ~63KB
+            // monolith with a single inline <script>; `script-src 'self'`
+            // would break it outright. Extracting that script is tracked
+            // separately (audit findings tests-05 / architecture-14) — until
+            // then, no CSP is safer than a CSP that either does nothing
+            // (missing 'unsafe-inline') or defeats the point (with it).
+            // X-Frame-Options: DENY is safe here too: nothing in this repo
+            // (or its docs) iframes the legacy dashboard, so there's no
+            // legitimate embedding to preserve. ACAO: * is left untouched —
+            // some deployments may have external clients depending on it.
             res.writeHead(200, {
               "Content-Type": contentTypes[ext] || "text/plain",
               "Access-Control-Allow-Origin": "*",
+              "X-Content-Type-Options": "nosniff",
+              "X-Frame-Options": "DENY",
+              "Referrer-Policy": "same-origin",
             });
           }
           res.end(content);

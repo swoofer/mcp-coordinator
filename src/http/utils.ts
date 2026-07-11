@@ -35,7 +35,14 @@ export function parseBody(req: IncomingMessage): Promise<Record<string, unknown>
 }
 
 export function json(res: ServerResponse, data: unknown, status = 200): void {
-  res.writeHead(status, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+  // securite-surface-07: baseline security header on every JSON API response
+  // (this helper backs /health, /readyz, /livez, /api/*, error bodies, ...).
+  // nosniff stops browsers from MIME-sniffing a JSON body as HTML/script.
+  res.writeHead(status, {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*",
+    "X-Content-Type-Options": "nosniff",
+  });
   res.end(JSON.stringify(data));
 }
 
