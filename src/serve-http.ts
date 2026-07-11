@@ -248,6 +248,17 @@ const SSE_HEARTBEAT_MS = (() => {
   return Number.isFinite(n) && n > 0 ? n : 30_000;
 })();
 
+// performance-02: number of events sent to a freshly-connected SSE client
+// that has no Last-Event-ID (i.e. "catch me up on recent activity"). Bounded
+// at the SQL layer via SseEmitter.getRecentEvents — this many rows, never more.
+const SSE_RECENT_EVENTS_LIMIT = 50;
+
+// performance-02: safety cap for Last-Event-ID resumption. A client that
+// reconnects with a very old id (or a forged/corrupted one) must not be able
+// to force a full-history load — cap the SQL result set so the worst case is
+// a bounded, predictable read instead of an unbounded synchronous scan.
+const SSE_RESUME_CAP = 1000;
+
 async function handleSse(req: IncomingMessage, res: ServerResponse): Promise<void> {
   // Task 21.5: authenticate SSE GET requests. EventSource does not send
   // Authorization headers, so we also accept a ?token= query param on GET.
@@ -279,11 +290,13 @@ async function handleSse(req: IncomingMessage, res: ServerResponse): Promise<voi
   services.metrics.incSseClients();
   services.metrics.recordHttpRequest("/api/events", 200);
 
-  // Use Last-Event-ID for resumption, otherwise send last 50
+  // Use Last-Event-ID for resumption, otherwise send last 50. performance-02:
+  // both branches are bounded at the SQL layer (LIMIT), never a full-table
+  // load followed by an in-memory slice.
   const lastEventId = parseInt(req.headers["last-event-id"] as string || "0", 10);
   const events = lastEventId > 0
-    ? services.sseEmitter.getEventsSince(orgId, lastEventId)
-    : services.sseEmitter.getEventsSince(orgId, 0).slice(-50);
+    ? services.sseEmitter.getEventsSince(orgId, lastEventId, SSE_RESUME_CAP)
+    : services.sseEmitter.getRecentEvents(orgId, SSE_RECENT_EVENTS_LIMIT);
   for (const event of events) {
     writeSseEvent(res, event);
   }

@@ -6,17 +6,58 @@ import { WebSocketServer } from "ws";
 import type { WebSocket } from "ws";
 import type { Logger } from "./logger.js";
 
+// performance-04: caps inbound WS frame size for the MQTT-over-WS bridge
+// (DoS guard). Defaults to 1 MiB — same default as COORDINATOR_MAX_BODY_BYTES
+// (src/http/utils.ts) for a consistent "reasonable payload" ceiling across
+// the server's ingress paths. Override via env if legitimate MQTT payloads
+// need more headroom.
+const MQTT_WS_MAX_PAYLOAD_BYTES = parseInt(
+  process.env.COORDINATOR_MQTT_WS_MAX_PAYLOAD_BYTES || "1048576",
+  10,
+);
+
 /**
  * Bridge a WebSocket to a Duplex stream for aedes.
  * Replaces createWebSocketStream which is not supported in Bun.
+ *
+ * Backpressure (performance-04):
+ *  - write: `ws.send`'s callback is only invoked once the chunk is flushed
+ *    to the underlying socket. Forwarding it as the Duplex `write` callback
+ *    means the Duplex won't accept the next chunk until the previous one is
+ *    actually flushed — a slow WS consumer now throttles the source instead
+ *    of buffering without bound.
+ *  - read: `duplex.push()` returns false when the internal read buffer is
+ *    full. When that happens we `ws.pause()` (stops the underlying socket
+ *    from emitting further "message" events) and resume it from `read()`,
+ *    which aedes calls once it's ready to consume more — mirroring the
+ *    standard Node.js readable-stream backpressure contract.
+ *    `ws.pause()`/`ws.resume()` are no-ops when the socket isn't in a state
+ *    where pausing/resuming applies (see `ws` lib), so this can't deadlock
+ *    on a socket that's already closing/closed.
+ *
+ * `highWaterMark` is set explicitly (16 KiB — the same figure Node's
+ * Duplex/Readable/Writable defaults to when unset) rather than left
+ * implicit: it bounds the read/write buffers to a known size regardless of
+ * Node version/platform defaults, and makes the `push()`/`write()`
+ * backpressure threshold deterministic for tests.
  */
-function wsToDuplex(ws: WebSocket): Duplex {
+const WS_DUPLEX_HIGH_WATER_MARK_BYTES = 16 * 1024;
+
+export function wsToDuplex(ws: WebSocket): Duplex {
   const duplex = new Duplex({
-    read() {},
+    highWaterMark: WS_DUPLEX_HIGH_WATER_MARK_BYTES,
+    read() {
+      // aedes is ready for more data — release backpressure applied (if any)
+      // in the "message" handler below.
+      ws.resume();
+    },
     write(chunk, _encoding, callback) {
       try {
-        ws.send(chunk);
-        callback();
+        // `ws.send`'s callback fires once the chunk is written to the
+        // underlying socket (or errors). Passing it straight through gives
+        // the Duplex real backpressure: it won't call `write` again until
+        // this callback fires.
+        ws.send(chunk, (err) => callback(err ?? null));
       } catch (err) {
         callback(err as Error);
       }
@@ -26,7 +67,13 @@ function wsToDuplex(ws: WebSocket): Duplex {
       callback();
     },
   });
-  ws.on("message", (data) => duplex.push(data));
+  ws.on("message", (data) => {
+    if (!duplex.push(data)) {
+      // Buffer full: stop the socket from delivering more "message" events
+      // until `read()` above signals aedes is ready again.
+      ws.pause();
+    }
+  });
   ws.on("close", () => { duplex.push(null); duplex.destroy(); });
   ws.on("error", (err) => duplex.destroy(err));
   return duplex;
@@ -202,7 +249,10 @@ export async function startEmbeddedMqttBroker(opts: EmbeddedMqttOptions): Promis
   }
 
   if (httpServer) {
-    const wss = new WebSocketServer({ noServer: true });
+    // performance-04: bound inbound WS frame size — without this, `ws`
+    // defaults to a 100 MiB maxPayload, letting a single client send
+    // unbounded-ish frames to the broker.
+    const wss = new WebSocketServer({ noServer: true, maxPayload: MQTT_WS_MAX_PAYLOAD_BYTES });
     wss.on("connection", (ws) => {
       const duplex = wsToDuplex(ws);
       broker.handle(duplex);
