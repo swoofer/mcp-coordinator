@@ -86,7 +86,7 @@ jobs:
             type=match,pattern=v(\d+\.\d+),group=1,value=${{ inputs.tag }},enable=${{ inputs.tag != '' }}
 
       - name: Build and push (linux/amd64, linux/arm64)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
