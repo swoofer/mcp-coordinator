@@ -97,9 +97,16 @@ export function bootPhase2(
   logger.debug({ public_url: publicUrl }, "bootPhase2: env resolved");
 
   // 2. Validate PUBLIC_URL format. http:// non-localhost requires an explicit
-  //    COORDINATOR_INSECURE_COOKIES=true override since the Secure flag is
-  //    dropped — see V3 §4.2 and src/auth/cookies.ts.
+  //    COORDINATOR_INSECURE_COOKIES=true override to pass THIS check — see
+  //    V3 §4.2 and src/auth/cookies.ts. securite-auth-05: despite the name,
+  //    the flag does NOT drop the Secure flag from Phase 2 session/CSRF
+  //    cookies — those are __Host--prefixed (hostCookie() in cookies.ts),
+  //    which RFC 6265bis mandates always carry Secure. The flag only
+  //    widens THIS boot gate; warnOnInsecureCookiesFlag() below disarms the
+  //    footgun (operator boots successfully over http:// non-localhost,
+  //    then every Set-Cookie is silently dropped by the browser).
   validatePublicUrl(publicUrl, env);
+  warnOnInsecureCookiesFlag(env, logger);
 
   // 3. Validate JWT secret entropy (T08b assertSecretEntropy).
   const secretBuf = Buffer.from(jwtSecret, "utf8");
@@ -396,6 +403,34 @@ function validatePublicUrl(url: string, env: NodeJS.ProcessEnv): void {
 
 function isLocalhost(host: string): boolean {
   return host === "localhost" || host === "127.0.0.1" || host === "::1";
+}
+
+// securite-auth-05: COORDINATOR_INSECURE_COOKIES=true is a footgun as
+// currently named/documented — it reads as "make cookies work over plain
+// HTTP", but it only relaxes the validatePublicUrl() boot gate above.
+// Phase 2 session/CSRF cookies go through hostCookie() (src/auth/cookies.ts),
+// which hardcodes `Secure` unconditionally because the __Host- prefix
+// requires it (RFC 6265bis §4.1.3) — getCookieSecureFlag() exists in that
+// module but nothing wires it into hostCookie(), so the flag never actually
+// changes cookie output. Net effect if an operator sets this for a real
+// http:// non-localhost deployment: boot succeeds, but every Set-Cookie is
+// silently dropped by the browser (Secure cookie over a non-HTTPS origin)
+// and auth just doesn't work, with nothing in the logs to explain why —
+// until this warning. Emitted unconditionally (not just for the
+// non-localhost case) since a developer relying on it for local HTTP dev
+// against a non-localhost hostname (e.g. a LAN IP or a *.local name) hits
+// the exact same silent failure.
+function warnOnInsecureCookiesFlag(env: NodeJS.ProcessEnv, logger: Logger): void {
+  if (env.COORDINATOR_INSECURE_COOKIES !== "true") return;
+  logger.warn(
+    "COORDINATOR_INSECURE_COOKIES=true is set. This does NOT make Phase 2 " +
+      "cookies insecure-friendly: session/CSRF cookies are __Host--prefixed " +
+      "and ALWAYS set Secure regardless of this flag (RFC 6265bis). It only " +
+      "bypasses the COORDINATOR_PUBLIC_URL http://-non-localhost boot check. " +
+      "Serving Phase 2 over plain HTTP on a non-localhost origin means " +
+      "browsers will silently reject those cookies and auth will appear " +
+      "broken. Dev-only; never set this in production.",
+  );
 }
 
 // GHES env-var validator. Same format check as PUBLIC_URL — must parse + must

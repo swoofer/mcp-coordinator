@@ -69,6 +69,22 @@ export function jsonAuthError(res: ServerResponse, authResult: Exclude<AuthResul
   json(res, { error: authResult.error }, authResult.status);
 }
 
+// securite-auth-03: GET requests (SSE / EventSource compat — see
+// authenticateRequest in ../auth.ts) accept a bearer JWT via `?token=<jwt>`
+// query param, decided/kept as-is (see docs/security/threat-model.md). That
+// token is NOT covered by the pino REDACT_PATHS allowlist
+// (../observability/redact-paths.ts) — those entries redact structured
+// object *paths* (`req.headers.authorization`, `body.refresh_token`, ...),
+// not a substring embedded inside a plain `url` string value. Every call
+// site that logs a request URL (raw `req.url`, or any `url` derived from
+// it) MUST route it through this first, or a valid/invalid JWT lands in
+// cleartext in the log stream and any downstream log aggregator.
+const TOKEN_QUERY_PARAM_RE = /([?&]token=)[^&#]*/gi;
+
+export function redactTokenParam(url: string): string {
+  return url.replace(TOKEN_QUERY_PARAM_RE, "$1[REDACTED]");
+}
+
 // performance-03: id-like path segments would otherwise become a Prometheus
 // label VALUE, giving each distinct id (uuid, thread id, agent id, ...) its
 // own unbounded time series. These three shapes cover the id-bearing REST
