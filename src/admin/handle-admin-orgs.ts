@@ -25,6 +25,7 @@ import {
   validatePathParam,
   validateUpdateBody,
 } from "./validate.js";
+import { writeJson, readJsonBody, writeValidationError } from "./admin-common.js";
 
 interface OrgRow {
   id: string;
@@ -39,21 +40,6 @@ const ORG_BODY_FIELDS = [
   "allowlist_github_org",
   "allowlist_idp_org_id",
 ] as const;
-
-const MAX_BODY_BYTES = 4096;
-
-/** Return true and write a JSON error response; caller exits early. */
-function writeJson(
-  res: ServerResponse,
-  status: number,
-  body: unknown,
-): void {
-  res.writeHead(status, {
-    "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": "no-store",
-  });
-  res.end(JSON.stringify(body));
-}
 
 /** Admin gate. Returns the AuthClaims on success, null on rejection (response
  *  already written). Mirrors handle-service-tokens.ts §authenticateRequest. */
@@ -97,60 +83,6 @@ function checkCsrf(req: IncomingMessage, res: ServerResponse): boolean {
     return false;
   }
   return true;
-}
-
-/** Read a JSON body up to MAX_BODY_BYTES. Returns null + writes 400 on error. */
-async function readJsonBody<T = unknown>(
-  req: IncomingMessage,
-  res: ServerResponse,
-): Promise<T | null> {
-  try {
-    const chunks: Buffer[] = [];
-    let total = 0;
-    for await (const chunk of req) {
-      const buf = chunk as Buffer;
-      total += buf.length;
-      if (total > MAX_BODY_BYTES) {
-        writeJson(
-          res,
-          400,
-          appError("INVALID_REQUEST", "Request body too large"),
-        );
-        return null;
-      }
-      chunks.push(buf);
-    }
-    const raw = Buffer.concat(chunks).toString("utf8");
-    if (raw.length === 0) {
-      writeJson(res, 400, appError("INVALID_REQUEST", "Empty request body"));
-      return null;
-    }
-    const parsed = JSON.parse(raw) as unknown;
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      writeJson(
-        res,
-        400,
-        appError("INVALID_REQUEST", "Body must be a JSON object"),
-      );
-      return null;
-    }
-    return parsed as T;
-  } catch {
-    writeJson(
-      res,
-      400,
-      appError("INVALID_REQUEST", "Could not parse JSON body"),
-    );
-    return null;
-  }
-}
-
-/** Translate AdminValidationError into a 400 with the validator's code. */
-function writeValidationError(
-  res: ServerResponse,
-  err: AdminValidationError,
-): void {
-  writeJson(res, 400, appError(err.code, err.message));
 }
 
 /** Detect SQLITE_CONSTRAINT_UNIQUE on idx_orgs_name. better-sqlite3 surfaces

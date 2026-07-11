@@ -3,6 +3,7 @@ import type { CoordinatorServices } from "./server-setup.js";
 import type { CategorizedImpact, ImpactScore } from "./impact-scorer.js";
 import { getDb } from "./database.js";
 import { assessPlanQuality, type PlanQualityResult } from "./plan-quality.js";
+import { safeJsonParse } from "./json-utils.js";
 
 /**
  * S2 fix: shared `announce_work` orchestration.
@@ -61,7 +62,7 @@ export function runCommonAnnounceFlow(
   threadId: string,
   params: CommonFlowParams,
 ): CommonFlowResult {
-  const { registry, consultation, impactScorer, introspection, sseEmitter } = services;
+  const { registry, consultation, impactScorer, introspection, sseEmitter, logger } = services;
 
   // 1. Score impact: categorize all online agents into concerned / gray_zone / pass.
   const categorized = impactScorer.categorize({
@@ -143,7 +144,7 @@ export function runCommonAnnounceFlow(
   }
 
   const updated = consultation.getThread(params.org_id, threadId)!;
-  const respondents: string[] = JSON.parse(updated.expected_respondents || "[]");
+  const respondents: string[] = safeJsonParse<string[]>(updated.expected_respondents, [], logger, "announce-workflow.runCommonAnnounceFlow:expected_respondents");
 
   return { updated, categorized, respondents, planQuality };
 }

@@ -20,8 +20,8 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | | High (13) | Med (46) | Low (42) | Info (18) | **Total (119)** |
 |--|:--:|:--:|:--:|:--:|:--:|
-| **Fermés ✅** | 12 | 22 | 12 | 1 | **47 / 119** |
-| **Rounds cochés** | — | — | — | — | **225 / 595** |
+| **Fermés ✅** | 12 | 22 | 15 | 1 | **50 / 119** |
+| **Rounds cochés** | — | — | — | — | **240 / 595** |
 
 > Mettre à jour ce tableau à chaque tâche fermée. 595 = 119 × 5 rounds.
 > Note : sur les 10 fermés, 8 sont corrigés (5 rounds chacun = 40) ; 2 (protocole-mcp-04, securite-surface-03) sont **dispositionnés en risque-accepté + documenté** (threat-model, hors comptage 5-rounds).
@@ -135,10 +135,10 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 15 | `architecture-11` | 🟡 Low | S | Inversion de couche : src/ importe cli/version.ts | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 16 | `architecture-13` | 🟡 Low | M | Pas de carte d'architecture pour les contributeurs externes malgré 108 | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 17 | `architecture-15` | 🟡 Low | M | Posture de validation d'entrée incohérente entre transports : zod côté | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 18 | `qualite-code-04` | 🟡 Low | S | Duplication verbatim des helpers admin (readJsonBody, writeJson, write | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 19 | `qualite-code-05` | 🟡 Low | S | safeEqual et decodeJwtPayload dupliqués localement dans serve-http.ts  | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 18 | `qualite-code-04` | 🟡 Low | S | Duplication verbatim des helpers admin (readJsonBody, writeJson, write | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ b58688d |
+| 19 | `qualite-code-05` | 🟡 Low | S | safeEqual et decodeJwtPayload dupliqués localement dans serve-http.ts  | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ b58688d |
 | 20 | `qualite-code-06` | 🟡 Low | S | Dualité Phase 1 / Phase 2 : deux modules metrics, deux loggers, auth.t | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 21 | `qualite-code-07` | 🟡 Low | S | JSON.parse non protégé sur des colonnes SQLite dans les chemins de lec | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 21 | `qualite-code-07` | 🟡 Low | S | JSON.parse non protégé sur des colonnes SQLite dans les chemins de lec | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 22ae9ef |
 | 22 | `tests-06` | 🟡 Low | M | Zones serveur les moins mesurées : serve-http.ts 47,5 %, handle-rest.t | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 23 | `tests-07` | 🟡 Low | S | Race assumée dans channel-smoke : sleep fixe de 1,5 s au lieu d'attend | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 24 | `tests-08` | 🟡 Low | S | CLI : commandes exclues de la mesure de couverture et « uninstall » (d | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |

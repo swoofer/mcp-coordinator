@@ -2,6 +2,7 @@ import type { AgentContext, ConsultationAnnounce } from "./types.js";
 import type { AgentRegistry } from "./agent-registry.js";
 import type { Consultation } from "./consultation.js";
 import type { FileTracker } from "./file-tracker.js";
+import { safeJsonParse } from "./json-utils.js";
 
 export interface ContextProvider {
   getRelevantContext(
@@ -28,7 +29,7 @@ export class SummaryContextProvider implements ContextProvider {
       return { agent_id: agentId, modules: [], recent_files: [], action_summaries: [] };
     }
 
-    const agentModules: string[] = JSON.parse(agent.modules);
+    const agentModules: string[] = safeJsonParse<string[]>(agent.modules, [], undefined, "context-provider.getRelevantContext:agent.modules");
 
     // Filter to only overlapping modules
     const overlapping = agentModules.filter((am) =>

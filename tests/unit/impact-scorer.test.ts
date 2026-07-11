@@ -545,4 +545,52 @@ describe("impact-scorer org_id propagation + direct SQL scoping", () => {
     const layer4Reasons = peerScore?.reasons.filter(r => r.includes("co-change")) ?? [];
     expect(layer4Reasons).toHaveLength(0);
   });
+
+  it("qualite-code-07: does not throw when agent.modules column is corrupted JSON", () => {
+    registry.register("default", "a1", "Agent A", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/users"]);
+    getDb().prepare("UPDATE agents SET modules = ? WHERE org_id = 'default' AND id = 'a2'").run("{not valid json");
+
+    expect(() => {
+      const scores = scorer.score({
+        org_id: "default",
+        agent_id: "a1",
+        target_modules: ["src/auth"],
+        target_files: [],
+      });
+      expect(scores.find(s => s.agent_id === "a2")).toBeDefined();
+    }).not.toThrow();
+  });
+
+  it("qualite-code-07: does not throw when a thread's target_files/depends_on_files columns are corrupted", () => {
+    const consultation = new Consultation();
+    const scorerWithConsultation = new ImpactScorer(registry, tracker, consultation);
+
+    registry.register("default", "a1", "Agent A", ["src/auth"]);
+    registry.register("default", "a2", "Agent B", ["src/shared"]);
+
+    const thread = consultation.announceWork("default", {
+      agent_id: "a2",
+      subject: "Refactor shared types",
+      target_modules: ["src/shared"],
+      target_files: ["src/shared/types.ts"],
+    });
+    getDb().prepare("UPDATE threads SET target_files = ?, depends_on_files = ? WHERE id = ?").run(
+      "TRUNCATED[",
+      "not-json",
+      thread.id,
+    );
+
+    expect(() => {
+      const scores = scorerWithConsultation.score({
+        org_id: "default",
+        agent_id: "a1",
+        target_modules: ["src/auth"],
+        target_files: ["src/shared/types.ts"],
+      });
+      // Corrupted columns parse to [] — no Layer 0 overlap, graceful degradation.
+      const a2Score = scores.find(s => s.agent_id === "a2");
+      expect(a2Score?.reason).not.toContain("announced same file");
+    }).not.toThrow();
+  });
 });

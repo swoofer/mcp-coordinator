@@ -1,5 +1,5 @@
 ﻿import { createServer, IncomingMessage, ServerResponse } from "http";
-import { randomUUID, timingSafeEqual } from "crypto";
+import { randomUUID } from "crypto";
 import path from "path";
 import { readFileSync, existsSync } from "fs";
 import { fileURLToPath } from "url";
@@ -22,7 +22,7 @@ import { handleHealthz, handleHealthReady } from "./http/health.js";
 import { handleDiscovery } from "./discovery.js";
 import { serveMetrics } from "./metrics.js";
 import { handleMetrics } from "./http/metrics.js";
-import { parseBody as parseBodyShared, json as jsonShared, jsonAuthError as jsonAuthErrorShared, metricRoute } from "./http/utils.js";
+import { parseBody as parseBodyShared, json as jsonShared, jsonAuthError as jsonAuthErrorShared, metricRoute, decodeJwtPayload, safeEqual } from "./http/utils.js";
 import { isAllowedOrigin } from "./http/origin.js";
 import { assessPlanQuality } from "./plan-quality.js";
 import type { CoordinatorEvent } from "./types.js";
@@ -82,20 +82,7 @@ let currentRunConfig: Record<string, unknown> | null = null;
 const parseBody = parseBodyShared;
 const json = jsonShared;
 const jsonAuthError = jsonAuthErrorShared;
-
-function decodeJwtPayload(token: string): Record<string, unknown> {
-  // Used only on tokens we just minted ourselves (to read the `exp` claim
-  // before returning it to the client). Real verification of inbound tokens
-  // happens in `authenticateRequest` via jose.jwtVerify().
-  const base64url = token.split(".")[1];
-  return JSON.parse(Buffer.from(base64url, "base64url").toString("utf-8"));
-}
-
-function safeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(Buffer.from(a), Buffer.from(b));
-}
-
+// S1: decodeJwtPayload and safeEqual moved to ./http/utils.js (qualite-code-05).
 
 // S1: handleRest extracted to ./http/handle-rest.ts. Thin wrapper here keeps
 // startServer's call site stable while the 382-line REST router lives in its

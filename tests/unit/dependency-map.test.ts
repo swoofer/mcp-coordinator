@@ -108,4 +108,52 @@ describe("dependency-map org_id scoping", () => {
   });
 });
 
+describe("dependency-map corrupted column resilience (qualite-code-07)", () => {
+  beforeEach(() => { getDb().exec("DELETE FROM dependency_map"); });
+
+  it("getDependencies falls back to [] instead of throwing on malformed JSON columns", () => {
+    depMap.setDependencies("org-a", "modX", { depends_on: ["a"], exports: ["b"], owners: ["c"] });
+    getDb().prepare(
+      "UPDATE dependency_map SET depends_on = ?, exports = ?, owners = ? WHERE org_id = 'org-a' AND module_id = 'modX'"
+    ).run("{not valid json", "", "null-ish-garbage[");
+
+    let result: ReturnType<DependencyMapper["getDependencies"]>;
+    expect(() => { result = depMap.getDependencies("org-a", "modX"); }).not.toThrow();
+    expect(result!).toEqual({ depends_on: [], exports: [], owners: [] });
+  });
+
+  it("getMap falls back to [] per-field for a corrupted row, other rows unaffected", () => {
+    depMap.setDependencies("org-a", "good", { depends_on: ["x"], exports: ["y"], owners: ["z"] });
+    depMap.setDependencies("org-a", "bad", { depends_on: ["x"], exports: ["y"], owners: ["z"] });
+    getDb().prepare("UPDATE dependency_map SET depends_on = 'TRUNCATED' WHERE org_id = 'org-a' AND module_id = 'bad'").run();
+
+    let map: ReturnType<DependencyMapper["getMap"]>;
+    expect(() => { map = depMap.getMap("org-a"); }).not.toThrow();
+    expect(map!.good.depends_on).toEqual(["x"]);
+    expect(map!.bad.depends_on).toEqual([]);
+    expect(map!.bad.exports).toEqual(["y"]);
+  });
+
+  it("getModuleInfo falls back to [] instead of throwing on malformed JSON", () => {
+    depMap.setDependencies("org-a", "modY", { depends_on: ["a"], exports: ["b"], owners: ["c"] });
+    getDb().prepare("UPDATE dependency_map SET owners = 'not-json' WHERE org_id = 'org-a' AND module_id = 'modY'").run();
+
+    let info: ReturnType<DependencyMapper["getModuleInfo"]>;
+    expect(() => { info = depMap.getModuleInfo("org-a", "modY"); }).not.toThrow();
+    expect(info!.owners).toEqual([]);
+    expect(info!.depends_on).toEqual(["a"]);
+  });
+
+  it("listOwners skips corrupted rows gracefully instead of throwing", () => {
+    depMap.setDependencies("org-a", "modA", { depends_on: [], exports: [], owners: ["alice"] });
+    depMap.setDependencies("org-a", "modB", { depends_on: [], exports: [], owners: ["bob"] });
+    getDb().prepare("UPDATE dependency_map SET owners = '[\"unterminated' WHERE org_id = 'org-a' AND module_id = 'modB'").run();
+
+    let owners: string[];
+    expect(() => { owners = depMap.listOwners("org-a"); }).not.toThrow();
+    expect(owners!).toContain("alice");
+    expect(owners!).not.toContain("bob");
+  });
+});
+
 

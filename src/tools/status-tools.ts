@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { CoordinatorServices } from "../server-setup.js";
 import type { Logger } from "../logger.js";
 import type { AuthClaims } from "../auth.js";
+import { safeJsonParse } from "../json-utils.js";
 
 /**
  * S1: status + coordination helper MCP tools (2 tools).
@@ -30,7 +31,7 @@ export function registerStatusTools(
     const hotFiles = fileTracker.getHotFiles(claims.org, 30);
     const status = {
       agents_online: online.length,
-      agents: online.map((a) => ({ id: a.id, name: a.name, modules: JSON.parse(a.modules) })),
+      agents: online.map((a) => ({ id: a.id, name: a.name, modules: safeJsonParse<string[]>(a.modules, [], mcpLog, "status-tools.coordinator_status:agent.modules") })),
       open_threads: openThreads.length,
       resolving_threads: resolvingThreads.length,
       hot_files: hotFiles.length,

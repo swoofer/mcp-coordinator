@@ -41,6 +41,7 @@ import {
   validateRoleField,
   validateUpdateBody,
 } from "./validate.js";
+import { writeJson, readJsonBody, writeValidationError } from "./admin-common.js";
 
 interface UserRow {
   id: string;
@@ -54,22 +55,7 @@ interface UserRow {
 
 const USER_BODY_FIELDS = ["role"] as const;
 
-const MAX_BODY_BYTES = 4096;
-
 const USER_PATH_RE = /^\/api\/admin\/users\/([^/]+)$/;
-
-/** JSON response helper with no-store cache. */
-function writeJson(
-  res: ServerResponse,
-  status: number,
-  body: unknown,
-): void {
-  res.writeHead(status, {
-    "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": "no-store",
-  });
-  res.end(JSON.stringify(body));
-}
 
 /** Admin auth gate. Returns claim subset on success, null on rejection. */
 async function requireAdmin(
@@ -109,60 +95,6 @@ function checkCsrf(req: IncomingMessage, res: ServerResponse): boolean {
     return false;
   }
   return true;
-}
-
-/** Bounded JSON-object body reader. Returns null + writes 400 on error. */
-async function readJsonBody<T = unknown>(
-  req: IncomingMessage,
-  res: ServerResponse,
-): Promise<T | null> {
-  try {
-    const chunks: Buffer[] = [];
-    let total = 0;
-    for await (const chunk of req) {
-      const buf = chunk as Buffer;
-      total += buf.length;
-      if (total > MAX_BODY_BYTES) {
-        writeJson(
-          res,
-          400,
-          appError("INVALID_REQUEST", "Request body too large"),
-        );
-        return null;
-      }
-      chunks.push(buf);
-    }
-    const raw = Buffer.concat(chunks).toString("utf8");
-    if (raw.length === 0) {
-      writeJson(res, 400, appError("INVALID_REQUEST", "Empty request body"));
-      return null;
-    }
-    const parsed = JSON.parse(raw) as unknown;
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      writeJson(
-        res,
-        400,
-        appError("INVALID_REQUEST", "Body must be a JSON object"),
-      );
-      return null;
-    }
-    return parsed as T;
-  } catch {
-    writeJson(
-      res,
-      400,
-      appError("INVALID_REQUEST", "Could not parse JSON body"),
-    );
-    return null;
-  }
-}
-
-/** Translate AdminValidationError to a 400 with the validator's code. */
-function writeValidationError(
-  res: ServerResponse,
-  err: AdminValidationError,
-): void {
-  writeJson(res, 400, appError(err.code, err.message));
 }
 
 // ===========================================================================
