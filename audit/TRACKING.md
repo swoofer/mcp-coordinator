@@ -20,8 +20,8 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | | High (13) | Med (46) | Low (42) | Info (18) | **Total (119)** |
 |--|:--:|:--:|:--:|:--:|:--:|
-| **Fermés ✅** | 10 | 7 | 5 | 0 | **22 / 119** |
-| **Rounds cochés** | — | — | — | — | **100 / 595** |
+| **Fermés ✅** | 12 | 7 | 5 | 0 | **24 / 119** |
+| **Rounds cochés** | — | — | — | — | **110 / 595** |
 
 > Mettre à jour ce tableau à chaque tâche fermée. 595 = 119 × 5 rounds.
 > Note : sur les 10 fermés, 8 sont corrigés (5 rounds chacun = 40) ; 2 (protocole-mcp-04, securite-surface-03) sont **dispositionnés en risque-accepté + documenté** (threat-model, hors comptage 5-rounds).
@@ -73,8 +73,8 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | # | ID | Sév | Eff | Constat | R1 | R2 | R3 | R4 | R5 | Statut |
 |---|----|-----|-----|---------|----|----|----|----|----|--------|
-| 1 | `ci-cd-01` | 🔴 High | M | release-binaries ne se déclenche plus depuis que release-please crée l | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 2 | `maintenabilite-02` | 🔴 High | M | Canal de distribution binaires silencieusement cassé depuis v0.11.0 | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 1 | `ci-cd-01` | 🔴 High | M | release-binaries ne se déclenche plus depuis que release-please crée l | ✅ | ✅ | ✅ | ✅ | ⏳ | ✅ 72e19c5 (plausible) |
+| 2 | `maintenabilite-02` | 🔴 High | M | Canal de distribution binaires silencieusement cassé depuis v0.11.0 | ✅ | ✅ | ✅ | ✅ | ⏳ | ✅ 72e19c5 (plausible) |
 | 3 | `tests-01` | 🔴 High | S | Les seuils de couverture 100 % ne sont pas appliqués en CI (pnpm test  | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ fa96fca+c47aed6 |
 | 4 | `ci-cd-02` | 🟠 Med | S | Provenance npm revendiquée mais jamais activée (id-token: write inutil | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 5 | `ci-cd-03` | 🟠 Med | S | Aucun status check requis sur main : les tests ne bloquent pas les mer | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
