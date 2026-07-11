@@ -20,8 +20,8 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | | High (13) | Med (46) | Low (42) | Info (18) | **Total (119)** |
 |--|:--:|:--:|:--:|:--:|:--:|
-| **Fermés ✅** | 12 | 10 | 7 | 0 | **29 / 119** |
-| **Rounds cochés** | — | — | — | — | **135 / 595** |
+| **Fermés ✅** | 12 | 12 | 7 | 0 | **31 / 119** |
+| **Rounds cochés** | — | — | — | — | **145 / 595** |
 
 > Mettre à jour ce tableau à chaque tâche fermée. 595 = 119 × 5 rounds.
 > Note : sur les 10 fermés, 8 sont corrigés (5 rounds chacun = 40) ; 2 (protocole-mcp-04, securite-surface-03) sont **dispositionnés en risque-accepté + documenté** (threat-model, hors comptage 5-rounds).
@@ -106,8 +106,8 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 2 | `performance-02` | 🟠 Med | S | Connexion SSE sans Last-Event-ID : chargement de TOUT l'historique eve | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 3 | `performance-03` | 🟠 Med | S | Cardinalité Prometheus non bornée : l'URL brute (avec UUIDs et chemins | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 4 | `performance-04` | 🟠 Med | M | Pont WebSocket→MQTT sans backpressure ni maxPayload : un consommateur  | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 5 | `performance-05` | 🟠 Med | S | Queues de listeners MqttBridge jamais nettoyées ni bornées : fuite mém | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 6 | `performance-06` | 🟠 Med | S | RateLimiter.sweep() n'est jamais appelé : la Map de buckets croît sans | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 5 | `performance-05` | 🟠 Med | S | Queues de listeners MqttBridge jamais nettoyées ni bornées : fuite mém | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 1e4daf2 |
+| 6 | `performance-06` | 🟠 Med | S | RateLimiter.sweep() n'est jamais appelé : la Map de buckets croît sans | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 1e4daf2 |
 | 7 | `performance-07` | 🟡 Low | M | Sessions MCP StreamableHTTP jamais expirées : transports + McpServer a | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 8 | `performance-08` | 🟡 Low | S | bench-audit-queue.ts cassé (dérive de schéma) : la suite perf a rouill | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 9 | `performance-09` | 🟡 Low | S | Sweep audit_log sur expression non indexable strftime('%s', created_at | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
