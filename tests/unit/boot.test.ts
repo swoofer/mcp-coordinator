@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import Database from "better-sqlite3";
 import { bootPhase2, BootValidationError } from "../../src/boot.js";
 import { FakeClock } from "../helpers/clock.js";
@@ -459,6 +459,34 @@ describe("bootPhase2 — success path", () => {
     expect(bs.sweeper).toBeDefined();
     expect(typeof bs.shutdown).toBe("function");
     void bs.shutdown();
+  });
+
+  it("performance-06: wires the RateLimiter sweeper to a periodic tick; shutdown stops it", () => {
+    applyValidEnv();
+    vi.useFakeTimers();
+    try {
+      const result = bootPhase2({ enabled: true, db, clock });
+      expect(result).not.toBeNull();
+      const rateLimiter = result!.context.rateLimiter;
+      const sweepSpy = vi.spyOn(rateLimiter, "sweep");
+
+      rateLimiter.check("1.2.3.4", { per: 1, window_seconds: 60 });
+      expect(rateLimiter.size()).toBe(1);
+
+      clock.advance(120); // bucket now expired
+      vi.advanceTimersByTime(60_000); // default sweeper cadence
+
+      expect(sweepSpy).toHaveBeenCalledTimes(1);
+      expect(rateLimiter.size()).toBe(0);
+
+      void result!.shutdown();
+      // After shutdown, further ticks must NOT invoke sweep() again —
+      // proves stopSweeper() actually cleared the interval.
+      vi.advanceTimersByTime(180_000);
+      expect(sweepSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("emits config.boot Tier 1 audit with public_url + github_org metadata", () => {

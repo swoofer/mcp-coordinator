@@ -12,6 +12,15 @@ interface AgentListener {
   waitResolve: ((msg: QueuedMessage | null) => void) | null;
 }
 
+/**
+ * performance-05: cap on the per-agent queued-message backlog. An agent
+ * that registers a listener (via waitForMessage/getQueuedMessages) but
+ * never drains it would otherwise accumulate every consultation/broadcast
+ * message forever. Once full, the oldest queued message is dropped to make
+ * room for the newest — recent activity matters more than ancient backlog.
+ */
+const MAX_LISTENER_QUEUE = 1000;
+
 export class MqttBridge {
   private orgId: string;
   private client: mqtt.MqttClient | null = null;
@@ -80,8 +89,15 @@ export class MqttBridge {
         if (parts[2] === "agents" && parts[4] === "status") {
           const agentId = parts[3];
           const status = message.toString();
-          if (status === "offline" && this.onOfflineHandler) {
-            this.onOfflineHandler(agentId);
+          if (status === "offline") {
+            // performance-05: remove the departed agent's listener + queue
+            // here, inside the bridge itself, so cleanup doesn't depend on
+            // a caller having wired onOffline — an offline agent's backlog
+            // is dead weight the instant it goes offline.
+            this.removeListener(agentId);
+            if (this.onOfflineHandler) {
+              this.onOfflineHandler(agentId);
+            }
           }
         }
 
@@ -97,6 +113,11 @@ export class MqttBridge {
                 listener.waitResolve = null;
                 resolve(msg);
               } else {
+                // performance-05: drop-oldest once at capacity — keep the
+                // freshest MAX_LISTENER_QUEUE messages, not the stalest.
+                if (listener.queue.length >= MAX_LISTENER_QUEUE) {
+                  listener.queue.shift();
+                }
                 listener.queue.push(msg);
               }
             }
@@ -244,6 +265,11 @@ export class MqttBridge {
       listener.waitResolve(null); // unblock any waiting call
     }
     this.listeners.delete(agentId);
+  }
+
+  /** Test helper: current listener count (performance-05). */
+  listenerCount(): number {
+    return this.listeners.size;
   }
 
   async waitForMessage(agentId: string, timeoutMs: number): Promise<QueuedMessage | null> {
