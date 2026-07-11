@@ -51,14 +51,15 @@ describe("v0.6 → v0.7 migration", () => {
   // No "boots without error" `it` — initDatabase already ran in beforeAll.
   // A boot failure would surface as a beforeAll error and fail all tests in this file.
 
-  it("user_version bumped to 8 (v0.6 → v0.7 → v0.8 cascade)", () => {
+  it("user_version bumped to 10 (v0.6 → v0.7 → v0.8 → v0.9 → v0.10 cascade)", () => {
     const db = getDb();
     const v = db.prepare("PRAGMA user_version").get() as { user_version: number };
-    // Phase 2 (v0.8) and the v0.9 FK migration (issue #79) both run after
-    // the v0.7 block, so a fresh v0.6 → current boot ends at version 9. The
-    // intermediate v0.7 / v0.8 states are exercised by all other assertions
-    // in this file (composite PKs, org_id columns, FK constraints).
-    expect(v.user_version).toBe(9);
+    // Phase 2 (v0.8), the v0.9 FK migration (issue #79), and the v0.10
+    // Sweeper expression-index migration (performance-09) all run after the
+    // v0.7 block, so a fresh v0.6 → current boot ends at version 10. The
+    // intermediate v0.7 / v0.8 / v0.9 states are exercised by all other
+    // assertions in this file (composite PKs, org_id columns, FK constraints).
+    expect(v.user_version).toBe(10);
   });
 
   it("existing agents row preserved", () => {
