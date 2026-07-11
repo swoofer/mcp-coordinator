@@ -20,8 +20,8 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | | High (13) | Med (46) | Low (42) | Info (18) | **Total (119)** |
 |--|:--:|:--:|:--:|:--:|:--:|
-| **Fermés ✅** | 5 | 3 | 5 | 0 | **13 / 119** |
-| **Rounds cochés** | — | — | — | — | **55 / 595** |
+| **Fermés ✅** | 5 | 6 | 5 | 0 | **16 / 119** |
+| **Rounds cochés** | — | — | — | — | **70 / 595** |
 
 > Mettre à jour ce tableau à chaque tâche fermée. 595 = 119 × 5 rounds.
 > Note : sur les 10 fermés, 8 sont corrigés (5 rounds chacun = 40) ; 2 (protocole-mcp-04, securite-surface-03) sont **dispositionnés en risque-accepté + documenté** (threat-model, hors comptage 5-rounds).
@@ -80,9 +80,9 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 5 | `ci-cd-03` | 🟠 Med | S | Aucun status check requis sur main : les tests ne bloquent pas les mer | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 6 | `ci-cd-04` | 🟠 Med | S | Le garde-fou « :latest non promu sur workflow_dispatch/workflow_call » | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 7 | `ci-cd-05` | 🟠 Med | S | Actions GitHub épinglées par tags mutables (pas de SHA), sans Dependab | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 8 | `dependances-01` | 🟠 Med | S | Le bloc « overrides » de package.json est silencieusement ignoré par p | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 9 | `dependances-02` | 🟠 Med | S | 10 avis pnpm audit ouverts (2 high, 7 moderate, 1 low) — tous corrigea | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 10 | `dependances-03` | 🟠 Med | S | Aucune automatisation de veille dépendances : ni Dependabot/Renovate,  | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 8 | `dependances-01` | 🟠 Med | S | Le bloc « overrides » de package.json est silencieusement ignoré par p | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ e0bace5 |
+| 9 | `dependances-02` | 🟠 Med | S | 10 avis pnpm audit ouverts (2 high, 7 moderate, 1 low) — tous corrigea | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ e0bace5 |
+| 10 | `dependances-03` | 🟠 Med | S | Aucune automatisation de veille dépendances : ni Dependabot/Renovate,  | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ e0bace5 |
 | 11 | `dependances-04` | 🟠 Med | M | pnpm 9 exécute les scripts d'installation de toutes les dépendances pa | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 12 | `tests-02` | 🟠 Med | S | Les 84 tests du SDK (sdk/tests) ne tournent dans aucune CI | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 13 | `ci-cd-06` | 🟡 Low | S | Node 20 déclaré supporté (engines >=20) mais jamais testé en CI | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
