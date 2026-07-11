@@ -20,8 +20,8 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | | High (13) | Med (46) | Low (42) | Info (18) | **Total (119)** |
 |--|:--:|:--:|:--:|:--:|:--:|
-| **Fermés ✅** | 5 | 0 | 1 | 0 | **6 / 119** |
-| **Rounds cochés** | — | — | — | — | **30 / 595** |
+| **Fermés ✅** | 5 | 0 | 2 | 0 | **7 / 119** |
+| **Rounds cochés** | — | — | — | — | **35 / 595** |
 
 > Mettre à jour ce tableau à chaque tâche fermée. 595 = 119 × 5 rounds.
 
@@ -40,7 +40,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 6 | `protocole-mcp-04` | 🟠 Med | M | Les outils MCP ignorent claims.sub : n'importe quel appelant authentif | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 7 | `securite-surface-02` | 🟠 Med | S | /metrics servi sans authentification ; le handler /metrics/auth (local | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 8 | `securite-surface-03` | 🟠 Med | M | Isolation inter-agents absente sur les outils MCP MQTT (lecture de la  | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 9 | `securite-auth-02` | 🟡 Low | S | Le provider Google ne vérifie pas le nonce OIDC de l'id_token | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 9 | `securite-auth-02` | 🟡 Low | S | Le provider Google ne vérifie pas le nonce OIDC de l'id_token | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ eca4d2f |
 | 10 | `securite-auth-03` | 🟡 Low | M | Transport du JWT via query-string `?token=` sur les requêtes GET (SSE) | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 11 | `securite-auth-04` | 🟡 Low | S | Le rôle n'est pas re-dérivé depuis la base lors de la rotation de refr | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 12 | `securite-surface-04` | 🟡 Low | S | Logger Phase 1 sans redaction des secrets (les deux loggers divergent) | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
