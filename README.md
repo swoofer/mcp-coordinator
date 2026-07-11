@@ -308,6 +308,8 @@ Any MCP client can discover the full tool schema at runtime via the standard `to
 | `mcp-coordinator server stop` | Stop the coordinator |
 | `mcp-coordinator server status` | PID, port, online agents, open threads |
 | `mcp-coordinator server logs [-n N] [-f]` | Tail the daemon log at `~/.mcp-coordinator/logs/server.log` |
+| `mcp-coordinator server backup [--output PATH] [--data-dir PATH] [--force]` | Snapshot `config.json` + the SQLite data dir to a `.tar.gz` archive (refuses to run while the coordinator is up unless `--force`) |
+| `mcp-coordinator server restore <tarball> [--force] [--no-backup] [--data-dir PATH]` | Restore a `server backup` archive over `~/.mcp-coordinator/` (moves the existing config dir aside first unless `--no-backup`) |
 | `mcp-coordinator dashboard` | Open `http://localhost:3100/dashboard` |
 | `mcp-coordinator doctor [--host H] [--port P] [--mqtt-port P]` | Health check: config, server liveness, `/health`, `/mcp` initialize, dashboard, MQTT broker |
 | `mcp-coordinator --version` | Print the installed version |

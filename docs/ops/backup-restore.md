@@ -24,8 +24,12 @@ Pick ONE of two backup paths:
 - **Manual snapshots** — daily `sqlite3 .backup` to local disk + offsite
   copy. Targets RPO ≤ 24 hours. Retain 30 days.
 
-Restore procedure (both paths): stop coordinator → copy / restore DB →
-set `COORDINATOR_ALLOW_RESTORE=true` → boot → verify
+For local/dev use (no production RPO/retention guarantees) there is
+also a built-in **CLI** path: `mcp-coordinator server backup` /
+`server restore` — see Path C below.
+
+Restore procedure (Litestream/manual paths): stop coordinator → copy /
+restore DB → set `COORDINATOR_ALLOW_RESTORE=true` → boot → verify
 `recovery.completed` Tier 1 audit row → unset env → notify users to
 re-auth. Run a full restore drill quarterly for SOC 2 compliance.
 
@@ -155,7 +159,91 @@ cp backup/coordinator-20260513T0000Z.db data/coordinator.db
 # proceed to "Restore reconciliation procedure" below
 ```
 
-## Restore reconciliation procedure (both paths)
+## Path C — CLI (`server backup` / `server restore`)
+
+For local/dev setups or ad hoc snapshots, the CLI ships a built-in
+backup/restore pair that tars up `~/.mcp-coordinator/` (config.json +
+SQLite data dir) without any external tooling. This is not a
+replacement for Litestream or the scheduled manual-snapshot script in
+production — there is no automation or retention policy around it,
+you run it by hand.
+
+### `server backup`
+
+```sh
+mcp-coordinator server backup [--output <path>] [--data-dir <path>] [--force]
+```
+
+- `--output <path>` — output tarball path. Default:
+  `./mcp-coordinator-backup-<YYYY-MM-DD-HHMMSS>.tar.gz` (UTC timestamp)
+  in the current directory.
+- `--data-dir <path>` — data directory to back up. Defaults to
+  `COORDINATOR_DATA_DIR` or `config.server.data_dir` from
+  `config.json`.
+- `--force` — skip the running-coordinator safety check.
+
+Like the manual-snapshot path, this refuses to run while the
+coordinator daemon is up (detected via the pidfile in the config dir)
+because a live SQLite WAL may have uncommitted writes that a plain
+file copy would miss:
+
+```
+Coordinator is running (PID 12345).
+Refusing to back up: live SQLite WAL writes may be in flight.
+Either stop it first ('mcp-coordinator server stop') or pass --force.
+```
+
+Stop the coordinator first (`mcp-coordinator server stop`) rather than
+reaching for `--force` unless you know the WAL is quiescent.
+
+If `--data-dir` points at the default location (`<configDir>/data`),
+`config.json` and the data dir are packed into one archive. If it
+points somewhere else (a custom data dir), the data dir is packed
+into a **separate sibling archive** named `<output>.data.tar.gz`,
+since tar can only use one `cwd` per archive — the command prints the
+path when this happens. Keep both files together; `server restore`
+only takes one tarball argument, so restoring a custom-data-dir backup
+requires manually extracting the `.data.tar.gz` into the target data
+directory after restoring the config archive.
+
+### `server restore`
+
+```sh
+mcp-coordinator server restore <tarball> [--force] [--no-backup] [--data-dir <path>]
+```
+
+- `<tarball>` — path to the archive produced by `server backup`
+  (required).
+- `--force` — skip the running-coordinator safety check.
+- `--no-backup` — do not snapshot the existing `~/.mcp-coordinator/`
+  before overwriting it (by default the existing dir is renamed to
+  `<configDir>.bak-<YYYY-MM-DD-HHMMSS>`).
+- `--data-dir <path>` — accepted but currently informational only:
+  restore always extracts into the default config dir location; if you
+  pass `--data-dir` the command prints a reminder to update
+  `config.json`/`COORDINATOR_DATA_DIR` yourself if you need a
+  non-default path.
+
+The command validates the tarball contains a top-level `config.json`
+or `data` entry before touching anything, refuses to run while the
+coordinator is up (same PID check as `backup`, unless `--force`), and
+on extraction failure attempts to roll back to the pre-restore
+snapshot automatically.
+
+```sh
+mcp-coordinator server stop
+mcp-coordinator server restore ./mcp-coordinator-backup-2026-07-11-120000.tar.gz
+mcp-coordinator server start --daemon
+```
+
+Because this restores `config.json` and the SQLite data dir directly,
+the same NR12 reconciliation applies as with Paths A/B: on the next
+boot the coordinator will see a stale audit log and require
+`COORDINATOR_ALLOW_RESTORE=true` (see the reconciliation procedure
+below) unless the backup was taken and restored within the staleness
+window.
+
+## Restore reconciliation procedure (all paths)
 
 This is the critical NR12 step. Do not skip any sub-step.
 
