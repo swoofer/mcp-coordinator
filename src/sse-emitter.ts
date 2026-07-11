@@ -73,11 +73,44 @@ export class SseEmitter {
     }
   }
 
-  getEventsSince(orgId: string, lastId: number): CoordinatorEvent[] {
+  /**
+   * performance-02: `limit` bounds the SQL result set itself (LIMIT clause)
+   * rather than loading every row since `lastId` and trimming in JS. This
+   * matters for the Last-Event-ID resumption path — a client reconnecting
+   * with a very old id would otherwise force a full-history scan+load. When
+   * `limit` is provided the DB still returns rows in ascending id order (the
+   * chronological order callers expect), it just stops at `limit` rows —
+   * i.e. the OLDEST `limit` events after `lastId`, not an arbitrary window.
+   * Callers that need the most RECENT N events regardless of `lastId` should
+   * use `getRecentEvents` instead.
+   */
+  getEventsSince(orgId: string, lastId: number, limit?: number): CoordinatorEvent[] {
     const db = getDb();
+    if (limit === undefined) {
+      return db
+        .prepare("SELECT * FROM events WHERE org_id = ? AND id > ? ORDER BY id")
+        .all(orgId, lastId) as CoordinatorEvent[];
+    }
     return db
-      .prepare("SELECT * FROM events WHERE org_id = ? AND id > ? ORDER BY id")
-      .all(orgId, lastId) as CoordinatorEvent[];
+      .prepare("SELECT * FROM events WHERE org_id = ? AND id > ? ORDER BY id LIMIT ?")
+      .all(orgId, lastId, limit) as CoordinatorEvent[];
+  }
+
+  /**
+   * performance-02: the "last N events" query bounded at the SQL layer.
+   * Previously callers did `getEventsSince(orgId, 0).slice(-N)`, which loads
+   * the ENTIRE org history into memory (better-sqlite3 is synchronous — at
+   * 200K events that's ~655ms of blocked event loop) just to keep the tail.
+   * Instead we ask SQLite for the last N rows directly (`ORDER BY id DESC
+   * LIMIT ?`), so at most N rows are ever materialized, then reverse in JS
+   * (cheap — bounded to N elements) to restore chronological order.
+   */
+  getRecentEvents(orgId: string, limit: number): CoordinatorEvent[] {
+    const db = getDb();
+    const rows = db
+      .prepare("SELECT * FROM events WHERE org_id = ? ORDER BY id DESC LIMIT ?")
+      .all(orgId, limit) as CoordinatorEvent[];
+    return rows.reverse();
   }
 
   addListener(orgId: string, listener: EventListener): () => void {
