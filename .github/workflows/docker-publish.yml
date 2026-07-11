@@ -78,6 +78,13 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
+          # metadata-action's default flavor (`latest=auto`) adds `:latest`
+          # on its own semver heuristics, short-circuiting the explicit
+          # `type=raw,value=latest,enable=...` gate below. Disable the
+          # implicit behavior so the gated line is the ONLY source of
+          # `:latest`.
+          flavor: |
+            latest=false
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
