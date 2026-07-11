@@ -147,6 +147,11 @@ describe("wsToDuplex — write backpressure (performance-04)", () => {
     ws.close = () => {};
 
     const duplex = wsToDuplex(asWebSocket(ws));
+    // A failed write callback also makes the stream emit an 'error' event.
+    // Without a listener that becomes an unhandled 'error' that crashes the
+    // run asynchronously (surfaced on CI Node 22). We assert via the write
+    // callback below, so just swallow the stream-level event here.
+    duplex.on("error", () => {});
     const errored = new Promise<Error | null | undefined>((resolve) => {
       duplex.write(Buffer.from("x"), (err) => resolve(err));
     });
