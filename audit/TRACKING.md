@@ -20,8 +20,8 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | | High (13) | Med (46) | Low (42) | Info (18) | **Total (119)** |
 |--|:--:|:--:|:--:|:--:|:--:|
-| **Fermés ✅** | 12 | 12 | 7 | 0 | **31 / 119** |
-| **Rounds cochés** | — | — | — | — | **145 / 595** |
+| **Fermés ✅** | 12 | 13 | 7 | 0 | **32 / 119** |
+| **Rounds cochés** | — | — | — | — | **150 / 595** |
 
 > Mettre à jour ce tableau à chaque tâche fermée. 595 = 119 × 5 rounds.
 > Note : sur les 10 fermés, 8 sont corrigés (5 rounds chacun = 40) ; 2 (protocole-mcp-04, securite-surface-03) sont **dispositionnés en risque-accepté + documenté** (threat-model, hors comptage 5-rounds).
@@ -104,7 +104,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 |---|----|-----|-----|---------|----|----|----|----|----|--------|
 | 1 | `performance-01` | 🔴 High | M | Aucune rétention sur les tables Phase 1 (file_activity, events, thread | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 1ce158e |
 | 2 | `performance-02` | 🟠 Med | S | Connexion SSE sans Last-Event-ID : chargement de TOUT l'historique eve | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 3 | `performance-03` | 🟠 Med | S | Cardinalité Prometheus non bornée : l'URL brute (avec UUIDs et chemins | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 3 | `performance-03` | 🟠 Med | S | Cardinalité Prometheus non bornée : l'URL brute (avec UUIDs et chemins | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 609126d |
 | 4 | `performance-04` | 🟠 Med | M | Pont WebSocket→MQTT sans backpressure ni maxPayload : un consommateur  | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 5 | `performance-05` | 🟠 Med | S | Queues de listeners MqttBridge jamais nettoyées ni bornées : fuite mém | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 1e4daf2 |
 | 6 | `performance-06` | 🟠 Med | S | RateLimiter.sweep() n'est jamais appelé : la Map de buckets croît sans | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 1e4daf2 |
