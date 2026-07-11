@@ -124,6 +124,33 @@ secret allows minting valid access tokens for any user.
   must rotate per `docs/ops/key-rotation.md` on suspicion of leak;
   runbook `docs/ops/incident-signing-key-leak.md` covers the full path.
 
+**securite-auth-03 — accepted risk: `?token=<jwt>` query-string transport
+on GET.** `authenticateRequest` (`src/auth.ts`) accepts a bearer JWT via
+`?token=` on GET requests only (POST/PUT/PATCH excluded — see the smuggling
+comment at that call site), so `EventSource` (`/api/events` SSE) can
+authenticate without custom headers. This is a **deliberate, accepted
+trade-off**, not an oversight: query-string credentials are more exposed
+than an `Authorization` header — they can land in reverse-proxy / web-server
+access logs, browser history, the `Referer` header on outbound requests from
+the same page, and any application log that prints the request URL.
+Decision: **keep the mechanism** (removing it breaks EventSource-based SSE
+clients with no header-injection API) but close the log-leak surface we
+control:
+  - The pino `REDACT_PATHS` allowlist (`src/observability/redact-paths.ts`)
+    does **not** cover this — it redacts structured object paths
+    (`req.headers.authorization`, `body.refresh_token`, ...), not a
+    substring embedded inside a plain `url` string value.
+  - `redactTokenParam()` (`src/http/utils.ts`) masks `token=...` to
+    `token=[REDACTED]` before a request URL is ever logged. Applied at
+    every call site in the coordinator's own logs that logs a `url` field:
+    `src/serve-http.ts` (auth-rejection warn, Phase 2 auth-route error) and
+    `src/http/handle-rest.ts` (per-request info/debug log).
+  - Out of the coordinator's control: reverse-proxy / CDN access logs,
+    browser history, and `Referer` leakage upstream of the coordinator
+    process. Operators terminating TLS at a reverse proxy should configure
+    it to omit query strings from its own access logs, or accept the
+    residual exposure for `/api/events?token=...` specifically.
+
 ### Denial of service
 
 - **Threat**: attacker triggers a key reload storm or a verification
