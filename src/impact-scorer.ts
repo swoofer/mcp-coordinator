@@ -87,6 +87,22 @@ export class ImpactScorer {
       symbolsByFileAgent = this._collectSymbolsTouched(params.org_id, params.target_files);
     }
 
+    // O4 (performance-11): Layer 4 (git co-change) was previously queried
+    // inside the per-agent .map() — for each agent AND each target_file, a
+    // fresh `_layer4Score` DB round-trip. That's O(agents × target_files)
+    // queries per announce, even though the git_cochange half of the lookup
+    // does not depend on the agent at all.
+    //
+    // Fix: hoist the git_cochange lookup out of the agent loop and run it
+    // ONCE per target_file (not once per agent × target_file) — same exact
+    // SQL, same row order, just deduplicated across agents. The per-row
+    // "did the OTHER agent touch the partner file recently" check DOES
+    // depend on the agent, so that's batched separately into a single
+    // query covering every (partner file × recent activity) pair, then
+    // consulted as an O(1) Set lookup inside the agent loop.
+    const layer4CandidatesByFile = this._layer4Candidates(params.org_id, params.target_files);
+    const layer4PartnerActivity = this._layer4PartnerActivity(params.org_id, layer4CandidatesByFile);
+
     // O2: bound the resolved-thread query to a recency window. Without this,
     // listThreads({status:'resolved'}) returns ALL historical resolved threads
     // (unbounded growth). The Layer 0 filter only keeps threads where the
@@ -208,11 +224,17 @@ export class ImpactScorer {
       // Layer 4: git co-change. For each target_file F, find rows in git_cochange where
       // (LEAST(F,partner), GREATEST(F,partner)) match. If the OTHER agent recently
       // touched the partner file, apply the co-change score.
+      // (performance-11: candidates pre-computed once per target_file above;
+      // partner activity pre-computed once per (partner, agent) pair. The
+      // per-agent work here is now pure in-memory lookup — no DB round-trip.)
       for (const targetFile of params.target_files) {
-        const layer4Results = this._layer4Score(params.org_id, targetFile, agent.id);
-        for (const result of layer4Results) {
-          maxScore = Math.max(maxScore, result.score);
-          reasons.push(result.reason);
+        const candidates = layer4CandidatesByFile.get(targetFile);
+        if (!candidates) continue;
+        for (const c of candidates) {
+          if (layer4PartnerActivity.has(`${c.partner}|${agent.id}`)) {
+            maxScore = Math.max(maxScore, c.score);
+            reasons.push(`co-change: ${targetFile} ↔ ${c.partner} (ratio ${c.ratio.toFixed(2)})`);
+          }
         }
       }
 
@@ -263,33 +285,75 @@ export class ImpactScorer {
     return result;
   }
 
-  private _layer4Score(orgId: string, targetFile: string, agentId: string): Array<{ score: number; reason: string }> {
+  /**
+   * performance-11: batched replacement for the old per-(agent, targetFile)
+   * `_layer4Score` DB round-trip. Fetches git_cochange rows ONCE per
+   * target_file (not once per agent × target_file) using the exact same SQL
+   * predicate/order as the original per-call query, so the resulting row
+   * order — and therefore the `reasons` ordering derived from it — is
+   * unchanged. The agent-independent scoring math (ratio, threshold,
+   * partner file) is computed here; the agent-dependent "did they touch the
+   * partner file recently" check is deliberately left OUT of this method
+   * (see `_layer4PartnerActivity`) since that's the only part of the
+   * original query that actually needs the agent id.
+   */
+  private _layer4Candidates(
+    orgId: string,
+    targetFiles: string[],
+  ): Map<string, Array<{ partner: string; score: number; ratio: number }>> {
     const db = getDb();
-    const rows = db.prepare(
-      `SELECT file_a, file_b, count, total_commits FROM git_cochange
-       WHERE org_id = ? AND (file_a = ? OR file_b = ?)`
-    ).all(orgId, targetFile, targetFile) as Array<{ file_a: string; file_b: string; count: number; total_commits: number }>;
+    const result = new Map<string, Array<{ partner: string; score: number; ratio: number }>>();
+    for (const targetFile of targetFiles) {
+      const rows = db.prepare(
+        `SELECT file_a, file_b, count, total_commits FROM git_cochange
+         WHERE org_id = ? AND (file_a = ? OR file_b = ?)`
+      ).all(orgId, targetFile, targetFile) as Array<{ file_a: string; file_b: string; count: number; total_commits: number }>;
 
-    const results: Array<{ score: number; reason: string }> = [];
-    for (const r of rows) {
-      const partner = r.file_a === targetFile ? r.file_b : r.file_a;
-      const ratio = r.count / Math.max(r.total_commits, 1);
-      let layer4Score = 0;
-      if (ratio > 0.5) layer4Score = 60;
-      else if (ratio > 0.2) layer4Score = 40;
-      if (layer4Score === 0) continue;
-      // Did the OTHER agent touch the partner file recently?
-      const partnerActivity = db.prepare(
-        `SELECT 1 FROM file_activity
-         WHERE org_id = ? AND file_path = ? AND agent_id = ?
-           AND created_at > datetime('now', '-60 minutes')
-         LIMIT 1`
-      ).get(orgId, partner, agentId);
-      if (partnerActivity) {
-        results.push({ score: layer4Score, reason: `co-change: ${targetFile} ↔ ${partner} (ratio ${ratio.toFixed(2)})` });
+      const candidates: Array<{ partner: string; score: number; ratio: number }> = [];
+      for (const r of rows) {
+        const partner = r.file_a === targetFile ? r.file_b : r.file_a;
+        const ratio = r.count / Math.max(r.total_commits, 1);
+        let layer4Score = 0;
+        if (ratio > 0.5) layer4Score = 60;
+        else if (ratio > 0.2) layer4Score = 40;
+        if (layer4Score === 0) continue;
+        candidates.push({ partner, score: layer4Score, ratio });
       }
+      result.set(targetFile, candidates);
     }
-    return results;
+    return result;
+  }
+
+  /**
+   * performance-11: batches the "did agent X touch partner file Y in the
+   * last 60 minutes" check that the original `_layer4Score` ran as one
+   * query PER (candidate row × agent). Collects the distinct set of
+   * partner files across all target_files' candidates and fetches all
+   * matching (file_path, agent_id) recent-activity pairs in a single query,
+   * returning a Set keyed by `${file_path}|${agent_id}` for O(1) lookup.
+   */
+  private _layer4PartnerActivity(
+    orgId: string,
+    candidatesByFile: Map<string, Array<{ partner: string; score: number; ratio: number }>>,
+  ): Set<string> {
+    const partners = new Set<string>();
+    for (const candidates of candidatesByFile.values()) {
+      for (const c of candidates) partners.add(c.partner);
+    }
+    if (partners.size === 0) return new Set();
+
+    const db = getDb();
+    const partnerList = [...partners];
+    const placeholders = partnerList.map(() => "?").join(",");
+    const rows = db.prepare(
+      `SELECT DISTINCT file_path, agent_id FROM file_activity
+       WHERE org_id = ? AND file_path IN (${placeholders})
+         AND created_at > datetime('now', '-60 minutes')`
+    ).all(orgId, ...partnerList) as Array<{ file_path: string; agent_id: string }>;
+
+    const result = new Set<string>();
+    for (const r of rows) result.add(`${r.file_path}|${r.agent_id}`);
+    return result;
   }
 }
 
