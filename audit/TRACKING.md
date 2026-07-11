@@ -20,8 +20,8 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | | High (13) | Med (46) | Low (42) | Info (18) | **Total (119)** |
 |--|:--:|:--:|:--:|:--:|:--:|
-| **Fermés ✅** | 8 | 6 | 5 | 0 | **19 / 119** |
-| **Rounds cochés** | — | — | — | — | **85 / 595** |
+| **Fermés ✅** | 9 | 7 | 5 | 0 | **21 / 119** |
+| **Rounds cochés** | — | — | — | — | **95 / 595** |
 
 > Mettre à jour ce tableau à chaque tâche fermée. 595 = 119 × 5 rounds.
 > Note : sur les 10 fermés, 8 sont corrigés (5 rounds chacun = 40) ; 2 (protocole-mcp-04, securite-surface-03) sont **dispositionnés en risque-accepté + documenté** (threat-model, hors comptage 5-rounds).
@@ -39,7 +39,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 4 | `securite-surface-01` | 🔴 High | S | Le serveur HTTP écoute sur toutes les interfaces ; COORDINATOR_BIND (d | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 3671d7b |
 | 5 | `architecture-05` | 🟠 Med | S | L'allowlist env du mode daemon a dérivé : OAuth Phase 2 et rotation JW | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 11d101a |
 | 6 | `protocole-mcp-04` | 🟠 Med | M | Les outils MCP ignorent claims.sub : n'importe quel appelant authentif | ✅ | — | — | — | 📄 | 📄 différé+documenté bed5486 |
-| 7 | `securite-surface-02` | 🟠 Med | S | /metrics servi sans authentification ; le handler /metrics/auth (local | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 7 | `securite-surface-02` | 🟠 Med | S | /metrics servi sans authentification ; le handler /metrics/auth (local | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ c87ee56 |
 | 8 | `securite-surface-03` | 🟠 Med | M | Isolation inter-agents absente sur les outils MCP MQTT (lecture de la  | ✅ | — | — | — | 📄 | 📄 différé+documenté bed5486 |
 | 9 | `securite-auth-02` | 🟡 Low | S | Le provider Google ne vérifie pas le nonce OIDC de l'id_token | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ eca4d2f |
 | 10 | `securite-auth-03` | 🟡 Low | M | Transport du JWT via query-string `?token=` sur les requêtes GET (SSE) | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
@@ -56,7 +56,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | # | ID | Sév | Eff | Constat | R1 | R2 | R3 | R4 | R5 | Statut |
 |---|----|-----|-----|---------|----|----|----|----|----|--------|
 | 1 | `architecture-01` | 🔴 High | M | Endpoints implémentés et documentés mais jamais montés sur le serveur  | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 6236a10 |
-| 2 | `documentation-02` | 🔴 High | M | /metrics/auth et COORDINATOR_METRICS_BEARER documentés partout mais l' | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 2 | `documentation-02` | 🔴 High | M | /metrics/auth et COORDINATOR_METRICS_BEARER documentés partout mais l' | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ c87ee56 |
 | 3 | `protocole-mcp-01` | 🔴 High | S | Mode stdio : logs applicatifs écrits sur stdout, en violation du trans | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ a470112 |
 | 4 | `protocole-mcp-03` | 🔴 High | S | Endpoints documentés, testés et consommés par le SDK/doctor jamais câb | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 6236a10 |
 | 5 | `protocole-mcp-05` | 🟠 Med | S | set_dependency_map : paramètre JSON double-encodé, sans description de | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
