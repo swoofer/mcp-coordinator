@@ -575,3 +575,34 @@ This threat model is reviewed every minor release and on any change to
 review is **v0.10** (Phase 3 admin endpoints + Postgres adapter).
 Material changes are called out in CHANGELOG.md under the version's
 `### Security` heading.
+
+## Intra-org agent trust model (protocole-mcp-04, securite-surface-03)
+
+**Assumption (documented, accepted risk).** Within a single org, all agents
+are **mutually trusting** — a cooperative swarm operated by one owner. An
+`agent_id` is a **self-asserted handle**, not an authenticated identity: the
+`agents` table (`src/database.ts`) stores no owner/user/session binding, and
+MCP tools accept `agent_id` as a caller-supplied parameter scoped only by the
+session's `claims.org`. The **enforced trust boundary is the org**: the MQTT
+ACL (`src/mqtt-broker.ts` `authorizeSubscribe`/`authorizePublish`) denies and
+disconnects cross-org access, and consultation/thread state is org-scoped.
+
+**Consequences accepted at this boundary:**
+
+- An authenticated caller can act under any `agent_id` within its own org
+  (post to threads, propose/approve/contest resolutions). *(protocole-mcp-04)*
+- An agent can read another agent's MQTT queue within its own org — there is
+  no per-agent topic isolation, only per-org. *(securite-surface-03)*
+
+**Why this is acceptable today.** The org already is the tenant boundary: one
+org = one owner running their own agents. Agents inside an org are not
+adversaries of one another, so cross-agent impersonation and queue reads are
+not a privilege boundary that matters in the current deployment profile.
+
+**Deferred (revisit trigger).** Per-agent authorization (binding `agent_id`
+to the session that owns it) and per-agent MQTT topic isolation are
+**deferred** until a deployment runs mutually-distrusting agents inside a
+single org — which, given the org-as-tenant model, is not a supported
+configuration today. If that changes (e.g. shared-org multi-user swarms),
+implement a session→agent ownership map and per-agent MQTT ACLs, and revisit
+`protocole-mcp-04` / `securite-surface-03`.
