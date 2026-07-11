@@ -1,4 +1,5 @@
 import { silentLogger, type Logger } from "./logger.js";
+import { safeJsonParse } from "./json-utils.js";
 import type { ConflictReport } from "./types.js";
 import type { Consultation } from "./consultation.js";
 import type { DependencyMapper } from "./dependency-map.js";
@@ -30,8 +31,8 @@ export class ConflictDetector {
     for (const thread of activeThreads) {
       if (thread.initiator_id === params.agent_id) continue;
 
-      const threadModules: string[] = JSON.parse(thread.target_modules);
-      const threadFiles: string[] = JSON.parse(thread.target_files);
+      const threadModules: string[] = safeJsonParse<string[]>(thread.target_modules, [], this.log, "conflict-detector.detect:target_modules");
+      const threadFiles: string[] = safeJsonParse<string[]>(thread.target_files, [], this.log, "conflict-detector.detect:target_files");
 
       // 1. Module overlap
       const moduleOverlap = params.target_modules.filter((m) =>

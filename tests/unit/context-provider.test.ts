@@ -98,6 +98,21 @@ describe("SummaryContextProvider", () => {
     expect(ctx.recent_files).toHaveLength(0);
     expect(ctx.action_summaries).toHaveLength(0);
   });
+
+  it("qualite-code-07: does not throw when agent.modules column is corrupted JSON", () => {
+    registry.register("default", "a1", "Agent A", ["src/auth"]);
+    getDb().prepare("UPDATE agents SET modules = ? WHERE org_id = 'default' AND id = 'a1'").run("{not valid json");
+
+    expect(() => {
+      const ctx = provider.getRelevantContext("default", "a1", {
+        thread_id: "t1",
+        subject: "Refactor auth",
+        target_modules: ["src/auth"],
+        target_files: [],
+      });
+      expect(ctx.modules).toHaveLength(0);
+    }).not.toThrow();
+  });
 });
 
 

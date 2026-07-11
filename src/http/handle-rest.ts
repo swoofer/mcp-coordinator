@@ -8,6 +8,7 @@ import { runCommonAnnounceFlow } from "../announce-workflow.js";
 import { canResetDb } from "../reset-guard.js";
 import { parseBody, json } from "./utils.js";
 import { normalizePath } from "../path-normalize.js";
+import { safeJsonParse } from "../json-utils.js";
 
 /**
  * S1: REST router extracted from serve-http.ts. Was a 382-line `handleRest`
@@ -122,7 +123,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
     sseEmitter.emit("thread_opened", {
       thread_id: thread.id, subject, agent_id, agent_name: agentInfo?.name || agent_id,
       target_modules, target_files, expected_respondents: respondents,
-      conflicts: updated.conflicts ? JSON.parse(updated.conflicts) : [],
+      conflicts: safeJsonParse<unknown[]>(updated.conflicts, [], httpLog, "handle-rest./api/announce:updated.conflicts"),
       created_at: updated.created_at,
       mode: planQuality.mode,
       plan: plan || null,
@@ -246,7 +247,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
         status: thread.thread.status,
         messages: thread.messages,
         resolution_summary: thread.thread.resolution_summary,
-        expected_respondents: JSON.parse(thread.thread.expected_respondents || "[]"),
+        expected_respondents: safeJsonParse<string[]>(thread.thread.expected_respondents, [], httpLog, "handle-rest./api/consultation/status:expected_respondents"),
       });
     }
 
@@ -315,7 +316,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
       const db = getDb();
       const thread = consultation.getThread(ctx.claims.org, intro.thread_id);
       if (thread && (thread.status === "open" || thread.status === "resolving")) {
-        const respondents: string[] = JSON.parse(thread.expected_respondents || "[]");
+        const respondents: string[] = safeJsonParse<string[]>(thread.expected_respondents, [], httpLog, "handle-rest./api/introspection-response:expected_respondents");
         if (!respondents.includes(intro.agent_id)) {
           respondents.push(intro.agent_id);
           db.prepare("UPDATE threads SET expected_respondents = ? WHERE id = ? AND org_id = ?")
@@ -383,7 +384,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
       ...consultation.listThreads(ctx.claims.org, { status: "open" }),
       ...consultation.listThreads(ctx.claims.org, { status: "resolving" }),
     ].filter((t) => {
-      const respondents: string[] = JSON.parse(t.expected_respondents || "[]");
+      const respondents: string[] = safeJsonParse<string[]>(t.expected_respondents, [], httpLog, "handle-rest./api/check-interrupt:expected_respondents");
       return respondents.includes(agent_id);
     });
     if (pendingThreads.length > 0) {
@@ -392,7 +393,7 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
         subject: t.subject,
         initiator_id: t.initiator_id,
         status: t.status,
-        target_files: JSON.parse(t.target_files || "[]"),
+        target_files: safeJsonParse<string[]>(t.target_files, [], httpLog, "handle-rest./api/check-interrupt:target_files"),
       }));
       json(res, { interrupt: true, threads: details });
     } else {

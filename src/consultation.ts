@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import { getDb } from "./database.js";
 import { silentLogger, type Logger } from "./logger.js";
+import { safeJsonParse } from "./json-utils.js";
 import type {
   Thread,
   ThreadMessage,
@@ -129,7 +130,7 @@ export class Consultation {
         .all(params.agent_id, orgId) as { id: string; modules: string }[];
 
       const respondents = onlineAgents.filter((agent) => {
-        const agentModules: string[] = JSON.parse(agent.modules);
+        const agentModules: string[] = safeJsonParse<string[]>(agent.modules, [], this.log, "consultation.announceWork:agent.modules");
         return params.target_modules.some((tm) =>
           agentModules.some((am) => am === tm || am.startsWith(tm + "/") || tm.startsWith(am + "/"))
         );
@@ -365,7 +366,7 @@ export class Consultation {
       .all() as { id: string; org_id: string; expected_respondents: string | null }[];
 
     for (const thread of threads) {
-      const respondents: string[] = JSON.parse(thread.expected_respondents || "[]");
+      const respondents: string[] = safeJsonParse<string[]>(thread.expected_respondents, [], this.log, "consultation.setOffline:expected_respondents");
       const updated = respondents.filter((r) => r !== agentId);
       db.prepare("UPDATE threads SET expected_respondents = ? WHERE id = ? AND org_id = ?").run(
         JSON.stringify(updated),
@@ -604,7 +605,7 @@ export class Consultation {
   private allRespondentsApproved(orgId: string, threadId: string): boolean {
     const db = getDb();
     const thread = this.getThread(orgId, threadId)!;
-    const expected: string[] = JSON.parse(thread.expected_respondents || "[]");
+    const expected: string[] = safeJsonParse<string[]>(thread.expected_respondents, [], this.log, "consultation.allRespondentsApproved:expected_respondents");
     if (expected.length === 0) return true;
 
     // Only count approvals from the CURRENT round. A contested resolution

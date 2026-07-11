@@ -1,5 +1,6 @@
 import { getDb } from "./database.js";
 import { withTransaction } from "./db-adapter.js";
+import { safeJsonParse } from "./json-utils.js";
 import type { ModuleInfo, DependencyMap, BlastRadius, Thread } from "./types.js";
 
 export class DependencyMapper {
@@ -28,9 +29,9 @@ export class DependencyMapper {
     ).get(orgId, moduleId) as { depends_on: string; exports: string; owners: string } | undefined;
     if (!row) return null;
     return {
-      depends_on: JSON.parse(row.depends_on || "[]"),
-      exports: JSON.parse(row.exports || "[]"),
-      owners: JSON.parse(row.owners || "[]"),
+      depends_on: safeJsonParse<string[]>(row.depends_on, [], undefined, "dependency-map.getDependencies:depends_on"),
+      exports: safeJsonParse<string[]>(row.exports, [], undefined, "dependency-map.getDependencies:exports"),
+      owners: safeJsonParse<string[]>(row.owners, [], undefined, "dependency-map.getDependencies:owners"),
     };
   }
 
@@ -43,7 +44,9 @@ export class DependencyMapper {
       "SELECT owners FROM dependency_map WHERE org_id = ?"
     ).all(orgId) as { owners: string }[];
     const all = new Set<string>();
-    for (const r of rows) JSON.parse(r.owners || "[]").forEach((o: string) => all.add(o));
+    for (const r of rows) {
+      safeJsonParse<string[]>(r.owners, [], undefined, "dependency-map.listOwners:owners").forEach((o) => all.add(o));
+    }
     return Array.from(all);
   }
 
@@ -58,9 +61,9 @@ export class DependencyMapper {
     for (const row of rows) {
       map[row.module_id] = {
         module_id: row.module_id,
-        depends_on: JSON.parse(row.depends_on),
-        exports: JSON.parse(row.exports),
-        owners: JSON.parse(row.owners),
+        depends_on: safeJsonParse<string[]>(row.depends_on, [], undefined, "dependency-map.getMap:depends_on"),
+        exports: safeJsonParse<string[]>(row.exports, [], undefined, "dependency-map.getMap:exports"),
+        owners: safeJsonParse<string[]>(row.owners, [], undefined, "dependency-map.getMap:owners"),
       };
     }
     return map;
@@ -89,9 +92,9 @@ export class DependencyMapper {
     if (!row) return null;
     return {
       module_id: row.module_id,
-      depends_on: JSON.parse(row.depends_on),
-      exports: JSON.parse(row.exports),
-      owners: JSON.parse(row.owners),
+      depends_on: safeJsonParse<string[]>(row.depends_on, [], undefined, "dependency-map.getModuleInfo:depends_on"),
+      exports: safeJsonParse<string[]>(row.exports, [], undefined, "dependency-map.getModuleInfo:exports"),
+      owners: safeJsonParse<string[]>(row.owners, [], undefined, "dependency-map.getModuleInfo:owners"),
     };
   }
 

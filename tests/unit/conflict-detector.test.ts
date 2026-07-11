@@ -267,6 +267,32 @@ describe("ConflictDetector", () => {
     expect(depChainConflicts.length).toBeGreaterThanOrEqual(1);
     expect(depChainConflicts.some(c => c.description.includes("src/auth"))).toBe(true);
   });
+
+  it("qualite-code-07: does not throw when a thread's target_modules/target_files column is corrupted", () => {
+    consultation.announceWork("default", {
+      agent_id: "a2",
+      subject: "Corrupted thread",
+      target_modules: ["src/auth"],
+      target_files: ["src/auth/service.ts"],
+    });
+    // Simulate a corrupted/partially-written column directly at the DB layer.
+    getDb().prepare("UPDATE threads SET target_modules = ?, target_files = ? WHERE org_id = 'default'").run(
+      "{not valid json",
+      "TRUNCATED[",
+    );
+
+    expect(() => {
+      const conflicts = detector.detect({
+        org_id: "default",
+        agent_id: "a1",
+        target_modules: ["src/auth"],
+        target_files: ["src/auth/service.ts"],
+      });
+      // Corrupted row parses to [] for both fields, so no overlap is found —
+      // graceful degradation, not a crash.
+      expect(conflicts).toHaveLength(0);
+    }).not.toThrow();
+  });
 });
 
 

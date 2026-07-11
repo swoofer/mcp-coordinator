@@ -956,3 +956,49 @@ describe("consultation org_id scoping", () => {
   });
 });
 
+describe("consultation corrupted column resilience (qualite-code-07)", () => {
+  it("announceWork does not throw when an online peer's agents.modules column is corrupted", () => {
+    getDb().prepare("UPDATE agents SET modules = ? WHERE org_id = 'default' AND id = 'a2'").run("{not valid json");
+
+    expect(() => {
+      const thread = consultation.announceWork("default", {
+        agent_id: "a1",
+        subject: "Work on auth",
+        target_modules: ["src/auth"],
+        target_files: [],
+      });
+      expect(thread.id).toBeTruthy();
+    }).not.toThrow();
+  });
+
+  it("handleAgentDeparture does not throw when a thread's expected_respondents column is corrupted", () => {
+    const thread = consultation.announceWork("default", {
+      agent_id: "a1",
+      subject: "Work on auth",
+      target_modules: ["src/auth"],
+      target_files: [],
+      keep_open: true,
+    });
+    getDb().prepare("UPDATE threads SET expected_respondents = ? WHERE id = ?").run("TRUNCATED[", thread.id);
+
+    expect(() => consultation.handleAgentDeparture("a2")).not.toThrow();
+    const updated = consultation.getThread("default", thread.id);
+    // Corrupted column parses to [] — filtering a2 out of [] is still [].
+    expect(updated?.expected_respondents).toBe("[]");
+  });
+
+  it("approveResolution does not throw when the thread's expected_respondents column is corrupted", () => {
+    const thread = consultation.announceWork("default", {
+      agent_id: "a1",
+      subject: "Work on auth",
+      target_modules: ["src/auth"],
+      target_files: [],
+      keep_open: true,
+    });
+    getDb().prepare("UPDATE threads SET expected_respondents = ? WHERE id = ?").run("not-json-at-all", thread.id);
+    consultation.proposeResolution("default", thread.id, "a1", "done");
+
+    expect(() => consultation.approveResolution("default", thread.id, "a1")).not.toThrow();
+  });
+});
+

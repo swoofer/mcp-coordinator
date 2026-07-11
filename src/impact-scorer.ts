@@ -3,6 +3,7 @@ import type { FileTracker } from "./file-tracker.js";
 import type { Consultation } from "./consultation.js";
 import type { WorkingFilesTracker } from "./working-files-tracker.js";
 import { getDb } from "./database.js";
+import { safeJsonParse } from "./json-utils.js";
 
 export interface ImpactScore {
   agent_id: string;
@@ -60,7 +61,7 @@ export class ImpactScorer {
     // re-parsed agent state up to ~4·A times per call.
     const moduleCache = new Map<string, string[]>();
     for (const a of onlineAgents) {
-      moduleCache.set(a.id, JSON.parse(a.modules));
+      moduleCache.set(a.id, safeJsonParse<string[]>(a.modules, [], undefined, "impact-scorer.score:agent.modules"));
     }
 
     // O3: pre-compute file → set<agent_id> for every file we'll inspect.
@@ -122,8 +123,8 @@ export class ImpactScorer {
         const agentThreads = activeThreadsByAgent.get(agent.id);
         if (agentThreads) {
           for (const thread of agentThreads) {
-            const threadFiles: string[] = JSON.parse(thread.target_files || "[]");
-            const threadDeps: string[] = JSON.parse(thread.depends_on_files || "[]");
+            const threadFiles: string[] = safeJsonParse<string[]>(thread.target_files, [], undefined, "impact-scorer.score:thread.target_files");
+            const threadDeps: string[] = safeJsonParse<string[]>(thread.depends_on_files, [], undefined, "impact-scorer.score:thread.depends_on_files");
 
             // 0a: My target_files ∩ their target_files → score 100
             const fileOverlap = params.target_files.filter((f) => threadFiles.includes(f));
