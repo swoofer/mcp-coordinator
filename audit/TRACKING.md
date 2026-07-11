@@ -20,8 +20,8 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | | High (13) | Med (46) | Low (42) | Info (18) | **Total (119)** |
 |--|:--:|:--:|:--:|:--:|:--:|
-| **Fermés ✅** | 5 | 3 | 3 | 0 | **11 / 119** |
-| **Rounds cochés** | — | — | — | — | **45 / 595** |
+| **Fermés ✅** | 5 | 3 | 4 | 0 | **12 / 119** |
+| **Rounds cochés** | — | — | — | — | **50 / 595** |
 
 > Mettre à jour ce tableau à chaque tâche fermée. 595 = 119 × 5 rounds.
 > Note : sur les 10 fermés, 8 sont corrigés (5 rounds chacun = 40) ; 2 (protocole-mcp-04, securite-surface-03) sont **dispositionnés en risque-accepté + documenté** (threat-model, hors comptage 5-rounds).
@@ -44,7 +44,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 9 | `securite-auth-02` | 🟡 Low | S | Le provider Google ne vérifie pas le nonce OIDC de l'id_token | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ eca4d2f |
 | 10 | `securite-auth-03` | 🟡 Low | M | Transport du JWT via query-string `?token=` sur les requêtes GET (SSE) | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 11 | `securite-auth-04` | 🟡 Low | S | Le rôle n'est pas re-dérivé depuis la base lors de la rotation de refr | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 8e6ec78 |
-| 12 | `securite-surface-04` | 🟡 Low | S | Logger Phase 1 sans redaction des secrets (les deux loggers divergent) | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 12 | `securite-surface-04` | 🟡 Low | S | Logger Phase 1 sans redaction des secrets (les deux loggers divergent) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 6482528 |
 | 13 | `securite-surface-05` | 🟡 Low | S | Endpoint Phase 1 /api/auth/register sans rate-limiting ni lockout | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 14 | `securite-surface-06` | 🟡 Low | S | CORS wildcard générique et transport du JWT via ?token= sur les GET | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ f8f6227 |
 | 15 | `securite-surface-07` | 🟡 Low | S | En-têtes de sécurité absents sur le dashboard principal et les réponse | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
