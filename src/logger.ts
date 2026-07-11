@@ -59,7 +59,17 @@ function applyRedact(obj: Record<string, unknown>, segments: string[]): void {
 }
 
 // Simple console-based logger (works everywhere, no native deps)
-export function createConsoleLogger(level: string, bindings: Record<string, unknown> = {}): Logger {
+//
+// `stdio`: when true, EVERY level (including info/warn/debug) is written via
+// console.error (stderr), never console.log (stdout). This is required by
+// the MCP stdio transport, which reserves stdout exclusively for JSON-RPC
+// protocol messages — the spec's "MUST NOT write anything else to stdout".
+// See createLogger()'s `stdio` option and src/index.ts, the stdio entrypoint.
+export function createConsoleLogger(
+  level: string,
+  bindings: Record<string, unknown> = {},
+  stdio = false,
+): Logger {
   const levels: Record<string, number> = { debug: 10, info: 20, warn: 30, error: 40, fatal: 50, silent: 100 };
   const threshold = levels[level] ?? 20;
 
@@ -73,7 +83,7 @@ export function createConsoleLogger(level: string, bindings: Record<string, unkn
     const msg = typeof args[0] === "string" ? args[0] : (args[1] as string) ?? "";
     const rawData = typeof args[0] === "object" ? { ...bindings, ...(obj as Record<string, unknown>) } : bindings;
     const data = redactPaths(rawData, REDACT_PATHS);
-    if (lvl === "error" || lvl === "fatal") {
+    if (stdio || lvl === "error" || lvl === "fatal") {
       console.error(JSON.stringify({ level: num, time: ts, ...data, msg }));
     } else {
       console.log(JSON.stringify({ level: num, time: ts, ...data, msg }));
@@ -87,15 +97,26 @@ export function createConsoleLogger(level: string, bindings: Record<string, unkn
     error: (...args: unknown[]) => log("error", 40, args),
     fatal: (...args: unknown[]) => log("fatal", 50, args),
     debug: (...args: unknown[]) => log("debug", 10, args),
-    child: (b: Record<string, unknown>) => createConsoleLogger(level, { ...bindings, ...b }),
+    child: (b: Record<string, unknown>) => createConsoleLogger(level, { ...bindings, ...b }, stdio),
   };
 }
 
 // Pino-based logger (dev mode, richer output)
-export function createPinoLogger(level: string, destination?: NodeJS.WritableStream): Logger {
+//
+// `stdio`: when true and no explicit `destination` is supplied, logs are
+// written to fd 2 (stderr) via `pino.destination(2)` instead of pino's
+// default fd 1 (stdout), and the pino-pretty transport (which always
+// targets stdout, regardless of the `destination` passed to `pino()`) is
+// disabled. An explicit `destination` (used by tests to capture output)
+// always wins over the stdio default.
+export function createPinoLogger(
+  level: string,
+  destination?: NodeJS.WritableStream,
+  stdio = false,
+): Logger {
   const pino = require("pino");
   const isDev = process.env.NODE_ENV === "development";
-  const transport = isDev
+  const transport = isDev && !stdio
     ? { target: "pino-pretty", options: { colorize: true, translateTime: "SYS:HH:mm:ss" } }
     : undefined;
   const pinoOpts = {
@@ -103,29 +124,37 @@ export function createPinoLogger(level: string, destination?: NodeJS.WritableStr
     transport,
     redact: { paths: [...REDACT_PATHS], censor: "[REDACTED]" },
   };
-  return destination ? pino(pinoOpts, destination) : pino(pinoOpts);
+  const dest = destination ?? (stdio ? pino.destination(2) : undefined);
+  return dest ? pino(pinoOpts, dest) : pino(pinoOpts);
 }
 
 export interface LoggerOptions {
   level?: string;
   pretty?: boolean;
+  /**
+   * MCP stdio transport mode: stdout is reserved for JSON-RPC protocol
+   * messages, so ALL log levels must go to stderr instead. See
+   * createConsoleLogger / createPinoLogger for the per-backend mechanism.
+   */
+  stdio?: boolean;
   /** Test-only: override the pino destination stream to capture output. */
   destination?: NodeJS.WritableStream;
 }
 
 export function createLogger(options?: LoggerOptions): Logger {
   const level = options?.level || process.env.LOG_LEVEL || "info";
+  const stdio = options?.stdio ?? false;
 
   // Use console logger in Bun compiled binary (pino uses thread-stream which breaks)
   if (typeof (globalThis as Record<string, unknown>).Bun !== "undefined") {
-    return createConsoleLogger(level);
+    return createConsoleLogger(level, {}, stdio);
   }
 
   // Use pino in Node.js (dev/test)
   try {
-    return createPinoLogger(level, options?.destination);
+    return createPinoLogger(level, options?.destination, stdio);
   } catch {
-    return createConsoleLogger(level);
+    return createConsoleLogger(level, {}, stdio);
   }
 }
 

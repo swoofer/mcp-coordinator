@@ -16,7 +16,9 @@ if (isMainModule) {
   const DATA_DIR = process.env.COORDINATOR_DATA_DIR || "./data";
 
   async function main(): Promise<void> {
-    const services = createServices({ dataDir: DATA_DIR });
+    // stdio: true — stdout is reserved for JSON-RPC protocol messages (MCP
+    // stdio transport spec MUST NOT); route every log level to stderr.
+    const services = createServices({ dataDir: DATA_DIR, stdio: true });
     const log = services.logger;
 
     // STDIO mode is unauthenticated by contract — the trust boundary is "the
