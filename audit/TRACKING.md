@@ -20,8 +20,8 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | | High (13) | Med (46) | Low (42) | Info (18) | **Total (119)** |
 |--|:--:|:--:|:--:|:--:|:--:|
-| **Fermés ✅** | 12 | 22 | 15 | 1 | **50 / 119** |
-| **Rounds cochés** | — | — | — | — | **240 / 595** |
+| **Fermés ✅** | 12 | 22 | 17 | 1 | **52 / 119** |
+| **Rounds cochés** | — | — | — | — | **250 / 595** |
 
 > Mettre à jour ce tableau à chaque tâche fermée. 595 = 119 × 5 rounds.
 > Note : sur les 10 fermés, 8 sont corrigés (5 rounds chacun = 40) ; 2 (protocole-mcp-04, securite-surface-03) sont **dispositionnés en risque-accepté + documenté** (threat-model, hors comptage 5-rounds).
@@ -128,7 +128,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 8 | `qualite-code-02` | 🟠 Med | M | Couche REST : corps de requêtes castés sans validation (15 « body as { | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 9 | `qualite-code-03` | 🟠 Med | M | Aucun linter réel : le job CI « Lint » = 5 scripts bash grep + tsc ; c | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 10 | `tests-03` | 🟠 Med | M | Couche handlers d'outils MCP faiblement couverte : consultation-tools  | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 11 | `tests-04` | 🟠 Med | S | Le hook d'authentification MQTT de production n'est jamais exercé : le | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 11 | `tests-04` | 🟠 Med | S | Le hook d'authentification MQTT de production n'est jamais exercé : le | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 1d414bb |
 | 12 | `tests-05` | 🟠 Med | M | Le dashboard principal (index.html, ~77 fonctions JS inline) n'a aucun | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 13 | `architecture-09` | 🟡 Low | M | Double pile logger/metrics Phase 1 vs Phase 2 : la redaction Pino ne c | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 14 | `architecture-10` | 🟡 Low | M | La Phase 2 contourne l'abstraction DatabaseAdapter par un double cast  | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
@@ -140,7 +140,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 20 | `qualite-code-06` | 🟡 Low | S | Dualité Phase 1 / Phase 2 : deux modules metrics, deux loggers, auth.t | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 21 | `qualite-code-07` | 🟡 Low | S | JSON.parse non protégé sur des colonnes SQLite dans les chemins de lec | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 22ae9ef |
 | 22 | `tests-06` | 🟡 Low | M | Zones serveur les moins mesurées : serve-http.ts 47,5 %, handle-rest.t | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 23 | `tests-07` | 🟡 Low | S | Race assumée dans channel-smoke : sleep fixe de 1,5 s au lieu d'attend | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 23 | `tests-07` | 🟡 Low | S | Race assumée dans channel-smoke : sleep fixe de 1,5 s au lieu d'attend | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 1d414bb |
 | 24 | `tests-08` | 🟡 Low | S | CLI : commandes exclues de la mesure de couverture et « uninstall » (d | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 25 | `tests-09` | 🟡 Low | S | fast-check sous-exploité (2 propriétés) et propriété CSRF théoriquemen | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 26 | `architecture-12` | ⚪ Info | S | CoordinatorConfig porte des champs de configuration morts (authEnabled | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
