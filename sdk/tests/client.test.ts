@@ -467,8 +467,18 @@ describe("McpCoordinatorClient + storage / refresh integration", () => {
     await client1.loadFromStore();
     await client2.loadFromStore();
 
-    // Kick both off; first grabs the lock and refreshes, second waits.
-    const [r1, r2] = await Promise.all([client1.refresh(), client2.refresh()]);
+    // Kick client1 off first and give it a short head start. The lock is
+    // acquired via an atomic `wx` file create resolved on libuv's threadpool;
+    // firing both refresh() calls via Promise.all() races two async fs.open
+    // calls with no guaranteed FIFO ordering, so client2 could occasionally
+    // win the lock instead (observed flakily -- see PR discussion). A small
+    // head start makes client1's lock acquisition deterministic while still
+    // leaving client2 to hit the held lock and wait, which is what this test
+    // exercises.
+    const p1 = client1.refresh();
+    await new Promise((r) => setTimeout(r, 20));
+    const p2 = client2.refresh();
+    const [r1, r2] = await Promise.all([p1, p2]);
 
     expect(r1.accessToken).toBe("at_new");
     expect(r2.accessToken).toBe("at_new"); // adopted from store, not refetched
