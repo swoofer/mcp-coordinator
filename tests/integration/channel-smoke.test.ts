@@ -21,6 +21,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "node:net";
+import type { Stream } from "node:stream";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { NotificationSchema } from "@modelcontextprotocol/sdk/types.js";
@@ -40,6 +41,57 @@ function getFreePort(): Promise<number> {
       const port = typeof addr === "object" && addr ? addr.port : 0;
       srv.close(() => resolve(port));
     });
+  });
+}
+
+/**
+ * Marker the `channel` CLI prints on stderr once its MQTT subscriptions are
+ * active (see `cli/channel.ts`, printed when `handle.ready` resolves).
+ */
+const READY_MARKER = "[channel] subscriptions active";
+
+/**
+ * Wait for `marker` to appear on a piped child-process stderr stream, with a
+ * safety timeout. Replaces a fixed sleep: instead of guessing how long the
+ * subprocess takes to wire up its MQTT SUBSCRIBEs, we watch for the CLI's own
+ * readiness announcement. Deterministic and as fast as the subprocess allows.
+ *
+ * Safe against the "listener attached late" race: a piped Node stream that
+ * hasn't been read yet stays in paused mode and buffers writes internally, so
+ * data emitted before `.on("data", ...)` is attached is still delivered once
+ * we start listening — nothing is lost between spawn and this call.
+ */
+function waitForStderrMarker(
+  stderr: Stream | null | undefined,
+  marker: string,
+  timeoutMs = 10_000,
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    if (!stderr) {
+      reject(new Error("waitForStderrMarker: no stderr stream (was stdio piped?)"));
+      return;
+    }
+    let buf = "";
+    const cleanup = (): void => {
+      clearTimeout(timer);
+      stderr.off("data", onData);
+    };
+    const onData = (chunk: Buffer): void => {
+      buf += chunk.toString("utf-8");
+      if (buf.includes(marker)) {
+        cleanup();
+        resolve();
+      }
+    };
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(
+        new Error(
+          `waitForStderrMarker: timed out after ${timeoutMs}ms waiting for ${JSON.stringify(marker)}; captured stderr so far: ${JSON.stringify(buf)}`,
+        ),
+      );
+    }, timeoutMs);
+    stderr.on("data", onData);
   });
 }
 
@@ -101,9 +153,9 @@ describe("channel CLI — smoke (MQTT → notifications/claude/channel)", () => 
 
     // Wait for the subprocess to wire up its MQTT subscriptions before we
     // publish — without this we race the SUBSCRIBE packet. The CLI prints
-    // "[channel] subscriptions active" on stderr once ready; we just sleep
-    // a beat to keep the test simple and not parse stderr.
-    await new Promise<void>((resolve) => setTimeout(resolve, 1500));
+    // "[channel] subscriptions active" on stderr once ready (cli/channel.ts);
+    // watch for that instead of guessing with a fixed sleep.
+    await waitForStderrMarker(transport.stderr, READY_MARKER);
   }, 30_000);
 
   afterAll(async () => {
@@ -298,11 +350,14 @@ describe("channel CLI — smoke (MQTT → notifications/claude/channel)", () => 
         ],
       });
       try {
-        // Give the channel subprocess time to wire up its MQTT subs before
-        // we drive a tool call. (Subscriptions aren't strictly required for
-        // a publish-side test, but the spawned process needs MQTT to be
-        // connected so the publish callback fires.)
-        await new Promise<void>((r) => setTimeout(r, 1500));
+        // Wait for the channel subprocess to wire up its MQTT subs before we
+        // drive a tool call. (Subscriptions aren't strictly required for a
+        // publish-side test, but the spawned process needs MQTT to be
+        // connected so the publish callback fires.) The harness's client
+        // exposes the underlying StdioClientTransport via `.transport` — pull
+        // its piped stderr and watch for the same readiness marker as above.
+        const altTransport = altHarness.client.transport as StdioClientTransport | undefined;
+        await waitForStderrMarker(altTransport?.stderr, READY_MARKER);
 
         const result = await altHarness.client.callTool({
           name: "post_to_thread",

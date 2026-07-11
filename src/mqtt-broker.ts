@@ -55,6 +55,45 @@ export type MqttAuthVerifier = (
   password: Buffer | undefined,
 ) => Promise<MqttAuthResult>;
 
+/** Aedes' raw `authenticate` hook signature (client, username, password, cb). */
+export type AedesAuthenticateHook = (
+  client: Client,
+  username: string | undefined,
+  password: Buffer | undefined,
+  cb: (err: Error | null, success: boolean) => void,
+) => void;
+
+/**
+ * Build the Aedes-shaped `authenticate` hook from a `MqttAuthVerifier`.
+ * Pulled out of `startEmbeddedMqttBroker` (pure extraction, no behavior
+ * change) and exported so tests can exercise the exact production hook —
+ * including the `client.org` side effect and the reject/error logging —
+ * instead of re-implementing its logic (see tests/unit/b3-mqtt-auth.test.ts).
+ */
+export function createAedesAuthenticateHook(
+  authenticate: MqttAuthVerifier,
+  logger: Logger,
+): AedesAuthenticateHook {
+  return (client, username, password, cb) => {
+    Promise.resolve(authenticate(username, password)).then(
+      (result) => {
+        if (!result.ok) {
+          logger.warn({ client_id: client?.id, username }, "MQTT auth rejected");
+          cb(null, false);
+          return;
+        }
+        // Attach org to the Aedes client object — survives the connection lifetime.
+        (client as unknown as { org: string }).org = result.org;
+        cb(null, true);
+      },
+      (err) => {
+        logger.warn({ client_id: client?.id, err: (err as Error).message }, "MQTT auth error");
+        cb(null, false);
+      }
+    );
+  };
+}
+
 export interface EmbeddedMqttOptions {
   tcpPort?: number; // 0 = OS-assigned (read back from EmbeddedMqttBroker.tcpPort), undefined = skip TCP
   httpServer?: HttpServer; // undefined → skip WS
@@ -88,24 +127,7 @@ export async function startEmbeddedMqttBroker(opts: EmbeddedMqttOptions): Promis
 
   if (authenticate) {
     // B3 fix: when AUTH_ENABLED, every CONNECT must present a valid token.
-    aedesOpts.authenticate = (client: Client, username: string | undefined, password: Buffer | undefined, cb: (err: Error | null, success: boolean) => void) => {
-      Promise.resolve(authenticate(username, password)).then(
-        (result) => {
-          if (!result.ok) {
-            logger.warn({ client_id: client?.id, username }, "MQTT auth rejected");
-            cb(null, false);
-            return;
-          }
-          // Attach org to the Aedes client object — survives the connection lifetime.
-          (client as unknown as { org: string }).org = result.org;
-          cb(null, true);
-        },
-        (err) => {
-          logger.warn({ client_id: client?.id, err: (err as Error).message }, "MQTT auth error");
-          cb(null, false);
-        }
-      );
-    };
+    aedesOpts.authenticate = createAedesAuthenticateHook(authenticate, logger);
 
     // ACL: subscriptions must match coordinator/<org>/...
     // cb(null, null) → granted=128 (subscription failure per MQTT 3.1.1)
