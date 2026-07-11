@@ -20,8 +20,8 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | | High (13) | Med (46) | Low (42) | Info (18) | **Total (119)** |
 |--|:--:|:--:|:--:|:--:|:--:|
-| **Fermés ✅** | 12 | 7 | 5 | 0 | **24 / 119** |
-| **Rounds cochés** | — | — | — | — | **110 / 595** |
+| **Fermés ✅** | 12 | 10 | 7 | 0 | **29 / 119** |
+| **Rounds cochés** | — | — | — | — | **135 / 595** |
 
 > Mettre à jour ce tableau à chaque tâche fermée. 595 = 119 × 5 rounds.
 > Note : sur les 10 fermés, 8 sont corrigés (5 rounds chacun = 40) ; 2 (protocole-mcp-04, securite-surface-03) sont **dispositionnés en risque-accepté + documenté** (threat-model, hors comptage 5-rounds).
@@ -76,18 +76,18 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 1 | `ci-cd-01` | 🔴 High | M | release-binaries ne se déclenche plus depuis que release-please crée l | ✅ | ✅ | ✅ | ✅ | ⏳ | ✅ 72e19c5 (plausible) |
 | 2 | `maintenabilite-02` | 🔴 High | M | Canal de distribution binaires silencieusement cassé depuis v0.11.0 | ✅ | ✅ | ✅ | ✅ | ⏳ | ✅ 72e19c5 (plausible) |
 | 3 | `tests-01` | 🔴 High | S | Les seuils de couverture 100 % ne sont pas appliqués en CI (pnpm test  | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ fa96fca+c47aed6 |
-| 4 | `ci-cd-02` | 🟠 Med | S | Provenance npm revendiquée mais jamais activée (id-token: write inutil | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 4 | `ci-cd-02` | 🟠 Med | S | Provenance npm revendiquée mais jamais activée (id-token: write inutil | ✅ | ✅ | ✅ | ✅ | ⏳ | ✅ f2767da (plausible) |
 | 5 | `ci-cd-03` | 🟠 Med | S | Aucun status check requis sur main : les tests ne bloquent pas les mer | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 6 | `ci-cd-04` | 🟠 Med | S | Le garde-fou « :latest non promu sur workflow_dispatch/workflow_call » | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 6 | `ci-cd-04` | 🟠 Med | S | Le garde-fou « :latest non promu sur workflow_dispatch/workflow_call » | ✅ | ✅ | ✅ | ✅ | ⏳ | ✅ f2767da (plausible) |
 | 7 | `ci-cd-05` | 🟠 Med | S | Actions GitHub épinglées par tags mutables (pas de SHA), sans Dependab | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 8 | `dependances-01` | 🟠 Med | S | Le bloc « overrides » de package.json est silencieusement ignoré par p | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ e0bace5 |
 | 9 | `dependances-02` | 🟠 Med | S | 10 avis pnpm audit ouverts (2 high, 7 moderate, 1 low) — tous corrigea | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ e0bace5 |
 | 10 | `dependances-03` | 🟠 Med | S | Aucune automatisation de veille dépendances : ni Dependabot/Renovate,  | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ e0bace5 |
 | 11 | `dependances-04` | 🟠 Med | M | pnpm 9 exécute les scripts d'installation de toutes les dépendances pa | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 12 | `tests-02` | 🟠 Med | S | Les 84 tests du SDK (sdk/tests) ne tournent dans aucune CI | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 13 | `ci-cd-06` | 🟡 Low | S | Node 20 déclaré supporté (engines >=20) mais jamais testé en CI | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 12 | `tests-02` | 🟠 Med | S | Les 84 tests du SDK (sdk/tests) ne tournent dans aucune CI | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ f2767da |
+| 13 | `ci-cd-06` | 🟡 Low | S | Node 20 déclaré supporté (engines >=20) mais jamais testé en CI | ✅ | ✅ | ✅ | ✅ | ⏳ | ✅ f2767da (plausible) |
 | 14 | `ci-cd-07` | 🟡 Low | S | Déclencheurs incohérents : lint et e2e tournent en double sur chaque P | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 15 | `ci-cd-08` | 🟡 Low | S | secrets: inherit transmet NPM_TOKEN au workflow Docker qui n'en a pas  | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 15 | `ci-cd-08` | 🟡 Low | S | secrets: inherit transmet NPM_TOKEN au workflow Docker qui n'en a pas  | ✅ | ✅ | ✅ | ✅ | ⏳ | ✅ f2767da (plausible) |
 | 16 | `ci-cd-09` | 🟡 Low | M | Binaires compilés avec un Bun non versionné et jamais démarrés réellem | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 17 | `dependances-05` | 🟡 Low | L | Famille tree-sitter figée sur l'ABI 0.21 (début 2024) — montée de vers | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 18 | `dependances-06` | 🟡 Low | M | ~292 Mo de grammaires tree-sitter installés par défaut chez chaque con | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
