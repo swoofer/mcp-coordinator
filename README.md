@@ -373,9 +373,9 @@ Operational tooling: `mcp-coordinator init phase2` (interactive wizard), `mcp-co
 
 The coordinator tracks Anthropic workspace quota live and exposes it on MQTT, the dashboard, and the `coordinator_status` MCP tool — so MCP clients can decide whether to abort, throttle, or proceed before launching expensive turns.
 
-- Reads usage from the Anthropic API using the key in the environment.
-- Threshold via `MAX_QUOTA_PCT` env var (default `95`).
-- Back-off when the usage endpoint itself returns 429.
+- Reads the Claude Code OAuth token from the macOS Keychain (`security find-generic-password -s "Claude Code-credentials"`) and calls Anthropic's `/api/oauth/usage` endpoint directly — **macOS only**. On Linux/Windows the credential reader is an unimplemented stub, so the quota endpoint returns 503 (fail-open: the rest of the coordinator keeps working without a quota guardrail).
+- The coordinator itself enforces no abort threshold — it just serves fresh utilization numbers (2 min cache TTL). Deciding what "too high" means, e.g. via a `MAX_QUOTA_PCT` convention, is left to the orchestrator reading `coordinator_status.quota`.
+- Back-off when the usage endpoint itself returns 429 (5 min cool-down by default, or the server's `Retry-After`).
 - Live widget in the dashboard with manual refresh + historical buckets.
 - `coordinator/quota/update` MQTT events stream into the timeline by default.
 
@@ -453,7 +453,6 @@ Resolution priority (highest to lowest): CLI flag → env var → config.json �
 | `NODE_ENV` | — | `development` for pretty logs |
 | `COORDINATOR_AUTH_ENABLED` | `false` | Enable Phase 1 JWT authentication |
 | `COORDINATOR_OAUTH_ENABLED` | `false` | Enable Phase 2 OAuth |
-| `MAX_QUOTA_PCT` | `95` | Pre-flight abort threshold for Anthropic quota |
 
 The complete annotated env reference (50+ variables including all Phase 2 OAuth / multi-IdP / hardening vars) lives in [`.env.example`](./.env.example) — copy-paste and fill in.
 
