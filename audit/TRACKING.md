@@ -20,7 +20,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | | High (13) | Med (46) | Low (42) | Info (18) | **Total (119)** |
 |--|:--:|:--:|:--:|:--:|:--:|
-| **Fermés ✅** | 12 | 29 | 30 | 9 | **80 / 119** |
+| **Fermés ✅** | 12 | 32 | 30 | 12 | **86 / 119** |
 | **Rounds cochés** | — | — | — | — | **295 / 595 (approx)** |
 
 > Mettre à jour ce tableau à chaque tâche fermée. 595 = 119 × 5 rounds.
@@ -171,14 +171,14 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | # | ID | Sév | Eff | Constat | R1 | R2 | R3 | R4 | R5 | Statut |
 |---|----|-----|-----|---------|----|----|----|----|----|--------|
-| 1 | `maintenabilite-01` | 🔴 High | S | PR d'un contributeur externe (#151) sans aucune réponse depuis 6,5 sem | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 2 | `maintenabilite-03` | 🟠 Med | S | Release 0.13.1 bloquée depuis 7 semaines avec des correctifs utilisate | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 3 | `maintenabilite-04` | 🟠 Med | S | pnpm test échoue sur Windows (20 tests, exit 127) quand bash résout ve | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 1 | `maintenabilite-01` | 🔴 High | S | PR d'un contributeur externe (#151) sans aucune réponse depuis 6,5 sem | ☐ | ☐ | ☐ | ☐ | ☐ | ⏳ action mainteneur (#151) |
+| 2 | `maintenabilite-03` | 🟠 Med | S | Release 0.13.1 bloquée depuis 7 semaines avec des correctifs utilisate | ☐ | ☐ | ☐ | ☐ | ☐ | ⏳ action mainteneur (release 0.13.1) |
+| 3 | `maintenabilite-04` | 🟠 Med | S | pnpm test échoue sur Windows (20 tests, exit 127) quand bash résout ve | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 27d43c3 |
 | 4 | `maintenabilite-05` | 🟠 Med | M | Aucun formatter ni linter généraliste — le style repose entièrement su | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 5 | `maintenabilite-06` | 🟠 Med | M | sdk/ est un sous-paquet orphelin : jamais testé en CI, lockfile npm da | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 6 | `maintenabilite-07` | 🟠 Med | S | Surface Phase 2 (OAuth/multi-org/chiffrement) surdimensionnée par rapp | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 7 | `maintenabilite-08` | 🟡 Low | S | Tracker figé depuis le 23 mai : 23 issues semées sans triage ni lien a | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 8 | `maintenabilite-09` | 🟡 Low | S | 169 artefacts de travail IA internes commités dans le dépôt public (do | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 9 | `maintenabilite-10` | ⚪ Info | S | Déclencheurs CI incohérents entre workflows : tests absents des branch | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 10 | `maintenabilite-11` | ⚪ Info | S | Seuils de couverture 100 % sur ~50 fichiers : garde-fou puissant mais  | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 11 | `maintenabilite-12` | ⚪ Info | M | Landing page maintenue à la main en 6 locales : toil récurrent à chaqu | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 5 | `maintenabilite-06` | 🟠 Med | M | sdk/ est un sous-paquet orphelin : jamais testé en CI, lockfile npm da | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ #154 (sdk-test en CI) |
+| 6 | `maintenabilite-07` | 🟠 Med | S | Surface Phase 2 (OAuth/multi-org/chiffrement) surdimensionnée par rapp | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 1125e1f (gelé+documenté) |
+| 7 | `maintenabilite-08` | 🟡 Low | S | Tracker figé depuis le 23 mai : 23 issues semées sans triage ni lien a | ☐ | ☐ | ☐ | ☐ | ☐ | ⏳ action mainteneur (triage) |
+| 8 | `maintenabilite-09` | 🟡 Low | S | 169 artefacts de travail IA internes commités dans le dépôt public (do | ☐ | ☐ | ☐ | ☐ | ☐ | ⏳ action mainteneur (notes working/) |
+| 9 | `maintenabilite-10` | ⚪ Info | S | Déclencheurs CI incohérents entre workflows : tests absents des branch | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 0fa4693 (= ci-cd-07) |
+| 10 | `maintenabilite-11` | ⚪ Info | S | Seuils de couverture 100 % sur ~50 fichiers : garde-fou puissant mais  | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 1125e1f (documenté) |
+| 11 | `maintenabilite-12` | ⚪ Info | M | Landing page maintenue à la main en 6 locales : toil récurrent à chaqu | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 1125e1f (documenté) |
