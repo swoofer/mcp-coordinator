@@ -83,6 +83,19 @@ export class MqttBridge {
         resolve();
       });
 
+      // protocole-mcp-06 follow-up (found via tests-06): mqtt.js emits "close"
+      // and "offline" when the connection drops. Without resetting `connected`,
+      // isConnected() keeps reporting true through the whole outage window, so
+      // the MQTT tool guards (mqtt-tools.ts) would falsely report success while
+      // publishes silently no-op. mqtt.js auto-reconnects and fires "connect"
+      // again (which re-sets `connected` and re-subscribes above).
+      this.client.on("close", () => {
+        this.connected = false;
+      });
+      this.client.on("offline", () => {
+        this.connected = false;
+      });
+
       this.client.on("message", (topic, message) => {
         const parts = topic.split("/");
         // Topic: coordinator/<orgId>/agents/<agentId>/status → parts[2]="agents", parts[3]=agentId, parts[4]="status"
