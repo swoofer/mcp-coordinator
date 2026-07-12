@@ -20,14 +20,14 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | | High (13) | Med (46) | Low (42) | Info (18) | **Total (119)** |
 |--|:--:|:--:|:--:|:--:|:--:|
-| **Fermés ✅ / 📄** | 12 | 43 | 40 | 17 | **112 / 119** |
+| **Fermés ✅ / 📄** | 12 | 44 | 40 | 18 | **114 / 119** |
 | **⏳ action mainteneur** | 1 | 0 | 2 | 0 | **3** |
-| **⏭️ différé (décision mainteneur)** | 0 | 3 | 0 | 1 | **4** |
+| **⏭️ différé (décision mainteneur)** | 0 | 2 | 0 | 0 | **2** |
 
 > **112/119 traités**. 24 PR mergées + v1.0.0 publiée + branch protection activée. **v1.0.0 (2026-07-12)** : npm + Docker/GHCR + binaires — confirme ci-cd-01/02 + maintenabilite-02, solde maintenabilite-03.
 > **7 restants :**
 > - **⏳ 3 actions mainteneur (vraiment non-agent)** : `maintenabilite-01` (🔴 High — PR externe #151), `maintenabilite-08` (triage issues), `maintenabilite-09` (décision sur les notes `docs/superpowers/working/`).
-> - **⏭️ 4 refactors différés (décision mainteneur)** : `qualite-code-01` (fonctions géantes — chemins auth/routage sensibles), `qualite-code-03` + `maintenabilite-05` (adoption ESLint/Prettier + reformat repo-wide), `architecture-14` (modularisation dashboard).
+> - **⏭️ 2 restants** : `qualite-code-03` + `maintenabilite-05` (adoption Prettier + reformat repo-wide — en cours). Suivi noté : durcir le CSP strict du dashboard (convertir 4 `onclick=` + 16 styles inline) maintenant que le script est externe (#192).
 > Bugs produit trouvés en cours de route (hors 119) : mqtt-bridge `isConnected()` mentait en coupure (**corrigé**, #184) ; `handleSse()` sans `flushHeaders()` (**suivi 1 ligne recommandé**).
 
 ---
@@ -128,7 +128,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 4 | `architecture-06` | 🟠 Med | S | Défauts de répertoire de données divergents entre points d'entrée, et  | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ f36d887 (doc+warning, défaut inchangé) |
 | 5 | `architecture-07` | 🟠 Med | S | Dérive comportementale entre les transports REST et MCP sur le flux d' | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 868406e |
 | 6 | `architecture-08` | 🟠 Med | M | Org 'default' codé en dur aux frontières MQTT et quota alors que le mu | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 62fdf82 (multi-org exp. documenté) |
-| 7 | `qualite-code-01` | 🟠 Med | L | Trois fonctions géantes (390 à 505 lignes) concentrent la complexité d | ☐ | ☐ | ☐ | ☐ | ☐ | ⏭️ différé — décision mainteneur (refactor 1 fichier/PR ; chemins sensibles auth/routage) |
+| 7 | `qualite-code-01` | 🟠 Med | L | Trois fonctions géantes (390 à 505 lignes) concentrent la complexité d | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ handleRest #190 + refreshTokenGrant #193 + startServer #191 (tests verts sans modif) |
 | 8 | `qualite-code-02` | 🟠 Med | M | Couche REST : corps de requêtes castés sans validation (15 « body as { | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ b39326b |
 | 9 | `qualite-code-03` | 🟠 Med | M | Aucun linter réel : le job CI « Lint » = 5 scripts bash grep + tsc ; c | ☐ | ☐ | ☐ | ☐ | ☐ | ⏭️ différé — décision mainteneur (adoption ESLint/Prettier, cf. maintenabilite-05) |
 | 10 | `tests-03` | 🟠 Med | M | Couche handlers d'outils MCP faiblement couverte : consultation-tools  | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 3fcabbf |
@@ -148,7 +148,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 24 | `tests-08` | 🟡 Low | S | CLI : commandes exclues de la mesure de couverture et « uninstall » (d | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 23a4e40 |
 | 25 | `tests-09` | 🟡 Low | S | fast-check sous-exploité (2 propriétés) et propriété CSRF théoriquemen | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ a8ad184 |
 | 26 | `architecture-12` | ⚪ Info | S | CoordinatorConfig porte des champs de configuration morts (authEnabled | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ DONE |
-| 27 | `architecture-14` | ⚪ Info | L | Dashboard principal : 63 Ko de HTML avec un unique script inline, cont | ☐ | ☐ | ☐ | ☐ | ☐ | ⏭️ différé — refactor dashboard (YAGNI ; filet tests-05 en place) |
+| 27 | `architecture-14` | ⚪ Info | L | Dashboard principal : 63 Ko de HTML avec un unique script inline, cont | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ #192 (script → dashboard.js ; CSP strict = suivi noté) |
 | 28 | `qualite-code-08` | ⚪ Info | S | Le catch global HTTP renvoie err.message brut dans la réponse 500 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 6b73e92 |
 | 29 | `tests-10` | ⚪ Info | L | Suite entièrement sérialisée à cause de singletons de module — discipl | ✅ | — | — | — | 📄 | 📄 accepté (YAGNI ; lié arch-02/03) |
 | 30 | `tests-11` | ⚪ Info | S | Scripts perf/chaos hors CI par choix documenté — pas de suivi de régre | ✅ | — | — | — | 📄 | 📄 choix accepté+documenté 62fdf82 |
