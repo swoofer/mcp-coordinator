@@ -20,13 +20,13 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | | High (13) | Med (46) | Low (42) | Info (18) | **Total (119)** |
 |--|:--:|:--:|:--:|:--:|:--:|
-| **Fermés ✅ / 📄** | 12 | 42 | 40 | 17 | **111 / 119** |
-| **⏳ action mainteneur** | 1 | 1 | 2 | 0 | **4** |
+| **Fermés ✅ / 📄** | 12 | 43 | 40 | 17 | **112 / 119** |
+| **⏳ action mainteneur** | 1 | 0 | 2 | 0 | **3** |
 | **⏭️ différé (décision mainteneur)** | 0 | 3 | 0 | 1 | **4** |
 
-> **111/119 traités** (corrigés en 5 rounds, ou dispositionnés 📄 risque-accepté+documenté). 24 PR mergées. **v1.0.0 publiée le 2026-07-12** (npm + Docker/GHCR + binaires) — confirme en réel ci-cd-01/02 + maintenabilite-02 (canal binaires + provenance) et solde maintenabilite-03 (release).
-> **8 restants, tous non-code / hors mandat agent :**
-> - **⏳ 4 actions mainteneur** : `maintenabilite-01` (🔴 High — PR externe #151, dernier High), `maintenabilite-08` (triage), `maintenabilite-09` (notes `docs/superpowers/working/`), `ci-cd-03` (protection de branche).
+> **112/119 traités**. 24 PR mergées + v1.0.0 publiée + branch protection activée. **v1.0.0 (2026-07-12)** : npm + Docker/GHCR + binaires — confirme ci-cd-01/02 + maintenabilite-02, solde maintenabilite-03.
+> **7 restants :**
+> - **⏳ 3 actions mainteneur (vraiment non-agent)** : `maintenabilite-01` (🔴 High — PR externe #151), `maintenabilite-08` (triage issues), `maintenabilite-09` (décision sur les notes `docs/superpowers/working/`).
 > - **⏭️ 4 refactors différés (décision mainteneur)** : `qualite-code-01` (fonctions géantes — chemins auth/routage sensibles), `qualite-code-03` + `maintenabilite-05` (adoption ESLint/Prettier + reformat repo-wide), `architecture-14` (modularisation dashboard).
 > Bugs produit trouvés en cours de route (hors 119) : mqtt-bridge `isConnected()` mentait en coupure (**corrigé**, #184) ; `handleSse()` sans `flushHeaders()` (**suivi 1 ligne recommandé**).
 
@@ -81,7 +81,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 2 | `maintenabilite-02` | 🔴 High | M | Canal de distribution binaires silencieusement cassé depuis v0.11.0 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 72e19c5 (confirmé — 3 binaires à la release v1.0.0) |
 | 3 | `tests-01` | 🔴 High | S | Les seuils de couverture 100 % ne sont pas appliqués en CI (pnpm test  | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ fa96fca+c47aed6 |
 | 4 | `ci-cd-02` | 🟠 Med | S | Provenance npm revendiquée mais jamais activée (id-token: write inutil | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ f2767da (confirmé — publish --provenance à v1.0.0) |
-| 5 | `ci-cd-03` | 🟠 Med | S | Aucun status check requis sur main : les tests ne bloquent pas les mer | ☐ | ☐ | ☐ | ☐ | ☐ | ⏳ action mainteneur (protection de branche) |
+| 5 | `ci-cd-03` | 🟠 Med | S | Aucun status check requis sur main : les tests ne bloquent pas les mer | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ branch protection (lint+test(22)+build-no-native+sdk-test requis) |
 | 6 | `ci-cd-04` | 🟠 Med | S | Le garde-fou « :latest non promu sur workflow_dispatch/workflow_call » | ✅ | ✅ | ✅ | ✅ | ⏳ | ✅ f2767da (plausible) |
 | 7 | `ci-cd-05` | 🟠 Med | S | Actions GitHub épinglées par tags mutables (pas de SHA), sans Dependab | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 0fa4693 |
 | 8 | `dependances-01` | 🟠 Med | S | Le bloc « overrides » de package.json est silencieusement ignoré par p | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ e0bace5 |
