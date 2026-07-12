@@ -4,6 +4,7 @@ import path from "node:path";
 import fs from "node:fs";
 import type Database from "better-sqlite3";
 import { AuditQueue, type AuditQueueRow } from "../../src/security/audit-queue.js";
+import { GENESIS_HASH } from "../../src/security/audit-chain.js";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
 import {
   audit,
@@ -268,6 +269,145 @@ describe("AuditQueue", () => {
     // Drain must NOT throw — telemetry-loss-on-telemetry-loss is logged later (T36).
     expect(() => queue.drain()).not.toThrow();
     expect(queue.isClosed()).toBe(true);
+  });
+
+  // -------------------------------------------------------------------------
+  // Closed-DB robustness: a scheduled flush timer firing after the DB has
+  // been closed (test teardown race, process shutdown) must NO-OP, never
+  // throw or become an unhandled timer-callback exception.
+  // -------------------------------------------------------------------------
+
+  it("R1: scheduled timer flush after db.close() does not throw (was: crashed the run)", () => {
+    vi.useFakeTimers();
+    try {
+      queue.enqueue(makeRow({ action: "test.late.timer" }));
+      expect(queue.size()).toBe(1);
+      db.close();
+      // Before the fix, this synchronously rethrows the better-sqlite3
+      // "database is not open" error out of the timer callback (fake
+      // timers execute callbacks in-line), crashing the test run.
+      expect(() => vi.advanceTimersByTime(100)).not.toThrow();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("closed-db timer flush is a clean no-op: buffer cleared, not counted as flushed", () => {
+    vi.useFakeTimers();
+    try {
+      queue.enqueue(makeRow({ action: "test.late.timer2" }));
+      db.close();
+      vi.advanceTimersByTime(100);
+      expect(queue.size()).toBe(0);
+      expect(queue.metrics.flushed).toBe(0);
+      expect(queue.metrics.batchesWritten).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("explicit flush() on a closed db does not throw and drops the pending batch", () => {
+    queue.enqueue(makeRow({ action: "test.explicit.flush" }));
+    db.close();
+    expect(() => queue.flush()).not.toThrow();
+    expect(queue.size()).toBe(0);
+    expect(queue.metrics.flushed).toBe(0);
+  });
+
+  it("R5: db closed while a batch is pending — no exception, pending rows simply not written", () => {
+    for (let i = 0; i < 10; i++) queue.enqueue(makeRow({ action: `pending.${i}` }));
+    expect(queue.size()).toBe(10);
+    db.close();
+    expect(() => queue.flush()).not.toThrow();
+    expect(queue.size()).toBe(0);
+    // Nothing was written (db closed before writeBatchSync could run) —
+    // this is acceptable shutdown-path loss, not a correctness bug.
+    expect(queue.metrics.flushed).toBe(0);
+  });
+
+  it("post-drain enqueue on a closed db does not throw (writeBatchSync's own db.open guard)", () => {
+    // enqueue()'s post-drain path calls writeBatchSync() directly, bypassing
+    // flush()'s own db.open guard entirely. writeBatchSync() carries its own
+    // defense-in-depth guard for exactly this path — exercise it here rather
+    // than via flush(), since flush() would short-circuit before reaching it.
+    queue.enqueue(makeRow({ action: "before.drain" }));
+    queue.drain();
+    expect(queue.isClosed()).toBe(true);
+    db.close();
+    expect(() =>
+      queue.enqueue(makeRow({ action: "after.drain.closed.db" })),
+    ).not.toThrow();
+    // Still counted as "flushed" by enqueue()'s post-drain contract even
+    // though writeBatchSync() no-op'd — matches the pre-existing behavior
+    // documented for the post-drain sync path.
+    expect(queue.metrics.flushed).toBe(2);
+  });
+
+  it("drain() shutdown row falls back to GENESIS_HASH when the ledger has no prior rows", () => {
+    // tip?.row_hash ?? GENESIS_HASH: the existing dropped-row drain test always
+    // has prior rows in the ledger (flush() at drain time writes the buffered
+    // batch first), so tipStmt.get() returns a real tip and the ?? fallback
+    // is never exercised. Keep flush() permanently stubbed through drain()
+    // itself so nothing is ever written before the shutdown row, forcing an
+    // empty ledger and the GENESIS_HASH fallback.
+    queue.flush = (): void => {
+      /* swallow: buffer is never actually written, even during drain() */
+    };
+    for (let i = 0; i < 10_000; i++) queue.enqueue(makeRow());
+    queue.enqueue(makeRow()); // dropped
+    expect(queue.metrics.dropped).toBe(1);
+
+    const metrics = queue.drain();
+    expect(metrics.dropped).toBe(1);
+
+    const shutdownRow = db
+      .prepare("SELECT * FROM audit_log WHERE action = ?")
+      .get("system.shutdown.audit_loss") as AuditRow | undefined;
+    expect(shutdownRow).toBeDefined();
+    expect(shutdownRow!.metadata_json && JSON.parse(shutdownRow!.metadata_json)).toEqual({
+      dropped_count: 1,
+    });
+    const fullRow = db
+      .prepare("SELECT prev_hash FROM audit_log WHERE action = ?")
+      .get("system.shutdown.audit_loss") as { prev_hash: string };
+    expect(fullRow.prev_hash).toBe(GENESIS_HASH);
+  });
+
+  it("scheduled timer flush swallows an unexpected flush() error without rethrowing", () => {
+    // The db.open guard in flush()/writeBatchSync() handles the common closed-db
+    // race, but scheduleFlush()'s try/catch is the last line of defense for
+    // anything else that goes wrong on the unattended timer path. Force flush()
+    // to throw something other than the guarded case to exercise that catch.
+    vi.useFakeTimers();
+    const realFlush = queue.flush.bind(queue);
+    try {
+      queue.enqueue(makeRow({ action: "test.timer.unexpected.error" }));
+      expect(queue.size()).toBe(1);
+      queue.flush = (): void => {
+        throw new Error("simulated unexpected flush failure");
+      };
+      // Before this test, an error thrown inside the timer callback would
+      // propagate as an unhandled exception (fake timers run callbacks inline).
+      expect(() => vi.advanceTimersByTime(100)).not.toThrow();
+    } finally {
+      queue.flush = realFlush;
+      vi.useRealTimers();
+    }
+  });
+
+  it("R3/R5: normal flush on an open db still writes correctly with an intact hash chain", () => {
+    queue.enqueue(makeRow({ action: "normal.1" }));
+    queue.enqueue(makeRow({ action: "normal.2" }));
+    queue.flush();
+    expect(countRows(db)).toBe(2);
+    expect(queue.metrics.flushed).toBe(2);
+    const rows = db
+      .prepare("SELECT prev_hash, row_hash FROM audit_log ORDER BY id ASC")
+      .all() as { prev_hash: string; row_hash: string }[];
+    expect(rows).toHaveLength(2);
+    expect(rows[0].prev_hash).toBe(GENESIS_HASH);
+    expect(rows[1].prev_hash).toBe(rows[0].row_hash);
+    expect(rows[0].row_hash).not.toBe(rows[1].row_hash);
   });
 });
 
