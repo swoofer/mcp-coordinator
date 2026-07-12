@@ -20,7 +20,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | | High (13) | Med (46) | Low (42) | Info (18) | **Total (119)** |
 |--|:--:|:--:|:--:|:--:|:--:|
-| **Fermés ✅** | 12 | 35 | 32 | 13 | **92 / 119** |
+| **Fermés ✅** | 12 | 36 | 33 | 15 | **96 / 119** |
 | **Rounds cochés** | — | — | — | — | **295 / 595 (approx)** |
 
 > Mettre à jour ce tableau à chaque tâche fermée. 595 = 119 × 5 rounds.
@@ -48,7 +48,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 13 | `securite-surface-05` | 🟡 Low | S | Endpoint Phase 1 /api/auth/register sans rate-limiting ni lockout | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 177205b |
 | 14 | `securite-surface-06` | 🟡 Low | S | CORS wildcard générique et transport du JWT via ?token= sur les GET | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ f8f6227 |
 | 15 | `securite-surface-07` | 🟡 Low | S | En-têtes de sécurité absents sur le dashboard principal et les réponse | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ dc4bb3a |
-| 16 | `protocole-mcp-12` | ⚪ Info | M | Auth du endpoint /mcp non conforme à la spec d'autorisation MCP : pas  | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 16 | `protocole-mcp-12` | ⚪ Info | M | Auth du endpoint /mcp non conforme à la spec d'autorisation MCP : pas  | ✅ | — | — | — | 📄 | 📄 différé+documenté 6dc241d |
 | 17 | `securite-auth-05` | ⚪ Info | S | L'échappatoire COORDINATOR_INSECURE_COOKIES est inerte pour les cookie | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 177205b |
 
 ### PR 2 — Conformité MCP & endpoints fantômes (13 constats)
@@ -65,9 +65,9 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 8 | `protocole-mcp-08` | 🟡 Low | S | get_thread (et lectures similaires) retourne le texte « null » pour un | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 0f97fc3 |
 | 9 | `protocole-mcp-09` | 🟡 Low | S | README documente un outil MCP « introspection » qui n'existe pas ; com | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ docs#162 |
 | 10 | `protocole-mcp-10` | 🟡 Low | M | Aucun outil n'a d'annotations (readOnlyHint/destructiveHint), de title | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 0f97fc3 |
-| 11 | `protocole-mcp-11` | 🟡 Low | M | Résumabilité Streamable HTTP absente (pas d'eventStore) et Mcp-Session | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 11 | `protocole-mcp-11` | 🟡 Low | M | Résumabilité Streamable HTTP absente (pas d'eventStore) et Mcp-Session | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ dec5123 (CORS ; eventStore YAGNI documenté) |
 | 12 | `protocole-mcp-14` | 🟡 Low | S | Outils bloquants (wait_for_peers, wait_for_message) sans borne supérie | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 0f97fc3 |
-| 13 | `protocole-mcp-13` | ⚪ Info | S | mcpName déclaré mais aucune trace de publication au registre MCP (pas  | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 13 | `protocole-mcp-13` | ⚪ Info | S | mcpName déclaré mais aucune trace de publication au registre MCP (pas  | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ dec5123 (nom aligné ; registre documenté) |
 
 ### PR 3 — CI/CD & dépendances (24 constats)
 
@@ -121,7 +121,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 1 | `architecture-02` | 🟠 Med | L | État mutable au niveau module dans serve-http.ts contredit le contrat  | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 2 | `architecture-03` | 🟠 Med | L | Base de données en singleton global (service locator) — couple tout le | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 3 | `architecture-04` | 🟠 Med | S | Les handlers SIGINT/SIGTERM du CLI en mode foreground court-circuitent | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ DONE |
-| 4 | `architecture-06` | 🟠 Med | S | Défauts de répertoire de données divergents entre points d'entrée, et  | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 4 | `architecture-06` | 🟠 Med | S | Défauts de répertoire de données divergents entre points d'entrée, et  | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ f36d887 (doc+warning, défaut inchangé) |
 | 5 | `architecture-07` | 🟠 Med | S | Dérive comportementale entre les transports REST et MCP sur le flux d' | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 868406e |
 | 6 | `architecture-08` | 🟠 Med | M | Org 'default' codé en dur aux frontières MQTT et quota alors que le mu | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 7 | `qualite-code-01` | 🟠 Med | L | Trois fonctions géantes (390 à 505 lignes) concentrent la complexité d | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
