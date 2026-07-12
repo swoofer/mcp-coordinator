@@ -56,7 +56,30 @@ async function killAndWait(child: ChildProcess): Promise<void> {
   if (child.exitCode !== null || child.killed) return;
   await new Promise<void>((resolve) => {
     child.once("exit", () => resolve());
-    child.kill("SIGTERM");
+    // Windows-specific: `npx.cmd` is a batch script, so Node routes it
+    // through cmd.exe even with shell:false — the real work happens in a
+    // grandchild (tsx -> node) process tree. `child.kill()` only signals
+    // the immediate PID; on the stdio entry point (src/index.ts) the
+    // grandchild happens to self-terminate anyway (its stdin pipe breaks
+    // when the middle process dies, and StdioServerTransport closes on
+    // stdin EOF), but the HTTP entry point (src/serve-http.ts) has no such
+    // dependency and is orphaned as a live listener otherwise. Use
+    // `taskkill /T /F` to reap the whole tree on Windows; POSIX kill()
+    // already signals the whole process group when the child was spawned
+    // normally (no `detached: true` here), so the plain path is fine there.
+    if (process.platform === "win32" && child.pid) {
+      try {
+        spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], {
+          stdio: "ignore",
+          shell: false,
+          windowsHide: true,
+        });
+      } catch {
+        // best-effort; fall through to the child.kill() + timeout below
+      }
+    } else {
+      child.kill("SIGTERM");
+    }
     setTimeout(() => {
       try {
         child.kill("SIGKILL");
