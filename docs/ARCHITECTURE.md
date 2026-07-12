@@ -218,6 +218,51 @@ defined and OAuth is enabled, before any other Phase 2 validation or DB
 access. Run the Node build (npm/Docker) if you need OAuth; the Bun
 binary is Phase-1-only.
 
+## Process model: mono-instance-per-process, DB as a process singleton
+
+`src/serve-http.ts` holds module-level state (`services`, `httpLog`,
+`currentRunConfig`) that every HTTP/MCP/MQTT request handler closes over
+directly — not per-call locals. That means **one Node process runs at most
+one live coordinator at a time**. `startServer()` enforces this: a module
+flag (`serverRunning`) is set on entry and a 2nd concurrent `startServer()`
+call (without an intervening `handle.stop()`) throws immediately rather than
+silently reassigning the 1st instance's state out from under it
+(`architecture-02`). The flag is released in `stop()`, so the supported
+restart pattern — `await startServer(); …; await handle.stop(); await
+startServer();` **sequentially** in the same process — keeps working (tests
+use this pattern; see `tests/integration/serve-http-mono-instance.test.ts`).
+Running several coordinators side by side means running several **OS
+processes**, each with its own port/`mqttTcpPort`/`dataDir` — not several
+in-process instances.
+
+`src/database.ts`'s `getDb()` is a classic locator: a module-level `let db`
+set once by `initDatabase()` at boot and read by ~80 call sites across ~22
+files via `getDb()` rather than constructor-injected `DatabaseAdapter`
+instances (`architecture-03`). This is consistent with — and only tenable
+because of — the mono-instance-per-process model above: since a process
+only ever runs one coordinator, "the database" and "the process's database
+connection" are the same thing, and a global locator introduces no
+cross-instance ambiguity. The two concerns a locator normally raises are
+therefore already closed here:
+
+- **Two coordinators, two `dataDir`s, one process** — can't happen; ruled
+  out by the `architecture-02` guard above.
+- **Serial test isolation** (each Vitest file gets its own DB via
+  `initDatabase()`/`closeDb()` around the single module-level `db`) —
+  tracked separately as `tests-10`, dispositioned YAGNI (single-tenant
+  deployment profile doesn't need `fileParallelism`; see `audit/` for the
+  finding).
+
+Constructor-injecting `DatabaseAdapter` into every domain class (registry,
+consultation, file tracker, …) instead of calling `getDb()` is a **deferred
+refactor, not a current defect**: it would let multiple coordinators share a
+process and let Vitest run files in parallel (`fileParallelism`), but
+nothing in this codebase's deployment profile needs either today, and the
+migration is mechanical (swap `getDb()` reads for a constructor param) —
+doable later without redesigning the call sites first. Do not start it
+speculatively; it earns its keep only if/when a concrete need for
+in-process multi-instance or parallel test files shows up.
+
 ## How to add an endpoint or MCP tool
 
 Two transports exist side by side; a given feature is often exposed on
