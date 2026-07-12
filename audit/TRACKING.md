@@ -20,7 +20,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | | High (13) | Med (46) | Low (42) | Info (18) | **Total (119)** |
 |--|:--:|:--:|:--:|:--:|:--:|
-| **Fermés ✅** | 12 | 28 | 26 | 7 | **73 / 119** |
+| **Fermés ✅** | 12 | 29 | 30 | 9 | **80 / 119** |
 | **Rounds cochés** | — | — | — | — | **295 / 595 (approx)** |
 
 > Mettre à jour ce tableau à chaque tâche fermée. 595 = 119 × 5 rounds.
@@ -83,20 +83,20 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 8 | `dependances-01` | 🟠 Med | S | Le bloc « overrides » de package.json est silencieusement ignoré par p | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ e0bace5 |
 | 9 | `dependances-02` | 🟠 Med | S | 10 avis pnpm audit ouverts (2 high, 7 moderate, 1 low) — tous corrigea | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ e0bace5 |
 | 10 | `dependances-03` | 🟠 Med | S | Aucune automatisation de veille dépendances : ni Dependabot/Renovate,  | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ e0bace5 |
-| 11 | `dependances-04` | 🟠 Med | M | pnpm 9 exécute les scripts d'installation de toutes les dépendances pa | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 11 | `dependances-04` | 🟠 Med | M | pnpm 9 exécute les scripts d'installation de toutes les dépendances pa | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ d16c8e1 |
 | 12 | `tests-02` | 🟠 Med | S | Les 84 tests du SDK (sdk/tests) ne tournent dans aucune CI | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ f2767da |
 | 13 | `ci-cd-06` | 🟡 Low | S | Node 20 déclaré supporté (engines >=20) mais jamais testé en CI | ✅ | ✅ | ✅ | ✅ | ⏳ | ✅ f2767da (plausible) |
 | 14 | `ci-cd-07` | 🟡 Low | S | Déclencheurs incohérents : lint et e2e tournent en double sur chaque P | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 0fa4693 |
 | 15 | `ci-cd-08` | 🟡 Low | S | secrets: inherit transmet NPM_TOKEN au workflow Docker qui n'en a pas  | ✅ | ✅ | ✅ | ✅ | ⏳ | ✅ f2767da (plausible) |
 | 16 | `ci-cd-09` | 🟡 Low | M | Binaires compilés avec un Bun non versionné et jamais démarrés réellem | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 17 | `dependances-05` | 🟡 Low | L | Famille tree-sitter figée sur l'ABI 0.21 (début 2024) — montée de vers | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 18 | `dependances-06` | 🟡 Low | M | ~292 Mo de grammaires tree-sitter installés par défaut chez chaque con | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 19 | `dependances-07` | 🟡 Low | M | Retards de versions majeures contrôlés mais non suivis : zod 3→4, fast | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 20 | `dependances-08` | 🟡 Low | S | Actions CI épinglées par tag mutable, et binaires release construits a | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 17 | `dependances-05` | 🟡 Low | L | Famille tree-sitter figée sur l'ABI 0.21 (début 2024) — montée de vers | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 6eee2d4 (documenté) |
+| 18 | `dependances-06` | 🟡 Low | M | ~292 Mo de grammaires tree-sitter installés par défaut chez chaque con | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 6eee2d4 (documenté) |
+| 19 | `dependances-07` | 🟡 Low | M | Retards de versions majeures contrôlés mais non suivis : zod 3→4, fast | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 6eee2d4 (documenté) |
+| 20 | `dependances-08` | 🟡 Low | S | Actions CI épinglées par tag mutable, et binaires release construits a | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 0fa4693 (SHA ; bun→ci-cd-09) |
 | 21 | `ci-cd-10` | ⚪ Info | S | Image de base Docker non épinglée par digest | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 0fa4693 |
 | 22 | `ci-cd-11` | ⚪ Info | S | Navigateurs Playwright retéléchargés à chaque run e2e | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 0fa4693 |
-| 23 | `dependances-09` | ⚪ Info | S | engines ">=20" autorise toujours Node 20, en fin de vie depuis avril 2 | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 24 | `dependances-10` | ⚪ Info | S | Concentration de mainteneurs sur les briques critiques (better-sqlite3 | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 23 | `dependances-09` | ⚪ Info | S | engines ">=20" autorise toujours Node 20, en fin de vie depuis avril 2 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 6eee2d4 (documenté) |
+| 24 | `dependances-10` | ⚪ Info | S | Concentration de mainteneurs sur les briques critiques (better-sqlite3 | ✅ | — | — | — | 📄 | 📄 risque-accepté+documenté 6eee2d4 |
 
 ### PR 4 — Performance & scalabilité (11 constats)
 
