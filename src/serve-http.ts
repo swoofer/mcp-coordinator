@@ -427,6 +427,20 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
   authLog = log.child({ component: "auth" });
   setAuthLogger(authLog);
 
+  // architecture-06: COORDINATOR_DATA_DIR unset AND no explicit dataDir
+  // override means we just fell back to "./data" resolved against
+  // process.cwd() — unpredictable for a server a client spawns from an
+  // arbitrary working directory (and NOT the `~/.mcp-coordinator/data` the
+  // CLI uses). Warn once at boot so operators notice before they lose data
+  // to a cwd change, rather than silently. Only fires on the true fallback
+  // path — an explicit opts.dataDir (tests, embedders) is not this case.
+  if (!opts?.dataDir && !process.env.COORDINATOR_DATA_DIR) {
+    httpLog.warn(
+      { resolvedDataDir: path.resolve(dataDir) },
+      `COORDINATOR_DATA_DIR not set — using cwd-relative ./data (${path.resolve(dataDir)}); set COORDINATOR_DATA_DIR or use the CLI for a stable location.`,
+    );
+  }
+
   if (AUTH_ENABLED) {
     if (!JWT_SECRET || JWT_SECRET.length < 32) {
       log.fatal("COORDINATOR_JWT_SECRET is required (min 32 chars) when auth is enabled");
@@ -558,6 +572,13 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
         "Access-Control-Allow-Origin": origin ?? "*",
         "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type, mcp-session-id, Authorization",
+        // protocole-mcp-11: without Access-Control-Expose-Headers, a browser
+        // MCP client cannot read the `mcp-session-id` response header (only
+        // "CORS-safelisted" headers are exposed by default), so it can never
+        // learn the session id `initialize` assigns it — session
+        // establishment silently fails for browser clients. Harmless on
+        // preflights for non-/mcp routes too.
+        "Access-Control-Expose-Headers": "mcp-session-id",
         ...(origin ? { Vary: "Origin" } : {}),
       });
       res.end();
@@ -731,6 +752,16 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
           return;
         }
         const sessionId = req.headers["mcp-session-id"] as string | undefined;
+
+        // protocole-mcp-11: expose `mcp-session-id` via CORS on the actual
+        // /mcp response too (not just the OPTIONS preflight) — browser MCP
+        // clients need to read this header off the `initialize` response to
+        // establish a session. Setting it here (before the transport writes
+        // its own headers) is preserved: Node merges response.setHeader()
+        // values with whatever headers.writeHead() passes later, as long as
+        // that later call doesn't redeclare the same header name — the SDK
+        // transport never sets Access-Control-Expose-Headers itself.
+        res.setHeader("Access-Control-Expose-Headers", "mcp-session-id");
 
         if (sessionId && sessions.has(sessionId)) {
           // Existing-session branch — AUTH-GATED ON EVERY REQUEST per spec §J.

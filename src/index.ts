@@ -1,5 +1,6 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { pathToFileURL } from "url";
+import path from "path";
 import { createServices, createMcpServer } from "./server-setup.js";
 
 // Re-export the public package surface for npm consumers
@@ -20,6 +21,17 @@ if (isMainModule) {
     // stdio transport spec MUST NOT); route every log level to stderr.
     const services = createServices({ dataDir: DATA_DIR, stdio: true });
     const log = services.logger;
+
+    // architecture-06: same cwd-relative-./data fallback warning as
+    // src/serve-http.ts. `log` is stdio-safe (createServices({stdio: true})
+    // routes every level to stderr — see src/logger.ts), so this never
+    // touches stdout / the JSON-RPC stream (protocole-mcp-01).
+    if (!process.env.COORDINATOR_DATA_DIR) {
+      log.warn(
+        { resolvedDataDir: path.resolve(DATA_DIR) },
+        `COORDINATOR_DATA_DIR not set — using cwd-relative ./data (${path.resolve(DATA_DIR)}); set COORDINATOR_DATA_DIR or use the CLI for a stable location.`,
+      );
+    }
 
     // STDIO mode is unauthenticated by contract — the trust boundary is "the
     // user spawned this binary", same as any local stdio MCP server. We pass
