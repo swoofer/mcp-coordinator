@@ -29,20 +29,20 @@ jobs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
-      - uses: googleapis/release-please-action@v4
+      - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071  # v4
         id: release
         if: ${{ github.event_name == 'push' || inputs.publish_only != 'true' }}
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
         if: ${{ steps.release.outputs.release_created || inputs.publish_only == 'true' }}
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1  # v4
         if: ${{ steps.release.outputs.release_created || inputs.publish_only == 'true' }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         if: ${{ steps.release.outputs.release_created || inputs.publish_only == 'true' }}
         with:
           node-version: "22"

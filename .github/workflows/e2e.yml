@@ -2,9 +2,9 @@ name: E2E
 
 on:
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
-    branches: ["**"]
+    branches: [main]
 
 permissions:
   contents: read
@@ -18,19 +18,31 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1  # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
           node-version: "22"
           cache: "pnpm"
 
       - run: pnpm install --frozen-lockfile
 
+      # Cache the downloaded browser binaries (~130MB for Chromium) keyed on
+      # the lockfile hash, so `playwright install` is a no-op cache hit
+      # whenever @playwright/test's resolved version hasn't changed.
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
       # --with-deps installs the Linux system libs Chromium needs (fonts,
       # libnss, libdrm, etc.) so the headless browser actually launches.
+      # Still run on a cache hit: --with-deps also ensures OS packages are
+      # present, and playwright install is idempotent when browsers exist.
       - run: pnpm exec playwright install --with-deps chromium
 
       - run: pnpm exec playwright test
@@ -39,7 +51,7 @@ jobs:
 
       # Persist HTML report on failure so we can inspect the trace.
       - if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: playwright-report
           path: playwright-report/
