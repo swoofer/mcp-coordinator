@@ -74,7 +74,12 @@ describe("safeJoinUnderRoot (B5 fix - path traversal guard)", () => {
     function invariantHolds(result: string | null): boolean {
       if (result === null) return true;
       const staysUnderRoot = result === ROOT || result.startsWith(rootWithSep);
-      const noResidualDotDot = !result.split(/[\\/]/).includes("..");
+      // Split on the OS path separator only. On POSIX, `\` is a legitimate
+      // filename character, so an input like `..\..` resolves to a single
+      // literal filename SAFELY under root — splitting on `[\\/]` there would
+      // wrongly see a residual `..` segment (fast-check found this on Linux CI).
+      // The resolved path is OS-native, so path.sep gives its real segments.
+      const noResidualDotDot = !result.split(path.sep).includes("..");
       return staysUnderRoot && noResidualDotDot;
     }
 
