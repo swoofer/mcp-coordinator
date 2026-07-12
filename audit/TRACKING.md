@@ -20,7 +20,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | | High (13) | Med (46) | Low (42) | Info (18) | **Total (119)** |
 |--|:--:|:--:|:--:|:--:|:--:|
-| **Fermés ✅** | 12 | 37 | 38 | 16 | **103 / 119** |
+| **Fermés ✅** | 12 | 38 | 40 | 17 | **107 / 119** |
 | **Rounds cochés** | — | — | — | — | **295 / 595 (approx)** |
 
 > Mettre à jour ce tableau à chaque tâche fermée. 595 = 119 × 5 rounds.
@@ -127,7 +127,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 7 | `qualite-code-01` | 🟠 Med | L | Trois fonctions géantes (390 à 505 lignes) concentrent la complexité d | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 8 | `qualite-code-02` | 🟠 Med | M | Couche REST : corps de requêtes castés sans validation (15 « body as { | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ b39326b |
 | 9 | `qualite-code-03` | 🟠 Med | M | Aucun linter réel : le job CI « Lint » = 5 scripts bash grep + tsc ; c | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 10 | `tests-03` | 🟠 Med | M | Couche handlers d'outils MCP faiblement couverte : consultation-tools  | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 10 | `tests-03` | 🟠 Med | M | Couche handlers d'outils MCP faiblement couverte : consultation-tools  | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 3fcabbf |
 | 11 | `tests-04` | 🟠 Med | S | Le hook d'authentification MQTT de production n'est jamais exercé : le | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 1d414bb |
 | 12 | `tests-05` | 🟠 Med | M | Le dashboard principal (index.html, ~77 fonctions JS inline) n'a aucun | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 13 | `architecture-09` | 🟡 Low | M | Double pile logger/metrics Phase 1 vs Phase 2 : la redaction Pino ne c | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 6482528+62fdf82 (redaction résolue, convergence doc) |
@@ -139,14 +139,14 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 19 | `qualite-code-05` | 🟡 Low | S | safeEqual et decodeJwtPayload dupliqués localement dans serve-http.ts  | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ b58688d |
 | 20 | `qualite-code-06` | 🟡 Low | S | Dualité Phase 1 / Phase 2 : deux modules metrics, deux loggers, auth.t | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 62fdf82 (documenté) |
 | 21 | `qualite-code-07` | 🟡 Low | S | JSON.parse non protégé sur des colonnes SQLite dans les chemins de lec | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 22ae9ef |
-| 22 | `tests-06` | 🟡 Low | M | Zones serveur les moins mesurées : serve-http.ts 47,5 %, handle-rest.t | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 22 | `tests-06` | 🟡 Low | M | Zones serveur les moins mesurées : serve-http.ts 47,5 %, handle-rest.t | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 4ef41f8+3475b61 (bug mqtt-bridge trouvé+corrigé) |
 | 23 | `tests-07` | 🟡 Low | S | Race assumée dans channel-smoke : sleep fixe de 1,5 s au lieu d'attend | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 1d414bb |
 | 24 | `tests-08` | 🟡 Low | S | CLI : commandes exclues de la mesure de couverture et « uninstall » (d | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 23a4e40 |
-| 25 | `tests-09` | 🟡 Low | S | fast-check sous-exploité (2 propriétés) et propriété CSRF théoriquemen | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 25 | `tests-09` | 🟡 Low | S | fast-check sous-exploité (2 propriétés) et propriété CSRF théoriquemen | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ a8ad184 |
 | 26 | `architecture-12` | ⚪ Info | S | CoordinatorConfig porte des champs de configuration morts (authEnabled | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ DONE |
 | 27 | `architecture-14` | ⚪ Info | L | Dashboard principal : 63 Ko de HTML avec un unique script inline, cont | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 28 | `qualite-code-08` | ⚪ Info | S | Le catch global HTTP renvoie err.message brut dans la réponse 500 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 6b73e92 |
-| 29 | `tests-10` | ⚪ Info | L | Suite entièrement sérialisée à cause de singletons de module — discipl | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 29 | `tests-10` | ⚪ Info | L | Suite entièrement sérialisée à cause de singletons de module — discipl | ✅ | — | — | — | 📄 | 📄 accepté (YAGNI ; lié arch-02/03) |
 | 30 | `tests-11` | ⚪ Info | S | Scripts perf/chaos hors CI par choix documenté — pas de suivi de régre | ✅ | — | — | — | 📄 | 📄 choix accepté+documenté 62fdf82 |
 
 ### PR 6 — Documentation (13 constats)
