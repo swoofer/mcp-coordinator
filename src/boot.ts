@@ -87,6 +87,25 @@ export function bootPhase2(
   const env = deps?.env ?? process.env;
   const logger = deps?.logger ?? createLogger({ level: "silent" });
 
+  // architecture-10: the entire Phase 2 subsystem (src/auth/, src/admin/)
+  // bypasses the DatabaseAdapter abstraction via a cast to the
+  // better-sqlite3 surface and relies on better-sqlite3-only APIs (e.g.
+  // `transaction().immediate()`) that bun:sqlite does not implement. The
+  // GitHub Releases binaries are Bun-compiled (see src/database.ts's Bun
+  // detection at initDatabase()), so Bun + OAuth enabled is a combination
+  // that has never been exercised end to end and risks an untested runtime
+  // failure deep in a request handler rather than a clear boot error. Fail
+  // fast here, before any Phase 2 env validation or DB access, so the
+  // operator gets one unambiguous error instead of a cryptic crash later.
+  if (typeof (globalThis as Record<string, unknown>).Bun !== "undefined") {
+    throw new BootValidationError(
+      "OAuth (Phase 2) is not supported on the Bun runtime: the auth/admin " +
+        "subsystem uses better-sqlite3 APIs absent from bun:sqlite. Run the " +
+        "Node build (npm/Docker) with OAuth, or disable " +
+        "COORDINATOR_OAUTH_ENABLED on the Bun binary.",
+    );
+  }
+
   // 1. Required env vars (V3 §4).
   const jwtSecret = readRequiredEnv(env, "COORDINATOR_JWT_SECRET");
   const githubClientId = readRequiredEnv(env, "COORDINATOR_GITHUB_CLIENT_ID");

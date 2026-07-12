@@ -20,7 +20,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | | High (13) | Med (46) | Low (42) | Info (18) | **Total (119)** |
 |--|:--:|:--:|:--:|:--:|:--:|
-| **Fermés ✅** | 12 | 36 | 33 | 15 | **96 / 119** |
+| **Fermés ✅** | 12 | 37 | 38 | 16 | **103 / 119** |
 | **Rounds cochés** | — | — | — | — | **295 / 595 (approx)** |
 
 > Mettre à jour ce tableau à chaque tâche fermée. 595 = 119 × 5 rounds.
@@ -88,7 +88,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 13 | `ci-cd-06` | 🟡 Low | S | Node 20 déclaré supporté (engines >=20) mais jamais testé en CI | ✅ | ✅ | ✅ | ✅ | ⏳ | ✅ f2767da (plausible) |
 | 14 | `ci-cd-07` | 🟡 Low | S | Déclencheurs incohérents : lint et e2e tournent en double sur chaque P | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 0fa4693 |
 | 15 | `ci-cd-08` | 🟡 Low | S | secrets: inherit transmet NPM_TOKEN au workflow Docker qui n'en a pas  | ✅ | ✅ | ✅ | ✅ | ⏳ | ✅ f2767da (plausible) |
-| 16 | `ci-cd-09` | 🟡 Low | M | Binaires compilés avec un Bun non versionné et jamais démarrés réellem | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 16 | `ci-cd-09` | 🟡 Low | M | Binaires compilés avec un Bun non versionné et jamais démarrés réellem | ✅ | — | — | — | 📄 | 📄 différé+documenté 62fdf82 (avec ci-cd-01) |
 | 17 | `dependances-05` | 🟡 Low | L | Famille tree-sitter figée sur l'ABI 0.21 (début 2024) — montée de vers | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 6eee2d4 (documenté) |
 | 18 | `dependances-06` | 🟡 Low | M | ~292 Mo de grammaires tree-sitter installés par défaut chez chaque con | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 6eee2d4 (documenté) |
 | 19 | `dependances-07` | 🟡 Low | M | Retards de versions majeures contrôlés mais non suivis : zod 3→4, fast | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 6eee2d4 (documenté) |
@@ -123,21 +123,21 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 3 | `architecture-04` | 🟠 Med | S | Les handlers SIGINT/SIGTERM du CLI en mode foreground court-circuitent | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ DONE |
 | 4 | `architecture-06` | 🟠 Med | S | Défauts de répertoire de données divergents entre points d'entrée, et  | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ f36d887 (doc+warning, défaut inchangé) |
 | 5 | `architecture-07` | 🟠 Med | S | Dérive comportementale entre les transports REST et MCP sur le flux d' | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 868406e |
-| 6 | `architecture-08` | 🟠 Med | M | Org 'default' codé en dur aux frontières MQTT et quota alors que le mu | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 6 | `architecture-08` | 🟠 Med | M | Org 'default' codé en dur aux frontières MQTT et quota alors que le mu | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 62fdf82 (multi-org exp. documenté) |
 | 7 | `qualite-code-01` | 🟠 Med | L | Trois fonctions géantes (390 à 505 lignes) concentrent la complexité d | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 8 | `qualite-code-02` | 🟠 Med | M | Couche REST : corps de requêtes castés sans validation (15 « body as { | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ b39326b |
 | 9 | `qualite-code-03` | 🟠 Med | M | Aucun linter réel : le job CI « Lint » = 5 scripts bash grep + tsc ; c | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 10 | `tests-03` | 🟠 Med | M | Couche handlers d'outils MCP faiblement couverte : consultation-tools  | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 11 | `tests-04` | 🟠 Med | S | Le hook d'authentification MQTT de production n'est jamais exercé : le | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 1d414bb |
 | 12 | `tests-05` | 🟠 Med | M | Le dashboard principal (index.html, ~77 fonctions JS inline) n'a aucun | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 13 | `architecture-09` | 🟡 Low | M | Double pile logger/metrics Phase 1 vs Phase 2 : la redaction Pino ne c | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 14 | `architecture-10` | 🟡 Low | M | La Phase 2 contourne l'abstraction DatabaseAdapter par un double cast  | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 13 | `architecture-09` | 🟡 Low | M | Double pile logger/metrics Phase 1 vs Phase 2 : la redaction Pino ne c | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 6482528+62fdf82 (redaction résolue, convergence doc) |
+| 14 | `architecture-10` | 🟡 Low | M | La Phase 2 contourne l'abstraction DatabaseAdapter par un double cast  | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ aabb272 (fail-fast Bun+OAuth) |
 | 15 | `architecture-11` | 🟡 Low | S | Inversion de couche : src/ importe cli/version.ts | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ DONE |
-| 16 | `architecture-13` | 🟡 Low | M | Pas de carte d'architecture pour les contributeurs externes malgré 108 | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 16 | `architecture-13` | 🟡 Low | M | Pas de carte d'architecture pour les contributeurs externes malgré 108 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 62fdf82 (docs/ARCHITECTURE.md) |
 | 17 | `architecture-15` | 🟡 Low | M | Posture de validation d'entrée incohérente entre transports : zod côté | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ b39326b (= qc-02) |
 | 18 | `qualite-code-04` | 🟡 Low | S | Duplication verbatim des helpers admin (readJsonBody, writeJson, write | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ b58688d |
 | 19 | `qualite-code-05` | 🟡 Low | S | safeEqual et decodeJwtPayload dupliqués localement dans serve-http.ts  | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ b58688d |
-| 20 | `qualite-code-06` | 🟡 Low | S | Dualité Phase 1 / Phase 2 : deux modules metrics, deux loggers, auth.t | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 20 | `qualite-code-06` | 🟡 Low | S | Dualité Phase 1 / Phase 2 : deux modules metrics, deux loggers, auth.t | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 62fdf82 (documenté) |
 | 21 | `qualite-code-07` | 🟡 Low | S | JSON.parse non protégé sur des colonnes SQLite dans les chemins de lec | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 22ae9ef |
 | 22 | `tests-06` | 🟡 Low | M | Zones serveur les moins mesurées : serve-http.ts 47,5 %, handle-rest.t | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 23 | `tests-07` | 🟡 Low | S | Race assumée dans channel-smoke : sleep fixe de 1,5 s au lieu d'attend | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 1d414bb |
@@ -147,7 +147,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 27 | `architecture-14` | ⚪ Info | L | Dashboard principal : 63 Ko de HTML avec un unique script inline, cont | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 28 | `qualite-code-08` | ⚪ Info | S | Le catch global HTTP renvoie err.message brut dans la réponse 500 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 6b73e92 |
 | 29 | `tests-10` | ⚪ Info | L | Suite entièrement sérialisée à cause de singletons de module — discipl | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 30 | `tests-11` | ⚪ Info | S | Scripts perf/chaos hors CI par choix documenté — pas de suivi de régre | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 30 | `tests-11` | ⚪ Info | S | Scripts perf/chaos hors CI par choix documenté — pas de suivi de régre | ✅ | — | — | — | 📄 | 📄 choix accepté+documenté 62fdf82 |
 
 ### PR 6 — Documentation (13 constats)
 

@@ -174,6 +174,69 @@ describe("bootPhase2 — disabled path", () => {
   });
 });
 
+describe("bootPhase2 — architecture-10: Bun runtime + OAuth fail-fast", () => {
+  // These tests simulate the Bun runtime by stubbing a `Bun` global on
+  // `globalThis` (the same detection used by src/database.ts's
+  // initDatabase() and src/logger.ts's createLogger()). We never run
+  // under an actual Bun process in this Vitest/Node suite, so this is
+  // the only way to exercise the branch. Always delete the stub in
+  // `finally` so a thrown assertion can't leak `globalThis.Bun` into
+  // later tests (which would falsely trip the Bun-only branches in
+  // other modules elsewhere in the suite).
+  afterEach(() => {
+    delete (globalThis as Record<string, unknown>).Bun;
+  });
+
+  it("throws BootValidationError mentioning Bun when globalThis.Bun is present and OAuth is enabled", () => {
+    applyValidEnv();
+    (globalThis as Record<string, unknown>).Bun = { version: "1.9.9" };
+    try {
+      expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
+        BootValidationError,
+      );
+      expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
+        /Bun runtime/,
+      );
+    } finally {
+      delete (globalThis as Record<string, unknown>).Bun;
+    }
+  });
+
+  it("fails fast before any Phase 2 DB access: no orgs row is inserted", () => {
+    applyValidEnv();
+    (globalThis as Record<string, unknown>).Bun = { version: "1.9.9" };
+    try {
+      expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
+        BootValidationError,
+      );
+      const rows = db.prepare("SELECT COUNT(*) AS n FROM orgs").get() as {
+        n: number;
+      };
+      expect(rows.n).toBe(0);
+    } finally {
+      delete (globalThis as Record<string, unknown>).Bun;
+    }
+  });
+
+  it("does NOT throw under Node (no globalThis.Bun) with OAuth enabled — no false positive", () => {
+    applyValidEnv();
+    expect((globalThis as Record<string, unknown>).Bun).toBeUndefined();
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+    void result!.shutdown();
+  });
+
+  it("does NOT throw when globalThis.Bun is present but OAuth is disabled (enabled=false short-circuits first)", () => {
+    (globalThis as Record<string, unknown>).Bun = { version: "1.9.9" };
+    try {
+      const result = bootPhase2({ enabled: false, db, clock });
+      expect(result).toBeNull();
+    } finally {
+      delete (globalThis as Record<string, unknown>).Bun;
+    }
+  });
+});
+
 describe("bootPhase2 — required env validation", () => {
   it("throws BootValidationError when COORDINATOR_JWT_SECRET is missing", () => {
     applyValidEnv();

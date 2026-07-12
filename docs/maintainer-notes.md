@@ -23,6 +23,52 @@ plumbing, and do not start implementing multi-org speculatively.
 The project's core value is the coordination/MQTT layer, not multi-tenancy.
 Effort goes there by default.
 
+## Perf/chaos scripts: manual, not CI-gated
+
+`tests/perf/` (`bench-refresh-rotation.ts`, `bench-audit-queue.ts`,
+`bench-token-epoch.ts`) and `tests/perf/chaos/`
+(`idp-failure-injection.ts`, `audit-queue-overflow.ts`) are run via
+`pnpm perf:rotation` / `perf:audit` / `perf:token-epoch` /
+`chaos:idp` / `chaos:audit` (see `package.json`). Each prints a
+`JSON_SUMMARY: {...}` line as its final stdout output.
+
+**Policy**: these scripts are **not wired into CI** — deliberately, not
+an oversight. Running them on every PR would add cost (wall-clock time)
+and instability (perf numbers are noisy on shared CI runners) for
+signal that mostly matters ahead of a release, not per-commit. There is
+no automated tracking/diffing of the `JSON_SUMMARY` output across runs
+today — a maintainer runs them manually and eyeballs the numbers.
+**Risk accepted**: a perf/chaos regression can land without CI catching
+it. Mitigation: run these scripts manually before cutting a major/minor
+release, not as a per-PR gate.
+
+## Binary releases (GitHub Releases channel): known gaps, deferred
+
+`.github/workflows/release-binaries.yml` builds Bun-compiled binaries
+(`bun build --compile`) for macOS arm64/x64 and Linux x64, and publishes
+them as GitHub Release assets. Two gaps in that workflow are known and
+currently deferred rather than fixed:
+
+- **`oven-sh/setup-bun` has no `bun-version` pinned** — the workflow gets
+  whatever Bun version `setup-bun`'s default resolves to at run time,
+  which can drift between releases without anyone noticing (and without
+  a way to reproduce a past build's exact toolchain).
+- **The "smoke test" is shallow**: the `Verify binary` step only runs
+  `./bin/mcp-coordinator --version` and `./bin/mcp-coordinator server
+  --help` — it never actually starts the server, hits `/health`, or
+  exercises a real request/response cycle. A binary that starts and
+  responds to `--version` but crashes on `server start` would ship
+  undetected.
+
+**Disposition**: deferred, tracked together with the broader binary-
+channel decision (does this channel have real users; should it be
+promoted, kept as-is, or dropped). When that decision lands, do both
+fixes in the same pass: pin `bun-version` explicitly, and replace the
+smoke test with `server start` (backgrounded) + `curl /health` + a
+clean kill. Until then, this is a known, accepted gap in the binary
+channel's release quality bar — it does not block npm/Docker releases,
+which have their own (separate) verification.
+
 ## Landing i18n
 
 `docs/index.html` is maintained by hand across 6 locales. Retranslating the
