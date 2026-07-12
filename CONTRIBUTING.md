@@ -56,3 +56,5 @@ Files under `src/auth/**`, `src/security/**`, and `cli/encryption/**` are pinned
 ## Architecture
 
 See `README.md` for the high-level model. The server is in `src/`, the CLI in `cli/`, and the static dashboard in `dashboard/public/`. The MQTT broker is embedded (Aedes) and ships with the server.
+
+For a directory map, the Phase 1 vs. Phase 2 conventions, the house lint rules (`scripts/lint-*.sh`), and the patterns for adding a new REST endpoint or MCP tool, see [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).

@@ -158,6 +158,47 @@ Both connect to the same daemon. Both see the same state. Use the channel for re
 
 ---
 
+## Multi-org: experimental status
+
+Phase 2 (OAuth) supports creating additional orgs through the admin UI /
+`orgs` table — that plumbing exists and is exercised by tests. However,
+two coordination-critical code paths are still hardcoded to the
+`"default"` org, independent of which org a given agent or session
+actually belongs to:
+
+- **MQTT offline/LWT (last-will-and-testament)**: `serve-http.ts`'s
+  offline hook calls `services.registry.setOffline("default", agentId)`
+  and emits the corresponding SSE `agent_offline` event with
+  `{ org_id: "default" }`, regardless of the agent's real org. An agent
+  belonging to a non-default org that disconnects will never be marked
+  offline for its own org — it can appear "online" indefinitely from
+  that org's point of view.
+- **Quota / SSE**: `server-setup.ts`'s quota cache `onRefresh` callback
+  emits `quota_update` SSE events with `{ org_id: "default" }`, and the
+  quota-driven agent-active/inactive listener is registered on
+  `sseEmitter.addListener("default", ...)`. Quota events only ever reach
+  dashboard clients subscribed to the default org. The git-cochange
+  scheduler is similarly started with a hardcoded `"default"` org at boot
+  (`server-setup.ts`).
+
+Each of these call sites carries an inline `TODO(Task 22)` comment
+explaining the same thing. Net effect: **multi-org is effectively
+mono-tenant on the MQTT/quota path today**, even though org creation and
+auth/session scoping elsewhere in Phase 2 are multi-org-aware.
+
+Per `docs/maintainer-notes.md`'s "Phase 2 (auth/multi-org): frozen"
+policy, per-org MQTT topic scoping + ACL and per-org quota (a real
+"Task 22/23.5") are **deferred until a concrete operator request** for
+multiple orgs in one deployment — this is not scheduled as speculative
+work, and fixing it via fail-closed behavior today would risk breaking
+the already-shipped admin orgs UI.
+
+**Recommendation**: do not rely on multi-org for anything beyond a single
+active org per deployment until this scoping ships. If you need
+per-tenant isolation today, run separate coordinator daemons (separate
+processes/ports/data directories) rather than separate orgs inside one
+daemon.
+
 ## See also
 
 - [Channels reference (Anthropic)](https://code.claude.com/docs/en/channels-reference) — the upstream spec
