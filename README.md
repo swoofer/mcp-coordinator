@@ -453,12 +453,18 @@ Resolution priority (highest to lowest): CLI flag → env var → config.json �
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `3100` | HTTP port (also serves MQTT-over-WebSocket on `/mqtt`) |
-| `COORDINATOR_DATA_DIR` | `~/.mcp-coordinator/data` | Directory for the SQLite database |
+| `COORDINATOR_DATA_DIR` | see below | Directory for the SQLite database |
 | `COORDINATOR_MQTT_TCP_PORT` | `1883` | TCP port for the embedded broker |
 | `LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error` |
 | `NODE_ENV` | — | `development` for pretty logs |
 | `COORDINATOR_AUTH_ENABLED` | `false` | Enable Phase 1 JWT authentication |
 | `COORDINATOR_OAUTH_ENABLED` | `false` | Enable Phase 2 OAuth |
+
+`COORDINATOR_DATA_DIR`'s default depends on how the server is started:
+- **CLI** (`mcp-coordinator server start`, `mcp-coordinator init`, ...) defaults to `~/.mcp-coordinator/data` (see `config.json` above).
+- **Direct entry points** — `node dist/src/serve-http.js`, or stdio via `.mcp.json` (`node dist/src/index.js` / `tsx src/index.ts`) — do **not** go through the CLI's config resolution. Without `COORDINATOR_DATA_DIR` set, they fall back to `./data` **relative to the process's current working directory**, which is unpredictable for a server a client spawns from an arbitrary cwd. Both entry points log a warning at boot when this fallback is in effect.
+
+Always set `COORDINATOR_DATA_DIR` explicitly (or use the CLI) for a stable, predictable data location outside of local single-shot dev use.
 
 The complete annotated env reference (50+ variables including all Phase 2 OAuth / multi-IdP / hardening vars) lives in [`.env.example`](./.env.example) — copy-paste and fill in.
 

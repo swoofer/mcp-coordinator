@@ -426,6 +426,20 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
   authLog = log.child({ component: "auth" });
   setAuthLogger(authLog);
 
+  // architecture-06: COORDINATOR_DATA_DIR unset AND no explicit dataDir
+  // override means we just fell back to "./data" resolved against
+  // process.cwd() — unpredictable for a server a client spawns from an
+  // arbitrary working directory (and NOT the `~/.mcp-coordinator/data` the
+  // CLI uses). Warn once at boot so operators notice before they lose data
+  // to a cwd change, rather than silently. Only fires on the true fallback
+  // path — an explicit opts.dataDir (tests, embedders) is not this case.
+  if (!opts?.dataDir && !process.env.COORDINATOR_DATA_DIR) {
+    httpLog.warn(
+      { resolvedDataDir: path.resolve(dataDir) },
+      `COORDINATOR_DATA_DIR not set — using cwd-relative ./data (${path.resolve(dataDir)}); set COORDINATOR_DATA_DIR or use the CLI for a stable location.`,
+    );
+  }
+
   if (AUTH_ENABLED) {
     if (!JWT_SECRET || JWT_SECRET.length < 32) {
       log.fatal("COORDINATOR_JWT_SECRET is required (min 32 chars) when auth is enabled");
