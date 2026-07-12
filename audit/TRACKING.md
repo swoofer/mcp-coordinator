@@ -20,7 +20,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | | High (13) | Med (46) | Low (42) | Info (18) | **Total (119)** |
 |--|:--:|:--:|:--:|:--:|:--:|
-| **Fermés ✅** | 12 | 26 | 24 | 4 | **66 / 119** |
+| **Fermés ✅** | 12 | 27 | 25 | 5 | **69 / 119** |
 | **Rounds cochés** | — | — | — | — | **295 / 595 (approx)** |
 
 > Mettre à jour ce tableau à chaque tâche fermée. 595 = 119 × 5 rounds.
@@ -120,7 +120,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 |---|----|-----|-----|---------|----|----|----|----|----|--------|
 | 1 | `architecture-02` | 🟠 Med | L | État mutable au niveau module dans serve-http.ts contredit le contrat  | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 2 | `architecture-03` | 🟠 Med | L | Base de données en singleton global (service locator) — couple tout le | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 3 | `architecture-04` | 🟠 Med | S | Les handlers SIGINT/SIGTERM du CLI en mode foreground court-circuitent | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 3 | `architecture-04` | 🟠 Med | S | Les handlers SIGINT/SIGTERM du CLI en mode foreground court-circuitent | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ DONE |
 | 4 | `architecture-06` | 🟠 Med | S | Défauts de répertoire de données divergents entre points d'entrée, et  | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 5 | `architecture-07` | 🟠 Med | S | Dérive comportementale entre les transports REST et MCP sur le flux d' | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 6 | `architecture-08` | 🟠 Med | M | Org 'default' codé en dur aux frontières MQTT et quota alors que le mu | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
@@ -132,7 +132,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 12 | `tests-05` | 🟠 Med | M | Le dashboard principal (index.html, ~77 fonctions JS inline) n'a aucun | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 13 | `architecture-09` | 🟡 Low | M | Double pile logger/metrics Phase 1 vs Phase 2 : la redaction Pino ne c | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 14 | `architecture-10` | 🟡 Low | M | La Phase 2 contourne l'abstraction DatabaseAdapter par un double cast  | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 15 | `architecture-11` | 🟡 Low | S | Inversion de couche : src/ importe cli/version.ts | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 15 | `architecture-11` | 🟡 Low | S | Inversion de couche : src/ importe cli/version.ts | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ DONE |
 | 16 | `architecture-13` | 🟡 Low | M | Pas de carte d'architecture pour les contributeurs externes malgré 108 | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 17 | `architecture-15` | 🟡 Low | M | Posture de validation d'entrée incohérente entre transports : zod côté | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 18 | `qualite-code-04` | 🟡 Low | S | Duplication verbatim des helpers admin (readJsonBody, writeJson, write | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ b58688d |
@@ -143,7 +143,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 23 | `tests-07` | 🟡 Low | S | Race assumée dans channel-smoke : sleep fixe de 1,5 s au lieu d'attend | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 1d414bb |
 | 24 | `tests-08` | 🟡 Low | S | CLI : commandes exclues de la mesure de couverture et « uninstall » (d | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 25 | `tests-09` | 🟡 Low | S | fast-check sous-exploité (2 propriétés) et propriété CSRF théoriquemen | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 26 | `architecture-12` | ⚪ Info | S | CoordinatorConfig porte des champs de configuration morts (authEnabled | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 26 | `architecture-12` | ⚪ Info | S | CoordinatorConfig porte des champs de configuration morts (authEnabled | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ DONE |
 | 27 | `architecture-14` | ⚪ Info | L | Dashboard principal : 63 Ko de HTML avec un unique script inline, cont | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 28 | `qualite-code-08` | ⚪ Info | S | Le catch global HTTP renvoie err.message brut dans la réponse 500 | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 29 | `tests-10` | ⚪ Info | L | Suite entièrement sérialisée à cause de singletons de module — discipl | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
