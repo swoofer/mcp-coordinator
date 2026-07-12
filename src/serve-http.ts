@@ -299,6 +299,12 @@ async function handleSse(req: IncomingMessage, res: ServerResponse): Promise<voi
     Connection: "keep-alive",
     "Access-Control-Allow-Origin": "*",
   });
+  // Flush the 200 + headers to the socket immediately. Without this, a quiet
+  // org with no recent events writes no body until the first heartbeat (up to
+  // COORDINATOR_SSE_HEARTBEAT_MS, default 30s), so the browser EventSource sits
+  // in "Connecting" and never fires `onopen` until then. flushHeaders() opens
+  // the stream right away. (found via the dashboard e2e smoke, tests-05.)
+  res.flushHeaders();
   services.metrics.incSseClients();
   services.metrics.recordHttpRequest("/api/events", 200);
 
