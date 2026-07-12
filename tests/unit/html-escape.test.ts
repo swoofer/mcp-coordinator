@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import fc from "fast-check";
 import type { ServerResponse } from "node:http";
 import { escapeHtml, render, sendHtml } from "../../src/auth/html.js";
 
@@ -44,6 +45,21 @@ describe("escapeHtml", () => {
     expect(escapeHtml("A&B")).toBe("A&amp;B");
     // Confirms the regex does a single pass — '&amp;' would not become '&amp;amp;'
     expect(escapeHtml("&amp;")).toBe("&amp;amp;");
+  });
+
+  // tests-09: fast-check invariant — for ANY input string, the output must
+  // never contain a raw '<' or '>' (they're unconditionally replaced), and
+  // every '&' present must be part of one of the 5 known entities (never a
+  // bare, un-escaped ampersand introduced or left over).
+  it("property: no raw '<'/'>' survive, and every '&' belongs to a known entity", () => {
+    fc.assert(
+      fc.property(fc.string({ maxLength: 200 }), (s) => {
+        const out = escapeHtml(s);
+        if (/[<>]/.test(out)) return false;
+        const stripped = out.replace(/&(amp|lt|gt|quot|#39);/g, "");
+        return !stripped.includes("&");
+      }),
+    );
   });
 });
 

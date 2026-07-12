@@ -60,6 +60,14 @@ describe("verifyCsrfToken", () => {
         fc.uint8Array({ minLength: 32, maxLength: 32 }),
         fc.uint8Array({ minLength: 32, maxLength: 32 }),
         (a, b) => {
+          // tests-09 fix: fc.uint8Array is biased toward edge values (notably
+          // all-zeros), so it can legitimately draw a === b. Without this
+          // fc.pre, the property then asserts verifyCsrfToken(t, t) === false
+          // for equal tokens, which is a self-refuting failure (equal tokens
+          // MUST verify true) rather than a real bug — see the "returns true
+          // when cookie === form" test above. Discard the degenerate draw
+          // instead of asserting a contradiction.
+          fc.pre(a.length !== b.length || !a.every((v, i) => v === b[i]));
           const aStr = Buffer.from(a).toString("base64url");
           const bStr = Buffer.from(b).toString("base64url");
           return verifyCsrfToken(aStr, bStr) === false;
