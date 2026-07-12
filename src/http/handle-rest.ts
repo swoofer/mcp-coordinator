@@ -1,46 +1,38 @@
 import type { IncomingMessage, ServerResponse } from "http";
-import type { ZodError } from "zod";
-import type { CoordinatorServices } from "../server-setup.js";
-import type { Logger } from "../logger.js";
-import type { AuthClaims } from "../auth.js";
-import { createHash } from "crypto";
-import { getDb } from "../database.js";
-import { runCommonAnnounceFlow } from "../announce-workflow.js";
-import { runRegisterFlow } from "../register-workflow.js";
-import { canResetDb } from "../reset-guard.js";
 import { parseBody, json, redactTokenParam } from "./utils.js";
-import { normalizePath } from "../path-normalize.js";
-import { safeJsonParse } from "../json-utils.js";
-import { appError } from "./response-contract.js";
+import type { RestContext, RestHandler } from "./rest-handlers.js";
 import {
-  RegisterBodySchema,
-  SessionStopBodySchema,
-  CheckConflictBodySchema,
-  LogFileBodySchema,
-  AnnounceBodySchema,
-  PostToThreadBodySchema,
-  TokenUsageBodySchema,
-  UnclaimTaskBodySchema,
-  ClaimTaskBodySchema,
-  ProposeResolutionBodySchema,
-  ApproveResolutionBodySchema,
-  HotFilesBodySchema,
-  IntrospectionResponseBodySchema,
-  RunConfigBodySchema,
-  CheckInterruptBodySchema,
-} from "./rest-schemas.js";
+  handleRegister,
+  handleSessionStart,
+  handleSessionStop,
+  handleCheckConflict,
+  handleLogFile,
+  handleAnnounce,
+  handlePostToThread,
+  handleTokenUsage,
+  handleUnclaimTask,
+  handleClaimTask,
+  handleProposeResolution,
+  handleApproveResolution,
+  handleConsultationStatus,
+  handleThreadsActive,
+  handleHotFiles,
+  handleQuota,
+  handleQuotaRefresh,
+  handleIntrospectionResponse,
+  handlePendingIntrospections,
+  handleRunConfig,
+  handleReset,
+  handleCheckInterrupt,
+  handleAgentStatus,
+  handleFileActivity,
+  handleWorkingFilesStart,
+  handleWorkingFilesStop,
+  handleScoringStats,
+  handleStatus,
+} from "./rest-handlers.js";
 
-/**
- * qualite-code-02 / architecture-15: send a structured 400 for a body that
- * failed zod validation. Uses the same `appError` envelope as every other
- * structured error response (qualite-code-08) so REST clients get one
- * consistent error contract instead of ad hoc shapes per endpoint.
- */
-function sendValidationError(res: ServerResponse, error: ZodError): void {
-  json(res, appError("INVALID_REQUEST", "Request body failed validation", {
-    issues: error.issues.map((i) => ({ path: i.path.join("."), message: i.message })),
-  }), 400);
-}
+export type { RestContext, RestHandler };
 
 /**
  * S1: REST router extracted from serve-http.ts. Was a 382-line `handleRest`
@@ -53,20 +45,67 @@ function sendValidationError(res: ServerResponse, error: ZodError): void {
  *
  * The currentRunConfig mutable state stays in serve-http.ts (single source
  * of truth) and is exposed via getRunConfig/setRunConfig on the context.
+ *
+ * qualite-code-01 (1/3): the if/else chain of 24+ url branches was replaced
+ * by a dispatch table. Each former branch is now a named handler in
+ * ./rest-handlers.ts — bodies copied verbatim, only wrapped in a function.
+ * Routes that also gate on req.method (file-activity, working-files/*) are
+ * keyed as "METHOD url" so a method mismatch simply misses the table lookup
+ * and falls through to the same 404 as before. Routes matched by URL prefix
+ * (consultation/:id/status, pending-introspections, agent-status/:id,
+ * scoring-stats) can't be exact-keyed, so they're tried after the exact
+ * table in a small ordered list — none of their prefixes collide with any
+ * exact route key, so this reordering is behavior-preserving relative to
+ * the original interleaved if/else sequence.
  */
 
-export interface RestContext {
-  services: CoordinatorServices;
-  httpLog: Logger;
-  authEnabled: boolean;
-  /** Authenticated identity for this request. Synthetic legacy claims when AUTH_ENABLED=false and no Bearer. */
-  claims: AuthClaims;
-  getRunConfig: () => Record<string, unknown> | null;
-  setRunConfig: (cfg: Record<string, unknown> | null) => void;
-}
+// Exact url-only matches (method is irrelevant to routing).
+const ROUTES: Record<string, RestHandler> = {
+  "/api/register": handleRegister,
+  "/api/session-start": handleSessionStart,
+  "/api/session-stop": handleSessionStop,
+  "/api/check-conflict": handleCheckConflict,
+  "/api/log-file": handleLogFile,
+  "/api/announce": handleAnnounce,
+  "/api/post-to-thread": handlePostToThread,
+  "/api/token-usage": handleTokenUsage,
+  "/api/unclaim-task": handleUnclaimTask,
+  "/api/claim-task": handleClaimTask,
+  "/api/propose-resolution": handleProposeResolution,
+  "/api/approve-resolution": handleApproveResolution,
+  "/api/threads-active": handleThreadsActive,
+  "/api/hot-files": handleHotFiles,
+  "/api/quota": handleQuota,
+  "/api/quota/refresh": handleQuotaRefresh,
+  "/api/introspection-response": handleIntrospectionResponse,
+  "/api/run-config": handleRunConfig,
+  "/api/reset": handleReset,
+  "/api/check-interrupt": handleCheckInterrupt,
+  "/api/status": handleStatus,
+};
+
+// Exact url matches that also require a specific req.method — original code
+// used `url === "..." && req.method === "POST"`, so a wrong method must fall
+// through to the generic 404 exactly like before.
+const METHOD_ROUTES: Record<string, RestHandler> = {
+  "POST /api/file-activity": handleFileActivity,
+  "POST /api/working-files/start": handleWorkingFilesStart,
+  "POST /api/working-files/stop": handleWorkingFilesStop,
+};
+
+// URL-prefix matches, tried in the same relative order they appeared in the
+// original if/else chain. None of their prefixes are a prefix of (or equal
+// to) any key in ROUTES/METHOD_ROUTES, so trying all exact matches first is
+// equivalent to the original interleaved ordering.
+const PREFIX_ROUTES: Array<{ test: (url: string, method: string | undefined) => boolean; handler: RestHandler }> = [
+  { test: (url) => url?.startsWith("/api/consultation/") && url?.endsWith("/status"), handler: handleConsultationStatus },
+  { test: (url) => url?.startsWith("/api/pending-introspections"), handler: handlePendingIntrospections },
+  { test: (url) => url?.startsWith("/api/agent-status/"), handler: handleAgentStatus },
+  { test: (url, method) => url?.startsWith("/api/scoring-stats") && method === "GET", handler: handleScoringStats },
+];
 
 export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx: RestContext): Promise<void> {
-  const { services, httpLog, authEnabled, getRunConfig, setRunConfig } = ctx;
+  const { httpLog } = ctx;
   const url = req.url || "";
   let body: Record<string, unknown>;
   try {
@@ -90,501 +129,17 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
   } else {
     httpLog.info({ method: req.method, url: logUrl, agent_id: agentId }, "REST request");
   }
-  const { registry, activityTracker, consultation, fileTracker, introspection, sseEmitter, mqttBridge, quotaCache } = services;
 
-  if (url === "/api/register") {
-    const parsed = RegisterBodySchema.safeParse(body);
-    if (!parsed.success) { sendValidationError(res, parsed.error); return; }
-    const { agent_id, name, modules } = parsed.data;
-    // architecture-07: shared flow with MCP register_agent (registry.register +
-    // sseEmitter "agent_online" + mqttBridge.registerAgent retained-status publish).
-    const agent = runRegisterFlow(services, ctx.claims.org, agent_id, name, modules ?? []);
-    json(res, agent);
-
-  } else if (url === "/api/session-start") {
-    const online = registry.listOnline(ctx.claims.org);
-    const openThreads = consultation.listThreads(ctx.claims.org, { status: "open" });
-    const hotFiles = fileTracker.getHotFiles(ctx.claims.org, 30);
-    const briefing = [
-      `Agents en ligne: ${online.map((a) => a.name).join(", ") || "aucun"}`,
-      `Consultations ouvertes: ${openThreads.length}`,
-      `Hot files: ${hotFiles.map((f) => f.file_path).join(", ") || "aucun"}`,
-    ].join("\n");
-    json(res, { briefing, summary: { online: online.length, open_threads: openThreads.length, hot_files: hotFiles.length } });
-
-  } else if (url === "/api/session-stop") {
-    const parsed = SessionStopBodySchema.safeParse(body);
-    if (!parsed.success) { sendValidationError(res, parsed.error); return; }
-    const { agent_id } = parsed.data;
-    registry.setOffline(ctx.claims.org, agent_id);
-    activityTracker.reportOffline(ctx.claims.org, agent_id);
-    consultation.handleAgentDeparture(agent_id);
-    sseEmitter.emit("agent_offline", { agent_id }, { org_id: ctx.claims.org });
-    json(res, { ok: true });
-
-  } else if (url === "/api/check-conflict") {
-    const parsed = CheckConflictBodySchema.safeParse(body);
-    if (!parsed.success) { sendValidationError(res, parsed.error); return; }
-    const { file, agent_id } = parsed.data;
-    const conflict = fileTracker.checkFileConflict(ctx.claims.org, file, agent_id, 30);
-    const warnings: string[] = [];
-    if (conflict.conflict) {
-      warnings.push(`File ${file} recently edited by: ${conflict.agents.join(", ")}`);
-    }
-    json(res, { conflict: conflict.conflict, warnings });
-
-  } else if (url === "/api/log-file") {
-    const parsed = LogFileBodySchema.safeParse(body);
-    if (!parsed.success) { sendValidationError(res, parsed.error); return; }
-    const { session_id, agent_id, agent_name, tool_name, file } = parsed.data;
-    fileTracker.log({ org_id: ctx.claims.org, session_id, agent_id, agent_name, tool_name, file_path: file });
-    activityTracker.reportFileActivity(ctx.claims.org, agent_id, file);
-    sseEmitter.emit("file_edited", { agent_id, agent_name: agent_name || agent_id, file, tool_name }, { org_id: ctx.claims.org });
-    json(res, { ok: true });
-
-  } else if (url === "/api/announce") {
-    const parsed = AnnounceBodySchema.safeParse(body);
-    if (!parsed.success) { sendValidationError(res, parsed.error); return; }
-    const { agent_id, subject, plan, target_modules, target_files, depends_on_files, exports_affected, keep_open, assigned_to, target_symbols } = parsed.data;
-
-    const thread = consultation.announceWork(ctx.claims.org, { agent_id, subject, plan, target_modules, target_files, depends_on_files, exports_affected, keep_open, assigned_to });
-    const agentInfo = registry.get(ctx.claims.org, agent_id);
-
-    // S2 fix: shared workflow (impact scoring, override respondents, auto-resolve,
-    // impact_scored + introspection SSE, plan-quality downgrade event). Same
-    // function used by the MCP announce_work tool path.
-    const { updated, categorized, respondents, planQuality } = runCommonAnnounceFlow(services, thread.id, {
-      org_id: ctx.claims.org, agent_id, subject, plan, target_modules, target_files, depends_on_files, exports_affected, keep_open,
-      target_symbols,
-    });
-
-    // REST-specific thread_opened SSE shape (different field set than MCP — kept
-    // divergent because consumers may depend on this exact contract).
-    sseEmitter.emit("thread_opened", {
-      thread_id: thread.id, subject, agent_id, agent_name: agentInfo?.name || agent_id,
-      target_modules, target_files, expected_respondents: respondents,
-      conflicts: safeJsonParse<unknown[]>(updated.conflicts, [], httpLog, "handle-rest./api/announce:updated.conflicts"),
-      created_at: updated.created_at,
-      mode: planQuality.mode,
-      plan: plan || null,
-      plan_quality: planQuality,
-    }, { org_id: ctx.claims.org });
-    json(res, { thread_id: thread.id, status: updated.status, impact: categorized });
-
-  } else if (url === "/api/post-to-thread") {
-    const parsed = PostToThreadBodySchema.safeParse(body);
-    if (!parsed.success) { sendValidationError(res, parsed.error); return; }
-    const { thread_id, agent_id, agent_name, type, content } = parsed.data;
-    // Pre-check the thread so we can return actionable status codes instead
-    // of always-500 on any error. The client uses the status to decide
-    // whether to warn (unexpected) or silently skip (normal race).
-    const targetThread = consultation.getThread(ctx.claims.org, thread_id);
-    if (!targetThread) {
-      json(res, { error: "thread_not_found", thread_id }, 404);
-      return;
-    }
-    if (targetThread.status === "cancelled") {
-      json(res, { error: "thread_cancelled", thread_id }, 410);
-      return;
-    }
-    const msg = consultation.postToThread(ctx.claims.org, { thread_id, agent_id, agent_name, type, content });
-    const thread = consultation.getThread(ctx.claims.org, thread_id);
-    sseEmitter.emit("message_posted", {
-      thread_id, agent_id, agent_name: agent_name || agent_id,
-      type, content, round: thread?.round || 1,
-      token_estimate: msg.token_estimate || 0,
-    }, { org_id: ctx.claims.org });
-    json(res, msg);
-
-  } else if (url === "/api/token-usage") {
-    // Agent → coordinator telemetry, emitted once per LLM turn so the dashboard
-    // and reports can pinpoint where tokens are being burned. Free-form shape
-    // by design — only validated as a JSON object (not array/primitive).
-    const parsed = TokenUsageBodySchema.safeParse(body);
-    if (!parsed.success) { sendValidationError(res, parsed.error); return; }
-    sseEmitter.emit("token_usage", parsed.data, { org_id: ctx.claims.org });
-    json(res, { ok: true });
-
-  } else if (url === "/api/unclaim-task") {
-    const parsed = UnclaimTaskBodySchema.safeParse(body);
-    if (!parsed.success) { sendValidationError(res, parsed.error); return; }
-    const { thread_id, agent_id } = parsed.data;
-    const db = getDb();
-    // F4: increment unclaim counter. After POISON_THRESHOLD aborts, flip status
-    // to "poisoned" so no agent claims it again — prevents the tight
-    // claim → no DONE → unclaim → re-claim loop we observed on stuck tasks.
-    // Only the claiming agent can unclaim to prevent cross-agent interference.
-    const POISON_THRESHOLD = 2;
-    const result = db.prepare(
-      "UPDATE threads SET claimed_by = NULL, claimed_at = NULL, unclaim_count = COALESCE(unclaim_count, 0) + 1 WHERE id = ? AND org_id = ? AND claimed_by = ? AND status = 'open'"
-    ).run(thread_id, ctx.claims.org, agent_id);
-    let poisoned = false;
-    if (result.changes === 1) {
-      const row = db.prepare("SELECT unclaim_count FROM threads WHERE id = ? AND org_id = ?").get(thread_id, ctx.claims.org) as { unclaim_count?: number } | undefined;
-      if (row && (row.unclaim_count ?? 0) >= POISON_THRESHOLD) {
-        db.prepare("UPDATE threads SET status = 'poisoned' WHERE id = ? AND org_id = ? AND status = 'open'").run(thread_id, ctx.claims.org);
-        poisoned = true;
-        httpLog.warn({ thread_id, unclaim_count: row.unclaim_count }, "thread poisoned after repeated unclaims");
-      }
-    }
-    json(res, { success: result.changes === 1, poisoned });
-
-  } else if (url === "/api/claim-task") {
-    const parsed = ClaimTaskBodySchema.safeParse(body);
-    if (!parsed.success) { sendValidationError(res, parsed.error); return; }
-    const { thread_id, agent_id } = parsed.data;
-    const db = getDb();
-    // Only claim threads with status='open' — poisoned threads are filtered out
-    // automatically because the status filter excludes them.
-    // Directed-dispatch constraint: if assigned_to is set, only that specific
-    // agent can claim; NULL keeps the original open-pool semantics.
-    const result = db.prepare(
-      "UPDATE threads SET claimed_by = ?, claimed_at = ? WHERE id = ? AND org_id = ? AND claimed_by IS NULL AND status = 'open' AND (assigned_to IS NULL OR assigned_to = ?)"
-    ).run(agent_id, new Date().toISOString(), thread_id, ctx.claims.org, agent_id);
-
-    if (result.changes === 1) {
-      mqttBridge.publishTaskClaimed(thread_id, agent_id);
-      sseEmitter.emit("task_claimed", { thread_id, agent_id }, { org_id: ctx.claims.org });
-      json(res, { success: true });
-    } else {
-      const thread = consultation.getThread(ctx.claims.org, thread_id);
-      // Surface the assigned_to in the 'why not' response so clients can
-      // distinguish "already claimed by X" from "reserved for Y".
-      json(res, {
-        success: false,
-        claimed_by: thread?.claimed_by || null,
-        assigned_to: thread?.assigned_to || null,
-        status: thread?.status,
-      });
-    }
-
-  } else if (url === "/api/propose-resolution") {
-    const parsed = ProposeResolutionBodySchema.safeParse(body);
-    if (!parsed.success) { sendValidationError(res, parsed.error); return; }
-    const { thread_id, agent_id, summary } = parsed.data;
-    const agentInfo = registry.get(ctx.claims.org, agent_id);
-    consultation.proposeResolution(ctx.claims.org, thread_id, agent_id, summary);
-    sseEmitter.emit("resolution_proposed", {
-      thread_id, agent_id, agent_name: agentInfo?.name || agent_id, summary,
-    }, { org_id: ctx.claims.org });
-    json(res, consultation.getThread(ctx.claims.org, thread_id));
-    mqttBridge.publishTaskCompleted(thread_id, agent_id, summary);
-
-  } else if (url === "/api/approve-resolution") {
-    const parsed = ApproveResolutionBodySchema.safeParse(body);
-    if (!parsed.success) { sendValidationError(res, parsed.error); return; }
-    const { thread_id, agent_id } = parsed.data;
-    const agentInfo = registry.get(ctx.claims.org, agent_id);
-    consultation.approveResolution(ctx.claims.org, thread_id, agent_id, agentInfo?.name ?? undefined);
-    const t = consultation.getThread(ctx.claims.org, thread_id)!;
-    json(res, t);
-
-  } else if (url?.startsWith("/api/consultation/") && url?.endsWith("/status")) {
-    const threadId = url.split("/")[3];
-    const thread = consultation.getThreadWithMessages(ctx.claims.org, threadId);
-    if (!thread) {
-      json(res, { error: "not found" }, 404);
-    } else {
-      json(res, {
-        status: thread.thread.status,
-        messages: thread.messages,
-        resolution_summary: thread.thread.resolution_summary,
-        expected_respondents: safeJsonParse<string[]>(thread.thread.expected_respondents, [], httpLog, "handle-rest./api/consultation/status:expected_respondents"),
-      });
-    }
-
-  } else if (url === "/api/threads-active") {
-    const open = consultation.listThreads(ctx.claims.org, { status: "open" });
-    const resolving = consultation.listThreads(ctx.claims.org, { status: "resolving" });
-    json(res, [...open, ...resolving]);
-
-  } else if (url === "/api/hot-files") {
-    const parsed = HotFilesBodySchema.safeParse(body);
-    if (!parsed.success) { sendValidationError(res, parsed.error); return; }
-    const { since_minutes } = parsed.data;
-    json(res, fileTracker.getHotFiles(ctx.claims.org, since_minutes || 30));
-
-  } else if (url === "/api/quota") {
-    // Pre-flight + live widget endpoint. 200 with fresh QuotaInfo when the
-    // Keychain + Anthropic API are reachable, 503 otherwise. Consumers treat
-    // 503 as "quota unknown = proceed" (fail-open) per the project decision.
-    const info = await quotaCache.get();
-    if (!info) {
-      const status = quotaCache.snapshot();
-      json(res, {
-        error: "quota unavailable",
-        reason: status.lastError,
-        cooldown_until: status.cooldownUntil,
-      }, 503);
-    } else {
-      json(res, {
-        five_hour: info.fiveHour,
-        seven_day: info.sevenDay,
-        seven_day_sonnet: info.sevenDaySonnet,
-        fetched_at: info.fetchedAt,
-      });
-    }
-
-  } else if (url === "/api/quota/refresh") {
-    // Force-refresh the cache, bypassing the TTL. Used by the dashboard's
-    // manual refresh button. The underlying quotaCache.refresh() is single-
-    // flight-deduped, so mashing the button doesn't stack parallel fetches.
-    // The onRefresh callback on the cache broadcasts via SSE + MQTT, so the
-    // dashboard receives the update through the normal channel too — this
-    // endpoint only exists for "give me the answer now" semantics.
-    const info = await quotaCache.refresh();
-    if (!info) {
-      const status = quotaCache.snapshot();
-      json(res, {
-        error: "quota unavailable",
-        reason: status.lastError,
-        cooldown_until: status.cooldownUntil,
-      }, 503);
-    } else {
-      json(res, {
-        five_hour: info.fiveHour,
-        seven_day: info.sevenDay,
-        seven_day_sonnet: info.sevenDaySonnet,
-        fetched_at: info.fetchedAt,
-      });
-    }
-
-  } else if (url === "/api/introspection-response") {
-    const parsed = IntrospectionResponseBodySchema.safeParse(body);
-    if (!parsed.success) { sendValidationError(res, parsed.error); return; }
-    const { introspection_id, concerned, reason } = parsed.data;
-    const intro = introspection.respond(ctx.claims.org, introspection_id, reason);
-
-    // If concerned, add to thread's expected_respondents
-    if (concerned && intro) {
-      const db = getDb();
-      const thread = consultation.getThread(ctx.claims.org, intro.thread_id);
-      if (thread && (thread.status === "open" || thread.status === "resolving")) {
-        const respondents: string[] = safeJsonParse<string[]>(thread.expected_respondents, [], httpLog, "handle-rest./api/introspection-response:expected_respondents");
-        if (!respondents.includes(intro.agent_id)) {
-          respondents.push(intro.agent_id);
-          db.prepare("UPDATE threads SET expected_respondents = ? WHERE id = ? AND org_id = ?")
-            .run(JSON.stringify(respondents), thread.id, ctx.claims.org);
-        }
-      }
-    }
-
-    const agentInfo = registry.get(ctx.claims.org, intro?.agent_id || "");
-    sseEmitter.emit("introspection_completed", {
-      introspection_id, thread_id: intro?.thread_id,
-      agent_id: intro?.agent_id, agent_name: agentInfo?.name || intro?.agent_id,
-      concerned, reason,
-    }, { org_id: ctx.claims.org });
-    json(res, intro);
-
-  } else if (url?.startsWith("/api/pending-introspections")) {
-    const urlObj = new URL(url, "http://localhost");
-    const agent_id = urlObj.searchParams.get("agent_id") || "";
-    const pending = introspection.getPending(ctx.claims.org, agent_id);
-    json(res, pending);
-
-  } else if (url === "/api/run-config") {
-    if (req.method === "POST") {
-      const parsed = RunConfigBodySchema.safeParse(body);
-      if (!parsed.success) { sendValidationError(res, parsed.error); return; }
-      setRunConfig(parsed.data);
-      sseEmitter.emit("run_config" as Parameters<typeof sseEmitter.emit>[0], getRunConfig() as Record<string, unknown>, { org_id: ctx.claims.org });
-      json(res, { ok: true });
-    } else {
-      json(res, getRunConfig() || { active: false });
-    }
-
-  } else if (url === "/api/reset") {
-    // B4 fix: gate destructive reset when AUTH is disabled.
-    // When AUTH_ENABLED=true, ADMIN_ONLY_ROUTES already enforced upstream
-    // by authenticateRequest (see auth.ts). This guard covers the AUTH off case.
-    if (!canResetDb(process.env, authEnabled)) {
-      json(res, {
-        error: "Forbidden: /api/reset requires NODE_ENV=test, COORDINATOR_ALLOW_RESET=true, or COORDINATOR_AUTH_ENABLED with admin token",
-      }, 403);
-      return;
-    }
-    // Reset all tables for clean test run (disable FK checks to avoid ordering issues)
-    const db = getDb();
-    db.exec("PRAGMA foreign_keys = OFF");
-    db.exec("DELETE FROM introspections");
-    db.exec("DELETE FROM events");
-    db.exec("DELETE FROM thread_messages");
-    db.exec("DELETE FROM threads");
-    db.exec("DELETE FROM action_summaries");
-    db.exec("DELETE FROM file_activity");
-    db.exec("DELETE FROM agent_activity_status");
-    db.exec("DELETE FROM dependency_map");
-    db.exec("DELETE FROM agents");
-    db.exec("DELETE FROM revoked_agents");
-    db.exec("PRAGMA foreign_keys = ON");
-    setRunConfig(null);
-    json(res, { ok: true });
-
-  } else if (url === "/api/check-interrupt") {
-    const parsed = CheckInterruptBodySchema.safeParse(body);
-    if (!parsed.success) { sendValidationError(res, parsed.error); return; }
-    const { agent_id } = parsed.data;
-    // Check for threads where this agent is an expected respondent and hasn't posted yet.
-    // Covers both open threads (waiting for initial response) and resolving threads
-    // (waiting for approval/contest of a proposed resolution).
-    const pendingThreads = [
-      ...consultation.listThreads(ctx.claims.org, { status: "open" }),
-      ...consultation.listThreads(ctx.claims.org, { status: "resolving" }),
-    ].filter((t) => {
-      const respondents: string[] = safeJsonParse<string[]>(t.expected_respondents, [], httpLog, "handle-rest./api/check-interrupt:expected_respondents");
-      return respondents.includes(agent_id);
-    });
-    if (pendingThreads.length > 0) {
-      const details = pendingThreads.map((t) => ({
-        thread_id: t.id,
-        subject: t.subject,
-        initiator_id: t.initiator_id,
-        status: t.status,
-        target_files: safeJsonParse<string[]>(t.target_files, [], httpLog, "handle-rest./api/check-interrupt:target_files"),
-      }));
-      json(res, { interrupt: true, threads: details });
-    } else {
-      json(res, { interrupt: false });
-    }
-
-  } else if (url?.startsWith("/api/agent-status/")) {
-    const aid = url.split("/")[3];
-    const agent = registry.get(ctx.claims.org, aid);
-    if (!agent) {
-      json(res, { registered: false, status: "unknown" });
-    } else {
-      const activity = activityTracker.getActivity(ctx.claims.org, aid, { idleAfterMinutes: 5 });
-      json(res, { registered: true, status: agent.status, activity: activity.activity_status });
-    }
-
-  } else if (url === "/api/file-activity" && req.method === "POST") {
-    if (typeof body.session_id !== "string" || typeof body.agent_id !== "string"
-        || typeof body.tool_name !== "string" || typeof body.file_path !== "string") {
-      json(res, { error: "missing required fields" }, 400);
-      return;
-    }
-    if (body.agent_name !== undefined && typeof body.agent_name !== "string") {
-      json(res, { error: "agent_name must be string when present" }, 400);
-      return;
-    }
-    const repoRoot = process.env.COORDINATOR_REPO_ROOT || null;
-    let filePath: string;
-    try {
-      filePath = normalizePath(repoRoot, body.file_path as string);
-    } catch (err) {
-      json(res, { error: `invalid file_path: ${(err as Error).message}` }, 400);
-      return;
-    }
-    const MAX_CONTENT = 262144;
-    let symbols: string[] | null = null;
-    let contentHash: string | null = null;
-    if (typeof body.content === "string") {
-      if (body.content.length > MAX_CONTENT) {
-        json(res, { error: "content exceeds 256 KB" }, 400);
-        return;
-      }
-      contentHash = createHash("sha256").update(body.content).digest("hex");
-      symbols = ctx.services.treeSitter.extract(filePath, body.content, null);
-    }
-    ctx.services.fileTracker.log({
-      org_id: ctx.claims.org,
-      session_id: body.session_id,
-      agent_id: body.agent_id,
-      agent_name: body.agent_name,
-      tool_name: body.tool_name,
-      file_path: filePath,
-      content_hash: contentHash,
-      symbols_touched: symbols,
-    });
-    json(res, { ok: true });
-
-  } else if (url === "/api/working-files/start" && req.method === "POST") {
-    if (typeof body.agent_id !== "string" || typeof body.file_path !== "string") {
-      json(res, { error: "agent_id and file_path required" }, 400);
-      return;
-    }
-    const repoRoot = process.env.COORDINATOR_REPO_ROOT || null;
-    let filePath: string;
-    try {
-      filePath = normalizePath(repoRoot, body.file_path as string);
-    } catch (err) {
-      json(res, { error: `invalid file_path: ${(err as Error).message}` }, 400);
-      return;
-    }
-    const ttl = parseInt(process.env.COORDINATOR_WORKING_FILES_TTL_MIN || "30", 10);
-    services.workingFiles.start(ctx.claims.org, body.agent_id as string, filePath, ttl);
-    json(res, { ok: true });
-
-  } else if (url === "/api/working-files/stop" && req.method === "POST") {
-    if (typeof body.agent_id !== "string" || typeof body.file_path !== "string") {
-      json(res, { error: "agent_id and file_path required" }, 400);
-      return;
-    }
-    const repoRoot = process.env.COORDINATOR_REPO_ROOT || null;
-    let filePath: string;
-    try {
-      filePath = normalizePath(repoRoot, body.file_path as string);
-    } catch (err) {
-      json(res, { error: `invalid file_path: ${(err as Error).message}` }, 400);
-      return;
-    }
-    services.workingFiles.stop(ctx.claims.org, body.agent_id as string, filePath);
-    json(res, { ok: true });
-
-  } else if (url?.startsWith("/api/scoring-stats") && req.method === "GET") {
-    const u = new URL(url, "http://localhost");
-    const sinceParam = u.searchParams.get("since") || "24h";
-    const sinceMin = sinceParam.endsWith("h") ? parseInt(sinceParam) * 60
-                    : sinceParam.endsWith("d") ? parseInt(sinceParam) * 60 * 24
-                    : 60 * 24;
-    const db = getDb();
-    const rows = db.prepare(
-      `SELECT
-         lf.layer,
-         COUNT(*) AS fire_count,
-         AVG(lf.score) AS avg_score,
-         SUM(CASE WHEN json_extract(e.payload, '$.resolution_type') = 'auto_resolved' THEN 1 ELSE 0 END) AS auto_resolved,
-         SUM(CASE WHEN json_extract(e.payload, '$.resolution_type') = 'consensus' THEN 1 ELSE 0 END) AS consensus,
-         SUM(CASE WHEN json_extract(e.payload, '$.resolution_type') = 'timeout' THEN 1 ELSE 0 END) AS timeout_count,
-         SUM(CASE WHEN json_extract(e.payload, '$.resolution_type') IN ('agent_departure','closed') THEN 1 ELSE 0 END) AS cancelled
-       FROM layer_firings lf
-       LEFT JOIN events e
-         ON e.type = 'thread_resolved'
-         AND json_extract(e.payload, '$.thread_id') = lf.thread_id
-       WHERE lf.fired_at > datetime('now', '-' || ? || ' minutes')
-       GROUP BY lf.layer
-       ORDER BY fire_count DESC`
-    ).all(sinceMin) as Array<{
-      layer: string; fire_count: number; avg_score: number;
-      auto_resolved: number; consensus: number; timeout_count: number; cancelled: number;
-    }>;
-    json(res, {
-      window: { since: sinceParam, now: new Date().toISOString() },
-      layers: rows.map(r => ({
-        layer: r.layer,
-        fire_count: r.fire_count,
-        avg_score: r.avg_score,
-        outcomes: {
-          auto_resolved: r.auto_resolved,
-          consensus: r.consensus,
-          timeout: r.timeout_count,
-          cancelled: r.cancelled,
-        },
-      })),
-    });
-
-  } else if (url === "/api/status") {
-    const online = registry.listOnline(ctx.claims.org);
-    const openThreads = consultation.listThreads(ctx.claims.org, { status: "open" });
-    json(res, {
-      online: online.length,
-      open_threads: openThreads.length,
-      hot_files: fileTracker.getHotFiles(ctx.claims.org, 30).length,
-      mqtt: services.mqttBridge.isConnected(),
-    });
-
-  } else {
-    json(res, { error: "not found" }, 404);
+  const handler = ROUTES[url] || (req.method ? METHOD_ROUTES[`${req.method} ${url}`] : undefined);
+  if (handler) {
+    await handler(req, res, ctx, body);
+    return;
   }
+  for (const route of PREFIX_ROUTES) {
+    if (route.test(url, req.method)) {
+      await route.handler(req, res, ctx, body);
+      return;
+    }
+  }
+  json(res, { error: "not found" }, 404);
 }
