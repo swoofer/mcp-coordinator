@@ -53,6 +53,13 @@ This repo uses [pnpm](https://pnpm.io/) (>=9). Corepack picks the right version 
 
 Files under `src/auth/**`, `src/security/**`, and `cli/encryption/**` are pinned to 100% coverage (branches/lines/functions/statements) — see the per-file `thresholds` block in `vitest.config.ts`. Any change to these files must keep coverage at 100%, or `pnpm test:ci` fails.
 
+### Coverage blind spots (v8 provider can't see subprocess/platform-gated code)
+
+Two categories of code will always look under-covered in the `pnpm test:ci` V8 report even when they're exercised by the suite — don't chase these to 100%:
+
+- **`src/index.ts` and parts of `src/serve-http.ts`** — these are the process entry points. They're exercised by the stdio/HTTP smoke tests and Playwright e2e specs (e.g. `tests/integration/mcp-stdio-smoke.test.ts`, `tests/integration/channel-smoke.test.ts`, `tests/e2e/helpers/coordinator-fixture.ts`), but those tests spawn the server as a **child process** (`child_process`/Playwright webServer). V8's coverage provider only instruments the vitest worker process, so none of the code paths run inside that spawned subprocess are recorded — the report shows 0%/partial even though the behavior is genuinely covered end-to-end.
+- **`src/quota/credential-reader.ts`** — `MacOSCredentialReader` shells out to the macOS `security` CLI (Keychain). It's only reachable on `darwin`; on Linux/Windows CI runners `createCredentialReader()` takes the `default` branch and throws `NotImplementedError` instead, so the macOS-specific code paths cannot be exercised in this repo's (Windows-authored, Linux CI) test environment.
+
 ## Architecture
 
 See `README.md` for the high-level model. The server is in `src/`, the CLI in `cli/`, and the static dashboard in `dashboard/public/`. The MQTT broker is embedded (Aedes) and ships with the server.
