@@ -557,6 +557,13 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
         "Access-Control-Allow-Origin": origin ?? "*",
         "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type, mcp-session-id, Authorization",
+        // protocole-mcp-11: without Access-Control-Expose-Headers, a browser
+        // MCP client cannot read the `mcp-session-id` response header (only
+        // "CORS-safelisted" headers are exposed by default), so it can never
+        // learn the session id `initialize` assigns it — session
+        // establishment silently fails for browser clients. Harmless on
+        // preflights for non-/mcp routes too.
+        "Access-Control-Expose-Headers": "mcp-session-id",
         ...(origin ? { Vary: "Origin" } : {}),
       });
       res.end();
@@ -728,6 +735,16 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
           return;
         }
         const sessionId = req.headers["mcp-session-id"] as string | undefined;
+
+        // protocole-mcp-11: expose `mcp-session-id` via CORS on the actual
+        // /mcp response too (not just the OPTIONS preflight) — browser MCP
+        // clients need to read this header off the `initialize` response to
+        // establish a session. Setting it here (before the transport writes
+        // its own headers) is preserved: Node merges response.setHeader()
+        // values with whatever headers.writeHead() passes later, as long as
+        // that later call doesn't redeclare the same header name — the SDK
+        // transport never sets Access-Control-Expose-Headers itself.
+        res.setHeader("Access-Control-Expose-Headers", "mcp-session-id");
 
         if (sessionId && sessions.has(sessionId)) {
           // Existing-session branch — AUTH-GATED ON EVERY REQUEST per spec §J.

@@ -172,7 +172,13 @@ export function createMcpServer(
   const mcpLog = services.logger.child({ component: "mcp" });
 
   const server = new McpServer({
-    name: "mcp-coordinator-v3",
+    // protocole-mcp-13: aligned with package.json's `mcpName` (the MCP
+    // registry-recommended `io.github.<owner>/<repo>` form) instead of the
+    // legacy internal "mcp-coordinator-v3" label, which leaked an
+    // implementation detail and matched neither the npm package name nor
+    // the registry name. See docs/maintainer-notes.md for registry
+    // publication status.
+    name: "io.github.swoofer/mcp-coordinator",
     version: VERSION,
   });
 
