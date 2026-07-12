@@ -28,9 +28,7 @@ beforeAll(() => {
 describe("admin-users.html — static structure", () => {
   it("references the external admin-users.js module", () => {
     // Must be type="module" + src — never inline body — per CSP `script-src 'self'`.
-    expect(html).toMatch(
-      /<script\s+type="module"\s+src="admin-users\.js"\s*><\/script>/,
-    );
+    expect(html).toMatch(/<script\s+type="module"\s+src="admin-users\.js"\s*><\/script>/);
   });
 
   it("references the shared admin.css stylesheet", () => {
@@ -44,10 +42,7 @@ describe("admin-users.html — CSP compliance", () => {
     // src= attribute. The loader tag has src=, so this regex excludes it.
     // We strip all `<script ... src="..."></script>` tags first, then look
     // for any remaining `<script>`.
-    const stripped = html.replace(
-      /<script\b[^>]*\bsrc\s*=\s*"[^"]*"[^>]*>\s*<\/script>/gi,
-      "",
-    );
+    const stripped = html.replace(/<script\b[^>]*\bsrc\s*=\s*"[^"]*"[^>]*>\s*<\/script>/gi, "");
     expect(stripped).not.toMatch(/<script\b/i);
   });
 

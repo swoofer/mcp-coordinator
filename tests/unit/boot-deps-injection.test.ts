@@ -70,9 +70,11 @@ function makeValidSynthEnv(): NodeJS.ProcessEnv {
  */
 function makeFakeLogger() {
   const calls: Array<{ level: string; args: unknown[] }> = [];
-  const record = (level: string) => (...args: unknown[]) => {
-    calls.push({ level, args });
-  };
+  const record =
+    (level: string) =>
+    (...args: unknown[]) => {
+      calls.push({ level, args });
+    };
   const fake = {
     calls,
     trace: record("trace"),
@@ -117,8 +119,16 @@ afterEach(() => {
   }
   resetAuditQueue();
   resetPhase2Auth();
-  try { closeGlobalDb(); } catch { /* idempotent */ }
-  try { fs.rmSync(DATA_DIR, { recursive: true, force: true }); } catch { /* Windows EBUSY */ }
+  try {
+    closeGlobalDb();
+  } catch {
+    /* idempotent */
+  }
+  try {
+    fs.rmSync(DATA_DIR, { recursive: true, force: true });
+  } catch {
+    /* Windows EBUSY */
+  }
 });
 
 describe("bootPhase2(opts, deps) — env injection", () => {
@@ -142,12 +152,12 @@ describe("bootPhase2(opts, deps) — env injection", () => {
   it("throws BootValidationError when deps.env omits a required var (proves env-from-deps is read)", () => {
     const synthEnv = makeValidSynthEnv();
     delete synthEnv.COORDINATOR_JWT_SECRET;
-    expect(() =>
-      bootPhase2({ enabled: true, db, clock }, { env: synthEnv }),
-    ).toThrow(BootValidationError);
-    expect(() =>
-      bootPhase2({ enabled: true, db, clock }, { env: synthEnv }),
-    ).toThrow(/COORDINATOR_JWT_SECRET is required/);
+    expect(() => bootPhase2({ enabled: true, db, clock }, { env: synthEnv })).toThrow(
+      BootValidationError,
+    );
+    expect(() => bootPhase2({ enabled: true, db, clock }, { env: synthEnv })).toThrow(
+      /COORDINATOR_JWT_SECRET is required/,
+    );
   });
 
   it("INSECURE_COOKIES override is read from deps.env (not process.env)", () => {
@@ -155,9 +165,9 @@ describe("bootPhase2(opts, deps) — env injection", () => {
     synthEnv.COORDINATOR_PUBLIC_URL = "http://example.com:3100";
     // process.env.COORDINATOR_INSECURE_COOKIES is NOT set; the override
     // must come from deps.env. Without it, boot should throw.
-    expect(() =>
-      bootPhase2({ enabled: true, db, clock }, { env: synthEnv }),
-    ).toThrow(/COORDINATOR_INSECURE_COOKIES=true to override/);
+    expect(() => bootPhase2({ enabled: true, db, clock }, { env: synthEnv })).toThrow(
+      /COORDINATOR_INSECURE_COOKIES=true to override/,
+    );
 
     synthEnv.COORDINATOR_INSECURE_COOKIES = "true";
     const result = bootPhase2({ enabled: true, db, clock }, { env: synthEnv });
@@ -205,10 +215,7 @@ describe("bootPhase2(opts, deps) — db injection", () => {
     // isolation because audit() reads getDb() globally; this assertion
     // simply proves deps.db is the read path when set.
     const synthEnv = makeValidSynthEnv();
-    const result = bootPhase2(
-      { enabled: true, db, clock },
-      { env: synthEnv, db },
-    );
+    const result = bootPhase2({ enabled: true, db, clock }, { env: synthEnv, db });
     expect(result).not.toBeNull();
     void result!.shutdown();
   });
@@ -248,7 +255,9 @@ describe("bootPhase2(opts, deps) — securite-auth-05 INSECURE_COOKIES boot warn
     );
     expect(result).not.toBeNull();
     const warnCalls = fakeLogger.calls.filter((c) => c.level === "warn");
-    expect(warnCalls.some((c) => String(c.args[0]).includes("COORDINATOR_INSECURE_COOKIES"))).toBe(false);
+    expect(warnCalls.some((c) => String(c.args[0]).includes("COORDINATOR_INSECURE_COOKIES"))).toBe(
+      false,
+    );
     void result!.shutdown();
   });
 
@@ -262,7 +271,9 @@ describe("bootPhase2(opts, deps) — securite-auth-05 INSECURE_COOKIES boot warn
     );
     expect(result).not.toBeNull();
     const warnCalls = fakeLogger.calls.filter((c) => c.level === "warn");
-    expect(warnCalls.some((c) => String(c.args[0]).includes("COORDINATOR_INSECURE_COOKIES"))).toBe(false);
+    expect(warnCalls.some((c) => String(c.args[0]).includes("COORDINATOR_INSECURE_COOKIES"))).toBe(
+      false,
+    );
     void result!.shutdown();
   });
 });

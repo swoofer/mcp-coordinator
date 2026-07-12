@@ -5,12 +5,7 @@ import { appError } from "../http/response-contract.js";
 import { authenticateRequest } from "../auth.js";
 import { audit } from "../security/audit.js";
 import { bumpTokenEpoch } from "./token-epoch.js";
-import {
-  CSRF_COOKIE_NAME,
-  SESSION_COOKIE_NAME,
-  hostCookie,
-  setCookies,
-} from "./cookies.js";
+import { CSRF_COOKIE_NAME, SESSION_COOKIE_NAME, hostCookie, setCookies } from "./cookies.js";
 
 /**
  * T23 — POST /api/auth/logout, /logout-all, /revoke
@@ -88,11 +83,13 @@ export async function handleLogout(
 
   if (claims.family_id) {
     ctx.db
-      .prepare(`
+      .prepare(
+        `
         UPDATE refresh_tokens
         SET revoked_at = ?, revoked_reason = 'logout'
         WHERE family_id = ? AND revoked_at IS NULL
-      `)
+      `,
+      )
       .run(String(ctx.clock.now()), claims.family_id);
   }
 
@@ -134,10 +131,7 @@ export async function handleLogoutAll(
   }
   const claims = authResult.claims;
 
-  const rate = ctx.rateLimiter.check(
-    `logout-all:${claims.user_id}`,
-    LOGOUT_ALL_RATE_LIMIT,
-  );
+  const rate = ctx.rateLimiter.check(`logout-all:${claims.user_id}`, LOGOUT_ALL_RATE_LIMIT);
   if (!rate.allowed) {
     res.writeHead(429, {
       "Content-Type": "application/json; charset=utf-8",
@@ -150,11 +144,13 @@ export async function handleLogoutAll(
   bumpTokenEpoch(ctx.db, claims.user_id);
 
   ctx.db
-    .prepare(`
+    .prepare(
+      `
       UPDATE refresh_tokens
       SET revoked_at = ?, revoked_reason = 'logout_all'
       WHERE user_id = ? AND revoked_at IS NULL
-    `)
+    `,
+    )
     .run(String(ctx.clock.now()), claims.user_id);
 
   clearSessionCookies(res);
@@ -266,11 +262,13 @@ export async function handleRevoke(
   }
 
   ctx.db
-    .prepare(`
+    .prepare(
+      `
       UPDATE refresh_tokens
       SET revoked_at = ?, revoked_reason = 'admin'
       WHERE jti = ? AND revoked_at IS NULL
-    `)
+    `,
+    )
     .run(String(ctx.clock.now()), jti);
 
   audit("auth.token.revoked", {

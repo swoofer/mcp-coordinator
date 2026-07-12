@@ -32,13 +32,17 @@ let lastClient: FakeMqttClient | null = null;
 const subscribeCalls: SubscribeCall[] = [];
 
 class FakeMqttClient extends EventEmitter {
-  publish(): this { return this; }
+  publish(): this {
+    return this;
+  }
   subscribe(topic: string | string[]): this {
     const topics = Array.isArray(topic) ? topic : [topic];
     for (const t of topics) subscribeCalls.push({ topic: t });
     return this;
   }
-  endAsync(): Promise<void> { return Promise.resolve(); }
+  endAsync(): Promise<void> {
+    return Promise.resolve();
+  }
 }
 
 vi.mock("mqtt", () => ({
@@ -68,7 +72,7 @@ beforeEach(() => {
 
 describe("MqttBridge reconnection (tests-06)", () => {
   it("re-subscribes to all 3 topics on the initial connect", async () => {
-    const { } = await makeConnectedBridge();
+    const {} = await makeConnectedBridge();
     const topics = subscribeCalls.map((c) => c.topic);
     expect(topics).toEqual([
       "coordinator/default/agents/+/status",

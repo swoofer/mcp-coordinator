@@ -150,10 +150,7 @@ export function createServerBackupCommand(): Command {
 
       // First archive pass: config + default data (if any).
       if (entries.length > 0) {
-        await tarCreate(
-          { gzip: true, file: outputPath, cwd: configDir, portable: true },
-          entries,
-        );
+        await tarCreate({ gzip: true, file: outputPath, cwd: configDir, portable: true }, entries);
       }
 
       // Second pass for a custom data dir — append into the same archive.
@@ -163,19 +160,15 @@ export function createServerBackupCommand(): Command {
       if (customDataEntries.length > 0) {
         const dataArchive = outputPath.replace(/\.tar\.gz$/, ".data.tar.gz");
         for (const { cwd, entry } of customDataEntries) {
-          await tarCreate(
-            { gzip: true, file: dataArchive, cwd, portable: true },
-            [entry],
-          );
+          await tarCreate({ gzip: true, file: dataArchive, cwd, portable: true }, [entry]);
         }
         console.log(`Custom data dir packed separately: ${dataArchive}`);
       }
 
       // outputPath only exists if entries.length > 0; report on whichever
       // archive(s) we actually produced.
-      const reportPath = entries.length > 0
-        ? outputPath
-        : outputPath.replace(/\.tar\.gz$/, ".data.tar.gz");
+      const reportPath =
+        entries.length > 0 ? outputPath : outputPath.replace(/\.tar\.gz$/, ".data.tar.gz");
       const sizeBytes = existsSync(reportPath) ? statSync(reportPath).size : 0;
       const sizeMB = (sizeBytes / (1024 * 1024)).toFixed(2);
       const fileCount =

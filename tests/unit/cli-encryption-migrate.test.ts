@@ -78,7 +78,12 @@ describe("cli encryption migrate — happy paths", () => {
       user_id: "u-3",
     });
     seedUsers(db, [
-      { id: "u-1", primary_org_id: "org-1", idp_access_token: "plain-a", idp_refresh_token: "plain-b" },
+      {
+        id: "u-1",
+        primary_org_id: "org-1",
+        idp_access_token: "plain-a",
+        idp_refresh_token: "plain-b",
+      },
       { id: "u-2", primary_org_id: "org-1", idp_access_token: null, idp_refresh_token: "" },
       { id: "u-3", primary_org_id: "org-1", idp_access_token: preEnc, idp_refresh_token: null },
     ]);
@@ -139,7 +144,12 @@ describe("cli encryption migrate — happy paths", () => {
     const db = newDbAt(dataDir);
     seedUsers(db, [
       { id: "u-1", primary_org_id: "org-1", idp_access_token: "tok-A", idp_refresh_token: "tok-R" },
-      { id: "u-2", primary_org_id: "org-2", idp_access_token: "plain-only", idp_refresh_token: null },
+      {
+        id: "u-2",
+        primary_org_id: "org-2",
+        idp_access_token: "plain-only",
+        idp_refresh_token: null,
+      },
     ]);
     db.close();
 
@@ -188,7 +198,12 @@ describe("cli encryption migrate — happy paths", () => {
     });
     seedUsers(db, [
       // mixed row: access encrypted, refresh plaintext
-      { id: "u-1", primary_org_id: "org-1", idp_access_token: ct, idp_refresh_token: "still-plain" },
+      {
+        id: "u-1",
+        primary_org_id: "org-1",
+        idp_access_token: ct,
+        idp_refresh_token: "still-plain",
+      },
       // plain-only row (will be filtered out of the SELECT by GLOB)
       { id: "u-2", primary_org_id: "org-1", idp_access_token: "p-a", idp_refresh_token: "p-b" },
     ]);
@@ -733,16 +748,16 @@ describe("cli encryption migrate — config + command wiring", () => {
     // Drive the action callback with valid opts but force an invalid direction,
     // so runMigration returns exit 2 without touching the FS/DB.
     const cmd = createMigrateCommand();
-    const exitSpy = vi.spyOn(process, "exit").mockImplementation((code?: string | number | null) => {
-      throw new Error(`__exit:${code}`);
-    });
+    const exitSpy = vi
+      .spyOn(process, "exit")
+      .mockImplementation((code?: string | number | null) => {
+        throw new Error(`__exit:${code}`);
+      });
     const stderrSpy = vi.spyOn(process.stderr, "write").mockReturnValue(true);
     try {
       // commander's action callback is the last listener; reach via parse with a
       // bad --direction so we don't need DB setup.
-      expect(() =>
-        cmd.parse(["--direction", "nope"], { from: "user" }),
-      ).toThrow(/__exit:2/);
+      expect(() => cmd.parse(["--direction", "nope"], { from: "user" })).toThrow(/__exit:2/);
       expect(stderrSpy).toHaveBeenCalled();
     } finally {
       exitSpy.mockRestore();
@@ -776,9 +791,11 @@ describe("cli encryption migrate — config + command wiring", () => {
     process.env.USERPROFILE = fakeHome;
     process.env.COORDINATOR_ENCRYPTION_KEY = MASTER_KEY_HEX;
 
-    const exitSpy = vi.spyOn(process, "exit").mockImplementation((code?: string | number | null) => {
-      throw new Error(`__exit:${code}`);
-    });
+    const exitSpy = vi
+      .spyOn(process, "exit")
+      .mockImplementation((code?: string | number | null) => {
+        throw new Error(`__exit:${code}`);
+      });
     const stdoutSpy = vi.spyOn(process.stdout, "write").mockReturnValue(true);
     try {
       const cmd = createMigrateCommand();

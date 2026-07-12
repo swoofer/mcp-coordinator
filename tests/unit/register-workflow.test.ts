@@ -47,10 +47,18 @@ function mockRes(): { res: ServerResponse; getStatus: () => number; getBody: () 
   const chunks: string[] = [];
   const res = {
     setHeader: () => {},
-    writeHead(s: number) { status = s; },
-    end(buf?: string) { if (buf) chunks.push(buf); },
+    writeHead(s: number) {
+      status = s;
+    },
+    end(buf?: string) {
+      if (buf) chunks.push(buf);
+    },
   } as unknown as ServerResponse;
-  return { res, getStatus: () => status, getBody: () => (chunks.length ? JSON.parse(chunks.join("")) : null) };
+  return {
+    res,
+    getStatus: () => status,
+    getBody: () => (chunks.length ? JSON.parse(chunks.join("")) : null),
+  };
 }
 
 function makeCtx(): RestContext {
@@ -59,9 +67,17 @@ function makeCtx(): RestContext {
     services,
     httpLog: { info: () => {}, debug: () => {}, warn: () => {}, error: () => {} } as never,
     authEnabled: false,
-    claims: { sub: "legacy", user_id: "legacy", org: "default", role: "admin", jti: "j-register-test" },
+    claims: {
+      sub: "legacy",
+      user_id: "legacy",
+      org: "default",
+      role: "admin",
+      jti: "j-register-test",
+    },
     getRunConfig: () => runConfig,
-    setRunConfig: (cfg) => { runConfig = cfg; },
+    setRunConfig: (cfg) => {
+      runConfig = cfg;
+    },
   };
 }
 
@@ -87,7 +103,11 @@ describe("runRegisterFlow (architecture-07 shared REST/MCP register flow)", () =
     const registerSpy = vi.spyOn(services.mqttBridge, "registerAgent");
     const { res, getStatus } = mockRes();
 
-    await handleRest(mockReq({ agent_id: "a1", name: "Agent A", modules: ["src/auth"] }, "/api/register"), res, makeCtx());
+    await handleRest(
+      mockReq({ agent_id: "a1", name: "Agent A", modules: ["src/auth"] }, "/api/register"),
+      res,
+      makeCtx(),
+    );
 
     expect(getStatus()).toBe(200);
     expect(registerSpy).toHaveBeenCalledTimes(1);
@@ -99,7 +119,11 @@ describe("runRegisterFlow (architecture-07 shared REST/MCP register flow)", () =
     services.sseEmitter.addListener("default", (e) => events.push({ type: e.type }));
     const { res } = mockRes();
 
-    await handleRest(mockReq({ agent_id: "a1", name: "Agent A", modules: [] }, "/api/register"), res, makeCtx());
+    await handleRest(
+      mockReq({ agent_id: "a1", name: "Agent A", modules: [] }, "/api/register"),
+      res,
+      makeCtx(),
+    );
     await flush();
 
     expect(events.filter((e) => e.type === "agent_online")).toHaveLength(1);

@@ -48,10 +48,12 @@ export function createOAuthState(
   // org_id is resolved at callback by T09 (allowlist) based on the user's GitHub
   // org memberships. Left NULL on INSERT; future UPDATE may set it during the
   // callback transaction.
-  db.prepare(`
+  db.prepare(
+    `
     INSERT INTO oauth_state (state, code_verifier, redirect_uri, provider, created_at, expires_at)
     VALUES (?, ?, ?, ?, ?, ?)
-  `).run(state, code_verifier, redirectUri, provider, now, now + TTL_S);
+  `,
+  ).run(state, code_verifier, redirectUri, provider, now, now + TTL_S);
   return { state, code_verifier };
 }
 
@@ -75,11 +77,13 @@ export function createOAuthStateWithVerifier(
 ): { state: string } {
   const state = crypto.randomBytes(32).toString("base64url");
   const now = clock.now();
-  db.prepare(`
+  db.prepare(
+    `
     INSERT INTO oauth_state
       (state, code_verifier, redirect_uri, provider, created_at, expires_at, nonce)
     VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(state, codeVerifier, redirectUri, provider, now, now + TTL_S, nonce ?? null);
+  `,
+  ).run(state, codeVerifier, redirectUri, provider, now, now + TTL_S, nonce ?? null);
   return { state };
 }
 
@@ -94,12 +98,16 @@ export function consumeOAuthState(
   state: string,
 ): ConsumedOAuthState | null {
   const now = clock.now();
-  const row = db.prepare(`
+  const row = db
+    .prepare(
+      `
     UPDATE oauth_state
     SET consumed_at = ?
     WHERE state = ? AND consumed_at IS NULL AND expires_at > ?
     RETURNING code_verifier, redirect_uri, provider, nonce
-  `).get(now, state, now) as ConsumedOAuthState | undefined;
+  `,
+    )
+    .get(now, state, now) as ConsumedOAuthState | undefined;
   return row ?? null;
 }
 
@@ -115,10 +123,13 @@ export function inspectOAuthState(
   clock: Clock,
   state: string,
 ): { status: OAuthStateStatus; row: OAuthStateRow | null } {
-  const row = db.prepare("SELECT * FROM oauth_state WHERE state = ?").get(state) as OAuthStateRow | undefined;
+  const row = db.prepare("SELECT * FROM oauth_state WHERE state = ?").get(state) as
+    OAuthStateRow | undefined;
   if (!row) return { status: "unknown", row: null };
   if (row.consumed_at !== null) return { status: "consumed", row };
   // Row is un-consumed: distinguish truly-expired from live (precondition violation).
   if (row.expires_at <= clock.now()) return { status: "expired", row };
-  throw new Error("inspectOAuthState: row is live (un-consumed, un-expired); use consumeOAuthState first");
+  throw new Error(
+    "inspectOAuthState: row is live (un-consumed, un-expired); use consumeOAuthState first",
+  );
 }

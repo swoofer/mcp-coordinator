@@ -46,7 +46,13 @@ describe("SummaryContextProvider", () => {
       file_path: "src/auth/middleware.ts",
       summary: "Added JWT validation",
     });
-    tracker.log({ org_id: "default", session_id: "s1", agent_id: "a1", tool_name: "Edit", file_path: "src/auth/middleware.ts" });
+    tracker.log({
+      org_id: "default",
+      session_id: "s1",
+      agent_id: "a1",
+      tool_name: "Edit",
+      file_path: "src/auth/middleware.ts",
+    });
 
     const ctx = provider.getRelevantContext("default", "a1", {
       thread_id: "t1",
@@ -101,7 +107,9 @@ describe("SummaryContextProvider", () => {
 
   it("qualite-code-07: does not throw when agent.modules column is corrupted JSON", () => {
     registry.register("default", "a1", "Agent A", ["src/auth"]);
-    getDb().prepare("UPDATE agents SET modules = ? WHERE org_id = 'default' AND id = 'a1'").run("{not valid json");
+    getDb()
+      .prepare("UPDATE agents SET modules = ? WHERE org_id = 'default' AND id = 'a1'")
+      .run("{not valid json");
 
     expect(() => {
       const ctx = provider.getRelevantContext("default", "a1", {
@@ -114,6 +122,3 @@ describe("SummaryContextProvider", () => {
     }).not.toThrow();
   });
 });
-
-
-

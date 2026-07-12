@@ -69,9 +69,7 @@ describe("buildRotationPlan", () => {
   it("rejects a broken random source via the entropy validator", () => {
     // All-zeros random source -> assertSecretEntropy throws.
     const allZeros = (n: number) => Buffer.alloc(n, 0);
-    expect(() => buildRotationPlan(32, new Date(), allZeros)).toThrow(
-      /all bytes identical/,
-    );
+    expect(() => buildRotationPlan(32, new Date(), allZeros)).toThrow(/all bytes identical/);
   });
 
   it("two calls produce distinct secrets (sanity check on randomness)", () => {

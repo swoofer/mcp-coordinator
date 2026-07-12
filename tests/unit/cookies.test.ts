@@ -109,7 +109,11 @@ describe("hostCookie", () => {
   });
 
   it("accepts names with __Host- prefix and emits Secure + Path=/", () => {
-    const s = hostCookie("__Host-session", "abc", { httpOnly: true, sameSite: "Strict", maxAge: 3600 });
+    const s = hostCookie("__Host-session", "abc", {
+      httpOnly: true,
+      sameSite: "Strict",
+      maxAge: 3600,
+    });
     expect(s).toMatch(/^__Host-session=abc/);
     expect(s).toMatch(/Secure/);
     expect(s).toMatch(/Path=\//);

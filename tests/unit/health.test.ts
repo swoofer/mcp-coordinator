@@ -2,11 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import type { IncomingMessage, ServerResponse } from "http";
 import fs from "fs";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
-import {
-  initAuditQueue,
-  getAuditQueue,
-  resetAuditQueue,
-} from "../../src/security/audit.js";
+import { initAuditQueue, getAuditQueue, resetAuditQueue } from "../../src/security/audit.js";
 import { handleHealthz, handleHealthReady } from "../../src/http/health.js";
 
 const TEST_DIR = "data-test-health-t36";

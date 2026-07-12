@@ -54,10 +54,7 @@ export async function fetchQuotaFromAnthropic(reader: CredentialReader): Promise
   try {
     token = await reader.readClaudeOAuthToken();
   } catch (err) {
-    throw new QuotaUnavailableError(
-      `cannot read OAuth token: ${(err as Error).message}`,
-      err,
-    );
+    throw new QuotaUnavailableError(`cannot read OAuth token: ${(err as Error).message}`, err);
   }
 
   let resp: Response;
@@ -109,8 +106,8 @@ export function parseUsageResponse(payload: unknown): QuotaInfo {
   }
   const rec = payload as Record<string, unknown>;
 
-  const fiveHour = parseBucket(rec, "five_hour");    // required
-  const sevenDay = parseBucket(rec, "seven_day");    // required
+  const fiveHour = parseBucket(rec, "five_hour"); // required
+  const sevenDay = parseBucket(rec, "seven_day"); // required
   // Anthropic sometimes omits the sonnet-specific bucket (e.g. workspaces
   // without a seven_day_sonnet cap). Optional — null signals "not tracked".
   let sevenDaySonnet: QuotaBucket | null = null;

@@ -80,16 +80,8 @@ describe("createOAuthState", () => {
 describe("createOAuthStateWithVerifier", () => {
   it("persists the caller-supplied code_verifier verbatim (not auto-generated)", () => {
     const supplied = "my-precise-pkce-verifier-value-A1B2C3D4E5F6G7H8I9J0";
-    const { state } = createOAuthStateWithVerifier(
-      db,
-      clock,
-      "github",
-      "https://app/cb",
-      supplied,
-    );
-    const row = db
-      .prepare("SELECT * FROM oauth_state WHERE state = ?")
-      .get(state) as OAuthStateRow;
+    const { state } = createOAuthStateWithVerifier(db, clock, "github", "https://app/cb", supplied);
+    const row = db.prepare("SELECT * FROM oauth_state WHERE state = ?").get(state) as OAuthStateRow;
     expect(row.code_verifier).toBe(supplied);
     expect(row.provider).toBe("github");
     expect(row.redirect_uri).toBe("https://app/cb");
@@ -105,9 +97,7 @@ describe("createOAuthStateWithVerifier", () => {
     );
     expect(state).toHaveLength(43);
     expect(state).toMatch(/^[A-Za-z0-9_-]{43}$/);
-    const row = db
-      .prepare("SELECT * FROM oauth_state WHERE state = ?")
-      .get(state) as OAuthStateRow;
+    const row = db.prepare("SELECT * FROM oauth_state WHERE state = ?").get(state) as OAuthStateRow;
     expect(row.created_at).toBe(1_000_000);
     expect(row.expires_at).toBe(1_000_600);
     expect(row.consumed_at).toBeNull();
@@ -158,7 +148,9 @@ describe("consumeOAuthState", () => {
       // T55: createOAuthState (no-nonce overload) leaves nonce NULL.
       nonce: null,
     });
-    const row = db.prepare("SELECT consumed_at FROM oauth_state WHERE state = ?").get(state) as { consumed_at: number };
+    const row = db.prepare("SELECT consumed_at FROM oauth_state WHERE state = ?").get(state) as {
+      consumed_at: number;
+    };
     expect(row.consumed_at).toBe(1_000_005);
   });
 
@@ -173,7 +165,9 @@ describe("consumeOAuthState", () => {
     clock.advance(601); // 1s past 600s TTL
     expect(consumeOAuthState(db, clock, state)).toBeNull();
     // Row should remain un-consumed (CAS failed on expires_at guard, not consumed_at).
-    const row = db.prepare("SELECT consumed_at FROM oauth_state WHERE state = ?").get(state) as { consumed_at: number | null };
+    const row = db.prepare("SELECT consumed_at FROM oauth_state WHERE state = ?").get(state) as {
+      consumed_at: number | null;
+    };
     expect(row.consumed_at).toBeNull();
   });
 

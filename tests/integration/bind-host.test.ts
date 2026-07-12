@@ -20,7 +20,11 @@ function getFreePort(): Promise<number> {
 }
 
 let handle: ServerHandle | undefined;
-afterEach(async () => { await handle?.stop(); handle = undefined; delete process.env.COORDINATOR_BIND; });
+afterEach(async () => {
+  await handle?.stop();
+  handle = undefined;
+  delete process.env.COORDINATOR_BIND;
+});
 
 it("binds to 127.0.0.1 by default (not 0.0.0.0)", async () => {
   handle = await startServer({ port: 0, mqttTcpPort: await getFreePort(), mqttWsPath: "/mqtt" });

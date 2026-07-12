@@ -88,13 +88,18 @@ function parseDuration(s: string): number {
   if (!m) throw new Error(`invalid duration: ${s}`);
   const n = parseInt(m[1]!, 10);
   switch (m[2]) {
-    case "s": return n;
-    case "m": return n * 60;
-    case "h": return n * 3600;
-    case "d": return n * 86400;
+    case "s":
+      return n;
+    case "m":
+      return n * 60;
+    case "h":
+      return n * 3600;
+    case "d":
+      return n * 86400;
     // Unreachable: the regex constrains [smhd]. Kept for exhaustiveness.
     /* c8 ignore next 2 */
-    default: throw new Error(`invalid duration unit: ${m[2]}`);
+    default:
+      throw new Error(`invalid duration unit: ${m[2]}`);
   }
 }
 
@@ -296,12 +301,7 @@ async function handleReuseBranch(
           phase: "refresh_grace",
         },
       });
-      writeOAuthError(
-        res,
-        "invalid_grant",
-        "User no longer in allowlisted org",
-        401,
-      );
+      writeOAuthError(res, "invalid_grant", "User no longer in allowlisted org", 401);
       return;
     }
     // Deterministic re-mint: pin iat to (expires_at - REFRESH_TTL_S) so the
@@ -565,19 +565,15 @@ function checkIdleTimeout(
   now: number,
   res: ServerResponse,
 ): StepResult<void> {
-  const idleTimeoutRaw = getOrgSetting(
-    ctx.db,
-    row.org_id,
-    "session_idle_timeout",
-    "",
-  );
+  const idleTimeoutRaw = getOrgSetting(ctx.db, row.org_id, "session_idle_timeout", "");
   if (idleTimeoutRaw && idleTimeoutRaw !== "0") {
     const idleTimeoutS = parseDuration(idleTimeoutRaw);
     // last_used_at is optional; fall back to row creation time if absent
     // (defensive — schema sets a value on insert in T16helpers).
-    const lastUsedAt = row.last_used_at !== null && row.last_used_at !== undefined
-      ? Number(row.last_used_at)
-      : claims.iat;
+    const lastUsedAt =
+      row.last_used_at !== null && row.last_used_at !== undefined
+        ? Number(row.last_used_at)
+        : claims.iat;
     const idleElapsed = now - lastUsedAt;
     if (idleElapsed > idleTimeoutS) {
       ctx.db
@@ -642,16 +638,16 @@ async function refreshIdpMembershipAndAllowlist(
     // pre-T06b test fixtures buildable, but boot ALWAYS populates it.
     // Use a non-null assertion; tests that exercise this path must wire it.
     try {
-      idpAccessToken = decryptNullable(
-        ctx.encryptionProvider!,
-        userRow.idp_access_token,
-        { org_id: orgId, column: "idp_access_token", user_id: row.user_id },
-      );
-      idpRefreshToken = decryptNullable(
-        ctx.encryptionProvider!,
-        userRow.idp_refresh_token,
-        { org_id: orgId, column: "idp_refresh_token", user_id: row.user_id },
-      );
+      idpAccessToken = decryptNullable(ctx.encryptionProvider!, userRow.idp_access_token, {
+        org_id: orgId,
+        column: "idp_access_token",
+        user_id: row.user_id,
+      });
+      idpRefreshToken = decryptNullable(ctx.encryptionProvider!, userRow.idp_refresh_token, {
+        org_id: orgId,
+        column: "idp_refresh_token",
+        user_id: row.user_id,
+      });
     } catch (err) {
       if (err instanceof DecryptionError || err instanceof UnknownCipherVersion) {
         // Hash user_id for audit (defense in depth — same approach as PATCH 17).
@@ -679,15 +675,10 @@ async function refreshIdpMembershipAndAllowlist(
         });
         res.writeHead(401, {
           "Content-Type": "application/json; charset=utf-8",
-          "WWW-Authenticate": bearerAuthHeader(
-            "invalid_token",
-            "IdP rejected the token",
-          ),
+          "WWW-Authenticate": bearerAuthHeader("invalid_token", "IdP rejected the token"),
         });
         res.end(
-          JSON.stringify(
-            oauthError("invalid_grant", "Identity provider rejected the token"),
-          ),
+          JSON.stringify(oauthError("invalid_grant", "Identity provider rejected the token")),
         );
         return { ok: false };
       }
@@ -753,9 +744,7 @@ async function refreshIdpMembershipAndAllowlist(
           user_id: row.user_id,
         };
         ctx.db
-          .prepare(
-            "UPDATE users SET idp_access_token = ?, idp_refresh_token = ? WHERE id = ?",
-          )
+          .prepare("UPDATE users SET idp_access_token = ?, idp_refresh_token = ? WHERE id = ?")
           .run(
             encryptNullable(ctx.encryptionProvider!, refreshed.accessToken, ctxAccess),
             encryptNullable(
@@ -800,15 +789,10 @@ async function refreshIdpMembershipAndAllowlist(
         });
         res.writeHead(401, {
           "Content-Type": "application/json; charset=utf-8",
-          "WWW-Authenticate": bearerAuthHeader(
-            "invalid_token",
-            "IdP rejected the token",
-          ),
+          "WWW-Authenticate": bearerAuthHeader("invalid_token", "IdP rejected the token"),
         });
         res.end(
-          JSON.stringify(
-            oauthError("invalid_grant", "Identity provider rejected the token"),
-          ),
+          JSON.stringify(oauthError("invalid_grant", "Identity provider rejected the token")),
         );
         return { ok: false };
       }
@@ -817,9 +801,7 @@ async function refreshIdpMembershipAndAllowlist(
           "Content-Type": "application/json; charset=utf-8",
         });
         res.end(
-          JSON.stringify(
-            oauthError("temporarily_unavailable", "Identity provider unavailable"),
-          ),
+          JSON.stringify(oauthError("temporarily_unavailable", "Identity provider unavailable")),
         );
         return { ok: false };
       }
@@ -848,12 +830,7 @@ async function refreshIdpMembershipAndAllowlist(
           phase: "refresh_rotation",
         },
       });
-      writeOAuthError(
-        res,
-        "invalid_grant",
-        "User is not in any allowlisted org",
-        401,
-      );
+      writeOAuthError(res, "invalid_grant", "User is not in any allowlisted org", 401);
       return { ok: false };
     }
   }
@@ -895,9 +872,7 @@ async function rotateRefreshToken(
   // data.
   const rawRole = userRow?.role;
   const role: "admin" | "member" | "service" =
-    rawRole === "admin" || rawRole === "member" || rawRole === "service"
-      ? rawRole
-      : "member";
+    rawRole === "admin" || rawRole === "member" || rawRole === "service" ? rawRole : "member";
   const newPair = await mintTokenPair(ctx.db, ctx.clock, {
     user: {
       user_id: row.user_id,
@@ -987,16 +962,9 @@ export async function refreshTokenGrant(
   if (!idleResult.ok) return;
 
   // 7. T19c IdP membership refresh + allowlist re-check (V4 FIX 7).
-  const allowlistResult = await refreshIdpMembershipAndAllowlist(
-    ctx,
-    claims,
-    row,
-    now,
-    res,
-  );
+  const allowlistResult = await refreshIdpMembershipAndAllowlist(ctx, claims, row, now, res);
   if (!allowlistResult.ok) return;
-  const { userRow, allowlistMatch, allowlistRecheckPerformed } =
-    allowlistResult.data;
+  const { userRow, allowlistMatch, allowlistRecheckPerformed } = allowlistResult.data;
 
   // 8. T19b reuse-detection branch. Pass whether the IdP allowlist
   //    re-check failed; the grace re-mint path (V4 FIX 7) uses this to

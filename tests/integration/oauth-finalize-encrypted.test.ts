@@ -90,13 +90,11 @@ describe("provisionUser — encrypt at write (new user)", () => {
 
     // Raw stored values are ciphertext (NOT plaintext).
     const row = db
-      .prepare(
-        "SELECT idp_access_token, idp_refresh_token FROM users WHERE id = ?",
-      )
+      .prepare("SELECT idp_access_token, idp_refresh_token FROM users WHERE id = ?")
       .get(result.user.user_id) as {
-        idp_access_token: string;
-        idp_refresh_token: string;
-      };
+      idp_access_token: string;
+      idp_refresh_token: string;
+    };
     expect(row.idp_access_token.startsWith("enc:v1:")).toBe(true);
     expect(row.idp_refresh_token.startsWith("enc:v1:")).toBe(true);
     expect(row.idp_access_token).not.toBe("plain-access-token");
@@ -188,13 +186,11 @@ describe("provisionUser — encrypt at write (returning user UPDATE path)", () =
     expect(second.user.user_id).toBe(first.user.user_id);
 
     const row = db
-      .prepare(
-        "SELECT idp_access_token, idp_refresh_token FROM users WHERE id = ?",
-      )
+      .prepare("SELECT idp_access_token, idp_refresh_token FROM users WHERE id = ?")
       .get(first.user.user_id) as {
-        idp_access_token: string;
-        idp_refresh_token: string;
-      };
+      idp_access_token: string;
+      idp_refresh_token: string;
+    };
     expect(row.idp_access_token.startsWith("enc:v1:")).toBe(true);
     expect(row.idp_refresh_token.startsWith("enc:v1:")).toBe(true);
 
@@ -229,13 +225,11 @@ describe("provisionUser — passthrough (no key) backwards-compat", () => {
       encryption: new PassthroughEncryption(),
     });
     const row = db
-      .prepare(
-        "SELECT idp_access_token, idp_refresh_token FROM users WHERE id = ?",
-      )
+      .prepare("SELECT idp_access_token, idp_refresh_token FROM users WHERE id = ?")
       .get(result.user.user_id) as {
-        idp_access_token: string;
-        idp_refresh_token: string;
-      };
+      idp_access_token: string;
+      idp_refresh_token: string;
+    };
     expect(row.idp_access_token).toBe("plain-access");
     expect(row.idp_refresh_token).toBe("plain-refresh");
     expect(row.idp_access_token.startsWith("enc:v1:")).toBe(false);

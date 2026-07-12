@@ -77,8 +77,12 @@ async function main(): Promise<void> {
   };
   // Save the prototype flush so we can re-enable it after the burst.
   const protoFlush = (Object.getPrototypeOf(q) as { flush: () => void }).flush;
-  qAny.flush = () => { /* suppressed */ };
-  qAny.scheduleFlush = () => { /* suppressed */ };
+  qAny.flush = () => {
+    /* suppressed */
+  };
+  qAny.scheduleFlush = () => {
+    /* suppressed */
+  };
 
   // Burst N_BURST rows. The internal auto-flush at BATCH_SIZE=50 is
   // suppressed; the buffer fills until CAPACITY=10000, after which
@@ -99,27 +103,41 @@ async function main(): Promise<void> {
 
   console.log("\nchaos: audit-queue-overflow");
   console.log(`  N_BURST=${N_BURST}, CAPACITY=${CAPACITY}`);
-  console.log(`  after burst:    enqueued=${burstMetrics.enqueued}, dropped=${burstMetrics.dropped}, flushed=${burstMetrics.flushed}`);
-  console.log(`  after drain:    flushed=${afterDrainMetrics.flushed}, batches=${afterDrainMetrics.batchesWritten}`);
-  console.log(`  after recovery: enqueued=${postRecoveryMetrics.enqueued}, flushed=${postRecoveryMetrics.flushed}, dropped=${postRecoveryMetrics.dropped}`);
+  console.log(
+    `  after burst:    enqueued=${burstMetrics.enqueued}, dropped=${burstMetrics.dropped}, flushed=${burstMetrics.flushed}`,
+  );
+  console.log(
+    `  after drain:    flushed=${afterDrainMetrics.flushed}, batches=${afterDrainMetrics.batchesWritten}`,
+  );
+  console.log(
+    `  after recovery: enqueued=${postRecoveryMetrics.enqueued}, flushed=${postRecoveryMetrics.flushed}, dropped=${postRecoveryMetrics.dropped}`,
+  );
 
   // Assertions.
   const expectedDropped = Math.max(0, N_BURST - CAPACITY);
   if (burstMetrics.dropped !== expectedDropped) {
-    throw new Error(`drop accounting failed: got ${burstMetrics.dropped}, expected ${expectedDropped}`);
+    throw new Error(
+      `drop accounting failed: got ${burstMetrics.dropped}, expected ${expectedDropped}`,
+    );
   }
   if (burstMetrics.enqueued !== CAPACITY) {
-    throw new Error(`enqueue accounting failed: got ${burstMetrics.enqueued}, expected ${CAPACITY}`);
+    throw new Error(
+      `enqueue accounting failed: got ${burstMetrics.enqueued}, expected ${CAPACITY}`,
+    );
   }
   if (afterDrainMetrics.flushed !== CAPACITY) {
-    throw new Error(`drain flushed mismatch: got ${afterDrainMetrics.flushed}, expected ${CAPACITY}`);
+    throw new Error(
+      `drain flushed mismatch: got ${afterDrainMetrics.flushed}, expected ${CAPACITY}`,
+    );
   }
   const postRecoveryDropped = postRecoveryMetrics.dropped - burstMetrics.dropped;
   if (postRecoveryDropped !== 0) {
     throw new Error(`post-recovery dropped non-zero: ${postRecoveryDropped}`);
   }
   if (postRecoveryMetrics.flushed !== CAPACITY + N_RECOVERY) {
-    throw new Error(`post-recovery flushed mismatch: got ${postRecoveryMetrics.flushed}, expected ${CAPACITY + N_RECOVERY}`);
+    throw new Error(
+      `post-recovery flushed mismatch: got ${postRecoveryMetrics.flushed}, expected ${CAPACITY + N_RECOVERY}`,
+    );
   }
   // Verify rows actually hit the DB.
   const rowCount = (db.prepare("SELECT COUNT(*) AS n FROM audit_log").get() as { n: number }).n;

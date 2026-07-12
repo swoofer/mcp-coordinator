@@ -30,14 +30,15 @@ export class WorkingFilesTracker {
    */
   start(orgId: string, agentId: string, filePath: string, ttlMinutes: number): void {
     const db = getDb();
-    const existing = db.prepare("SELECT 1 FROM working_files WHERE org_id = ? AND agent_id = ? AND file_path = ?")
+    const existing = db
+      .prepare("SELECT 1 FROM working_files WHERE org_id = ? AND agent_id = ? AND file_path = ?")
       .get(orgId, agentId, filePath);
     db.prepare(
       `INSERT INTO working_files (org_id, agent_id, file_path, started_at, last_activity_at, claim_until)
        VALUES (?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '+' || CAST(? AS TEXT) || ' minutes'))
        ON CONFLICT(org_id, agent_id, file_path) DO UPDATE SET
          last_activity_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
-         claim_until      = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '+' || CAST(? AS TEXT) || ' minutes')`
+         claim_until      = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '+' || CAST(? AS TEXT) || ' minutes')`,
     ).run(orgId, agentId, filePath, ttlMinutes, ttlMinutes);
     this.metrics?.workingFilesStarts.inc({ result: existing ? "updated" : "inserted" });
   }
@@ -48,8 +49,11 @@ export class WorkingFilesTracker {
    */
   stop(orgId: string, agentId: string, filePath: string): void {
     const db = getDb();
-    db.prepare("DELETE FROM working_files WHERE org_id = ? AND agent_id = ? AND file_path = ?")
-      .run(orgId, agentId, filePath);
+    db.prepare("DELETE FROM working_files WHERE org_id = ? AND agent_id = ? AND file_path = ?").run(
+      orgId,
+      agentId,
+      filePath,
+    );
   }
 
   /** Returns number of rows evicted.
@@ -59,7 +63,11 @@ export class WorkingFilesTracker {
    */
   sweepExpired(): number {
     const db = getDb();
-    const result = db.prepare("DELETE FROM working_files WHERE claim_until < strftime('%Y-%m-%dT%H:%M:%SZ', 'now')").run();
+    const result = db
+      .prepare(
+        "DELETE FROM working_files WHERE claim_until < strftime('%Y-%m-%dT%H:%M:%SZ', 'now')",
+      )
+      .run();
     const evicted = Number(result.changes ?? 0);
     if (this.metrics) {
       const count = (db.prepare("SELECT COUNT(*) AS c FROM working_files").get() as any).c;
@@ -111,16 +119,21 @@ export class WorkingFilesTracker {
     if (filePaths.length === 0) return index;
     const db = getDb();
     const placeholders = filePaths.map(() => "?").join(",");
-    const rows = db.prepare(
-      `SELECT DISTINCT file_path, agent_id FROM working_files
+    const rows = db
+      .prepare(
+        `SELECT DISTINCT file_path, agent_id FROM working_files
        WHERE org_id = ?
          AND file_path IN (${placeholders})
          AND agent_id != ?
-         AND claim_until > strftime('%Y-%m-%dT%H:%M:%SZ', 'now')`
-    ).all(orgId, ...filePaths, excludeAgentId) as { file_path: string; agent_id: string }[];
+         AND claim_until > strftime('%Y-%m-%dT%H:%M:%SZ', 'now')`,
+      )
+      .all(orgId, ...filePaths, excludeAgentId) as { file_path: string; agent_id: string }[];
     for (const r of rows) {
       let set = index.get(r.file_path);
-      if (!set) { set = new Set(); index.set(r.file_path, set); }
+      if (!set) {
+        set = new Set();
+        index.set(r.file_path, set);
+      }
       set.add(r.agent_id);
     }
     return index;

@@ -3,12 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { Readable } from "node:stream";
 import fs from "node:fs";
 import { SignJWT } from "jose";
-import {
-  initAuth,
-  authenticateRequest,
-  initPhase2Auth,
-  resetPhase2Auth,
-} from "../../src/auth.js";
+import { initAuth, authenticateRequest, initPhase2Auth, resetPhase2Auth } from "../../src/auth.js";
 import { mintAccessJWT, mintRefreshJWT } from "../../src/auth/jwt-mint.js";
 import { refreshTokenGrant } from "../../src/auth/refresh-rotation.js";
 import type { AuthHandlerContext } from "../../src/auth/context.js";
@@ -284,10 +279,9 @@ describe("token-type confusion — end-to-end flow", () => {
       issuer: ISSUER,
       ttlSeconds: 3600,
     });
-    const result = await authenticateRequest(
-      mockReq({ cookie: sessionCookie(jwt) }),
-      { authEnabled: true },
-    );
+    const result = await authenticateRequest(mockReq({ cookie: sessionCookie(jwt) }), {
+      authEnabled: true,
+    });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.status).toBe(401);
   });
@@ -388,10 +382,9 @@ describe("token-type confusion — legacy tokens without typ (fail-closed compat
       .setExpirationTime(now + 900)
       .setJti("legacy-session-jti")
       .sign(SIGNING_SECRET);
-    const result = await authenticateRequest(
-      mockReq({ cookie: sessionCookie(legacyJwt) }),
-      { authEnabled: true },
-    );
+    const result = await authenticateRequest(mockReq({ cookie: sessionCookie(legacyJwt) }), {
+      authEnabled: true,
+    });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.status).toBe(401);
     const audits = findAuditRows("auth.invalid_token");

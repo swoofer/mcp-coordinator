@@ -92,9 +92,7 @@ export async function handleAuthLogin(
     if (!provider) {
       res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
       res.end(
-        JSON.stringify(
-          appError("UNKNOWN_PROVIDER", `Unknown provider: ${requestedProvider}`),
-        ),
+        JSON.stringify(appError("UNKNOWN_PROVIDER", `Unknown provider: ${requestedProvider}`)),
       );
       return;
     }

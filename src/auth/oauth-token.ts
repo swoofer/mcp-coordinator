@@ -3,11 +3,7 @@ import type { AuthHandlerContext } from "./context.js";
 import { oauthError } from "../http/response-contract.js";
 import { audit } from "../security/audit.js";
 import { refreshTokenGrant } from "./refresh-rotation.js";
-import {
-  provisionUser,
-  mintTokenPair,
-  computeFingerprint,
-} from "./oauth-finalize.js";
+import { provisionUser, mintTokenPair, computeFingerprint } from "./oauth-finalize.js";
 import { resolveOrgFromMemberships, resolveOrgFromIdpOrgId } from "./allowlist.js";
 import { IdPTokenRevoked, IdPTransientError } from "./providers/errors.js";
 import { hashIdpUserId } from "./audit-helpers.js";
@@ -70,11 +66,7 @@ function emitOAuthError(
   res.end(JSON.stringify(oauthError(error, description)));
 }
 
-function emitTokenResponse(
-  res: ServerResponse,
-  accessJwt: string,
-  refreshJwt: string,
-): void {
+function emitTokenResponse(res: ServerResponse, accessJwt: string, refreshJwt: string): void {
   res.writeHead(200, {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
@@ -113,17 +105,13 @@ async function handleAuthorizationCodeGrant(
   // an explicit provider hint (body.provider) wins, otherwise fall back
   // to the registry default. Unknown name → 400 invalid_request.
   const providerName = body.provider;
-  const provider = providerName
-    ? ctx.providers.get(providerName)
-    : ctx.providers.getDefault();
+  const provider = providerName ? ctx.providers.get(providerName) : ctx.providers.getDefault();
   if (!provider) {
     emitOAuthError(
       res,
       400,
       "invalid_request",
-      providerName
-        ? `Unknown provider: ${providerName}`
-        : "No IdP provider is registered",
+      providerName ? `Unknown provider: ${providerName}` : "No IdP provider is registered",
     );
     return;
   }
@@ -131,32 +119,18 @@ async function handleAuthorizationCodeGrant(
   // 1. Exchange the authorization code at the IdP.
   let exchange;
   try {
-    exchange = await provider.exchangeCode(
-      code,
-      redirectUri,
-      codeVerifier,
-    );
+    exchange = await provider.exchangeCode(code, redirectUri, codeVerifier);
   } catch (err) {
     if (err instanceof IdPTokenRevoked) {
       audit("auth.idp.token_revoked", {
         tier: 1,
         metadata: { phase: "auth_code_grant" },
       });
-      emitOAuthError(
-        res,
-        401,
-        "invalid_grant",
-        "IdP rejected the authorization code",
-      );
+      emitOAuthError(res, 401, "invalid_grant", "IdP rejected the authorization code");
       return;
     }
     if (err instanceof IdPTransientError) {
-      emitOAuthError(
-        res,
-        503,
-        "temporarily_unavailable",
-        "Identity provider unavailable",
-      );
+      emitOAuthError(res, 503, "temporarily_unavailable", "Identity provider unavailable");
       return;
     }
     throw err;
@@ -185,12 +159,7 @@ async function handleAuthorizationCodeGrant(
         return;
       }
       if (err instanceof IdPTransientError) {
-        emitOAuthError(
-          res,
-          503,
-          "temporarily_unavailable",
-          "Identity provider unavailable",
-        );
+        emitOAuthError(res, 503, "temporarily_unavailable", "Identity provider unavailable");
         return;
       }
       throw err;
@@ -215,12 +184,7 @@ async function handleAuthorizationCodeGrant(
         phase: "auth_code_grant",
       },
     });
-    emitOAuthError(
-      res,
-      403,
-      "access_denied",
-      "User is not in any allowlisted org",
-    );
+    emitOAuthError(res, 403, "access_denied", "User is not in any allowlisted org");
     return;
   }
 
@@ -338,12 +302,7 @@ async function handleDeviceCodeGrant(
       emitOAuthError(res, 400, "invalid_grant", "Unknown device_code");
       return;
     }
-    emitOAuthError(
-      res,
-      400,
-      "slow_down",
-      `Polling too fast; wait ${exists.interval}s`,
-    );
+    emitOAuthError(res, 400, "slow_down", `Polling too fast; wait ${exists.interval}s`);
     return;
   }
 
@@ -357,12 +316,7 @@ async function handleDeviceCodeGrant(
     return;
   }
   if (updated.approved_user_id === null) {
-    emitOAuthError(
-      res,
-      400,
-      "authorization_pending",
-      "Waiting for user approval",
-    );
+    emitOAuthError(res, 400, "authorization_pending", "Waiting for user approval");
     return;
   }
 
@@ -370,8 +324,7 @@ async function handleDeviceCodeGrant(
   const userRow = ctx.db
     .prepare("SELECT id, primary_org_id, role FROM users WHERE id = ?")
     .get(updated.approved_user_id) as
-    | { id: string; primary_org_id: string; role: "admin" | "member" | "service" }
-    | undefined;
+    { id: string; primary_org_id: string; role: "admin" | "member" | "service" } | undefined;
   if (!userRow) {
     emitOAuthError(res, 400, "invalid_grant", "Approved user not found");
     return;
@@ -389,9 +342,7 @@ async function handleDeviceCodeGrant(
   });
 
   // Single-use: drop the device_auth_requests row so further polls 404.
-  ctx.db
-    .prepare("DELETE FROM device_auth_requests WHERE device_code = ?")
-    .run(deviceCode);
+  ctx.db.prepare("DELETE FROM device_auth_requests WHERE device_code = ?").run(deviceCode);
 
   audit("auth.login.success", {
     tier: 2,
@@ -410,9 +361,7 @@ export async function handleOAuthToken(
   res: ServerResponse,
   ctx: AuthHandlerContext,
 ): Promise<void> {
-  const body = await parseFormBody(req).catch(
-    () => ({}) as Record<string, string>,
-  );
+  const body = await parseFormBody(req).catch(() => ({}) as Record<string, string>);
   const grantType = body.grant_type;
   if (!grantType) {
     emitOAuthError(res, 400, "invalid_request", "Missing grant_type");
@@ -431,12 +380,7 @@ export async function handleOAuthToken(
       await handleDeviceCodeGrant(req, res, ctx, body);
       return;
     default:
-      emitOAuthError(
-        res,
-        400,
-        "unsupported_grant_type",
-        `Unsupported grant_type: ${grantType}`,
-      );
+      emitOAuthError(res, 400, "unsupported_grant_type", `Unsupported grant_type: ${grantType}`);
       return;
   }
 }

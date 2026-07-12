@@ -22,7 +22,10 @@ function makeSink(): { sink: Writable; chunks: string[] } {
  */
 function buildSecretAt(path: string, secret: string): Record<string, unknown> {
   const segments = path.split(".").map((s) => (s === "*" ? "anyKey" : s));
-  return segments.reduceRight<unknown>((acc, seg) => ({ [seg]: acc }), secret) as Record<string, unknown>;
+  return segments.reduceRight<unknown>((acc, seg) => ({ [seg]: acc }), secret) as Record<
+    string,
+    unknown
+  >;
 }
 
 describe("Phase 1 logger redaction — console variant", () => {
@@ -112,7 +115,9 @@ describe("redactPaths (pure helper)", () => {
   });
 
   it("passes through non-object input unchanged", () => {
-    expect(redactPaths("plain string" as unknown as Record<string, unknown>, REDACT_PATHS)).toBe("plain string");
+    expect(redactPaths("plain string" as unknown as Record<string, unknown>, REDACT_PATHS)).toBe(
+      "plain string",
+    );
     expect(redactPaths(null as unknown as Record<string, unknown>, REDACT_PATHS)).toBe(null);
   });
 });

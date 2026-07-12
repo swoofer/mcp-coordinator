@@ -1,6 +1,6 @@
 export interface PlanQualityResult {
   mode: "with_plan" | "discovery";
-  score: number;       // 0-3
+  score: number; // 0-3
   checks: {
     mentions_files: boolean;
     concrete_approach: boolean;
@@ -29,7 +29,8 @@ export function assessPlanQuality(plan: string | null | undefined): PlanQualityR
   // "adding", "creating", "replaces", "implementing" are recognized.
   // A leading vague word ("Fix", "Update") does NOT disqualify a plan that
   // otherwise describes concrete actions.
-  const concretePatterns = /\b(ajout|cré|creat|add|split|extract|replac|remplac|implémen|implement|supprim|delet|remov|migr|wrap)/i;
+  const concretePatterns =
+    /\b(ajout|cré|creat|add|split|extract|replac|remplac|implémen|implement|supprim|delet|remov|migr|wrap)/i;
   const concrete_approach = concretePatterns.test(trimmed);
 
   // Check 3: Sufficient detail (more than 20 words)

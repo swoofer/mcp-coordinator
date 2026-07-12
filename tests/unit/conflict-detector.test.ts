@@ -210,7 +210,7 @@ describe("ConflictDetector", () => {
       target_files: ["src/shared/types.ts"],
     });
     const fileOverlapConflicts = conflicts.filter(
-      (c) => c.type === "file_overlap" && c.agent_id === "a2"
+      (c) => c.type === "file_overlap" && c.agent_id === "a2",
     );
     expect(fileOverlapConflicts).toHaveLength(1);
   });
@@ -233,7 +233,7 @@ describe("ConflictDetector", () => {
         target_files: [],
       });
       // No dependency_chain conflicts since modules are unknown
-      expect(conflicts.filter(c => c.type === "dependency_chain")).toHaveLength(0);
+      expect(conflicts.filter((c) => c.type === "dependency_chain")).toHaveLength(0);
     }).not.toThrow();
   });
 
@@ -241,7 +241,12 @@ describe("ConflictDetector", () => {
     // src/core â†’ src/shared â†’ src/auth (transitive: src/auth indirectly depends on src/core)
     depMap.setMap("default", {
       "src/core": { module_id: "src/core", depends_on: [], exports: ["CoreUtil"], owners: [] },
-      "src/shared": { module_id: "src/shared", depends_on: ["src/core"], exports: ["User"], owners: [] },
+      "src/shared": {
+        module_id: "src/shared",
+        depends_on: ["src/core"],
+        exports: ["User"],
+        owners: [],
+      },
       "src/auth": { module_id: "src/auth", depends_on: ["src/shared"], exports: [], owners: [] },
     });
 
@@ -262,10 +267,10 @@ describe("ConflictDetector", () => {
     });
 
     const depChainConflicts = conflicts.filter(
-      (c) => c.type === "dependency_chain" && c.agent_id === "a2"
+      (c) => c.type === "dependency_chain" && c.agent_id === "a2",
     );
     expect(depChainConflicts.length).toBeGreaterThanOrEqual(1);
-    expect(depChainConflicts.some(c => c.description.includes("src/auth"))).toBe(true);
+    expect(depChainConflicts.some((c) => c.description.includes("src/auth"))).toBe(true);
   });
 
   it("qualite-code-07: does not throw when a thread's target_modules/target_files column is corrupted", () => {
@@ -276,10 +281,9 @@ describe("ConflictDetector", () => {
       target_files: ["src/auth/service.ts"],
     });
     // Simulate a corrupted/partially-written column directly at the DB layer.
-    getDb().prepare("UPDATE threads SET target_modules = ?, target_files = ? WHERE org_id = 'default'").run(
-      "{not valid json",
-      "TRUNCATED[",
-    );
+    getDb()
+      .prepare("UPDATE threads SET target_modules = ?, target_files = ? WHERE org_id = 'default'")
+      .run("{not valid json", "TRUNCATED[");
 
     expect(() => {
       const conflicts = detector.detect({
@@ -294,6 +298,3 @@ describe("ConflictDetector", () => {
     }).not.toThrow();
   });
 });
-
-
-

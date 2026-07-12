@@ -1,8 +1,4 @@
-import type {
-  IdPProvider,
-  ExchangeCodeResult,
-  IdpRefreshResult,
-} from "./types.js";
+import type { IdPProvider, ExchangeCodeResult, IdpRefreshResult } from "./types.js";
 import {
   DEFAULT_API_BASE,
   DEFAULT_AUTH_BASE,
@@ -131,12 +127,8 @@ export class GitHubAppProvider implements IdPProvider {
     return {
       user,
       accessToken: token.access_token,
-      ...(token.expires_in !== undefined
-        ? { accessTokenExpiresIn: token.expires_in }
-        : {}),
-      ...(token.refresh_token !== undefined
-        ? { refreshToken: token.refresh_token }
-        : {}),
+      ...(token.expires_in !== undefined ? { accessTokenExpiresIn: token.expires_in } : {}),
+      ...(token.refresh_token !== undefined ? { refreshToken: token.refresh_token } : {}),
       ...(token.refresh_token_expires_in !== undefined
         ? { refreshTokenExpiresIn: token.refresh_token_expires_in }
         : {}),
@@ -189,12 +181,8 @@ export class GitHubAppProvider implements IdPProvider {
     const token = TokenResponseSchema.parse(tokenJson);
     return {
       accessToken: token.access_token,
-      ...(token.expires_in !== undefined
-        ? { accessTokenExpiresIn: token.expires_in }
-        : {}),
-      ...(token.refresh_token !== undefined
-        ? { refreshToken: token.refresh_token }
-        : {}),
+      ...(token.expires_in !== undefined ? { accessTokenExpiresIn: token.expires_in } : {}),
+      ...(token.refresh_token !== undefined ? { refreshToken: token.refresh_token } : {}),
       ...(token.refresh_token_expires_in !== undefined
         ? { refreshTokenExpiresIn: token.refresh_token_expires_in }
         : {}),

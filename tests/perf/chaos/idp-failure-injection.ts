@@ -33,7 +33,9 @@ function makeFlakyProvider(failEveryNth: number): IdPProvider & { callCount: num
     name: "github" as const,
     callCount: 0,
     buildAuthUrl: () => "https://example/unused",
-    exchangeCode: async (): Promise<ExchangeCodeResult> => { throw new Error("unused"); },
+    exchangeCode: async (): Promise<ExchangeCodeResult> => {
+      throw new Error("unused");
+    },
     listMemberships: async (_token: string): Promise<string[]> => {
       p.callCount++;
       if (p.callCount % failEveryNth === 0) throw new IdPTransientError();
@@ -93,7 +95,9 @@ async function main(): Promise<void> {
   }
 
   console.log("\nchaos: idp-failure-injection");
-  console.log(`  N=${N}, fail_every_nth=${FAIL_EVERY} (~${Math.round(100 / FAIL_EVERY)}% failure rate)`);
+  console.log(
+    `  N=${N}, fail_every_nth=${FAIL_EVERY} (~${Math.round(100 / FAIL_EVERY)}% failure rate)`,
+  );
   console.log(`  success=${success}, hard_failure=${hardFailure}`);
   console.log(`  cache hits=${hits}, misses=${misses}, stale_served=${staleServed}`);
   console.log(`  provider.callCount=${provider.callCount}`);

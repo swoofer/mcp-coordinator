@@ -20,11 +20,10 @@ describe("makeAdminSession", () => {
       issuer: ISSUER,
     });
 
-    const { payload, protectedHeader } = await jwtVerify(
-      session.jwt,
-      registry.current.key,
-      { algorithms: ["HS256"], issuer: ISSUER },
-    );
+    const { payload, protectedHeader } = await jwtVerify(session.jwt, registry.current.key, {
+      algorithms: ["HS256"],
+      issuer: ISSUER,
+    });
     expect(protectedHeader.alg).toBe("HS256");
     expect(protectedHeader.kid).toBe("hs256-v1");
     expect(payload.sub).toBe("u-alice");
@@ -116,9 +115,7 @@ describe("makeAdminSession", () => {
       issuer: ISSUER,
     });
     expect(session.cookieHeader).toContain(`__Host-coordinator_session=${session.jwt}`);
-    expect(session.cookieHeader).toContain(
-      `__Host-coordinator_csrf=${session.csrfCookieValue}`,
-    );
+    expect(session.cookieHeader).toContain(`__Host-coordinator_csrf=${session.csrfCookieValue}`);
     // No Set-Cookie attributes leaking into the request Cookie header.
     expect(session.cookieHeader).not.toMatch(/Secure/i);
     expect(session.cookieHeader).not.toMatch(/Path=/i);

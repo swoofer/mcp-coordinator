@@ -12,8 +12,12 @@ export interface EncryptionProvider {
 }
 
 export class PassthroughEncryption implements EncryptionProvider {
-  encrypt(p: string, _context: EncryptionContext): string { return p; }
-  decrypt(c: string, _context: EncryptionContext): string { return c; }
+  encrypt(p: string, _context: EncryptionContext): string {
+    return p;
+  }
+  decrypt(c: string, _context: EncryptionContext): string {
+    return c;
+  }
 }
 
 export class DecryptionError extends Error {

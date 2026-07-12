@@ -230,9 +230,7 @@ describe("T13: admin users flow (end-to-end through real HTTP server)", () => {
       meta: { admin_count: number };
     }>();
     const ids = body.users.map((u) => u.id).sort();
-    expect(ids).toEqual(
-      [ADMIN_A_ID, ADMIN_B_ID, MEMBER_1_ID, MEMBER_2_ID, MEMBER_3_ID].sort(),
-    );
+    expect(ids).toEqual([ADMIN_A_ID, ADMIN_B_ID, MEMBER_1_ID, MEMBER_2_ID, MEMBER_3_ID].sort());
     expect(body.meta.admin_count).toBe(2);
   });
 
@@ -291,9 +289,7 @@ describe("T13: admin users flow (end-to-end through real HTTP server)", () => {
   it("PATCH /api/admin/users/<A> {role: 'member'} → 409 LAST_ADMIN, no audit, A still admin", async () => {
     // Capture the current audit-chain tip so we can prove no row was appended.
     const tipBefore = getDb()
-      .prepare(
-        "SELECT id, row_hash FROM audit_log ORDER BY id DESC LIMIT 1",
-      )
+      .prepare("SELECT id, row_hash FROM audit_log ORDER BY id DESC LIMIT 1")
       .get() as { id: number; row_hash: string } | undefined;
 
     const r = await request(port, {
@@ -307,16 +303,14 @@ describe("T13: admin users flow (end-to-end through real HTTP server)", () => {
 
     // A is still admin in the DB (the guard ran inside the immediate-mode tx
     // and rolled back the role-change SET clause along with the audit emit).
-    const aRow = getDb()
-      .prepare("SELECT role FROM users WHERE id = ?")
-      .get(ADMIN_A_ID) as { role: string };
+    const aRow = getDb().prepare("SELECT role FROM users WHERE id = ?").get(ADMIN_A_ID) as {
+      role: string;
+    };
     expect(aRow.role).toBe("admin");
 
     // Audit chain tip is unchanged — refused PATCH emitted nothing.
     const tipAfter = getDb()
-      .prepare(
-        "SELECT id, row_hash FROM audit_log ORDER BY id DESC LIMIT 1",
-      )
+      .prepare("SELECT id, row_hash FROM audit_log ORDER BY id DESC LIMIT 1")
       .get() as { id: number; row_hash: string } | undefined;
     expect(tipAfter?.id).toBe(tipBefore?.id);
     expect(tipAfter?.row_hash).toBe(tipBefore?.row_hash);
@@ -343,12 +337,12 @@ describe("T13: admin users flow (end-to-end through real HTTP server)", () => {
     expect(r2.json<{ user: { role: string } }>().user.role).toBe("member");
 
     // A is now member in DB, B is admin.
-    const a = getDb()
-      .prepare("SELECT role FROM users WHERE id = ?")
-      .get(ADMIN_A_ID) as { role: string };
-    const b = getDb()
-      .prepare("SELECT role FROM users WHERE id = ?")
-      .get(ADMIN_B_ID) as { role: string };
+    const a = getDb().prepare("SELECT role FROM users WHERE id = ?").get(ADMIN_A_ID) as {
+      role: string;
+    };
+    const b = getDb().prepare("SELECT role FROM users WHERE id = ?").get(ADMIN_B_ID) as {
+      role: string;
+    };
     expect(a.role).toBe("member");
     expect(b.role).toBe("admin");
   });

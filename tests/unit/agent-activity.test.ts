@@ -78,8 +78,9 @@ describe("AgentActivityTracker", () => {
     tracker.reportFileActivity("default", "a1", "src/auth/login.ts");
     // Simulate old timestamp
     const db = getDb();
-    db.prepare("UPDATE agent_activity_status SET last_activity_at = datetime('now', '-10 minutes') WHERE agent_id = ?")
-      .run("a1");
+    db.prepare(
+      "UPDATE agent_activity_status SET last_activity_at = datetime('now', '-10 minutes') WHERE agent_id = ?",
+    ).run("a1");
     const activity = tracker.getActivity("default", "a1", { idleAfterMinutes: 5 });
     expect(activity.activity_status).toBe("idle");
   });
@@ -175,7 +176,9 @@ describe("agent-activity org_id scoping", () => {
 
   it("reportFileActivity writes org_id", () => {
     tracker.reportFileActivity("org-a", "agent-1", "x.ts");
-    const row = getDb().prepare("SELECT org_id FROM agent_activity_status").get() as { org_id: string };
+    const row = getDb().prepare("SELECT org_id FROM agent_activity_status").get() as {
+      org_id: string;
+    };
     expect(row.org_id).toBe("org-a");
   });
 
@@ -195,7 +198,7 @@ describe("agent-activity org_id scoping", () => {
 
   it("reportOffline scopes by org", () => {
     tracker.reportFileActivity("org-a", "agent-1", "x.ts");
-    tracker.reportOffline("org-b", "agent-1");  // wrong org, no-op
+    tracker.reportOffline("org-b", "agent-1"); // wrong org, no-op
     expect(tracker.getStatus("org-a", "agent-1")).not.toBeNull();
     tracker.reportOffline("org-a", "agent-1");
     expect(tracker.getStatus("org-a", "agent-1")?.activity_status).toBe("offline");
@@ -228,10 +231,14 @@ describe("agent-activity org_id scoping", () => {
     tracker.heartbeat("orgB", "agent-2", { currentFile: null, currentThread: "thr-b" });
 
     const rowA = getDb()
-      .prepare("SELECT org_id, activity_status, current_file FROM agent_activity_status WHERE agent_id = ?")
+      .prepare(
+        "SELECT org_id, activity_status, current_file FROM agent_activity_status WHERE agent_id = ?",
+      )
       .get("agent-1") as { org_id: string; activity_status: string; current_file: string };
     const rowB = getDb()
-      .prepare("SELECT org_id, activity_status, current_thread FROM agent_activity_status WHERE agent_id = ?")
+      .prepare(
+        "SELECT org_id, activity_status, current_thread FROM agent_activity_status WHERE agent_id = ?",
+      )
       .get("agent-2") as { org_id: string; activity_status: string; current_thread: string };
 
     expect(rowA.org_id).toBe("orgA");

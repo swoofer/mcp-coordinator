@@ -28,7 +28,13 @@ const STARTED_AT_MS = Date.now();
 interface ReadinessChecks {
   db: { ok: boolean; error?: string };
   mqtt: { ok: boolean; error?: string };
-  tree_sitter: { ok: boolean; grammars_loaded: number; total_grammars: number; optional: true; error?: string };
+  tree_sitter: {
+    ok: boolean;
+    grammars_loaded: number;
+    total_grammars: number;
+    optional: true;
+    error?: string;
+  };
   git_cochange: { available: boolean; status: string; optional: true };
 }
 
@@ -145,7 +151,9 @@ export async function handleHealth(
   const jwtSecretSet = options.jwtSecretSet ?? false;
   const warnings: string[] = [];
   if (authEnabled && !jwtSecretSet) {
-    warnings.push("AUTH_ENABLED=true but COORDINATOR_JWT_SECRET is unset — sessions invalidate on restart");
+    warnings.push(
+      "AUTH_ENABLED=true but COORDINATOR_JWT_SECRET is unset — sessions invalidate on restart",
+    );
   }
   const body = {
     status: "alive",

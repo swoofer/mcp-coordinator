@@ -34,7 +34,11 @@ export function safeJsonParse<T>(
   }
 }
 
-function warn(logger: Pick<Logger, "warn"> | undefined, context: string | undefined, reason: string): void {
+function warn(
+  logger: Pick<Logger, "warn"> | undefined,
+  context: string | undefined,
+  reason: string,
+): void {
   const payload = {
     context: context ?? "safeJsonParse",
     reason,

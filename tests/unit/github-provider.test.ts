@@ -113,9 +113,7 @@ describe("GitHubProvider.exchangeCode", () => {
         HttpResponse.json({ id: 7, login: "bob", email: "public@example.com", name: null }),
       ),
       http.get("https://api.github.com/user/emails", () =>
-        HttpResponse.json([
-          { email: "unver@example.com", primary: true, verified: false },
-        ]),
+        HttpResponse.json([{ email: "unver@example.com", primary: true, verified: false }]),
       ),
     );
     const p = makeProvider();
@@ -392,8 +390,9 @@ describe("GitHubProvider.requestDeviceCode", () => {
 
   it("4xx throws generic Error", async () => {
     server.use(
-      http.post("https://github.com/login/device/code", () =>
-        new HttpResponse(null, { status: 400 }),
+      http.post(
+        "https://github.com/login/device/code",
+        () => new HttpResponse(null, { status: 400 }),
       ),
     );
     const p = makeProvider();

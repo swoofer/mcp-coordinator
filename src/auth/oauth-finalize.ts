@@ -2,12 +2,7 @@ import crypto from "node:crypto";
 import type Database from "better-sqlite3";
 import type { ServerResponse } from "node:http";
 import type { Clock } from "./clock.js";
-import {
-  CSRF_COOKIE_NAME,
-  SESSION_COOKIE_NAME,
-  hostCookie,
-  setCookies,
-} from "./cookies.js";
+import { CSRF_COOKIE_NAME, SESSION_COOKIE_NAME, hostCookie, setCookies } from "./cookies.js";
 import type { JwtKeyRegistry } from "./jwt-keys.js";
 import { mintAccessJWT, mintRefreshJWT } from "./jwt-mint.js";
 import type { IdpUserInfo } from "./providers/types.js";
@@ -99,8 +94,7 @@ export function provisionUser(args: ProvisionUserArgs): ProvisionResult {
        WHERE idp_provider = ? AND idp_user_id = ?`,
     )
     .get(providerName, idpUser.idp_user_id) as
-    | { id: string; primary_org_id: string; role: string }
-    | undefined;
+    { id: string; primary_org_id: string; role: string } | undefined;
 
   if (existing) {
     // Returning user — update idp_access_token + idp_refresh_token + last_login_at.
@@ -313,10 +307,7 @@ export interface SessionCookieOptions {
  * Optionally clears the __Host-coordinator_oauth_state cookie used during
  * the redirect-from-GitHub flow.
  */
-export function setSessionCookies(
-  res: ServerResponse,
-  opts: SessionCookieOptions,
-): void {
+export function setSessionCookies(res: ServerResponse, opts: SessionCookieOptions): void {
   const maxAge = opts.maxAgeSeconds ?? ACCESS_TTL_S_DEFAULT;
   const sessionCookie = hostCookie(SESSION_COOKIE_NAME, opts.accessJwt, {
     httpOnly: true,
@@ -350,10 +341,7 @@ export function setSessionCookies(
  * Returns null if both inputs are null/empty — preserves call-site clarity
  * over forcing a "unknown|unknown" sentinel hash.
  */
-export function computeFingerprint(
-  ip: string | null,
-  userAgent: string | null,
-): string | null {
+export function computeFingerprint(ip: string | null, userAgent: string | null): string | null {
   if (!ip && !userAgent) return null;
   return crypto
     .createHash("sha256")

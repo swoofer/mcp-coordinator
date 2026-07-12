@@ -11,10 +11,7 @@ import { RateLimiter } from "../../src/auth/rate-limit.js";
 import { buildJwtKeyRegistry } from "../../src/auth/jwt-keys.js";
 import { MembershipCache } from "../../src/auth/membership-cache.js";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
-import type {
-  IdPProvider,
-  ExchangeCodeResult,
-} from "../../src/auth/providers/types.js";
+import type { IdPProvider, ExchangeCodeResult } from "../../src/auth/providers/types.js";
 import { IdPTokenRevoked } from "../../src/auth/providers/errors.js";
 import { findAuditRows } from "../helpers/audit.js";
 import { makeTestEncryption, selectIdpToken } from "../helpers/encryption.js";
@@ -133,14 +130,16 @@ function seedOrg(orgId = "org-acme", allowlist = "acme"): void {
     .run(orgId, "Acme", allowlist);
 }
 
-function seedUser(opts: {
-  id?: string;
-  orgId?: string;
-  idpAccessToken: string | null;
-  idpRefreshToken?: string | null;
-  idpProvider?: string;
-  tokenEpoch?: number;
-} = { idpAccessToken: null }): void {
+function seedUser(
+  opts: {
+    id?: string;
+    orgId?: string;
+    idpAccessToken: string | null;
+    idpRefreshToken?: string | null;
+    idpProvider?: string;
+    tokenEpoch?: number;
+  } = { idpAccessToken: null },
+): void {
   getDb()
     .prepare(
       `INSERT INTO users
@@ -162,7 +161,10 @@ function seedUser(opts: {
     );
 }
 
-function seedRefreshRow(jti: string, opts: { userId?: string; orgId?: string; familyId?: string } = {}): void {
+function seedRefreshRow(
+  jti: string,
+  opts: { userId?: string; orgId?: string; familyId?: string } = {},
+): void {
   const familyId = opts.familyId ?? "fam-root";
   getDb()
     .prepare(
@@ -263,7 +265,11 @@ describe("refreshTokenGrant — encrypted IdP tokens (T09)", () => {
     });
 
     const res = mockResponse();
-    await refreshTokenGrant(mockRequest({ refresh_token: token }), res as unknown as ServerResponse, ctx);
+    await refreshTokenGrant(
+      mockRequest({ refresh_token: token }),
+      res as unknown as ServerResponse,
+      ctx,
+    );
     expect(res.statusCode).toBe(200);
 
     // Stored values must be enc:v1: prefixed.
@@ -315,7 +321,11 @@ describe("refreshTokenGrant — encrypted IdP tokens (T09)", () => {
     });
 
     const res = mockResponse();
-    await refreshTokenGrant(mockRequest({ refresh_token: token }), res as unknown as ServerResponse, ctx);
+    await refreshTokenGrant(
+      mockRequest({ refresh_token: token }),
+      res as unknown as ServerResponse,
+      ctx,
+    );
     expect(res.statusCode).toBe(200);
 
     const row = getDb()
@@ -347,9 +357,16 @@ describe("refreshTokenGrant — encrypted IdP tokens (T09)", () => {
 
     const auditSpy = vi.spyOn(auditModule, "audit");
 
-    const epochBefore = readTokenEpoch(getDb() as unknown as Parameters<typeof readTokenEpoch>[0], "u-alice");
+    const epochBefore = readTokenEpoch(
+      getDb() as unknown as Parameters<typeof readTokenEpoch>[0],
+      "u-alice",
+    );
     const res = mockResponse();
-    await refreshTokenGrant(mockRequest({ refresh_token: token }), res as unknown as ServerResponse, ctx);
+    await refreshTokenGrant(
+      mockRequest({ refresh_token: token }),
+      res as unknown as ServerResponse,
+      ctx,
+    );
 
     // HTTP shape mirrors existing IdPTokenRevoked path (401 + Bearer header).
     expect(res.statusCode).toBe(401);
@@ -374,7 +391,10 @@ describe("refreshTokenGrant — encrypted IdP tokens (T09)", () => {
     expect(revokedMeta.phase).toBe("refresh_decrypt_failed");
 
     // token_epoch bumped by at least 1 (actual value is MAX(wall, current+1)).
-    const epochAfter = readTokenEpoch(getDb() as unknown as Parameters<typeof readTokenEpoch>[0], "u-alice");
+    const epochAfter = readTokenEpoch(
+      getDb() as unknown as Parameters<typeof readTokenEpoch>[0],
+      "u-alice",
+    );
     expect(epochAfter).toBeGreaterThan(epochBefore);
   });
 
@@ -392,21 +412,33 @@ describe("refreshTokenGrant — encrypted IdP tokens (T09)", () => {
     const ctx = makeCtx(enc.provider);
     const auditSpy = vi.spyOn(auditModule, "audit");
 
-    const epochBefore = readTokenEpoch(getDb() as unknown as Parameters<typeof readTokenEpoch>[0], "u-alice");
+    const epochBefore = readTokenEpoch(
+      getDb() as unknown as Parameters<typeof readTokenEpoch>[0],
+      "u-alice",
+    );
     const res = mockResponse();
-    await refreshTokenGrant(mockRequest({ refresh_token: token }), res as unknown as ServerResponse, ctx);
+    await refreshTokenGrant(
+      mockRequest({ refresh_token: token }),
+      res as unknown as ServerResponse,
+      ctx,
+    );
 
     expect(res.statusCode).toBe(401);
     const decryptCalls = auditSpy.mock.calls.filter((c) => c[0] === "encryption.decrypt.failed");
     expect(decryptCalls).toHaveLength(1);
-    expect((decryptCalls[0]![1]?.metadata as Record<string, unknown>).error_class).toBe("UnknownCipherVersion");
+    expect((decryptCalls[0]![1]?.metadata as Record<string, unknown>).error_class).toBe(
+      "UnknownCipherVersion",
+    );
 
     const revokedAudits = findAuditRows("auth.idp.token_revoked");
     expect(revokedAudits).toHaveLength(1);
     const meta = JSON.parse(revokedAudits[0]!.metadata_json as string);
     expect(meta.phase).toBe("refresh_decrypt_failed");
 
-    const epochAfter = readTokenEpoch(getDb() as unknown as Parameters<typeof readTokenEpoch>[0], "u-alice");
+    const epochAfter = readTokenEpoch(
+      getDb() as unknown as Parameters<typeof readTokenEpoch>[0],
+      "u-alice",
+    );
     expect(epochAfter).toBeGreaterThan(epochBefore);
   });
 
@@ -431,7 +463,11 @@ describe("refreshTokenGrant — encrypted IdP tokens (T09)", () => {
     });
 
     const res = mockResponse();
-    await refreshTokenGrant(mockRequest({ refresh_token: token }), res as unknown as ServerResponse, ctx);
+    await refreshTokenGrant(
+      mockRequest({ refresh_token: token }),
+      res as unknown as ServerResponse,
+      ctx,
+    );
 
     expect(res.statusCode).toBe(401);
 

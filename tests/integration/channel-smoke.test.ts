@@ -161,7 +161,8 @@ describe("channel CLI — smoke (MQTT → notifications/claude/channel)", () => 
   afterAll(async () => {
     // Force end the publisher with `true` (don't wait for in-flight PUBACKs).
     try {
-      if (publisher) await new Promise<void>((resolve) => publisher!.end(true, {}, () => resolve()));
+      if (publisher)
+        await new Promise<void>((resolve) => publisher!.end(true, {}, () => resolve()));
     } catch {}
     // Closing the client kills the StdioClientTransport, which sends SIGTERM
     // to the channel subprocess. On Windows the SIGTERM-equivalent doesn't
@@ -215,7 +216,10 @@ describe("channel CLI — smoke (MQTT → notifications/claude/channel)", () => 
       await new Promise<void>((r) => setTimeout(r, 100));
     }
 
-    expect(match, `did not receive notifications/claude/channel; got: ${JSON.stringify(receivedNotifications)}`).toBeDefined();
+    expect(
+      match,
+      `did not receive notifications/claude/channel; got: ${JSON.stringify(receivedNotifications)}`,
+    ).toBeDefined();
     const params = match!.params as { content: string; meta: Record<string, string> };
     expect(params.content).toContain("scout");
     expect(params.content).toContain("thr-smoke-1");
@@ -244,7 +248,10 @@ describe("channel CLI — smoke (MQTT → notifications/claude/channel)", () => 
     // Confirm the tool surface advertises post_to_thread.
     const tools = await client.listTools();
     const reply = tools.tools.find((t) => t.name === "post_to_thread");
-    expect(reply, `expected post_to_thread in tools/list; got ${tools.tools.map((t) => t.name).join(",")}`).toBeDefined();
+    expect(
+      reply,
+      `expected post_to_thread in tools/list; got ${tools.tools.map((t) => t.name).join(",")}`,
+    ).toBeDefined();
     expect(reply!.description).toMatch(/consultation_opened/);
 
     // Subscribe to the messages topic on the broker so we can observe the

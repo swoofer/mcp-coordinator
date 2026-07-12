@@ -7,8 +7,8 @@ import { authenticateRequest } from "../auth.js";
 import { CSRF_COOKIE_NAME, parseCookies } from "./cookies.js";
 import { verifyCsrfToken } from "./csrf.js";
 
-const DEVICE_CODE_TTL_S = 600;       // 10-minute device flow window per RFC 8628
-const DEFAULT_POLL_INTERVAL_S = 5;   // initial poll cadence; slow_down may increase
+const DEVICE_CODE_TTL_S = 600; // 10-minute device flow window per RFC 8628
+const DEFAULT_POLL_INTERVAL_S = 5; // initial poll cadence; slow_down may increase
 
 // User-code alphabet: 20 unambiguous uppercase chars (no I/O/0/1/U/V).
 // 8 chars chosen → 20^8 = 25.6B combinations = ~34.6 bits entropy.
@@ -18,7 +18,7 @@ const USER_CODE_LENGTH = 8;
 const COLLISION_RETRY_MAX = 3;
 
 // Per V4 FIX 14 + spec §17.6 NR11
-const RATE_LIMIT_PER_MIN = { per: 5,  window_seconds: 60 } as const;
+const RATE_LIMIT_PER_MIN = { per: 5, window_seconds: 60 } as const;
 const RATE_LIMIT_PER_HOUR = { per: 20, window_seconds: 3600 } as const;
 
 interface DeviceCodeResponse {
@@ -145,11 +145,11 @@ export async function handleDeviceAuthorization(
         deviceCode,
         candidate,
         crypto.randomBytes(16).toString("base64url"), // nonce: Phase 1 schema requires UNIQUE NOT NULL
-        null,                                          // org_id resolved at approve time (T20)
+        null, // org_id resolved at approve time (T20)
         String(expiresAt),
         ip === "unknown" ? null : ip,
         userAgent,
-        null,                                          // requester_country: GeoIP deferred
+        null, // requester_country: GeoIP deferred
       );
       userCode = candidate;
       break;
@@ -252,9 +252,7 @@ export async function handleDeviceApprove(
   if (!authResult.ok) {
     res.writeHead(authResult.status, {
       "Content-Type": "application/json; charset=utf-8",
-      ...(authResult.wwwAuthenticate
-        ? { "WWW-Authenticate": authResult.wwwAuthenticate }
-        : {}),
+      ...(authResult.wwwAuthenticate ? { "WWW-Authenticate": authResult.wwwAuthenticate } : {}),
     });
     res.end(JSON.stringify(appError("UNAUTHORIZED", authResult.error)));
     return;
@@ -294,7 +292,9 @@ export async function handleDeviceApprove(
       "Content-Type": "application/json; charset=utf-8",
       "Retry-After": String(minRate.retry_after_seconds),
     });
-    res.end(JSON.stringify(appError("RATE_LIMITED", "Too many device approve requests (per minute)")));
+    res.end(
+      JSON.stringify(appError("RATE_LIMITED", "Too many device approve requests (per minute)")),
+    );
     return;
   }
   const hourRate = ctx.rateLimiter.check(
@@ -306,7 +306,9 @@ export async function handleDeviceApprove(
       "Content-Type": "application/json; charset=utf-8",
       "Retry-After": String(hourRate.retry_after_seconds),
     });
-    res.end(JSON.stringify(appError("RATE_LIMITED", "Too many device approve requests (per hour)")));
+    res.end(
+      JSON.stringify(appError("RATE_LIMITED", "Too many device approve requests (per hour)")),
+    );
     return;
   }
 
@@ -331,7 +333,8 @@ export async function handleDeviceApprove(
     // (5) Atomic CAS approve. CAST(expires_at AS INTEGER) — T17 stores as
     // TEXT epoch seconds; SQLite needs the cast to compare against integer.
     const result = ctx.db
-      .prepare(`
+      .prepare(
+        `
         UPDATE device_auth_requests
         SET approved_user_id = ?, approved_at = ?
         WHERE user_code = ?
@@ -340,14 +343,15 @@ export async function handleDeviceApprove(
           AND CAST(expires_at AS INTEGER) > ?
           AND failed_approval_attempts < ?
         RETURNING device_code, requester_ip, requester_user_agent
-      `)
+      `,
+      )
       .get(claims.user_id, now, userCode, now, APPROVE_FAILURE_THRESHOLD) as
-        | {
-            device_code: string;
-            requester_ip: string | null;
-            requester_user_agent: string | null;
-          }
-        | undefined;
+      | {
+          device_code: string;
+          requester_ip: string | null;
+          requester_user_agent: string | null;
+        }
+      | undefined;
 
     if (result) {
       audit("auth.device.approved", {
@@ -373,7 +377,8 @@ export async function handleDeviceApprove(
     // explicit user denial is always honored unless the row is expired
     // or already consumed).
     const denyResult = ctx.db
-      .prepare(`
+      .prepare(
+        `
         UPDATE device_auth_requests
         SET denied_at = ?, denied_reason = 'user_denied'
         WHERE user_code = ?
@@ -381,7 +386,8 @@ export async function handleDeviceApprove(
           AND denied_at IS NULL
           AND CAST(expires_at AS INTEGER) > ?
         RETURNING device_code
-      `)
+      `,
+      )
       .get(now, userCode, now) as { device_code: string } | undefined;
 
     if (denyResult) {
@@ -422,20 +428,22 @@ async function handleApproveFailure(
   now: number,
 ): Promise<void> {
   const row = ctx.db
-    .prepare(`
+    .prepare(
+      `
       SELECT user_code, approved_user_id, denied_at, expires_at,
              failed_approval_attempts
       FROM device_auth_requests WHERE user_code = ?
-    `)
+    `,
+    )
     .get(userCode) as
-      | {
-          user_code: string;
-          approved_user_id: string | null;
-          denied_at: number | null;
-          expires_at: number | string;
-          failed_approval_attempts: number;
-        }
-      | undefined;
+    | {
+        user_code: string;
+        approved_user_id: string | null;
+        denied_at: number | null;
+        expires_at: number | string;
+        failed_approval_attempts: number;
+      }
+    | undefined;
 
   if (!row) {
     // Unknown user_code. No row to increment (brute-force counter is
@@ -461,12 +469,14 @@ async function handleApproveFailure(
   // failed_approval_attempts ≥ 5 OR a race occurred. Increment and check
   // the V4 FIX 21 lockout threshold.
   const incResult = ctx.db
-    .prepare(`
+    .prepare(
+      `
       UPDATE device_auth_requests
       SET failed_approval_attempts = failed_approval_attempts + 1
       WHERE user_code = ?
       RETURNING failed_approval_attempts
-    `)
+    `,
+    )
     .get(userCode) as { failed_approval_attempts: number } | undefined;
   /* c8 ignore next */
   const attempts = incResult?.failed_approval_attempts ?? 0;
@@ -474,11 +484,13 @@ async function handleApproveFailure(
   if (attempts >= APPROVE_FAILURE_THRESHOLD) {
     // V4 FIX 21: lock the row out so subsequent approves fall to "consumed".
     ctx.db
-      .prepare(`
+      .prepare(
+        `
         UPDATE device_auth_requests
         SET denied_at = ?, denied_reason = 'too_many_failed_approvals'
         WHERE user_code = ?
-      `)
+      `,
+      )
       .run(now, userCode);
     audit("auth.device.denied", {
       tier: 2,

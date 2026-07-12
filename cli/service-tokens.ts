@@ -55,39 +55,29 @@ export function createServiceTokensCommand(): Command {
     .requiredOption("--ttl <duration>", "TTL (e.g., 30d, 168h)")
     .requiredOption("--reason <text>", "Reason for issuance (>=10 chars)")
     .option("--server <url>", "Coordinator URL", "http://localhost:3000")
-    .option(
-      "--admin-token <token>",
-      "Admin Bearer token (or set COORDINATOR_ADMIN_TOKEN env)",
-    )
+    .option("--admin-token <token>", "Admin Bearer token (or set COORDINATOR_ADMIN_TOKEN env)")
     .action(async (opts: IssueOpts) => {
       const adminToken = opts.adminToken ?? process.env.COORDINATOR_ADMIN_TOKEN;
       if (!adminToken) {
-        process.stderr.write(
-          "Error: --admin-token required or set COORDINATOR_ADMIN_TOKEN\n",
-        );
+        process.stderr.write("Error: --admin-token required or set COORDINATOR_ADMIN_TOKEN\n");
         process.exit(1);
       }
-      const response = await fetch(
-        `${opts.server}/api/admin/service-tokens`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${adminToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            user_id: opts.user,
-            org_id: opts.org,
-            scope: opts.scope,
-            ttl: opts.ttl,
-            reason: opts.reason,
-          }),
+      const response = await fetch(`${opts.server}/api/admin/service-tokens`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${adminToken}`,
+          "Content-Type": "application/json",
         },
-      );
+        body: JSON.stringify({
+          user_id: opts.user,
+          org_id: opts.org,
+          scope: opts.scope,
+          ttl: opts.ttl,
+          reason: opts.reason,
+        }),
+      });
       if (!response.ok) {
-        process.stderr.write(
-          `Error ${response.status}: ${await response.text()}\n`,
-        );
+        process.stderr.write(`Error ${response.status}: ${await response.text()}\n`);
         process.exit(1);
       }
       const result = (await response.json()) as {
@@ -108,19 +98,14 @@ export function createServiceTokensCommand(): Command {
     .command("list")
     .description("List service tokens (admin-only)")
     .option("--server <url>", "Coordinator URL", "http://localhost:3000")
-    .option(
-      "--admin-token <token>",
-      "Admin Bearer token (or set COORDINATOR_ADMIN_TOKEN env)",
-    )
+    .option("--admin-token <token>", "Admin Bearer token (or set COORDINATOR_ADMIN_TOKEN env)")
     .option("--user <id>", "Filter by target user ID")
     .option("--org <id>", "Filter by target org ID")
     .option("--active-only", "Only show non-revoked tokens", false)
     .action(async (opts: ListOpts) => {
       const adminToken = opts.adminToken ?? process.env.COORDINATOR_ADMIN_TOKEN;
       if (!adminToken) {
-        process.stderr.write(
-          "Error: --admin-token required or set COORDINATOR_ADMIN_TOKEN\n",
-        );
+        process.stderr.write("Error: --admin-token required or set COORDINATOR_ADMIN_TOKEN\n");
         process.exit(1);
       }
       const u = new URL("/api/admin/service-tokens", opts.server);
@@ -132,9 +117,7 @@ export function createServiceTokensCommand(): Command {
         headers: { Authorization: `Bearer ${adminToken}` },
       });
       if (!response.ok) {
-        process.stderr.write(
-          `Error ${response.status}: ${await response.text()}\n`,
-        );
+        process.stderr.write(`Error ${response.status}: ${await response.text()}\n`);
         process.exit(1);
       }
       const body = (await response.json()) as { tokens: ListedToken[] };
@@ -144,9 +127,7 @@ export function createServiceTokensCommand(): Command {
       }
       process.stdout.write("JTI\tUSER\tORG\tSTATUS\tEXPIRES_AT\n");
       for (const t of body.tokens) {
-        process.stdout.write(
-          `${t.jti}\t${t.user_id}\t${t.org_id}\t${t.status}\t${t.expires_at}\n`,
-        );
+        process.stdout.write(`${t.jti}\t${t.user_id}\t${t.org_id}\t${t.status}\t${t.expires_at}\n`);
       }
     });
 
@@ -155,16 +136,11 @@ export function createServiceTokensCommand(): Command {
     .description("Revoke a service token (admin-only)")
     .requiredOption("--jti <jti>", "Token jti")
     .option("--server <url>", "Coordinator URL", "http://localhost:3000")
-    .option(
-      "--admin-token <token>",
-      "Admin Bearer token (or set COORDINATOR_ADMIN_TOKEN env)",
-    )
+    .option("--admin-token <token>", "Admin Bearer token (or set COORDINATOR_ADMIN_TOKEN env)")
     .action(async (opts: RevokeOpts) => {
       const adminToken = opts.adminToken ?? process.env.COORDINATOR_ADMIN_TOKEN;
       if (!adminToken) {
-        process.stderr.write(
-          "Error: --admin-token required or set COORDINATOR_ADMIN_TOKEN\n",
-        );
+        process.stderr.write("Error: --admin-token required or set COORDINATOR_ADMIN_TOKEN\n");
         process.exit(1);
       }
       const u = new URL(
@@ -176,15 +152,11 @@ export function createServiceTokensCommand(): Command {
         headers: { Authorization: `Bearer ${adminToken}` },
       });
       if (response.status === 404) {
-        process.stderr.write(
-          "Error: token not found or already revoked\n",
-        );
+        process.stderr.write("Error: token not found or already revoked\n");
         process.exit(1);
       }
       if (!response.ok) {
-        process.stderr.write(
-          `Error ${response.status}: ${await response.text()}\n`,
-        );
+        process.stderr.write(`Error ${response.status}: ${await response.text()}\n`);
         process.exit(1);
       }
       process.stdout.write(`Revoked: ${opts.jti}\n`);

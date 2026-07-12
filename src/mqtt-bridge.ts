@@ -42,7 +42,12 @@ export class MqttBridge {
     this.log = logger ?? silentLogger;
   }
 
-  async connect(config: { url: string; username?: string; password?: string; agentId?: string }): Promise<void> {
+  async connect(config: {
+    url: string;
+    username?: string;
+    password?: string;
+    agentId?: string;
+  }): Promise<void> {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error("MQTT connection timeout"));
@@ -134,7 +139,9 @@ export class MqttBridge {
                 listener.queue.push(msg);
               }
             }
-          } catch { /* ignore malformed */ }
+          } catch {
+            /* ignore malformed */
+          }
         }
       });
 
@@ -159,11 +166,16 @@ export class MqttBridge {
     this.client.publish(
       `coordinator/${this.orgId}/agents/${agentId}/status`,
       JSON.stringify({ status: "online", name }),
-      { retain: true }
+      { retain: true },
     );
   }
 
-  publishConsultation(threadId: string, agentId: string, subject: string, targetModules: string[]): void {
+  publishConsultation(
+    threadId: string,
+    agentId: string,
+    subject: string,
+    targetModules: string[],
+  ): void {
     if (!this.client || !this.connected) return;
     // P1 fix: QoS 1 (at-least-once) so consultation events survive transient
     // disconnects. retain=true so a coordinator/subscriber restart can rebuild
@@ -171,8 +183,13 @@ export class MqttBridge {
     this.lastRetainedConsultationThreadId = threadId;
     this.client.publish(
       `coordinator/${this.orgId}/consultations/new`,
-      JSON.stringify({ thread_id: threadId, agent_id: agentId, subject, target_modules: targetModules }),
-      { qos: 1, retain: true }
+      JSON.stringify({
+        thread_id: threadId,
+        agent_id: agentId,
+        subject,
+        target_modules: targetModules,
+      }),
+      { qos: 1, retain: true },
     );
   }
 
@@ -188,11 +205,10 @@ export class MqttBridge {
   clearRetainedConsultation(threadId: string): void {
     if (!this.client || !this.connected) return;
     if (this.lastRetainedConsultationThreadId !== threadId) return;
-    this.client.publish(
-      `coordinator/${this.orgId}/consultations/new`,
-      "",
-      { qos: 1, retain: true }
-    );
+    this.client.publish(`coordinator/${this.orgId}/consultations/new`, "", {
+      qos: 1,
+      retain: true,
+    });
     this.lastRetainedConsultationThreadId = null;
   }
 
@@ -201,7 +217,7 @@ export class MqttBridge {
     // QoS 0: high-frequency chat-style traffic, lossy-OK.
     this.client.publish(
       `coordinator/${this.orgId}/consultations/${threadId}/messages`,
-      JSON.stringify({ agent_id: agentId, type, content })
+      JSON.stringify({ agent_id: agentId, type, content }),
     );
   }
 
@@ -211,7 +227,7 @@ export class MqttBridge {
     this.client.publish(
       `coordinator/${this.orgId}/consultations/${threadId}/status`,
       JSON.stringify({ status, summary }),
-      { qos: 1, retain: true }
+      { qos: 1, retain: true },
     );
   }
 
@@ -219,7 +235,7 @@ export class MqttBridge {
     if (!this.client || !this.connected) return;
     this.client.publish(
       `coordinator/${this.orgId}/broadcast`,
-      JSON.stringify({ agent_id: agentId, message })
+      JSON.stringify({ agent_id: agentId, message }),
     );
   }
 
@@ -228,7 +244,7 @@ export class MqttBridge {
     this.client.publish(
       `coordinator/${this.orgId}/agents/${agentId}/status`,
       JSON.stringify({ status: "offline" }),
-      { retain: true }
+      { retain: true },
     );
   }
 
@@ -238,8 +254,12 @@ export class MqttBridge {
     // multiple agents think a task is unclaimed.
     this.client.publish(
       `coordinator/${this.orgId}/consultations/${threadId}/claimed`,
-      JSON.stringify({ agent_id: claimedBy, claimed_by: claimedBy, claimed_at: new Date().toISOString() }),
-      { qos: 1 }
+      JSON.stringify({
+        agent_id: claimedBy,
+        claimed_by: claimedBy,
+        claimed_at: new Date().toISOString(),
+      }),
+      { qos: 1 },
     );
   }
 
@@ -249,7 +269,7 @@ export class MqttBridge {
     this.client.publish(
       `coordinator/${this.orgId}/consultations/${threadId}/completed`,
       JSON.stringify({ agent_id: completedBy, completed_by: completedBy, summary }),
-      { qos: 1 }
+      { qos: 1 },
     );
   }
 

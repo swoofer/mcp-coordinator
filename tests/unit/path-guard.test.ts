@@ -85,18 +85,28 @@ describe("safeJoinUnderRoot (B5 fix - path traversal guard)", () => {
 
     it("holds for arbitrary strings", () => {
       fc.assert(
-        fc.property(fc.string({ maxLength: 200 }), (input) => invariantHolds(safeJoinUnderRoot(ROOT, input))),
+        fc.property(fc.string({ maxLength: 200 }), (input) =>
+          invariantHolds(safeJoinUnderRoot(ROOT, input)),
+        ),
       );
     });
 
     it("holds for adversarial traversal-heavy paths (repeated '..', mixed separators, percent-encoding)", () => {
-      const segment = fc.constantFrom("..", "a", "b", ".", "sub", "%2e%2e", "%2e%2e%2f", "etc", "passwd");
+      const segment = fc.constantFrom(
+        "..",
+        "a",
+        "b",
+        ".",
+        "sub",
+        "%2e%2e",
+        "%2e%2e%2f",
+        "etc",
+        "passwd",
+      );
       const sep = fc.constantFrom("/", "\\");
       fc.assert(
-        fc.property(
-          fc.array(segment, { minLength: 1, maxLength: 12 }),
-          sep,
-          (segments, s) => invariantHolds(safeJoinUnderRoot(ROOT, segments.join(s))),
+        fc.property(fc.array(segment, { minLength: 1, maxLength: 12 }), sep, (segments, s) =>
+          invariantHolds(safeJoinUnderRoot(ROOT, segments.join(s))),
         ),
       );
     });

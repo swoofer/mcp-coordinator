@@ -79,7 +79,7 @@ export function runCommonAnnounceFlow(
   // Used by /api/scoring-stats and the dashboard "Conflict signals" panel.
   const dbForFirings = getDb();
   const insertFiring = dbForFirings.prepare(
-    "INSERT INTO layer_firings (thread_id, layer, score, agent_id) VALUES (?, ?, ?, ?)"
+    "INSERT INTO layer_firings (thread_id, layer, score, agent_id) VALUES (?, ?, ?, ?)",
   );
   for (const s of [...categorized.concerned, ...categorized.gray_zone]) {
     const layer = inferLayerFromReasons(s.reasons);
@@ -92,40 +92,59 @@ export function runCommonAnnounceFlow(
   // announce can match via Layer 0. Thread will timeout naturally if no one joins.
   const db = getDb();
   const concernedIds = categorized.concerned.map((s) => s.agent_id);
-  db.prepare("UPDATE threads SET expected_respondents = ? WHERE id = ? AND org_id = ?")
-    .run(JSON.stringify(concernedIds), threadId, params.org_id);
+  db.prepare("UPDATE threads SET expected_respondents = ? WHERE id = ? AND org_id = ?").run(
+    JSON.stringify(concernedIds),
+    threadId,
+    params.org_id,
+  );
 
-  const otherOnlineCount = registry.listOnline(params.org_id).filter((a) => a.id !== params.agent_id).length;
+  const otherOnlineCount = registry
+    .listOnline(params.org_id)
+    .filter((a) => a.id !== params.agent_id).length;
   const shouldAutoResolve = concernedIds.length === 0 && otherOnlineCount === 0;
   const currentThread = consultation.getThread(params.org_id, threadId)!;
   if (shouldAutoResolve && currentThread.status === "open" && !params.keep_open) {
-    db.prepare("UPDATE threads SET status = 'resolved', resolved_at = ? WHERE id = ? AND org_id = ?")
-      .run(new Date().toISOString(), threadId, params.org_id);
+    db.prepare(
+      "UPDATE threads SET status = 'resolved', resolved_at = ? WHERE id = ? AND org_id = ?",
+    ).run(new Date().toISOString(), threadId, params.org_id);
     consultation.emitResolution(threadId, "auto_resolved");
   }
 
   // 3. Emit impact_scored SSE events for every scored agent.
   for (const s of [...categorized.concerned, ...categorized.gray_zone, ...categorized.pass]) {
-    sseEmitter.emit("impact_scored", {
-      thread_id: threadId,
-      agent_id: s.agent_id,
-      agent_name: s.agent_name,
-      score: s.score,
-      reasons: s.reasons,
-      category: scoredCategory(s),
-    }, { org_id: params.org_id });
+    sseEmitter.emit(
+      "impact_scored",
+      {
+        thread_id: threadId,
+        agent_id: s.agent_id,
+        agent_name: s.agent_name,
+        score: s.score,
+        reasons: s.reasons,
+        category: scoredCategory(s),
+      },
+      { org_id: params.org_id },
+    );
   }
 
   // 4. Create introspection records and emit introspection_requested for gray_zone agents.
   for (const s of categorized.gray_zone) {
-    introspection.create(params.org_id, { thread_id: threadId, agent_id: s.agent_id, score: s.score, reasons: s.reasons });
-    sseEmitter.emit("introspection_requested", {
+    introspection.create(params.org_id, {
       thread_id: threadId,
       agent_id: s.agent_id,
-      agent_name: s.agent_name,
       score: s.score,
       reasons: s.reasons,
-    }, { org_id: params.org_id });
+    });
+    sseEmitter.emit(
+      "introspection_requested",
+      {
+        thread_id: threadId,
+        agent_id: s.agent_id,
+        agent_name: s.agent_name,
+        score: s.score,
+        reasons: s.reasons,
+      },
+      { org_id: params.org_id },
+    );
   }
 
   // 5. Plan quality downgrade event — both transports emit this when a plan
@@ -133,18 +152,27 @@ export function runCommonAnnounceFlow(
   // payload shape differs (MCP vs REST agent_name source).
   const planQuality = assessPlanQuality(params.plan);
   if (params.plan && planQuality.mode === "discovery") {
-    sseEmitter.emit("impact_scored" as "impact_scored", {
-      thread_id: threadId,
-      agent_id: params.agent_id,
-      agent_name: registry.get(params.org_id, params.agent_id)?.name || params.agent_id,
-      score: planQuality.score,
-      reasons: [planDowngradeReason(planQuality)],
-      category: "plan_quality",
-    } as Parameters<typeof sseEmitter.emit>[1], { org_id: params.org_id });
+    sseEmitter.emit(
+      "impact_scored" as "impact_scored",
+      {
+        thread_id: threadId,
+        agent_id: params.agent_id,
+        agent_name: registry.get(params.org_id, params.agent_id)?.name || params.agent_id,
+        score: planQuality.score,
+        reasons: [planDowngradeReason(planQuality)],
+        category: "plan_quality",
+      } as Parameters<typeof sseEmitter.emit>[1],
+      { org_id: params.org_id },
+    );
   }
 
   const updated = consultation.getThread(params.org_id, threadId)!;
-  const respondents: string[] = safeJsonParse<string[]>(updated.expected_respondents, [], logger, "announce-workflow.runCommonAnnounceFlow:expected_respondents");
+  const respondents: string[] = safeJsonParse<string[]>(
+    updated.expected_respondents,
+    [],
+    logger,
+    "announce-workflow.runCommonAnnounceFlow:expected_respondents",
+  );
 
   return { updated, categorized, respondents, planQuality };
 }
@@ -152,7 +180,12 @@ export function runCommonAnnounceFlow(
 function inferLayerFromReasons(reasons: string[]): string {
   for (const r of reasons) {
     if (r.includes("disjoint symbols")) return "L0.5";
-    if (r.includes("announced same file") || r.includes("modifies my dependency") || r.includes("they depend on my target")) return "L0";
+    if (
+      r.includes("announced same file") ||
+      r.includes("modifies my dependency") ||
+      r.includes("they depend on my target")
+    )
+      return "L0";
     if (r.includes("same file (in flight)")) return "L1";
     if (r.includes("same file")) return "L1";
     if (r.includes("co-change")) return "L4";

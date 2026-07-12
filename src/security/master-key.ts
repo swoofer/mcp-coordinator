@@ -60,8 +60,5 @@ export function shannonEntropyBitsPerByte(buffer: Buffer): number {
 
 /** Compute the 16-hex-char (64-bit) key fingerprint. HMAC-SHA256 with label, sliced. */
 export function computeKeyFingerprint(masterKey: Buffer): string {
-  return createHmac("sha256", "mcc-fingerprint-v1")
-    .update(masterKey)
-    .digest("hex")
-    .slice(0, 16);
+  return createHmac("sha256", "mcc-fingerprint-v1").update(masterKey).digest("hex").slice(0, 16);
 }

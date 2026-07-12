@@ -47,8 +47,7 @@ describe("parseUsageResponse", () => {
   });
 
   it("throws QuotaUnavailableError on missing five_hour", () => {
-    expect(() => parseUsageResponse({ seven_day: bucket(20, 300) }))
-      .toThrow(QuotaUnavailableError);
+    expect(() => parseUsageResponse({ seven_day: bucket(20, 300) })).toThrow(QuotaUnavailableError);
   });
 
   it("throws when the payload is not an object", () => {
@@ -123,10 +122,11 @@ describe("fetchQuotaFromAnthropic", () => {
 
   it("wraps credential errors in QuotaUnavailableError", async () => {
     const badReader: CredentialReader = {
-      readClaudeOAuthToken: async () => { throw new Error("keychain empty"); },
+      readClaudeOAuthToken: async () => {
+        throw new Error("keychain empty");
+      },
     };
-    await expect(fetchQuotaFromAnthropic(badReader))
-      .rejects.toBeInstanceOf(QuotaUnavailableError);
+    await expect(fetchQuotaFromAnthropic(badReader)).rejects.toBeInstanceOf(QuotaUnavailableError);
   });
 
   it("sends the OAuth Bearer token and anthropic-beta header", async () => {
@@ -135,10 +135,13 @@ describe("fetchQuotaFromAnthropic", () => {
     globalThis.fetch = vi.fn(async (url: string, init?: RequestInit) => {
       capturedUrl = url;
       capturedHeaders = init?.headers as Record<string, string>;
-      return new Response(JSON.stringify({
-        five_hour: bucket(10, 60),
-        seven_day: bucket(20, 300),
-      }), { status: 200 });
+      return new Response(
+        JSON.stringify({
+          five_hour: bucket(10, 60),
+          seven_day: bucket(20, 300),
+        }),
+        { status: 200 },
+      );
     }) as typeof fetch;
 
     await fetchQuotaFromAnthropic(fakeReader);
@@ -184,10 +187,10 @@ describe("QuotaCache", () => {
 
   function fixedInfo(util: number): QuotaInfo {
     return {
-      fiveHour:        { utilization: util, resetsAt: "2099-01-01T00:00:00Z", minutesUntilReset: 100 },
-      sevenDay:        { utilization: util / 2, resetsAt: "2099-01-01T00:00:00Z", minutesUntilReset: 100 },
-      sevenDaySonnet:  null,
-      fetchedAt:       Date.now(),
+      fiveHour: { utilization: util, resetsAt: "2099-01-01T00:00:00Z", minutesUntilReset: 100 },
+      sevenDay: { utilization: util / 2, resetsAt: "2099-01-01T00:00:00Z", minutesUntilReset: 100 },
+      sevenDaySonnet: null,
+      fetchedAt: Date.now(),
     };
   }
 
@@ -221,9 +224,12 @@ describe("QuotaCache", () => {
 
   it("single-flight: concurrent get() during a refresh share one fetch", async () => {
     let resolveFetch: (info: QuotaInfo) => void = () => {};
-    const fetcher = vi.fn(() => new Promise<QuotaInfo>((resolve) => {
-      resolveFetch = resolve;
-    }));
+    const fetcher = vi.fn(
+      () =>
+        new Promise<QuotaInfo>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
     const cache = new QuotaCache({ fetcher, reader: fakeReader, ttlMs: 30_000 });
 
     const p1 = cache.get();
@@ -239,7 +245,9 @@ describe("QuotaCache", () => {
   });
 
   it("snapshot().unavailable=true when first fetch fails", async () => {
-    const fetcher = vi.fn(async () => { throw new QuotaUnavailableError("keychain missing"); });
+    const fetcher = vi.fn(async () => {
+      throw new QuotaUnavailableError("keychain missing");
+    });
     const cache = new QuotaCache({ fetcher, reader: fakeReader });
     await cache.get();
     const snap = cache.snapshot();
@@ -255,9 +263,11 @@ describe("QuotaCache", () => {
     await cache.refresh();
     await cache.refresh();
     expect(onRefresh).toHaveBeenCalledTimes(2);
-    expect(onRefresh).toHaveBeenLastCalledWith(expect.objectContaining({
-      fiveHour: expect.objectContaining({ utilization: 50 }),
-    }));
+    expect(onRefresh).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        fiveHour: expect.objectContaining({ utilization: 50 }),
+      }),
+    );
   });
 
   it("activeAgents tracking starts/stops the background tick", async () => {
@@ -274,4 +284,3 @@ describe("QuotaCache", () => {
     cache.stopBackgroundTick(); // teardown safe even when nothing is running
   });
 });
-

@@ -11,14 +11,8 @@ import { RateLimiter } from "../../src/auth/rate-limit.js";
 import { buildJwtKeyRegistry } from "../../src/auth/jwt-keys.js";
 import { MembershipCache } from "../../src/auth/membership-cache.js";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
-import type {
-  IdPProvider,
-  ExchangeCodeResult,
-} from "../../src/auth/providers/types.js";
-import {
-  IdPTokenRevoked,
-  IdPTransientError,
-} from "../../src/auth/providers/errors.js";
+import type { IdPProvider, ExchangeCodeResult } from "../../src/auth/providers/types.js";
+import { IdPTokenRevoked, IdPTransientError } from "../../src/auth/providers/errors.js";
 import { findAuditRows } from "../helpers/audit.js";
 import { PassthroughEncryption } from "../../src/security/encryption.js";
 
@@ -96,9 +90,7 @@ let membershipCache: MembershipCache;
  * matches the default seedOrg allowlist. Override per-test for IdP-error
  * scenarios.
  */
-function makeProvider(
-  listMemberships?: () => Promise<string[]>,
-): IdPProvider {
+function makeProvider(listMemberships?: () => Promise<string[]>): IdPProvider {
   return {
     name: "github",
     buildAuthUrl: () => "https://example/unused",
@@ -423,10 +415,7 @@ describe("refreshTokenGrant — grace allowlist denial with NULL family_id", () 
 
     const provider = makeProvider(async () => ["other-org"]);
     const token = await mintRefresh({ jti: "jti-null-fam-old" });
-    const req = mockRequest(
-      { refresh_token: token },
-      { ip: "10.0.0.7", userAgent: "ua/null-fam" },
-    );
+    const req = mockRequest({ refresh_token: token }, { ip: "10.0.0.7", userAgent: "ua/null-fam" });
     const res = mockResponse();
     await refreshTokenGrant(
       req,
@@ -569,7 +558,9 @@ describe("refreshTokenGrant — IdP refresh-token recovery (T54)", () => {
     seedRefreshRow({ jti: "jti-app-refresh-ok" });
 
     const provider = makeProviderWithRefresh({
-      listFails: async () => { throw new IdPTokenRevoked(); },
+      listFails: async () => {
+        throw new IdPTokenRevoked();
+      },
       refreshReturns: { accessToken: "ghu-new", refreshToken: "ghr-rotated" },
     });
 
@@ -607,7 +598,9 @@ describe("refreshTokenGrant — IdP refresh-token recovery (T54)", () => {
     seedRefreshRow({ jti: "jti-app-refresh-stays" });
 
     const provider = makeProviderWithRefresh({
-      listFails: async () => { throw new IdPTokenRevoked(); },
+      listFails: async () => {
+        throw new IdPTokenRevoked();
+      },
       refreshReturns: { accessToken: "ghu-new" }, // no refreshToken in response
     });
 
@@ -638,7 +631,9 @@ describe("refreshTokenGrant — IdP refresh-token recovery (T54)", () => {
     seedRefreshRow({ jti: "jti-app-refresh-expired" });
 
     const provider = makeProviderWithRefresh({
-      listFails: async () => { throw new IdPTokenRevoked(); },
+      listFails: async () => {
+        throw new IdPTokenRevoked();
+      },
       refreshThrows: new IdPTokenRevoked(),
     });
 
@@ -675,7 +670,9 @@ describe("refreshTokenGrant — IdP refresh-token recovery (T54)", () => {
     seedRefreshRow({ jti: "jti-no-refresh-token" });
 
     const provider = makeProviderWithRefresh({
-      listFails: async () => { throw new IdPTokenRevoked(); },
+      listFails: async () => {
+        throw new IdPTokenRevoked();
+      },
       refreshReturns: { accessToken: "should-not-be-used" },
     });
 
@@ -708,7 +705,9 @@ describe("refreshTokenGrant — IdP refresh-token recovery (T54)", () => {
       exchangeCode: async (): Promise<ExchangeCodeResult> => {
         throw new Error("not used");
       },
-      listMemberships: async () => { throw new IdPTokenRevoked(); },
+      listMemberships: async () => {
+        throw new IdPTokenRevoked();
+      },
     };
 
     const req = mockRequest({ refresh_token: token });
@@ -826,10 +825,7 @@ describe("refreshTokenGrant — grace branch allowlist re-check (V4 FIX 7)", () 
     });
 
     const token = await mintRefresh({ jti: "jti-grace-old", familyId });
-    const req = mockRequest(
-      { refresh_token: token },
-      { ip: "10.0.0.5", userAgent: "ua/grace" },
-    );
+    const req = mockRequest({ refresh_token: token }, { ip: "10.0.0.5", userAgent: "ua/grace" });
     const res = mockResponse();
     await refreshTokenGrant(req, res as unknown as ServerResponse, makeCtx());
 
@@ -864,10 +860,7 @@ describe("refreshTokenGrant — grace branch allowlist re-check (V4 FIX 7)", () 
     // Provider returns memberships not in allowlist → user removed.
     const provider = makeProvider(async () => ["other-org"]);
     const token = await mintRefresh({ jti: "jti-grace-old-2", familyId });
-    const req = mockRequest(
-      { refresh_token: token },
-      { ip: "10.0.0.6", userAgent: "ua/grace2" },
-    );
+    const req = mockRequest({ refresh_token: token }, { ip: "10.0.0.6", userAgent: "ua/grace2" });
     const res = mockResponse();
     await refreshTokenGrant(
       req,

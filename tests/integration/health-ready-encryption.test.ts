@@ -1,10 +1,4 @@
-import {
-  describe,
-  it,
-  expect,
-  beforeEach,
-  afterEach,
-} from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type Database from "better-sqlite3";
 import fs from "node:fs";
@@ -18,13 +12,8 @@ import {
   closeDb as closeGlobalDb,
 } from "../../src/database.js";
 import { handleHealthReady } from "../../src/http/health.js";
-import {
-  clearEncryptionStatus,
-} from "../../src/observability/encryption-status.js";
-import {
-  decryptFailuresCounter,
-  resetMetricsForTest,
-} from "../../src/observability/metrics.js";
+import { clearEncryptionStatus } from "../../src/observability/encryption-status.js";
+import { decryptFailuresCounter, resetMetricsForTest } from "../../src/observability/metrics.js";
 import { makeTestEncryption } from "../helpers/encryption.js";
 
 /**
@@ -126,8 +115,16 @@ afterEach(() => {
   resetAuditQueue();
   resetPhase2Auth();
   resetMetricsForTest();
-  try { closeGlobalDb(); } catch { /* idempotent */ }
-  try { fs.rmSync(DATA_DIR, { recursive: true, force: true }); } catch { /* Windows EBUSY */ }
+  try {
+    closeGlobalDb();
+  } catch {
+    /* idempotent */
+  }
+  try {
+    fs.rmSync(DATA_DIR, { recursive: true, force: true });
+  } catch {
+    /* Windows EBUSY */
+  }
 });
 
 describe("/health/ready encryption block — boot with key", () => {

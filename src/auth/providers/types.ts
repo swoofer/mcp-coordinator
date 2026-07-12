@@ -78,11 +78,7 @@ export type DevicePollResult =
  *                    subclass that overrides the strategy (generic
  *                    OIDCProvider's default)
  */
-export type AllowlistStrategy =
-  | "memberships"
-  | "idp_org_id"
-  | "id_token_groups"
-  | "none";
+export type AllowlistStrategy = "memberships" | "idp_org_id" | "id_token_groups" | "none";
 
 export interface IdPProvider {
   readonly name: string;
@@ -94,11 +90,21 @@ export interface IdPProvider {
    *  defence-in-depth against id_token replay; OIDC providers MUST
    *  include it in the URL and verify it at exchangeCode time.
    *  Non-OIDC providers ignore it. */
-  buildAuthUrl(state: string, redirectUri: string, codeChallenge?: string, nonce?: string): string | Promise<string>;
+  buildAuthUrl(
+    state: string,
+    redirectUri: string,
+    codeChallenge?: string,
+    nonce?: string,
+  ): string | Promise<string>;
   /** Exchange the IdP authorization code for tokens. `nonce` is the
    *  value passed to buildAuthUrl, read back from the oauth_state row;
    *  OIDC providers verify the id_token's `nonce` claim against it. */
-  exchangeCode(code: string, redirectUri: string, codeVerifier?: string, nonce?: string | null): Promise<ExchangeCodeResult>;
+  exchangeCode(
+    code: string,
+    redirectUri: string,
+    codeVerifier?: string,
+    nonce?: string | null,
+  ): Promise<ExchangeCodeResult>;
   listMemberships?(accessToken: string): Promise<string[]>;
   requestDeviceCode?(): Promise<DeviceCodeResponse>;
   pollDeviceToken?(deviceCode: string): Promise<DevicePollResult>;

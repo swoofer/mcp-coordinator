@@ -5,9 +5,17 @@ import fs from "fs";
 
 const DIR = "data-test-audit";
 
-beforeAll(() => { fs.mkdirSync(DIR, { recursive: true }); initDatabase(DIR); });
-beforeEach(() => { getDb().exec("DELETE FROM audit_log"); });
-afterAll(() => { closeDb(); fs.rmSync(DIR, { recursive: true, force: true }); });
+beforeAll(() => {
+  fs.mkdirSync(DIR, { recursive: true });
+  initDatabase(DIR);
+});
+beforeEach(() => {
+  getDb().exec("DELETE FROM audit_log");
+});
+afterAll(() => {
+  closeDb();
+  fs.rmSync(DIR, { recursive: true, force: true });
+});
 
 describe("auditLog", () => {
   it("writes a row to audit_log", () => {
@@ -21,7 +29,9 @@ describe("auditLog", () => {
 
   it("accepts null user_id (unauthenticated actions)", () => {
     auditLog({ user_id: null, org_id: "default", action: "auth.login.failure" });
-    const row = getDb().prepare("SELECT * FROM audit_log").get() as { actor_user_id: string | null };
+    const row = getDb().prepare("SELECT * FROM audit_log").get() as {
+      actor_user_id: string | null;
+    };
     expect(row.actor_user_id).toBeNull();
   });
 
@@ -39,20 +49,30 @@ describe("auditLog", () => {
 
   it("serializes metadata as JSON into metadata_json column", () => {
     auditLog({
-      user_id: "u2", org_id: "default", action: "thread.create",
-      target: "thread-abc", metadata: { round: 1, agents: ["a", "b"] },
+      user_id: "u2",
+      org_id: "default",
+      action: "thread.create",
+      target: "thread-abc",
+      metadata: { round: 1, agents: ["a", "b"] },
     });
-    const row = getDb().prepare("SELECT metadata_json FROM audit_log").get() as { metadata_json: string };
+    const row = getDb().prepare("SELECT metadata_json FROM audit_log").get() as {
+      metadata_json: string;
+    };
     expect(JSON.parse(row.metadata_json)).toEqual({ round: 1, agents: ["a", "b"] });
   });
 
   it("captures actor_ip and actor_user_agent", () => {
     auditLog({
-      user_id: "u3", org_id: "default", action: "auth.refresh.rotated",
-      ip: "127.0.0.1", user_agent: "essaim/1.0",
+      user_id: "u3",
+      org_id: "default",
+      action: "auth.refresh.rotated",
+      ip: "127.0.0.1",
+      user_agent: "essaim/1.0",
     });
-    const row = getDb().prepare("SELECT actor_ip, actor_user_agent FROM audit_log").get() as
-      { actor_ip: string; actor_user_agent: string };
+    const row = getDb().prepare("SELECT actor_ip, actor_user_agent FROM audit_log").get() as {
+      actor_ip: string;
+      actor_user_agent: string;
+    };
     expect(row.actor_ip).toBe("127.0.0.1");
     expect(row.actor_user_agent).toBe("essaim/1.0");
   });

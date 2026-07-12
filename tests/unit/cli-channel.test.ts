@@ -99,18 +99,12 @@ describe("buildChannelNotification — payload translation", () => {
     // mqtt-bridge.clearRetainedConsultation publishes an empty payload to
     // wipe the retain flag — translating it into a blank notification would
     // spam the session.
-    const out = buildChannelNotification(
-      "coordinator/acme/consultations/new",
-      "",
-    );
+    const out = buildChannelNotification("coordinator/acme/consultations/new", "");
     expect(out).toBeNull();
   });
 
   it("returns null for malformed JSON", () => {
-    const out = buildChannelNotification(
-      "coordinator/acme/consultations/new",
-      "{not valid json",
-    );
+    const out = buildChannelNotification("coordinator/acme/consultations/new", "{not valid json");
     expect(out).toBeNull();
   });
 
@@ -274,11 +268,8 @@ vi.mock("mqtt", () => {
   const create = (): unknown => {
     const ee = new EventEmitter();
     const client = Object.assign(ee, {
-      subscribe: (
-        _topic: string,
-        _opts: unknown,
-        cb: (err: Error | null) => void,
-      ): void => cb(null),
+      subscribe: (_topic: string, _opts: unknown, cb: (err: Error | null) => void): void =>
+        cb(null),
       publish: (
         topic: string,
         payload: string,
@@ -288,11 +279,7 @@ vi.mock("mqtt", () => {
         publishCalls.push({ topic, payload, opts });
         cb(null);
       },
-      end: (
-        _force: boolean,
-        _opts: unknown,
-        cb: () => void,
-      ): void => {
+      end: (_force: boolean, _opts: unknown, cb: () => void): void => {
         cb();
       },
       __publishCalls: publishCalls,
@@ -333,8 +320,15 @@ describe("buildChannelServer — post_to_thread tool registration", () => {
     expect(listHandler).toBeDefined();
     const result = (await listHandler!(
       { method: "tools/list", params: {} },
-      { signal: new AbortController().signal, requestId: 1, sendNotification: async () => {}, sendRequest: async () => ({}) },
-    )) as { tools: Array<{ name: string; description: string; inputSchema: { required?: string[] } }> };
+      {
+        signal: new AbortController().signal,
+        requestId: 1,
+        sendNotification: async () => {},
+        sendRequest: async () => ({}),
+      },
+    )) as {
+      tools: Array<{ name: string; description: string; inputSchema: { required?: string[] } }>;
+    };
     expect(result.tools).toHaveLength(1);
     const tool = result.tools[0];
     expect(tool.name).toBe("post_to_thread");
@@ -364,7 +358,12 @@ describe("buildChannelServer — post_to_thread tool registration", () => {
           arguments: { thread_id: "t-99", content: "ack from channel" },
         },
       },
-      { signal: new AbortController().signal, requestId: 2, sendNotification: async () => {}, sendRequest: async () => ({}) },
+      {
+        signal: new AbortController().signal,
+        requestId: 2,
+        sendNotification: async () => {},
+        sendRequest: async () => ({}),
+      },
     )) as { isError?: boolean; content: Array<{ type: string; text: string }> };
 
     expect(result.isError).toBeUndefined();
@@ -400,7 +399,12 @@ describe("buildChannelServer — post_to_thread tool registration", () => {
         method: "tools/call",
         params: { name: "post_to_thread", arguments: { content: "no thread id" } },
       },
-      { signal: new AbortController().signal, requestId: 3, sendNotification: async () => {}, sendRequest: async () => ({}) },
+      {
+        signal: new AbortController().signal,
+        requestId: 3,
+        sendNotification: async () => {},
+        sendRequest: async () => ({}),
+      },
     )) as { isError?: boolean; content: Array<{ text: string }> };
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toMatch(/Invalid arguments/);
@@ -419,7 +423,12 @@ describe("buildChannelServer — post_to_thread tool registration", () => {
         method: "tools/call",
         params: { name: "nonexistent", arguments: {} },
       },
-      { signal: new AbortController().signal, requestId: 4, sendNotification: async () => {}, sendRequest: async () => ({}) },
+      {
+        signal: new AbortController().signal,
+        requestId: 4,
+        sendNotification: async () => {},
+        sendRequest: async () => ({}),
+      },
     )) as { isError?: boolean; content: Array<{ text: string }> };
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toMatch(/Unknown tool/);

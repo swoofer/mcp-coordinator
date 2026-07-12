@@ -28,10 +28,15 @@ describe("B2 fix - timeout sweeper as background worker (no read side-effect)", 
   it("getThread no longer triggers timeout check (bug B2)", () => {
     registry.register("default", "a2", "Agent B", ["src/auth"]);
     const thread = consultation.announceWork("default", {
-      agent_id: "a1", subject: "B2 read no-mutate", target_modules: ["src/auth"], target_files: [],
+      agent_id: "a1",
+      subject: "B2 read no-mutate",
+      target_modules: ["src/auth"],
+      target_files: [],
     });
     const db = getDb();
-    db.prepare("UPDATE threads SET created_at=datetime('now', '-5 minutes'), timeout_seconds=1 WHERE id=?").run(thread.id);
+    db.prepare(
+      "UPDATE threads SET created_at=datetime('now', '-5 minutes'), timeout_seconds=1 WHERE id=?",
+    ).run(thread.id);
 
     // Read should NOT change status now
     const read1 = consultation.getThread("default", thread.id);
@@ -46,17 +51,22 @@ describe("B2 fix - timeout sweeper as background worker (no read side-effect)", 
   it("listThreads no longer triggers timeout check", () => {
     registry.register("default", "a2", "Agent B", ["src/auth"]);
     const thread = consultation.announceWork("default", {
-      agent_id: "a1", subject: "B2 list no-mutate", target_modules: ["src/auth"], target_files: [],
+      agent_id: "a1",
+      subject: "B2 list no-mutate",
+      target_modules: ["src/auth"],
+      target_files: [],
     });
     const db = getDb();
-    db.prepare("UPDATE threads SET created_at=datetime('now', '-5 minutes'), timeout_seconds=1 WHERE id=?").run(thread.id);
+    db.prepare(
+      "UPDATE threads SET created_at=datetime('now', '-5 minutes'), timeout_seconds=1 WHERE id=?",
+    ).run(thread.id);
 
     const list1 = consultation.listThreads("default", {});
-    expect(list1.find(t => t.id === thread.id)!.status).toBe("open");
+    expect(list1.find((t) => t.id === thread.id)!.status).toBe("open");
 
     consultation.checkTimeouts();
     const list2 = consultation.listThreads("default", {});
-    expect(list2.find(t => t.id === thread.id)!.status).toBe("resolved");
+    expect(list2.find((t) => t.id === thread.id)!.status).toBe("resolved");
   });
 
   it("checkTimeouts emits exactly one event per timed-out thread (no double-emit on repeat call)", () => {
@@ -64,10 +74,15 @@ describe("B2 fix - timeout sweeper as background worker (no read side-effect)", 
     const events: unknown[] = [];
     consultation.onResolve((e) => events.push(e));
     const thread = consultation.announceWork("default", {
-      agent_id: "a1", subject: "B2 single-emit", target_modules: ["src/auth"], target_files: [],
+      agent_id: "a1",
+      subject: "B2 single-emit",
+      target_modules: ["src/auth"],
+      target_files: [],
     });
     const db = getDb();
-    db.prepare("UPDATE threads SET created_at=datetime('now', '-5 minutes'), timeout_seconds=1 WHERE id=?").run(thread.id);
+    db.prepare(
+      "UPDATE threads SET created_at=datetime('now', '-5 minutes'), timeout_seconds=1 WHERE id=?",
+    ).run(thread.id);
 
     consultation.checkTimeouts(); // 1 emit
     consultation.checkTimeouts(); // already resolved, 0 emits
@@ -92,10 +107,15 @@ describe("B2 fix - timeout sweeper as background worker (no read side-effect)", 
     const events: unknown[] = [];
     consultation.onResolve((e) => events.push(e));
     const thread = consultation.announceWork("default", {
-      agent_id: "a1", subject: "B2 bg sweeper", target_modules: ["src/auth"], target_files: [],
+      agent_id: "a1",
+      subject: "B2 bg sweeper",
+      target_modules: ["src/auth"],
+      target_files: [],
     });
     const db = getDb();
-    db.prepare("UPDATE threads SET created_at=datetime('now', '-5 minutes'), timeout_seconds=1 WHERE id=?").run(thread.id);
+    db.prepare(
+      "UPDATE threads SET created_at=datetime('now', '-5 minutes'), timeout_seconds=1 WHERE id=?",
+    ).run(thread.id);
 
     consultation.startTimeoutSweeper(50); // tick every 50ms
     // Wait long enough for at least 2 ticks

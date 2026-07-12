@@ -132,7 +132,10 @@ describe("Consultation", () => {
       target_files: [],
     });
     consultation.postToThread("default", {
-      thread_id: thread.id, agent_id: "a2", type: "context", content: "noted",
+      thread_id: thread.id,
+      agent_id: "a2",
+      type: "context",
+      content: "noted",
     });
     consultation.proposeResolution("default", thread.id, "a1", "Keep interface compatible");
     consultation.approveResolution("default", thread.id, "a2");
@@ -150,7 +153,10 @@ describe("Consultation", () => {
       target_files: [],
     });
     consultation.postToThread("default", {
-      thread_id: thread.id, agent_id: "a2", type: "context", content: "noted",
+      thread_id: thread.id,
+      agent_id: "a2",
+      type: "context",
+      content: "noted",
     });
     consultation.proposeResolution("default", thread.id, "a1", "Keep interface compatible");
     consultation.contestResolution("default", thread.id, "a2", "This will break my cache layer");
@@ -172,8 +178,18 @@ describe("Consultation", () => {
   });
 
   it("lists threads with filters", () => {
-    consultation.announceWork("default", { agent_id: "a1", subject: "Task 1", target_modules: ["src/auth"], target_files: [] });
-    consultation.announceWork("default", { agent_id: "a2", subject: "Task 2", target_modules: ["src/users"], target_files: [] });
+    consultation.announceWork("default", {
+      agent_id: "a1",
+      subject: "Task 1",
+      target_modules: ["src/auth"],
+      target_files: [],
+    });
+    consultation.announceWork("default", {
+      agent_id: "a2",
+      subject: "Task 2",
+      target_modules: ["src/users"],
+      target_files: [],
+    });
     const all = consultation.listThreads("default", {});
     expect(all.length).toBeGreaterThanOrEqual(2);
     const byAgent = consultation.listThreads("default", { agent_id: "a1" });
@@ -207,15 +223,27 @@ describe("Consultation", () => {
   it("listThreads({assigned_to_me}) returns own + unassigned only", () => {
     // Open-pool thread (claimable by anyone)
     consultation.announceWork("default", {
-      agent_id: "a1", subject: "Open", target_modules: ["src/users"], target_files: [], keep_open: true,
+      agent_id: "a1",
+      subject: "Open",
+      target_modules: ["src/users"],
+      target_files: [],
+      keep_open: true,
     });
     // Directed at a2
     consultation.announceWork("default", {
-      agent_id: "a1", subject: "For a2", target_modules: ["src/users"], target_files: [], assigned_to: "a2",
+      agent_id: "a1",
+      subject: "For a2",
+      target_modules: ["src/users"],
+      target_files: [],
+      assigned_to: "a2",
     });
     // Directed at a3
     consultation.announceWork("default", {
-      agent_id: "a1", subject: "For a3", target_modules: ["src/api"], target_files: [], assigned_to: "a3",
+      agent_id: "a1",
+      subject: "For a3",
+      target_modules: ["src/api"],
+      target_files: [],
+      assigned_to: "a3",
     });
 
     const forA2 = consultation.listThreads("default", { assigned_to_me: "a2" });
@@ -235,7 +263,10 @@ describe("Consultation", () => {
       target_files: [],
     });
     consultation.postToThread("default", {
-      thread_id: thread.id, agent_id: "a2", type: "context", content: "noted",
+      thread_id: thread.id,
+      agent_id: "a2",
+      type: "context",
+      content: "noted",
     });
     const full = consultation.getThreadWithMessages("default", thread.id);
     expect(full!.thread.id).toBe(thread.id);
@@ -264,7 +295,10 @@ describe("Consultation", () => {
     });
     const since = new Date().toISOString();
     consultation.postToThread("default", {
-      thread_id: thread.id, agent_id: "a2", type: "context", content: "new info",
+      thread_id: thread.id,
+      agent_id: "a2",
+      type: "context",
+      content: "new info",
     });
     const updates = consultation.getThreadUpdates("default", "a1", since);
     expect(updates.length).toBeGreaterThanOrEqual(1);
@@ -280,8 +314,9 @@ describe("Consultation", () => {
     });
     // Manually set created_at to 5 minutes ago and timeout to 1 second
     const db = getDb();
-    db.prepare("UPDATE threads SET created_at = datetime('now', '-5 minutes'), timeout_seconds = 1 WHERE id = ?")
-      .run(thread.id);
+    db.prepare(
+      "UPDATE threads SET created_at = datetime('now', '-5 minutes'), timeout_seconds = 1 WHERE id = ?",
+    ).run(thread.id);
 
     // B2: timeout check no longer a getThread side-effect; call sweeper directly.
     consultation.checkTimeouts();
@@ -298,9 +333,17 @@ describe("Consultation", () => {
     consultation.onResolve((e) => events.push(e));
 
     const thread = consultation.announceWork("default", {
-      agent_id: "a1", subject: "Test consensus", target_modules: ["src/auth"], target_files: [],
+      agent_id: "a1",
+      subject: "Test consensus",
+      target_modules: ["src/auth"],
+      target_files: [],
     });
-    consultation.postToThread("default", { thread_id: thread.id, agent_id: "a2", type: "context", content: "ok" });
+    consultation.postToThread("default", {
+      thread_id: thread.id,
+      agent_id: "a2",
+      type: "context",
+      content: "ok",
+    });
     consultation.proposeResolution("default", thread.id, "a1", "Agreed");
     consultation.approveResolution("default", thread.id, "a2", "Agent B");
 
@@ -318,7 +361,10 @@ describe("Consultation", () => {
     consultation.onResolve((e) => events.push(e));
 
     const thread = consultation.announceWork("default", {
-      agent_id: "a1", subject: "Test auto", target_modules: ["src/auth"], target_files: [],
+      agent_id: "a1",
+      subject: "Test auto",
+      target_modules: ["src/auth"],
+      target_files: [],
     });
     // Simulate external auto-resolve (normally done by server-setup.ts)
     consultation.emitResolution(thread.id, "auto_resolved");
@@ -334,11 +380,15 @@ describe("Consultation", () => {
     consultation.onResolve((e) => events.push(e));
 
     const thread = consultation.announceWork("default", {
-      agent_id: "a1", subject: "Test timeout event", target_modules: ["src/auth"], target_files: [],
+      agent_id: "a1",
+      subject: "Test timeout event",
+      target_modules: ["src/auth"],
+      target_files: [],
     });
     const db = getDb();
-    db.prepare("UPDATE threads SET created_at = datetime('now', '-5 minutes'), timeout_seconds = 1 WHERE id = ?")
-      .run(thread.id);
+    db.prepare(
+      "UPDATE threads SET created_at = datetime('now', '-5 minutes'), timeout_seconds = 1 WHERE id = ?",
+    ).run(thread.id);
 
     consultation.checkTimeouts(); // B2: explicit call (no longer a getThread side-effect)
 
@@ -353,12 +403,20 @@ describe("Consultation", () => {
     consultation.onResolve((e) => events.push(e));
 
     const thread = consultation.announceWork("default", {
-      agent_id: "a1", subject: "Test max rounds", target_modules: ["src/auth"], target_files: [],
+      agent_id: "a1",
+      subject: "Test max rounds",
+      target_modules: ["src/auth"],
+      target_files: [],
     });
     const db = getDb();
     db.prepare("UPDATE threads SET max_rounds = 1 WHERE id = ?").run(thread.id);
 
-    consultation.postToThread("default", { thread_id: thread.id, agent_id: "a2", type: "context", content: "ok" });
+    consultation.postToThread("default", {
+      thread_id: thread.id,
+      agent_id: "a2",
+      type: "context",
+      content: "ok",
+    });
     consultation.proposeResolution("default", thread.id, "a1", "Plan A");
     consultation.contestResolution("default", thread.id, "a2", "Disagree");
 
@@ -374,7 +432,10 @@ describe("Consultation", () => {
     consultation.onResolve((e) => events.push(e));
 
     const thread = consultation.announceWork("default", {
-      agent_id: "a1", subject: "Test close", target_modules: ["src/auth"], target_files: [],
+      agent_id: "a1",
+      subject: "Test close",
+      target_modules: ["src/auth"],
+      target_files: [],
     });
     consultation.closeThread("default", thread.id, "a1", "Done manually");
 
@@ -389,7 +450,10 @@ describe("Consultation", () => {
     consultation.onResolve((e) => events.push(e));
 
     const thread = consultation.announceWork("default", {
-      agent_id: "a1", subject: "Test departure", target_modules: ["src/auth"], target_files: [],
+      agent_id: "a1",
+      subject: "Test departure",
+      target_modules: ["src/auth"],
+      target_files: [],
     });
     consultation.handleAgentDeparture("a2");
 
@@ -403,9 +467,17 @@ describe("Consultation", () => {
     consultation.onResolve((e) => events.push(e));
 
     const thread = consultation.announceWork("default", {
-      agent_id: "a1", subject: "Test messages", target_modules: ["src/auth"], target_files: [],
+      agent_id: "a1",
+      subject: "Test messages",
+      target_modules: ["src/auth"],
+      target_files: [],
     });
-    consultation.postToThread("default", { thread_id: thread.id, agent_id: "a2", type: "warning", content: "watch out" });
+    consultation.postToThread("default", {
+      thread_id: thread.id,
+      agent_id: "a2",
+      type: "warning",
+      content: "watch out",
+    });
     consultation.proposeResolution("default", thread.id, "a1", "Noted");
     consultation.approveResolution("default", thread.id, "a2");
 
@@ -417,7 +489,10 @@ describe("Consultation", () => {
     consultation.onResolve((e) => events.push(e));
 
     const thread = consultation.announceWork("default", {
-      agent_id: "a1", subject: "No messages", target_modules: ["src/auth"], target_files: [],
+      agent_id: "a1",
+      subject: "No messages",
+      target_modules: ["src/auth"],
+      target_files: [],
     });
     consultation.emitResolution(thread.id, "auto_resolved");
 
@@ -440,7 +515,7 @@ describe("Consultation", () => {
         agent_id: "a2",
         type: "context",
         content: "Too late",
-      })
+      }),
     ).toThrow(/cancelled/);
   });
 
@@ -453,7 +528,7 @@ describe("Consultation", () => {
       target_files: [],
     });
     expect(() =>
-      consultation.proposeResolution("default", thread.id, "a2", "My resolution")
+      consultation.proposeResolution("default", thread.id, "a2", "My resolution"),
     ).toThrow(/initiator/);
   });
 
@@ -465,9 +540,9 @@ describe("Consultation", () => {
       target_modules: ["src/auth"],
       target_files: [],
     });
-    expect(() =>
-      consultation.cancelThread("default", thread.id, "a2", "I want to cancel")
-    ).toThrow(/initiator/);
+    expect(() => consultation.cancelThread("default", thread.id, "a2", "I want to cancel")).toThrow(
+      /initiator/,
+    );
   });
 
   it("contestResolution on non-resolving thread throws", () => {
@@ -479,9 +554,9 @@ describe("Consultation", () => {
       target_files: [],
     });
     // Thread is still "open", not "resolving"
-    expect(() =>
-      consultation.contestResolution("default", thread.id, "a2", "Disagree")
-    ).toThrow(/not resolving/);
+    expect(() => consultation.contestResolution("default", thread.id, "a2", "Disagree")).toThrow(
+      /not resolving/,
+    );
   });
 
   it("approveResolution on non-resolving thread throws", () => {
@@ -493,9 +568,9 @@ describe("Consultation", () => {
       target_files: [],
     });
     // Thread is still "open", not "resolving"
-    expect(() =>
-      consultation.approveResolution("default", thread.id, "a2")
-    ).toThrow(/not resolving/);
+    expect(() => consultation.approveResolution("default", thread.id, "a2")).toThrow(
+      /not resolving/,
+    );
   });
 
   it("getThread returns null for unknown id", () => {
@@ -587,7 +662,10 @@ describe("Consultation", () => {
     });
     // a2 responds, a3 departs
     consultation.postToThread("default", {
-      thread_id: thread.id, agent_id: "a2", type: "context", content: "noted",
+      thread_id: thread.id,
+      agent_id: "a2",
+      type: "context",
+      content: "noted",
     });
     consultation.handleAgentDeparture("a3");
     // Propose and only a2 needs to approve
@@ -606,25 +684,25 @@ describe("Consultation", () => {
         agent_id: "a1",
         type: "context",
         content: "Hello",
-      })
+      }),
     ).toThrow(/not found/);
   });
 
   it("proposeResolution throws on unknown thread_id", () => {
     expect(() =>
-      consultation.proposeResolution("default", "nonexistent-thread", "a1", "My plan")
+      consultation.proposeResolution("default", "nonexistent-thread", "a1", "My plan"),
     ).toThrow(/not found/);
   });
 
   it("approveResolution throws on unknown thread_id", () => {
-    expect(() =>
-      consultation.approveResolution("default", "nonexistent-thread", "a2")
-    ).toThrow(/not found/);
+    expect(() => consultation.approveResolution("default", "nonexistent-thread", "a2")).toThrow(
+      /not found/,
+    );
   });
 
   it("contestResolution throws on unknown thread_id", () => {
     expect(() =>
-      consultation.contestResolution("default", "nonexistent-thread", "a2", "Disagree")
+      consultation.contestResolution("default", "nonexistent-thread", "a2", "Disagree"),
     ).toThrow(/not found/);
   });
 
@@ -632,24 +710,40 @@ describe("Consultation", () => {
 
   it("listThreads filters by module", () => {
     consultation.announceWork("default", {
-      agent_id: "a1", subject: "Auth work", target_modules: ["src/auth"], target_files: [],
+      agent_id: "a1",
+      subject: "Auth work",
+      target_modules: ["src/auth"],
+      target_files: [],
     });
     consultation.announceWork("default", {
-      agent_id: "a2", subject: "Users work", target_modules: ["src/users"], target_files: [],
+      agent_id: "a2",
+      subject: "Users work",
+      target_modules: ["src/users"],
+      target_files: [],
     });
     const authThreads = consultation.listThreads("default", { module: "src/auth" });
     expect(authThreads.length).toBeGreaterThanOrEqual(1);
     expect(authThreads.every((t) => t.target_modules.includes("src/auth"))).toBe(true);
-    expect(authThreads.some((t) => t.target_modules.includes("src/users") && !t.target_modules.includes("src/auth"))).toBe(false);
+    expect(
+      authThreads.some(
+        (t) => t.target_modules.includes("src/users") && !t.target_modules.includes("src/auth"),
+      ),
+    ).toBe(false);
   });
 
   it("getThreadUpdates respects since parameter", () => {
     registry.register("default", "a2", "Agent B", ["src/auth"]);
     const thread = consultation.announceWork("default", {
-      agent_id: "a1", subject: "Refactor auth", target_modules: ["src/auth"], target_files: [],
+      agent_id: "a1",
+      subject: "Refactor auth",
+      target_modules: ["src/auth"],
+      target_files: [],
     });
     consultation.postToThread("default", {
-      thread_id: thread.id, agent_id: "a2", type: "context", content: "old message",
+      thread_id: thread.id,
+      agent_id: "a2",
+      type: "context",
+      content: "old message",
     });
     const since = new Date(Date.now() + 1000).toISOString();
     const updates = consultation.getThreadUpdates("default", "a1", since);
@@ -658,7 +752,10 @@ describe("Consultation", () => {
 
   it("getActionSummaries respects since parameter", () => {
     consultation.logActionSummary("default", {
-      session_id: "s1", agent_id: "a1", file_path: "src/auth/old.ts", summary: "Old action",
+      session_id: "s1",
+      agent_id: "a1",
+      file_path: "src/auth/old.ts",
+      summary: "Old action",
     });
     const since = new Date(Date.now() + 60000).toISOString();
     const summaries = consultation.getActionSummaries("default", "a1", since);
@@ -679,7 +776,12 @@ describe("Consultation", () => {
       target_modules: ["src/auth"],
       target_files: [],
     });
-    consultation.postToThread("default", { thread_id: thread.id, agent_id: "a2", type: "context", content: "ok" });
+    consultation.postToThread("default", {
+      thread_id: thread.id,
+      agent_id: "a2",
+      type: "context",
+      content: "ok",
+    });
     consultation.proposeResolution("default", thread.id, "a1", "Go ahead");
     consultation.approveResolution("default", thread.id, "a2");
     const midState = consultation.getThread("default", thread.id);
@@ -705,12 +807,16 @@ describe("Consultation", () => {
       target_files: [],
     });
     consultation.postToThread("default", {
-      thread_id: thread.id, agent_id: "a2", type: "context", content: "I have concerns",
+      thread_id: thread.id,
+      agent_id: "a2",
+      type: "context",
+      content: "I have concerns",
     });
 
     const db = getDb();
-    db.prepare("UPDATE threads SET created_at = datetime('now', '-5 minutes'), timeout_seconds = 1 WHERE id = ?")
-      .run(thread.id);
+    db.prepare(
+      "UPDATE threads SET created_at = datetime('now', '-5 minutes'), timeout_seconds = 1 WHERE id = ?",
+    ).run(thread.id);
 
     consultation.checkTimeouts();
 
@@ -725,12 +831,17 @@ describe("Consultation", () => {
   });
 
   it("cancelThread on nonexistent thread throws", () => {
-    expect(() => consultation.cancelThread("default", "nonexistent", "a1", "reason")).toThrow(/not found/);
+    expect(() => consultation.cancelThread("default", "nonexistent", "a1", "reason")).toThrow(
+      /not found/,
+    );
   });
 
   it("cancelThread without reason posts no message", () => {
     const thread = consultation.announceWork("default", {
-      agent_id: "a1", subject: "Cancel test", target_modules: ["src/auth"], target_files: [],
+      agent_id: "a1",
+      subject: "Cancel test",
+      target_modules: ["src/auth"],
+      target_files: [],
     });
     consultation.cancelThread("default", thread.id, "a1");
     const full = consultation.getThreadWithMessages("default", thread.id);
@@ -740,11 +851,17 @@ describe("Consultation", () => {
   it("getThreadUpdates with since returns matching messages", () => {
     registry.register("default", "a2", "Agent B", ["src/auth"]);
     const thread = consultation.announceWork("default", {
-      agent_id: "a1", subject: "Updates test", target_modules: ["src/auth"], target_files: [],
+      agent_id: "a1",
+      subject: "Updates test",
+      target_modules: ["src/auth"],
+      target_files: [],
     });
     const before = new Date(Date.now() - 60000).toISOString();
     consultation.postToThread("default", {
-      thread_id: thread.id, agent_id: "a2", type: "context", content: "recent message",
+      thread_id: thread.id,
+      agent_id: "a2",
+      type: "context",
+      content: "recent message",
     });
     const updates = consultation.getThreadUpdates("default", "a1", before);
     expect(updates.length).toBeGreaterThanOrEqual(1);
@@ -756,7 +873,7 @@ describe("Consultation", () => {
   it("BUG: closeThread should throw on nonexistent thread but silently succeeds", () => {
     // cancelThread throws on nonexistent thread, but closeThread just does a blind UPDATE
     expect(() =>
-      consultation.closeThread("default", "nonexistent-thread-id", "a1", "Done")
+      consultation.closeThread("default", "nonexistent-thread-id", "a1", "Done"),
     ).toThrow(/not found/);
   });
 
@@ -770,7 +887,7 @@ describe("Consultation", () => {
     });
     // a2 should NOT be able to close a1's thread
     expect(() =>
-      consultation.closeThread("default", thread.id, "a2", "I'm closing your thread")
+      consultation.closeThread("default", thread.id, "a2", "I'm closing your thread"),
     ).toThrow(/initiator/);
   });
 
@@ -784,7 +901,7 @@ describe("Consultation", () => {
     consultation.cancelThread("default", thread.id, "a1", "cancelled");
     // closeThread should not allow re-closing a cancelled thread
     expect(() =>
-      consultation.closeThread("default", thread.id, "a1", "Reopening from cancelled?")
+      consultation.closeThread("default", thread.id, "a1", "Reopening from cancelled?"),
     ).toThrow();
   });
 
@@ -799,7 +916,10 @@ describe("Consultation", () => {
       target_files: [],
     });
     consultation.postToThread("default", {
-      thread_id: thread.id, agent_id: "a2", type: "context", content: "test message",
+      thread_id: thread.id,
+      agent_id: "a2",
+      type: "context",
+      content: "test message",
     });
     // Using timezone offset format instead of Z â€" the normalization regex
     // \.\d+$ won't match because the string ends with ":00" not digits
@@ -825,8 +945,18 @@ describe("Consultation", () => {
     });
 
     // Round 1: a2 approves, a3 contests â†’ round goes to 2
-    consultation.postToThread("default", { thread_id: thread.id, agent_id: "a2", type: "context", content: "ok" });
-    consultation.postToThread("default", { thread_id: thread.id, agent_id: "a3", type: "context", content: "concerns" });
+    consultation.postToThread("default", {
+      thread_id: thread.id,
+      agent_id: "a2",
+      type: "context",
+      content: "ok",
+    });
+    consultation.postToThread("default", {
+      thread_id: thread.id,
+      agent_id: "a3",
+      type: "context",
+      content: "concerns",
+    });
     consultation.proposeResolution("default", thread.id, "a1", "Plan A");
     consultation.approveResolution("default", thread.id, "a2");
     // a2 approved in round 1, but a3 contests
@@ -885,16 +1015,32 @@ describe("consultation org_id scoping", () => {
 
   it("announceWork writes org_id", () => {
     const t = consultation.announceWork("org-a", {
-      agent_id: "a1", subject: "subj", plan: "p", target_modules: [], target_files: [],
+      agent_id: "a1",
+      subject: "subj",
+      plan: "p",
+      target_modules: [],
+      target_files: [],
     });
-    const row = getDb().prepare("SELECT org_id FROM threads WHERE id = ?").get(t.id) as { org_id: string };
+    const row = getDb().prepare("SELECT org_id FROM threads WHERE id = ?").get(t.id) as {
+      org_id: string;
+    };
     expect(row.org_id).toBe("org-a");
   });
 
   it("listThreads scopes by org", () => {
     // a1 auto-resolves when announcing (no respondents) — status = "resolved"
-    consultation.announceWork("org-a", { agent_id: "a1", subject: "A subj", target_modules: [], target_files: [] });
-    consultation.announceWork("org-b", { agent_id: "a2", subject: "B subj", target_modules: [], target_files: [] });
+    consultation.announceWork("org-a", {
+      agent_id: "a1",
+      subject: "A subj",
+      target_modules: [],
+      target_files: [],
+    });
+    consultation.announceWork("org-b", {
+      agent_id: "a2",
+      subject: "B subj",
+      target_modules: [],
+      target_files: [],
+    });
     const aThreads = consultation.listThreads("org-a", { status: "resolved" });
     expect(aThreads.every((t) => t.subject === "A subj")).toBe(true);
     const bThreads = consultation.listThreads("org-b", { status: "resolved" });
@@ -902,32 +1048,70 @@ describe("consultation org_id scoping", () => {
   });
 
   it("getThread returns null for cross-org access", () => {
-    const t = consultation.announceWork("org-a", { agent_id: "a1", subject: "subj", target_modules: [], target_files: [] });
+    const t = consultation.announceWork("org-a", {
+      agent_id: "a1",
+      subject: "subj",
+      target_modules: [],
+      target_files: [],
+    });
     expect(consultation.getThread("org-b", t.id)).toBeNull();
     expect(consultation.getThread("org-a", t.id)?.id).toBe(t.id);
   });
 
   it("postToThread scopes by org", () => {
-    const t = consultation.announceWork("org-a", { agent_id: "a1", subject: "subj", target_modules: [], target_files: [], keep_open: true });
-    consultation.postToThread("org-a", { thread_id: t.id, agent_id: "a1", type: "context", content: "hi" });
+    const t = consultation.announceWork("org-a", {
+      agent_id: "a1",
+      subject: "subj",
+      target_modules: [],
+      target_files: [],
+      keep_open: true,
+    });
+    consultation.postToThread("org-a", {
+      thread_id: t.id,
+      agent_id: "a1",
+      type: "context",
+      content: "hi",
+    });
     // Cross-org post must throw (thread not found in org-b)
     expect(() =>
-      consultation.postToThread("org-b", { thread_id: t.id, agent_id: "a2", type: "context", content: "hi" })
+      consultation.postToThread("org-b", {
+        thread_id: t.id,
+        agent_id: "a2",
+        type: "context",
+        content: "hi",
+      }),
     ).toThrow(/not found|not in org/i);
   });
 
   it("proposeResolution cannot operate on a thread in another org", () => {
-    const t = consultation.announceWork("org-a", { agent_id: "a1", subject: "subj", target_modules: [], target_files: [], keep_open: true });
-    expect(() => consultation.proposeResolution("org-b", t.id, "a1", "summary")).toThrow(/not found/i);
+    const t = consultation.announceWork("org-a", {
+      agent_id: "a1",
+      subject: "subj",
+      target_modules: [],
+      target_files: [],
+      keep_open: true,
+    });
+    expect(() => consultation.proposeResolution("org-b", t.id, "a1", "summary")).toThrow(
+      /not found/i,
+    );
     expect(() => consultation.proposeResolution("org-a", t.id, "a1", "summary")).not.toThrow();
   });
 
   it("approveResolution / contestResolution / cancelThread / closeThread reject cross-org access", () => {
     // Each state-transition method must refuse to mutate a thread it cannot see.
     const t = consultation.announceWork("org-a", {
-      agent_id: "a1", subject: "subj", target_modules: [], target_files: [], keep_open: true,
+      agent_id: "a1",
+      subject: "subj",
+      target_modules: [],
+      target_files: [],
+      keep_open: true,
     });
-    consultation.postToThread("org-a", { thread_id: t.id, agent_id: "a2", type: "context", content: "respond" });
+    consultation.postToThread("org-a", {
+      thread_id: t.id,
+      agent_id: "a2",
+      type: "context",
+      content: "respond",
+    });
     consultation.proposeResolution("org-a", t.id, "a1", "summary");
 
     expect(() => consultation.approveResolution("org-b", t.id, "a2")).toThrow(/not found/i);
@@ -941,10 +1125,32 @@ describe("consultation org_id scoping", () => {
 
   it("getThreadUpdates does not leak messages from other orgs' threads", () => {
     // org-a has a thread with one message; org-b also opens one with a message.
-    const tA = consultation.announceWork("org-a", { agent_id: "a1", subject: "A", target_modules: [], target_files: [], keep_open: true });
-    consultation.postToThread("org-a", { thread_id: tA.id, agent_id: "a2", type: "context", content: "A-msg" });
-    const tB = consultation.announceWork("org-b", { agent_id: "a3", subject: "B", target_modules: [], target_files: [], keep_open: true });
-    consultation.postToThread("org-b", { thread_id: tB.id, agent_id: "a2", type: "context", content: "B-msg" });
+    const tA = consultation.announceWork("org-a", {
+      agent_id: "a1",
+      subject: "A",
+      target_modules: [],
+      target_files: [],
+      keep_open: true,
+    });
+    consultation.postToThread("org-a", {
+      thread_id: tA.id,
+      agent_id: "a2",
+      type: "context",
+      content: "A-msg",
+    });
+    const tB = consultation.announceWork("org-b", {
+      agent_id: "a3",
+      subject: "B",
+      target_modules: [],
+      target_files: [],
+      keep_open: true,
+    });
+    consultation.postToThread("org-b", {
+      thread_id: tB.id,
+      agent_id: "a2",
+      type: "context",
+      content: "B-msg",
+    });
 
     // a2 is "interested in" both orgs (registered globally), but the org-scoped query must only show one side.
     const updatesA = consultation.getThreadUpdates("org-a", "a2");
@@ -958,7 +1164,9 @@ describe("consultation org_id scoping", () => {
 
 describe("consultation corrupted column resilience (qualite-code-07)", () => {
   it("announceWork does not throw when an online peer's agents.modules column is corrupted", () => {
-    getDb().prepare("UPDATE agents SET modules = ? WHERE org_id = 'default' AND id = 'a2'").run("{not valid json");
+    getDb()
+      .prepare("UPDATE agents SET modules = ? WHERE org_id = 'default' AND id = 'a2'")
+      .run("{not valid json");
 
     expect(() => {
       const thread = consultation.announceWork("default", {
@@ -979,7 +1187,9 @@ describe("consultation corrupted column resilience (qualite-code-07)", () => {
       target_files: [],
       keep_open: true,
     });
-    getDb().prepare("UPDATE threads SET expected_respondents = ? WHERE id = ?").run("TRUNCATED[", thread.id);
+    getDb()
+      .prepare("UPDATE threads SET expected_respondents = ? WHERE id = ?")
+      .run("TRUNCATED[", thread.id);
 
     expect(() => consultation.handleAgentDeparture("a2")).not.toThrow();
     const updated = consultation.getThread("default", thread.id);
@@ -995,10 +1205,11 @@ describe("consultation corrupted column resilience (qualite-code-07)", () => {
       target_files: [],
       keep_open: true,
     });
-    getDb().prepare("UPDATE threads SET expected_respondents = ? WHERE id = ?").run("not-json-at-all", thread.id);
+    getDb()
+      .prepare("UPDATE threads SET expected_respondents = ? WHERE id = ?")
+      .run("not-json-at-all", thread.id);
     consultation.proposeResolution("default", thread.id, "a1", "done");
 
     expect(() => consultation.approveResolution("default", thread.id, "a1")).not.toThrow();
   });
 });
-

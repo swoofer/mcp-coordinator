@@ -176,9 +176,9 @@ describe("GoogleProvider.exchangeCode -- id_token verification", () => {
     );
     mountJwks();
 
-    await expect(
-      makeProvider().exchangeCode("code-xyz", REDIRECT_URI),
-    ).rejects.toBeInstanceOf(IdPTransientError);
+    await expect(makeProvider().exchangeCode("code-xyz", REDIRECT_URI)).rejects.toBeInstanceOf(
+      IdPTransientError,
+    );
   });
 
   it("rejects id_token with wrong issuer (cross-tenant attack)", async () => {
@@ -194,9 +194,9 @@ describe("GoogleProvider.exchangeCode -- id_token verification", () => {
     );
     mountJwks();
 
-    await expect(
-      makeProvider().exchangeCode("code-xyz", REDIRECT_URI),
-    ).rejects.toBeInstanceOf(IdPTokenRevoked);
+    await expect(makeProvider().exchangeCode("code-xyz", REDIRECT_URI)).rejects.toBeInstanceOf(
+      IdPTokenRevoked,
+    );
   });
 
   it("rejects id_token with wrong audience (token meant for another RP)", async () => {
@@ -212,9 +212,9 @@ describe("GoogleProvider.exchangeCode -- id_token verification", () => {
     );
     mountJwks();
 
-    await expect(
-      makeProvider().exchangeCode("code-xyz", REDIRECT_URI),
-    ).rejects.toBeInstanceOf(IdPTokenRevoked);
+    await expect(makeProvider().exchangeCode("code-xyz", REDIRECT_URI)).rejects.toBeInstanceOf(
+      IdPTokenRevoked,
+    );
   });
 
   it("rejects expired id_token", async () => {
@@ -230,9 +230,9 @@ describe("GoogleProvider.exchangeCode -- id_token verification", () => {
     );
     mountJwks();
 
-    await expect(
-      makeProvider().exchangeCode("code-xyz", REDIRECT_URI),
-    ).rejects.toBeInstanceOf(IdPTokenRevoked);
+    await expect(makeProvider().exchangeCode("code-xyz", REDIRECT_URI)).rejects.toBeInstanceOf(
+      IdPTokenRevoked,
+    );
   });
 });
 
@@ -240,25 +240,25 @@ describe("GoogleProvider.exchangeCode -- token endpoint failures", () => {
   it("maps 401 to IdPTokenRevoked", async () => {
     server.use(http.post(TOKEN_URL, () => HttpResponse.json({}, { status: 401 })));
 
-    await expect(
-      makeProvider().exchangeCode("bad-code", REDIRECT_URI),
-    ).rejects.toBeInstanceOf(IdPTokenRevoked);
+    await expect(makeProvider().exchangeCode("bad-code", REDIRECT_URI)).rejects.toBeInstanceOf(
+      IdPTokenRevoked,
+    );
   });
 
   it("maps 502 to IdPTransientError", async () => {
     server.use(http.post(TOKEN_URL, () => HttpResponse.json({}, { status: 502 })));
 
-    await expect(
-      makeProvider().exchangeCode("code-xyz", REDIRECT_URI),
-    ).rejects.toBeInstanceOf(IdPTransientError);
+    await expect(makeProvider().exchangeCode("code-xyz", REDIRECT_URI)).rejects.toBeInstanceOf(
+      IdPTransientError,
+    );
   });
 
   it("maps 4xx other than 401 to a generic Error", async () => {
-    server.use(http.post(TOKEN_URL, () => HttpResponse.json({ error: "invalid_grant" }, { status: 400 })));
+    server.use(
+      http.post(TOKEN_URL, () => HttpResponse.json({ error: "invalid_grant" }, { status: 400 })),
+    );
 
-    await expect(
-      makeProvider().exchangeCode("code-xyz", REDIRECT_URI),
-    ).rejects.toThrow(/HTTP 400/);
+    await expect(makeProvider().exchangeCode("code-xyz", REDIRECT_URI)).rejects.toThrow(/HTTP 400/);
   });
 
   it("rejects token responses missing id_token", async () => {
@@ -270,17 +270,13 @@ describe("GoogleProvider.exchangeCode -- token endpoint failures", () => {
 
     // Schema parse failure -- not categorized as Token-Revoked because
     // the upstream is misbehaving, not the user.
-    await expect(
-      makeProvider().exchangeCode("code-xyz", REDIRECT_URI),
-    ).rejects.toThrow();
+    await expect(makeProvider().exchangeCode("code-xyz", REDIRECT_URI)).rejects.toThrow();
   });
 });
 
 describe("GoogleProvider.listMemberships", () => {
   it("throws -- Google requires hd-based allowlist", async () => {
-    await expect(makeProvider().listMemberships("any-token")).rejects.toThrow(
-      /hd-based allowlist/,
-    );
+    await expect(makeProvider().listMemberships("any-token")).rejects.toThrow(/hd-based allowlist/);
   });
 });
 
@@ -315,7 +311,10 @@ describe("GoogleProvider nonce (securite-auth-02)", () => {
     mountJwks();
 
     const result = await makeProvider().exchangeCode(
-      "code-xyz", REDIRECT_URI, undefined, nonceValue,
+      "code-xyz",
+      REDIRECT_URI,
+      undefined,
+      nonceValue,
     );
     expect(result.user.idp_user_id).toBe("111222333444555");
   });
@@ -369,9 +368,7 @@ describe("GoogleProvider nonce (securite-auth-02)", () => {
     );
     mountJwks();
 
-    const result = await makeProvider().exchangeCode(
-      "code-xyz", REDIRECT_URI, undefined, null,
-    );
+    const result = await makeProvider().exchangeCode("code-xyz", REDIRECT_URI, undefined, null);
     expect(result.user.idp_user_id).toBe("111222333444555");
   });
 });

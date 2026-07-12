@@ -1,7 +1,13 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { SignJWT } from "jose";
 import { initDatabase, closeDb } from "../../src/database.js";
-import { initAuth, createToken, authenticateRequest, refreshToken, verifyTokenStrict } from "../../src/auth.js";
+import {
+  initAuth,
+  createToken,
+  authenticateRequest,
+  refreshToken,
+  verifyTokenStrict,
+} from "../../src/auth.js";
 import type { IncomingMessage } from "http";
 import fs from "fs";
 
@@ -13,11 +19,16 @@ beforeAll(() => {
   initDatabase(DIR);
   initAuth(SECRET);
 });
-afterAll(() => { closeDb(); fs.rmSync(DIR, { recursive: true, force: true }); });
+afterAll(() => {
+  closeDb();
+  fs.rmSync(DIR, { recursive: true, force: true });
+});
 
 // CRITICAL: reset auth state so prevKey doesn't contaminate later test files
 // under vitest's fileParallelism: false. See "Module-state hygiene" in Conventions.
-afterAll(() => { initAuth(SECRET); });
+afterAll(() => {
+  initAuth(SECRET);
+});
 
 function mockRequest(headers: Record<string, string> = {}, url = "/api/log-file"): IncomingMessage {
   return { headers, url, method: "POST" } as unknown as IncomingMessage;
@@ -47,10 +58,9 @@ describe("authenticateRequest backward-compat", () => {
 
     it("scenario (c): v0.6 JWT → accepted with injected legacy claims", async () => {
       const token = await mintV06Token("agent");
-      const result = await authenticateRequest(
-        mockRequest({ authorization: `Bearer ${token}` }),
-        { authEnabled: false },
-      );
+      const result = await authenticateRequest(mockRequest({ authorization: `Bearer ${token}` }), {
+        authEnabled: false,
+      });
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.claims.user_id).toBe("legacy");
@@ -61,12 +71,12 @@ describe("authenticateRequest backward-compat", () => {
 
     it("scenario (d): v0.7 JWT → standard verify, real claims preserved", async () => {
       const token = await createToken("agent-x", "agent", undefined, {
-        user_id: "user-real", org: "real-org",
+        user_id: "user-real",
+        org: "real-org",
       });
-      const result = await authenticateRequest(
-        mockRequest({ authorization: `Bearer ${token}` }),
-        { authEnabled: false },
-      );
+      const result = await authenticateRequest(mockRequest({ authorization: `Bearer ${token}` }), {
+        authEnabled: false,
+      });
       expect(result.ok).toBe(true);
       if (result.ok) {
         expect(result.claims.user_id).toBe("user-real");
@@ -87,10 +97,9 @@ describe("authenticateRequest backward-compat", () => {
 
     it("rejects v0.6 JWTs (no user_id/org claims) → 401", async () => {
       const token = await mintV06Token("agent");
-      const result = await authenticateRequest(
-        mockRequest({ authorization: `Bearer ${token}` }),
-        { authEnabled: true },
-      );
+      const result = await authenticateRequest(mockRequest({ authorization: `Bearer ${token}` }), {
+        authEnabled: true,
+      });
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.status).toBe(401);
@@ -99,12 +108,12 @@ describe("authenticateRequest backward-compat", () => {
 
     it("scenario (d): v0.7 JWT → accepted", async () => {
       const token = await createToken("agent-y", "agent", undefined, {
-        user_id: "user-y", org: "default",
+        user_id: "user-y",
+        org: "default",
       });
-      const result = await authenticateRequest(
-        mockRequest({ authorization: `Bearer ${token}` }),
-        { authEnabled: true },
-      );
+      const result = await authenticateRequest(mockRequest({ authorization: `Bearer ${token}` }), {
+        authEnabled: true,
+      });
       expect(result.ok).toBe(true);
     });
 
@@ -116,10 +125,9 @@ describe("authenticateRequest backward-compat", () => {
         .setSubject("agent-partial")
         .setExpirationTime("1h")
         .sign(key);
-      const result = await authenticateRequest(
-        mockRequest({ authorization: `Bearer ${token}` }),
-        { authEnabled: true },
-      );
+      const result = await authenticateRequest(mockRequest({ authorization: `Bearer ${token}` }), {
+        authEnabled: true,
+      });
       expect(result.ok).toBe(false);
     });
 
@@ -131,10 +139,9 @@ describe("authenticateRequest backward-compat", () => {
         .setSubject("ancient-agent")
         .setExpirationTime("1h")
         .sign(key);
-      const result = await authenticateRequest(
-        mockRequest({ authorization: `Bearer ${token}` }),
-        { authEnabled: false },
-      );
+      const result = await authenticateRequest(mockRequest({ authorization: `Bearer ${token}` }), {
+        authEnabled: false,
+      });
       expect(result.ok).toBe(true);
       if (result.ok) {
         // No-role token defaults to 'member' (LEAST PRIVILEGE), not 'admin'.

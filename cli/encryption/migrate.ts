@@ -1,19 +1,11 @@
 import { Command } from "commander";
 import * as path from "node:path";
 import Database from "better-sqlite3";
-import {
-  acquireLock,
-  releaseLock,
-  LockHeldError,
-  type LockHandle,
-} from "../lib/pid-lock.js";
+import { acquireLock, releaseLock, LockHeldError, type LockHandle } from "../lib/pid-lock.js";
 import { getRunningCoordinatorPid } from "../server/backup.js";
 import { decodeMasterKey } from "../../src/security/master-key.js";
 import { EnvelopeEncryption } from "../../src/security/envelope-encryption.js";
-import {
-  encryptNullable,
-  decryptNullable,
-} from "../../src/security/encrypt-nullable.js";
+import { encryptNullable, decryptNullable } from "../../src/security/encrypt-nullable.js";
 import { ensureConfigDir, loadConfig } from "../config.js";
 
 const DEFAULT_BATCH_SIZE = 100;
@@ -78,9 +70,7 @@ export function runMigration(opts: RunMigrationOptions): RunMigrationResult {
 
   // Daemon-running guard.
   const runningPid =
-    opts.runningPid !== undefined
-      ? opts.runningPid
-      : getRunningCoordinatorPid(configDir);
+    opts.runningPid !== undefined ? opts.runningPid : getRunningCoordinatorPid(configDir);
   if (runningPid !== null && !opts.force) {
     return {
       exitCode: 2,
@@ -93,8 +83,7 @@ export function runMigration(opts: RunMigrationOptions): RunMigrationResult {
   if (!rawKey) {
     return {
       exitCode: 2,
-      message:
-        "COORDINATOR_ENCRYPTION_KEY not set. Cannot perform encryption migration.",
+      message: "COORDINATOR_ENCRYPTION_KEY not set. Cannot perform encryption migration.",
     };
   }
   let key: Buffer;
@@ -181,20 +170,10 @@ export function migrationSignalHandler(): void {
 
 export function createMigrateCommand(): Command {
   return new Command("migrate")
-    .description(
-      "Encrypt or decrypt all IdP tokens in the database (idempotent)",
-    )
+    .description("Encrypt or decrypt all IdP tokens in the database (idempotent)")
     .option("--direction <dir>", "encrypt or decrypt", "encrypt")
-    .option(
-      "--batch-size <n>",
-      "rows per transaction",
-      String(DEFAULT_BATCH_SIZE),
-    )
-    .option(
-      "--force",
-      "proceed even if the coordinator daemon is running",
-      false,
-    )
+    .option("--batch-size <n>", "rows per transaction", String(DEFAULT_BATCH_SIZE))
+    .option("--force", "proceed even if the coordinator daemon is running", false)
     .action((opts: { direction: string; batchSize: string; force: boolean }) => {
       process.once("SIGINT", migrationSignalHandler);
       process.once("SIGTERM", migrationSignalHandler);

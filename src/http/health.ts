@@ -21,10 +21,7 @@ const AUDIT_QUEUE_CAPACITY = 10_000;
  * /healthz alias for orchestrator probes that want a different path
  * than Phase 1's /livez.
  */
-export function handleHealthz(
-  _req: IncomingMessage,
-  res: ServerResponse,
-): void {
+export function handleHealthz(_req: IncomingMessage, res: ServerResponse): void {
   res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
   res.end(JSON.stringify({ status: "alive" }));
 }
@@ -68,17 +65,12 @@ export async function handleHealthReady(
   const queue = getAuditQueue();
   if (queue) {
     const depth = queue.size();
-    const threshold =
-      (checks.audit_queue.threshold_percent / 100) * AUDIT_QUEUE_CAPACITY;
+    const threshold = (checks.audit_queue.threshold_percent / 100) * AUDIT_QUEUE_CAPACITY;
     checks.audit_queue.depth = depth;
     checks.audit_queue.ok = depth <= threshold;
   }
 
-  const ready =
-    checks.db.ok &&
-    checks.audit_queue.ok &&
-    checks.sweeper.ok &&
-    !checks.draining;
+  const ready = checks.db.ok && checks.audit_queue.ok && checks.sweeper.ok && !checks.draining;
 
   // T12c: include the boot-resolved encryption block when available. The
   // accessor returns null when boot has not (yet) called setEncryptionStatus

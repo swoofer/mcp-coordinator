@@ -280,10 +280,7 @@ describe("dispatchAuthRoutes — T23 logout/logout-all/revoke dispatched (not 50
   it("POST /api/admin/service-tokens/<jti>/revoke routes to handleRevokeServiceToken (401 unauth)", async () => {
     const res = mockResponse();
     const handled = await dispatchAuthRoutes(
-      mockReqWithHeaders(
-        "POST",
-        "/api/admin/service-tokens/jti-abc-123/revoke",
-      ),
+      mockReqWithHeaders("POST", "/api/admin/service-tokens/jti-abc-123/revoke"),
       res as unknown as ServerResponse,
       ctx,
     );
@@ -313,9 +310,7 @@ describe("dispatchAuthRoutes — T23 logout/logout-all/revoke dispatched (not 50
     expect(handled).toBe(true);
     expect(res.statusCode).toBe(405);
     expect(res.headers.Allow).toBe("GET, POST");
-    expect((res.body as Record<string, unknown>).code).toBe(
-      "METHOD_NOT_ALLOWED",
-    );
+    expect((res.body as Record<string, unknown>).code).toBe("METHOD_NOT_ALLOWED");
   });
 });
 

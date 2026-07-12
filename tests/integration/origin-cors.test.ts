@@ -37,7 +37,12 @@ describe("isAllowedOrigin (pure helper — 100% branch coverage)", () => {
   });
 
   it("allows an Origin that matches COORDINATOR_PUBLIC_URL's origin exactly", () => {
-    expect(isAllowedOrigin("https://coordinator.example.com", "https://coordinator.example.com/some/path")).toBe(true);
+    expect(
+      isAllowedOrigin(
+        "https://coordinator.example.com",
+        "https://coordinator.example.com/some/path",
+      ),
+    ).toBe(true);
   });
 
   it("rejects an Origin that does not match the configured publicUrl", () => {

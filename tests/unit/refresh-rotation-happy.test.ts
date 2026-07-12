@@ -11,10 +11,7 @@ import { RateLimiter } from "../../src/auth/rate-limit.js";
 import { buildJwtKeyRegistry } from "../../src/auth/jwt-keys.js";
 import { MembershipCache } from "../../src/auth/membership-cache.js";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
-import type {
-  IdPProvider,
-  ExchangeCodeResult,
-} from "../../src/auth/providers/types.js";
+import type { IdPProvider, ExchangeCodeResult } from "../../src/auth/providers/types.js";
 import { findAuditRows } from "../helpers/audit.js";
 import { PassthroughEncryption } from "../../src/security/encryption.js";
 
@@ -121,12 +118,7 @@ function seedOrg(orgId = "org-acme"): void {
     .run(orgId, "Acme", "acme");
 }
 
-function seedUser(
-  id = "u-alice",
-  orgId = "org-acme",
-  tokenEpoch = 0,
-  role = "member",
-): void {
+function seedUser(id = "u-alice", orgId = "org-acme", tokenEpoch = 0, role = "member"): void {
   getDb()
     .prepare(
       `INSERT INTO users
@@ -458,12 +450,12 @@ describe("refreshTokenGrant — happy path", () => {
          ORDER BY created_at, id`,
       )
       .all() as Array<{
-        jti: string;
-        family_id: string;
-        parent_jti: string | null;
-        consumer_fingerprint: string | null;
-        revoked_at: string | null;
-      }>;
+      jti: string;
+      family_id: string;
+      parent_jti: string | null;
+      consumer_fingerprint: string | null;
+      revoked_at: string | null;
+    }>;
     // Exactly two rows: predecessor + successor.
     expect(rows).toHaveLength(2);
     const successor = rows.find((r) => r.parent_jti !== null);

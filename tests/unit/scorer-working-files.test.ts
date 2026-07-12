@@ -28,7 +28,10 @@ describe("ImpactScorer Layer 1 union with working_files", () => {
     registry.setOnline("default", "alice");
     registry.setOnline("default", "bob");
   });
-  afterAll(() => { closeDb(); rmSync(TEST_DIR, { recursive: true, force: true }); });
+  afterAll(() => {
+    closeDb();
+    rmSync(TEST_DIR, { recursive: true, force: true });
+  });
 
   it("scores 100 when another agent has working_files on the same path", () => {
     workingFiles.start("default", "bob", "src/foo.ts", 30);
@@ -38,10 +41,8 @@ describe("ImpactScorer Layer 1 union with working_files", () => {
       target_modules: [],
       target_files: ["src/foo.ts"],
     });
-    const bobScore = scores.find(s => s.agent_id === "bob")!;
+    const bobScore = scores.find((s) => s.agent_id === "bob")!;
     expect(bobScore.score).toBe(100);
     expect(bobScore.reasons.join(" ")).toMatch(/in flight/);
   });
 });
-
-

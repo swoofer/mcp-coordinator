@@ -27,7 +27,11 @@ describe("v0.6 restore compat", () => {
     getDb().exec("PRAGMA user_version = 999");
     closeDb();
     expect(() => initDatabase(dir)).toThrow(/newer/i);
-    try { closeDb(); } catch { /* already closed or failed to open */ }
+    try {
+      closeDb();
+    } catch {
+      /* already closed or failed to open */
+    }
     rmSync(dir, { recursive: true, force: true });
   });
 });

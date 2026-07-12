@@ -28,8 +28,18 @@ afterAll(() => {
 describe("DependencyMapper", () => {
   it("stores and retrieves module info", () => {
     depMap.setMap("default", {
-      "src/auth": { module_id: "src/auth", depends_on: ["src/shared"], exports: ["AuthMiddleware"], owners: ["agent-a"] },
-      "src/shared": { module_id: "src/shared", depends_on: [], exports: ["User", "Token"], owners: [] },
+      "src/auth": {
+        module_id: "src/auth",
+        depends_on: ["src/shared"],
+        exports: ["AuthMiddleware"],
+        owners: ["agent-a"],
+      },
+      "src/shared": {
+        module_id: "src/shared",
+        depends_on: [],
+        exports: ["User", "Token"],
+        owners: [],
+      },
     });
     const info = depMap.getModuleInfo("default", "src/auth");
     expect(info?.depends_on).toContain("src/shared");
@@ -39,8 +49,18 @@ describe("DependencyMapper", () => {
   it("calculates blast radius", () => {
     depMap.setMap("default", {
       "src/shared": { module_id: "src/shared", depends_on: [], exports: ["User"], owners: [] },
-      "src/auth": { module_id: "src/auth", depends_on: ["src/shared"], exports: ["AuthMiddleware"], owners: [] },
-      "src/api": { module_id: "src/api", depends_on: ["src/auth"], exports: ["routes"], owners: [] },
+      "src/auth": {
+        module_id: "src/auth",
+        depends_on: ["src/shared"],
+        exports: ["AuthMiddleware"],
+        owners: [],
+      },
+      "src/api": {
+        module_id: "src/api",
+        depends_on: ["src/auth"],
+        exports: ["routes"],
+        owners: [],
+      },
     });
     const radius = depMap.getBlastRadius("default", "src/shared");
     expect(radius.direct_dependents).toContain("src/auth");
@@ -54,7 +74,12 @@ describe("DependencyMapper", () => {
   it("getBlastRadius returns empty indirect_dependents when none exist", () => {
     depMap.setMap("default", {
       "src/shared": { module_id: "src/shared", depends_on: [], exports: ["User"], owners: [] },
-      "src/auth": { module_id: "src/auth", depends_on: ["src/shared"], exports: ["AuthMiddleware"], owners: [] },
+      "src/auth": {
+        module_id: "src/auth",
+        depends_on: ["src/shared"],
+        exports: ["AuthMiddleware"],
+        owners: [],
+      },
     });
     const radius = depMap.getBlastRadius("default", "src/shared");
     expect(radius.direct_dependents).toEqual(["src/auth"]);
@@ -65,7 +90,12 @@ describe("DependencyMapper", () => {
   it("getBlastRadius returns empty exports when module has none", () => {
     depMap.setMap("default", {
       "src/utils": { module_id: "src/utils", depends_on: [], exports: [], owners: [] },
-      "src/auth": { module_id: "src/auth", depends_on: ["src/utils"], exports: ["login"], owners: [] },
+      "src/auth": {
+        module_id: "src/auth",
+        depends_on: ["src/utils"],
+        exports: ["login"],
+        owners: [],
+      },
     });
     const radius = depMap.getBlastRadius("default", "src/utils");
     expect(radius.affected_exports).toHaveLength(0);
@@ -84,11 +114,19 @@ describe("DependencyMapper", () => {
 });
 
 describe("dependency-map org_id scoping", () => {
-  beforeEach(() => { getDb().exec("DELETE FROM dependency_map"); });
+  beforeEach(() => {
+    getDb().exec("DELETE FROM dependency_map");
+  });
 
   it("setDependencies writes org_id", () => {
-    depMap.setDependencies("org-a", "moduleX", { depends_on: ["a"], exports: ["b"], owners: ["c"] });
-    const row = getDb().prepare("SELECT org_id FROM dependency_map WHERE module_id = 'moduleX'").get() as { org_id: string };
+    depMap.setDependencies("org-a", "moduleX", {
+      depends_on: ["a"],
+      exports: ["b"],
+      owners: ["c"],
+    });
+    const row = getDb()
+      .prepare("SELECT org_id FROM dependency_map WHERE module_id = 'moduleX'")
+      .get() as { org_id: string };
     expect(row.org_id).toBe("org-a");
   });
 
@@ -109,26 +147,38 @@ describe("dependency-map org_id scoping", () => {
 });
 
 describe("dependency-map corrupted column resilience (qualite-code-07)", () => {
-  beforeEach(() => { getDb().exec("DELETE FROM dependency_map"); });
+  beforeEach(() => {
+    getDb().exec("DELETE FROM dependency_map");
+  });
 
   it("getDependencies falls back to [] instead of throwing on malformed JSON columns", () => {
     depMap.setDependencies("org-a", "modX", { depends_on: ["a"], exports: ["b"], owners: ["c"] });
-    getDb().prepare(
-      "UPDATE dependency_map SET depends_on = ?, exports = ?, owners = ? WHERE org_id = 'org-a' AND module_id = 'modX'"
-    ).run("{not valid json", "", "null-ish-garbage[");
+    getDb()
+      .prepare(
+        "UPDATE dependency_map SET depends_on = ?, exports = ?, owners = ? WHERE org_id = 'org-a' AND module_id = 'modX'",
+      )
+      .run("{not valid json", "", "null-ish-garbage[");
 
     let result: ReturnType<DependencyMapper["getDependencies"]>;
-    expect(() => { result = depMap.getDependencies("org-a", "modX"); }).not.toThrow();
+    expect(() => {
+      result = depMap.getDependencies("org-a", "modX");
+    }).not.toThrow();
     expect(result!).toEqual({ depends_on: [], exports: [], owners: [] });
   });
 
   it("getMap falls back to [] per-field for a corrupted row, other rows unaffected", () => {
     depMap.setDependencies("org-a", "good", { depends_on: ["x"], exports: ["y"], owners: ["z"] });
     depMap.setDependencies("org-a", "bad", { depends_on: ["x"], exports: ["y"], owners: ["z"] });
-    getDb().prepare("UPDATE dependency_map SET depends_on = 'TRUNCATED' WHERE org_id = 'org-a' AND module_id = 'bad'").run();
+    getDb()
+      .prepare(
+        "UPDATE dependency_map SET depends_on = 'TRUNCATED' WHERE org_id = 'org-a' AND module_id = 'bad'",
+      )
+      .run();
 
     let map: ReturnType<DependencyMapper["getMap"]>;
-    expect(() => { map = depMap.getMap("org-a"); }).not.toThrow();
+    expect(() => {
+      map = depMap.getMap("org-a");
+    }).not.toThrow();
     expect(map!.good.depends_on).toEqual(["x"]);
     expect(map!.bad.depends_on).toEqual([]);
     expect(map!.bad.exports).toEqual(["y"]);
@@ -136,10 +186,16 @@ describe("dependency-map corrupted column resilience (qualite-code-07)", () => {
 
   it("getModuleInfo falls back to [] instead of throwing on malformed JSON", () => {
     depMap.setDependencies("org-a", "modY", { depends_on: ["a"], exports: ["b"], owners: ["c"] });
-    getDb().prepare("UPDATE dependency_map SET owners = 'not-json' WHERE org_id = 'org-a' AND module_id = 'modY'").run();
+    getDb()
+      .prepare(
+        "UPDATE dependency_map SET owners = 'not-json' WHERE org_id = 'org-a' AND module_id = 'modY'",
+      )
+      .run();
 
     let info: ReturnType<DependencyMapper["getModuleInfo"]>;
-    expect(() => { info = depMap.getModuleInfo("org-a", "modY"); }).not.toThrow();
+    expect(() => {
+      info = depMap.getModuleInfo("org-a", "modY");
+    }).not.toThrow();
     expect(info!.owners).toEqual([]);
     expect(info!.depends_on).toEqual(["a"]);
   });
@@ -147,13 +203,17 @@ describe("dependency-map corrupted column resilience (qualite-code-07)", () => {
   it("listOwners skips corrupted rows gracefully instead of throwing", () => {
     depMap.setDependencies("org-a", "modA", { depends_on: [], exports: [], owners: ["alice"] });
     depMap.setDependencies("org-a", "modB", { depends_on: [], exports: [], owners: ["bob"] });
-    getDb().prepare("UPDATE dependency_map SET owners = '[\"unterminated' WHERE org_id = 'org-a' AND module_id = 'modB'").run();
+    getDb()
+      .prepare(
+        "UPDATE dependency_map SET owners = '[\"unterminated' WHERE org_id = 'org-a' AND module_id = 'modB'",
+      )
+      .run();
 
     let owners: string[];
-    expect(() => { owners = depMap.listOwners("org-a"); }).not.toThrow();
+    expect(() => {
+      owners = depMap.listOwners("org-a");
+    }).not.toThrow();
     expect(owners!).toContain("alice");
     expect(owners!).not.toContain("bob");
   });
 });
-
-

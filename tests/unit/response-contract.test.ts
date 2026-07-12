@@ -1,9 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  bearerAuthHeader,
-  oauthError,
-  appError,
-} from "../../src/http/response-contract.js";
+import { bearerAuthHeader, oauthError, appError } from "../../src/http/response-contract.js";
 import { withRequestId } from "../../src/auth/request-id.js";
 
 describe("response-contract: bearerAuthHeader", () => {
@@ -24,9 +20,7 @@ describe("response-contract: bearerAuthHeader", () => {
   });
 
   it("adds scope when scope provided (insufficient_scope)", () => {
-    expect(
-      bearerAuthHeader("insufficient_scope", "Admin scope required", "admin"),
-    ).toBe(
+    expect(bearerAuthHeader("insufficient_scope", "Admin scope required", "admin")).toBe(
       'Bearer realm="coordinator", error="insufficient_scope", error_description="Admin scope required", scope="admin"',
     );
   });
@@ -48,16 +42,12 @@ describe("response-contract: bearerAuthHeader", () => {
   it("description without an error code is still included", () => {
     // Optional but defensive: description is appended even without err.
     const h = bearerAuthHeader(undefined, "no error code");
-    expect(h).toBe(
-      'Bearer realm="coordinator", error_description="no error code"',
-    );
+    expect(h).toBe('Bearer realm="coordinator", error_description="no error code"');
   });
 
   it("scope without description is included", () => {
     const h = bearerAuthHeader("insufficient_scope", undefined, "admin");
-    expect(h).toBe(
-      'Bearer realm="coordinator", error="insufficient_scope", scope="admin"',
-    );
+    expect(h).toBe('Bearer realm="coordinator", error="insufficient_scope", scope="admin"');
   });
 });
 
@@ -74,9 +64,7 @@ describe("response-contract: oauthError", () => {
   });
 
   it("includes error_uri when provided", () => {
-    expect(
-      oauthError("invalid_grant", "expired", "https://example/docs"),
-    ).toEqual({
+    expect(oauthError("invalid_grant", "expired", "https://example/docs")).toEqual({
       error: "invalid_grant",
       error_description: "expired",
       error_uri: "https://example/docs",
@@ -85,9 +73,7 @@ describe("response-contract: oauthError", () => {
 
   it("includes error_uri without description when description omitted", () => {
     // Pass undefined description but include uri.
-    expect(
-      oauthError("invalid_request", undefined, "https://example/docs"),
-    ).toEqual({
+    expect(oauthError("invalid_request", undefined, "https://example/docs")).toEqual({
       error: "invalid_request",
       error_uri: "https://example/docs",
     });

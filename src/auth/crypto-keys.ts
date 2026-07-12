@@ -6,15 +6,9 @@ import crypto from "node:crypto";
 //
 // Phase 2 uses only one derived key (state-binding-v1) since V4 CUT 2
 // removed HMAC-CSRF. Adding new purposes = new info labels, never key reuse.
-export function deriveKey(
-  jwtSecret: Buffer,
-  info: string,
-  keyLen: number = 32,
-): Buffer {
+export function deriveKey(jwtSecret: Buffer, info: string, keyLen: number = 32): Buffer {
   // Empty salt is RFC 5869 compliant for high-entropy IKM (JWT_SECRET).
-  return Buffer.from(
-    crypto.hkdfSync("sha256", jwtSecret, Buffer.alloc(0), info, keyLen),
-  );
+  return Buffer.from(crypto.hkdfSync("sha256", jwtSecret, Buffer.alloc(0), info, keyLen));
 }
 
 export const STATE_BINDING_INFO = "state-binding-v1";

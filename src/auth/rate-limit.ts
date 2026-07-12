@@ -69,10 +69,7 @@ export class RateLimiter {
       };
     }
 
-    const retry_after_seconds = Math.max(
-      1,
-      Math.ceil((1 - bucket.tokens) / refillRate),
-    );
+    const retry_after_seconds = Math.max(1, Math.ceil((1 - bucket.tokens) / refillRate));
     return { allowed: false, retry_after_seconds };
   }
 
@@ -95,10 +92,7 @@ export class RateLimiter {
     // Apply refill projection without writing back.
     const refillRate = cfg.per / cfg.window_seconds;
     const elapsed = now - bucket.last_refill;
-    const tokens = Math.min(
-      cfg.per,
-      bucket.tokens + Math.max(0, elapsed) * refillRate,
-    );
+    const tokens = Math.min(cfg.per, bucket.tokens + Math.max(0, elapsed) * refillRate);
 
     if (tokens >= 1) {
       return {
@@ -107,10 +101,7 @@ export class RateLimiter {
         reset_at: now + cfg.window_seconds,
       };
     }
-    const retry_after_seconds = Math.max(
-      1,
-      Math.ceil((1 - tokens) / refillRate),
-    );
+    const retry_after_seconds = Math.max(1, Math.ceil((1 - tokens) / refillRate));
     return { allowed: false, retry_after_seconds };
   }
 

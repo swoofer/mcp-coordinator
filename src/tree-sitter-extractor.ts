@@ -23,7 +23,12 @@ interface LanguageHandler {
    * Override symbol name extraction for function nodes.
    * Return null to suppress emission; return a string to emit it.
    */
-  extractFnName?: (node: any, rawName: string | null, classCtx: string | null, ctx: WalkCtx) => string | null;
+  extractFnName?: (
+    node: any,
+    rawName: string | null,
+    classCtx: string | null,
+    ctx: WalkCtx,
+  ) => string | null;
   /**
    * Node types that act as non-class containers (e.g. Rust impl, Ruby module).
    * Descend children with classCtx = extractContainerName(node).
@@ -122,7 +127,12 @@ const HANDLERS: Record<string, LanguageHandler> = {
     fnNodeTypes: new Set(["method_declaration"]),
   },
   cs: {
-    classNodeTypes: new Set(["class_declaration", "interface_declaration", "struct_declaration", "record_declaration"]),
+    classNodeTypes: new Set([
+      "class_declaration",
+      "interface_declaration",
+      "struct_declaration",
+      "record_declaration",
+    ]),
     fnNodeTypes: new Set(["method_declaration", "constructor_declaration", "property_declaration"]),
     containerNodeTypes: new Set(["namespace_declaration"]),
     extractContainerName: (_node) => null,
@@ -134,7 +144,8 @@ const HANDLERS: Record<string, LanguageHandler> = {
     extractFnName: (node, _rawName, classCtx, _ctx) => {
       // function_definition -> declarator (function_declarator) -> declarator (identifier)
       const decl = node.childForFieldName?.("declarator");
-      const name = decl?.childForFieldName?.("declarator")?.text ?? decl?.namedChild?.(0)?.text ?? null;
+      const name =
+        decl?.childForFieldName?.("declarator")?.text ?? decl?.namedChild?.(0)?.text ?? null;
       if (name && classCtx) return `${classCtx}.${name}`;
       return name;
     },
@@ -145,7 +156,8 @@ const HANDLERS: Record<string, LanguageHandler> = {
     fnNodeTypes: new Set(["function_definition"]),
     extractFnName: (node, _rawName, classCtx, _ctx) => {
       const decl = node.childForFieldName?.("declarator");
-      const name = decl?.childForFieldName?.("declarator")?.text ?? decl?.namedChild?.(0)?.text ?? null;
+      const name =
+        decl?.childForFieldName?.("declarator")?.text ?? decl?.namedChild?.(0)?.text ?? null;
       if (name && classCtx) return `${classCtx}.${name}`;
       return name;
     },
@@ -179,9 +191,8 @@ const HANDLERS: Record<string, LanguageHandler> = {
     classNodeTypes: new Set(["class_declaration", "struct_declaration", "protocol_declaration"]),
     fnNodeTypes: new Set(["function_declaration"]),
     containerNodeTypes: new Set(["extension_declaration"]),
-    extractContainerName: (node) => node.childForFieldName?.("type")?.text
-      ?? node.namedChild(0)?.text
-      ?? null,
+    extractContainerName: (node) =>
+      node.childForFieldName?.("type")?.text ?? node.namedChild(0)?.text ?? null,
   },
   bash: {
     classNodeTypes: new Set(),
@@ -271,15 +282,20 @@ export class TreeSitterExtractor {
    * failure, unsupported extension, or grammar not loaded.
    * Caps output at 200 entries (per spec).
    */
-  extract(filePath: string, content: string, _changedRanges: Array<[number, number]> | null): string[] | null {
+  extract(
+    filePath: string,
+    content: string,
+    _changedRanges: Array<[number, number]> | null,
+  ): string[] | null {
     const ext = path.extname(filePath).toLowerCase();
     const key = this.extToKey(ext);
     if (!key) return null;
     const grammar = this.grammars.get(key);
     if (!grammar) return null;
     let tree: any;
-    try { tree = grammar.parser.parse(content); }
-    catch {
+    try {
+      tree = grammar.parser.parse(content);
+    } catch {
       this.metrics?.treeSitterParseFailures.inc();
       return null;
     }
@@ -294,26 +310,58 @@ export class TreeSitterExtractor {
 
   private extToKey(ext: string): string | null {
     switch (ext) {
-      case ".ts": return "ts";
-      case ".tsx": return "tsx";
-      case ".js": case ".jsx": case ".mjs": case ".cjs": return "js";
-      case ".py": return "py";
-      case ".go": return "go";
-      case ".rs": return "rust";
-      case ".java": return "java";
-      case ".cs": return "cs";
-      case ".c": case ".h": return "c";
-      case ".cpp": case ".cc": case ".cxx": case ".hpp": case ".hh": return "cpp";
-      case ".rb": return "ruby";
-      case ".php": return "php";
-      case ".kt": case ".kts": return "kotlin";
-      case ".swift": return "swift";
-      case ".sh": case ".bash": return "bash";
-      default: return null;
+      case ".ts":
+        return "ts";
+      case ".tsx":
+        return "tsx";
+      case ".js":
+      case ".jsx":
+      case ".mjs":
+      case ".cjs":
+        return "js";
+      case ".py":
+        return "py";
+      case ".go":
+        return "go";
+      case ".rs":
+        return "rust";
+      case ".java":
+        return "java";
+      case ".cs":
+        return "cs";
+      case ".c":
+      case ".h":
+        return "c";
+      case ".cpp":
+      case ".cc":
+      case ".cxx":
+      case ".hpp":
+      case ".hh":
+        return "cpp";
+      case ".rb":
+        return "ruby";
+      case ".php":
+        return "php";
+      case ".kt":
+      case ".kts":
+        return "kotlin";
+      case ".swift":
+        return "swift";
+      case ".sh":
+      case ".bash":
+        return "bash";
+      default:
+        return null;
     }
   }
 
-  private walk(node: any, out: string[], lang: string, basename: string, classCtx: string | null = null): void {
+  private walk(
+    node: any,
+    out: string[],
+    lang: string,
+    basename: string,
+    classCtx: string | null = null,
+  ): void {
     if (out.length >= 200) return;
     const handler = HANDLERS[lang];
     if (!handler) return;
@@ -358,7 +406,10 @@ export class TreeSitterExtractor {
     // 4. Variable declarators (const X = () => …)
     if (handler.varDeclTypes?.has(type)) {
       const valNode = node.childForFieldName?.("value");
-      if (valNode && (valNode.type === "arrow_function" || valNode.type === "function_expression")) {
+      if (
+        valNode &&
+        (valNode.type === "arrow_function" || valNode.type === "function_expression")
+      ) {
         const name = node.childForFieldName?.("name")?.text;
         if (name) out.push(name);
       }
@@ -368,10 +419,11 @@ export class TreeSitterExtractor {
     // 5. Anonymous default exports
     if (handler.exportStmtTypes?.has(type)) {
       const decl = node.namedChild(0);
-      if (decl && (
-        decl.type === "arrow_function" ||
-        (decl.type === "function_declaration" && !decl.childForFieldName?.("name"))
-      )) {
+      if (
+        decl &&
+        (decl.type === "arrow_function" ||
+          (decl.type === "function_declaration" && !decl.childForFieldName?.("name")))
+      ) {
         out.push(`${basename}:default`);
         return;
       }

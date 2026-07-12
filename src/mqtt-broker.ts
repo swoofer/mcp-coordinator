@@ -74,7 +74,10 @@ export function wsToDuplex(ws: WebSocket): Duplex {
       ws.pause();
     }
   });
-  ws.on("close", () => { duplex.push(null); duplex.destroy(); });
+  ws.on("close", () => {
+    duplex.push(null);
+    duplex.destroy();
+  });
   ws.on("error", (err) => duplex.destroy(err));
   return duplex;
 }
@@ -136,7 +139,7 @@ export function createAedesAuthenticateHook(
       (err) => {
         logger.warn({ client_id: client?.id, err: (err as Error).message }, "MQTT auth error");
         cb(null, false);
-      }
+      },
     );
   };
 }
@@ -164,7 +167,9 @@ export interface EmbeddedMqttOptions {
  * before accepting connections — new Aedes() returns before the broker is
  * fully ready, which causes client connect timeouts in compiled binaries.
  */
-export async function startEmbeddedMqttBroker(opts: EmbeddedMqttOptions): Promise<EmbeddedMqttBroker> {
+export async function startEmbeddedMqttBroker(
+  opts: EmbeddedMqttOptions,
+): Promise<EmbeddedMqttBroker> {
   const { tcpPort, httpServer, wsPath = "/mqtt", logger, authenticate } = opts;
 
   // Build Aedes options. Hooks are passed at construction time to guarantee
@@ -178,12 +183,19 @@ export async function startEmbeddedMqttBroker(opts: EmbeddedMqttOptions): Promis
 
     // ACL: subscriptions must match coordinator/<org>/...
     // cb(null, null) → granted=128 (subscription failure per MQTT 3.1.1)
-    aedesOpts.authorizeSubscribe = (client: Client, sub: { topic: string; qos: number }, cb: (err: Error | null, sub: { topic: string; qos: number } | null) => void) => {
+    aedesOpts.authorizeSubscribe = (
+      client: Client,
+      sub: { topic: string; qos: number },
+      cb: (err: Error | null, sub: { topic: string; qos: number } | null) => void,
+    ) => {
       const org = (client as unknown as { org?: string }).org;
       if (!org) return cb(new Error("MQTT client missing org"), null);
       const prefix = `coordinator/${org}/`;
       if (!sub.topic.startsWith(prefix)) {
-        logger.warn({ client_id: client?.id, org, topic: sub.topic }, "MQTT subscribe denied (cross-org)");
+        logger.warn(
+          { client_id: client?.id, org, topic: sub.topic },
+          "MQTT subscribe denied (cross-org)",
+        );
         return cb(null, null);
       }
       cb(null, sub);
@@ -192,12 +204,19 @@ export async function startEmbeddedMqttBroker(opts: EmbeddedMqttOptions): Promis
     // ACL: publishes must match coordinator/<org>/...
     // Passing an Error to cb causes Aedes to disconnect the client (intended:
     // cross-org publish is treated as a protocol violation, not silently dropped).
-    aedesOpts.authorizePublish = (client: Client, packet: { topic: string }, cb: (err: Error | null) => void) => {
+    aedesOpts.authorizePublish = (
+      client: Client,
+      packet: { topic: string },
+      cb: (err: Error | null) => void,
+    ) => {
       const org = (client as unknown as { org?: string }).org;
       if (!org) return cb(new Error("MQTT client missing org"));
       const prefix = `coordinator/${org}/`;
       if (!packet.topic.startsWith(prefix)) {
-        logger.warn({ client_id: client?.id, org, topic: packet.topic }, "MQTT publish denied (cross-org) — client will be disconnected");
+        logger.warn(
+          { client_id: client?.id, org, topic: packet.topic },
+          "MQTT publish denied (cross-org) — client will be disconnected",
+        );
         return cb(new Error("Cross-org publish denied"));
       }
       cb(null);
@@ -263,7 +282,10 @@ export async function startEmbeddedMqttBroker(opts: EmbeddedMqttOptions): Promis
         wss.handleUpgrade(req, socket, head, (ws) => wss.emit("connection", ws, req));
       }
     });
-    logger.info({ path: wsPath, transport: "ws" }, "Embedded MQTT broker listening on HTTP upgrade");
+    logger.info(
+      { path: wsPath, transport: "ws" },
+      "Embedded MQTT broker listening on HTTP upgrade",
+    );
     wsServerClose = () => new Promise<void>((resolve) => wss.close(() => resolve()));
   }
 

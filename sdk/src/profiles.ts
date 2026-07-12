@@ -12,14 +12,20 @@ export interface Profile {
 }
 
 export class ProfileNotFoundError extends Error {
-  constructor(public readonly profileName: string, public readonly available: string[]) {
+  constructor(
+    public readonly profileName: string,
+    public readonly available: string[],
+  ) {
     super(`Profile "${profileName}" not found. Available: ${available.join(", ") || "(none)"}`);
     this.name = "ProfileNotFoundError";
   }
 }
 
 export class TomlParseError extends Error {
-  constructor(public readonly line: number, public readonly reason: string) {
+  constructor(
+    public readonly line: number,
+    public readonly reason: string,
+  ) {
     super(`config.toml line ${line}: ${reason}`);
     this.name = "TomlParseError";
   }
@@ -150,10 +156,8 @@ export interface LoadProfileOptions {
  * Throws ProfileNotFoundError if the file exists but the named profile is absent.
  */
 export async function loadProfile(opts: LoadProfileOptions = {}): Promise<Profile | null> {
-  const configPath =
-    opts.configPath ?? path.join(os.homedir(), ".mcp-coordinator", "config.toml");
-  const profileName =
-    opts.profileName ?? process.env.MCP_COORDINATOR_PROFILE ?? "default";
+  const configPath = opts.configPath ?? path.join(os.homedir(), ".mcp-coordinator", "config.toml");
+  const profileName = opts.profileName ?? process.env.MCP_COORDINATOR_PROFILE ?? "default";
 
   let content: string;
   try {

@@ -240,7 +240,9 @@ describe("T13: admin orgs flow (end-to-end through real HTTP server)", () => {
       },
     });
     expect(r.status).toBe(201);
-    const body = r.json<{ org: { id: string; name: string; allowlist_github_org: string | null } }>();
+    const body = r.json<{
+      org: { id: string; name: string; allowlist_github_org: string | null };
+    }>();
     expect(body.org.name).toBe("Engineering");
     expect(body.org.allowlist_github_org).toBe("engineering-gh");
     createdOrgId = body.org.id;
@@ -255,9 +257,7 @@ describe("T13: admin orgs flow (end-to-end through real HTTP server)", () => {
 
     // Audit row landed with flat-scalar metadata.
     const auditRows = getDb()
-      .prepare(
-        "SELECT action, metadata_json FROM audit_log WHERE action = 'admin.org.created'",
-      )
+      .prepare("SELECT action, metadata_json FROM audit_log WHERE action = 'admin.org.created'")
       .all() as Array<{ action: string; metadata_json: string }>;
     expect(auditRows).toHaveLength(1);
     const meta = JSON.parse(auditRows[0]!.metadata_json) as Record<string, unknown>;
@@ -293,9 +293,9 @@ describe("T13: admin orgs flow (end-to-end through real HTTP server)", () => {
     expect(body.org.id).toBe(createdOrgId);
     expect(body.org.name).toBe("Engineering-Renamed");
 
-    const row = getDb()
-      .prepare("SELECT name FROM orgs WHERE id = ?")
-      .get(createdOrgId) as { name: string };
+    const row = getDb().prepare("SELECT name FROM orgs WHERE id = ?").get(createdOrgId) as {
+      name: string;
+    };
     expect(row.name).toBe("Engineering-Renamed");
 
     // Audit chain: one created + one updated event.
@@ -329,9 +329,7 @@ describe("T13: admin orgs flow (end-to-end through real HTTP server)", () => {
 
     // No new admin.org.created audit row emitted.
     const createdRows = getDb()
-      .prepare(
-        "SELECT id FROM audit_log WHERE action = 'admin.org.created'",
-      )
+      .prepare("SELECT id FROM audit_log WHERE action = 'admin.org.created'")
       .all();
     expect(createdRows).toHaveLength(1);
   });

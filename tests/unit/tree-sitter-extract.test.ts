@@ -3,7 +3,9 @@ import { TreeSitterExtractor } from "../../src/tree-sitter-extractor.js";
 
 describe("TreeSitterExtractor", () => {
   const extractor = new TreeSitterExtractor();
-  beforeAll(async () => { await extractor.load(); });
+  beforeAll(async () => {
+    await extractor.load();
+  });
 
   it("returns null for unknown extension", () => {
     expect(extractor.extract("foo.unknown", "x", null)).toBe(null);

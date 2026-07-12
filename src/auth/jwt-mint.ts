@@ -83,9 +83,7 @@ export interface MintedRefreshJWT {
   jti: string;
 }
 
-export async function mintRefreshJWT(
-  opts: MintRefreshJWTOptions,
-): Promise<MintedRefreshJWT> {
+export async function mintRefreshJWT(opts: MintRefreshJWTOptions): Promise<MintedRefreshJWT> {
   const jti = opts.jti ?? crypto.randomUUID();
   // securite-auth-01: mark this JWT as a refresh token so verifiers can
   // reject it if presented at an access-token consumer (session cookie /

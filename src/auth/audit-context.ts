@@ -22,11 +22,7 @@ const als = new AsyncLocalStorage<AuditScope>();
  * getCurrentActor / getCurrentRequest. Compose with T10 withRequestId
  * to get full audit row context (actor + network + request_id).
  */
-export function withAuditContext<T>(
-  actor: ActorContext,
-  request: RequestMeta,
-  fn: () => T,
-): T {
+export function withAuditContext<T>(actor: ActorContext, request: RequestMeta, fn: () => T): T {
   return als.run({ actor, request }, fn);
 }
 

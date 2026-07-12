@@ -67,7 +67,10 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  if (broker) { await broker.close(); broker = null; }
+  if (broker) {
+    await broker.close();
+    broker = null;
+  }
   closeDb();
   rmSync(dataDir, { recursive: true, force: true });
   // CRITICAL: this test calls initAuth with a non-canonical secret AND a
@@ -107,7 +110,11 @@ describe("B3 fix - opt-in MQTT JWT auth", () => {
   it("the real hook accepts a valid JWT in the password field and attaches org to the Aedes client", async () => {
     const token = await createToken("test-agent", "agent");
 
-    const { err, success, client } = await runAedesHook(jwtVerifier, undefined, Buffer.from(token, "utf-8"));
+    const { err, success, client } = await runAedesHook(
+      jwtVerifier,
+      undefined,
+      Buffer.from(token, "utf-8"),
+    );
 
     expect(err).toBeNull();
     expect(success).toBe(true);
@@ -126,13 +133,21 @@ describe("B3 fix - opt-in MQTT JWT auth", () => {
   it("the real hook rejects an invalid token", async () => {
     const r1 = await runAedesHook(jwtVerifier, undefined, Buffer.from("not-a-jwt", "utf-8"));
     expect(r1.success).toBe(false);
-    const r2 = await runAedesHook(jwtVerifier, undefined, Buffer.from("eyJhbGciOiJIUzI1NiJ9.fake.signature", "utf-8"));
+    const r2 = await runAedesHook(
+      jwtVerifier,
+      undefined,
+      Buffer.from("eyJhbGciOiJIUzI1NiJ9.fake.signature", "utf-8"),
+    );
     expect(r2.success).toBe(false);
   });
 
   it("the real hook accepts admin tokens too (used by internal coordinator client)", async () => {
     const adminToken = await createToken("coordinator-internal", "admin");
-    const { success, client } = await runAedesHook(jwtVerifier, undefined, Buffer.from(adminToken, "utf-8"));
+    const { success, client } = await runAedesHook(
+      jwtVerifier,
+      undefined,
+      Buffer.from(adminToken, "utf-8"),
+    );
     expect(success).toBe(true);
     expect((client as unknown as { org: string }).org).toBe("default");
   });
@@ -173,8 +188,14 @@ describe("B3 fix - opt-in MQTT JWT auth", () => {
         reconnectPeriod: 0,
         connectTimeout: 3000,
       });
-      c.once("connect", () => { resolve({ connected: true }); c.end(true); });
-      c.once("error", () => { resolve({ connected: false }); c.end(true); });
+      c.once("connect", () => {
+        resolve({ connected: true });
+        c.end(true);
+      });
+      c.once("error", () => {
+        resolve({ connected: false });
+        c.end(true);
+      });
     });
     expect(good.connected).toBe(true);
 
@@ -192,8 +213,14 @@ describe("B3 fix - opt-in MQTT JWT auth", () => {
       // a parsed "error" event (the socket teardown can race the CONNACK
       // parse). Treat anything other than "connect" as rejection: what we
       // actually care about is that the real hook never let the client in.
-      c.once("connect", () => { resolve({ connected: true }); c.end(true); });
-      c.once("error", () => { resolve({ connected: false }); c.end(true); });
+      c.once("connect", () => {
+        resolve({ connected: true });
+        c.end(true);
+      });
+      c.once("error", () => {
+        resolve({ connected: false });
+        c.end(true);
+      });
       c.once("close", () => resolve({ connected: false }));
     });
     expect(bad.connected).toBe(false);

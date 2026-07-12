@@ -6,8 +6,5 @@ import crypto from "node:crypto";
  * GitHub user IDs are stable PII; audit rows store hashes, not raw IDs.
  */
 export function hashIdpUserId(idpUserId: string): string {
-  return crypto
-    .createHash("sha256")
-    .update(`idp-user-id-v1\x00${idpUserId}`)
-    .digest("hex");
+  return crypto.createHash("sha256").update(`idp-user-id-v1\x00${idpUserId}`).digest("hex");
 }

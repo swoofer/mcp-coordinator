@@ -11,17 +11,9 @@ import { RateLimiter } from "../../src/auth/rate-limit.js";
 import { buildJwtKeyRegistry } from "../../src/auth/jwt-keys.js";
 import { MembershipCache } from "../../src/auth/membership-cache.js";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
-import {
-  initAuth,
-  initPhase2Auth,
-  resetPhase2Auth,
-  createToken,
-} from "../../src/auth.js";
+import { initAuth, initPhase2Auth, resetPhase2Auth, createToken } from "../../src/auth.js";
 import type Database from "better-sqlite3";
-import type {
-  IdPProvider,
-  ExchangeCodeResult,
-} from "../../src/auth/providers/types.js";
+import type { IdPProvider, ExchangeCodeResult } from "../../src/auth/providers/types.js";
 
 /**
  * T24 — GET /api/auth/me (userinfo).
@@ -147,18 +139,7 @@ function seedUser(
           idp_access_token, role, last_login_at, token_epoch)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-    .run(
-      id,
-      orgId,
-      email ?? `${id}@example.com`,
-      name,
-      "github",
-      `gh-${id}`,
-      "tok",
-      role,
-      "0",
-      0,
-    );
+    .run(id, orgId, email ?? `${id}@example.com`, name, "github", `gh-${id}`, "tok", role, "0", 0);
 }
 
 interface SessionMintOpts {
@@ -208,7 +189,9 @@ beforeEach(() => {
   // v0.9 (issue #79): revoked_agents now has FK on org_id → orgs(id); preserve
   // 'default' so the test below's INSERT INTO revoked_agents satisfies the FK.
   getDb().exec("DELETE FROM orgs WHERE id <> 'default'");
-  getDb().prepare("INSERT OR IGNORE INTO orgs (id, name) VALUES ('default', 'Default Organization')").run();
+  getDb()
+    .prepare("INSERT OR IGNORE INTO orgs (id, name) VALUES ('default', 'Default Organization')")
+    .run();
   getDb().exec("DELETE FROM revoked_agents");
   resetPhase2Auth();
   clock = new FakeClock(Math.floor(Date.now() / 1000));
@@ -357,20 +340,12 @@ describe("handleUserinfo", () => {
     // First 600 succeed
     for (let i = 0; i < 600; i++) {
       const res = mockResponse();
-      await handleUserinfo(
-        mockRequest({ cookie }),
-        res as unknown as ServerResponse,
-        makeCtx(),
-      );
+      await handleUserinfo(mockRequest({ cookie }), res as unknown as ServerResponse, makeCtx());
       expect(res.statusCode).toBe(200);
     }
     // 601st exceeds
     const res601 = mockResponse();
-    await handleUserinfo(
-      mockRequest({ cookie }),
-      res601 as unknown as ServerResponse,
-      makeCtx(),
-    );
+    await handleUserinfo(mockRequest({ cookie }), res601 as unknown as ServerResponse, makeCtx());
     expect(res601.statusCode).toBe(429);
     expect(res601.headers["Retry-After"]).toBeDefined();
     expect(Number(res601.headers["Retry-After"] as string)).toBeGreaterThan(0);

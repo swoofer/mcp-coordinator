@@ -2,13 +2,7 @@ import { randomUUID } from "crypto";
 import { getDb } from "./database.js";
 import { silentLogger, type Logger } from "./logger.js";
 import { safeJsonParse } from "./json-utils.js";
-import type {
-  Thread,
-  ThreadMessage,
-  ActionSummary,
-  MessageType,
-  ResolutionType,
-} from "./types.js";
+import type { Thread, ThreadMessage, ActionSummary, MessageType, ResolutionType } from "./types.js";
 
 export interface ResolutionEvent {
   thread_id: string;
@@ -49,7 +43,9 @@ export class Consultation {
   startTimeoutSweeper(intervalMs = 30000): void {
     if (this.timeoutSweeperHandle) return;
     this.timeoutSweeperHandle = setInterval(() => {
-      try { this.checkTimeouts(); } catch (err) {
+      try {
+        this.checkTimeouts();
+      } catch (err) {
         this.log.warn({ err }, "Timeout sweeper iteration failed");
       }
     }, intervalMs);
@@ -64,7 +60,12 @@ export class Consultation {
     }
   }
 
-  emitResolution(threadId: string, type: ResolutionType, approvedBy?: string, approvedByName?: string): void {
+  emitResolution(
+    threadId: string,
+    type: ResolutionType,
+    approvedBy?: string,
+    approvedByName?: string,
+  ): void {
     const db = getDb();
     // emitResolution is called internally after we already know the thread belongs
     // to the right org. We look it up cross-org here intentionally so that
@@ -72,20 +73,29 @@ export class Consultation {
     const thread = this.getThreadCrossOrg(threadId);
     if (!thread) return;
 
-    const messageCount = (db.prepare("SELECT COUNT(*) as count FROM thread_messages WHERE thread_id = ?").get(threadId) as { count: number }).count;
+    const messageCount = (
+      db
+        .prepare("SELECT COUNT(*) as count FROM thread_messages WHERE thread_id = ?")
+        .get(threadId) as { count: number }
+    ).count;
 
     // SQLite stores CURRENT_TIMESTAMP as "YYYY-MM-DD HH:MM:SS" in UTC with
     // no TZ suffix. V8's Date() parses such strings as LOCAL time, which on
     // a non-UTC host (e.g. America/Toronto) yields a negative durationMs by
     // the host's offset (~ -3h50min in summer). Append the Z so the
     // constructor reads it as UTC — same pattern as agent-activity.ts:90.
-    const durationMs = thread ? Date.now() - new Date(thread.created_at.replace(" ", "T") + "Z").getTime() : undefined;
-    this.log.info({
-      thread_id: threadId,
-      resolution_type: type,
-      approved_by: approvedBy,
-      duration_ms: durationMs,
-    }, "Thread resolved");
+    const durationMs = thread
+      ? Date.now() - new Date(thread.created_at.replace(" ", "T") + "Z").getTime()
+      : undefined;
+    this.log.info(
+      {
+        thread_id: threadId,
+        resolution_type: type,
+        approved_by: approvedBy,
+        duration_ms: durationMs,
+      },
+      "Thread resolved",
+    );
 
     if (this.onResolveCallback) {
       this.onResolveCallback({
@@ -102,20 +112,23 @@ export class Consultation {
     }
   }
 
-  announceWork(orgId: string, params: {
-    agent_id: string;
-    subject: string;
-    plan?: string;
-    target_modules: string[];
-    target_files: string[];
-    depends_on_files?: string[];
-    exports_affected?: string[];
-    keep_open?: boolean;
-    // Directed-dispatch: when set, only that agent_id can claim the thread.
-    // Implies keep_open=true because the target agent must have time to pick
-    // it up even if no module-based respondents are found.
-    assigned_to?: string | null;
-  }): Thread {
+  announceWork(
+    orgId: string,
+    params: {
+      agent_id: string;
+      subject: string;
+      plan?: string;
+      target_modules: string[];
+      target_files: string[];
+      depends_on_files?: string[];
+      exports_affected?: string[];
+      keep_open?: boolean;
+      // Directed-dispatch: when set, only that agent_id can claim the thread.
+      // Implies keep_open=true because the target agent must have time to pick
+      // it up even if no module-based respondents are found.
+      assigned_to?: string | null;
+    },
+  ): Thread {
     const db = getDb();
     const id = randomUUID();
 
@@ -126,13 +139,22 @@ export class Consultation {
     // thread then stays open forever waiting for an absent voter.
     const tx = db.transaction(() => {
       const onlineAgents = db
-        .prepare("SELECT id, modules FROM agents WHERE status = 'online' AND id != ? AND org_id = ?")
+        .prepare(
+          "SELECT id, modules FROM agents WHERE status = 'online' AND id != ? AND org_id = ?",
+        )
         .all(params.agent_id, orgId) as { id: string; modules: string }[];
 
       const respondents = onlineAgents.filter((agent) => {
-        const agentModules: string[] = safeJsonParse<string[]>(agent.modules, [], this.log, "consultation.announceWork:agent.modules");
+        const agentModules: string[] = safeJsonParse<string[]>(
+          agent.modules,
+          [],
+          this.log,
+          "consultation.announceWork:agent.modules",
+        );
         return params.target_modules.some((tm) =>
-          agentModules.some((am) => am === tm || am.startsWith(tm + "/") || tm.startsWith(am + "/"))
+          agentModules.some(
+            (am) => am === tm || am.startsWith(tm + "/") || tm.startsWith(am + "/"),
+          ),
         );
       });
 
@@ -146,7 +168,7 @@ export class Consultation {
 
       db.prepare(
         `INSERT INTO threads (id, org_id, initiator_id, subject, plan, target_modules, target_files, status, expected_respondents, resolved_at, depends_on_files, exports_affected, timeout_seconds, assigned_to)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(
         id,
         orgId,
@@ -169,29 +191,35 @@ export class Consultation {
 
     const { autoResolve, respondentIds, assignedTo } = tx();
 
-    this.log.info({
-      thread_id: id,
-      org_id: orgId,
-      agent_id: params.agent_id,
-      subject: params.subject,
-      target_modules: params.target_modules,
-      auto_resolve: autoResolve,
-      respondent_count: respondentIds.length,
-      assigned_to: assignedTo,
-    }, "Thread opened");
+    this.log.info(
+      {
+        thread_id: id,
+        org_id: orgId,
+        agent_id: params.agent_id,
+        subject: params.subject,
+        target_modules: params.target_modules,
+        auto_resolve: autoResolve,
+        respondent_count: respondentIds.length,
+        assigned_to: assignedTo,
+      },
+      "Thread opened",
+    );
 
     return this.getThread(orgId, id)!;
   }
 
-  postToThread(orgId: string, params: {
-    thread_id: string;
-    agent_id: string;
-    agent_name?: string;
-    type: MessageType;
-    content: string;
-    context_snapshot?: string;
-    in_reply_to?: string;
-  }): ThreadMessage {
+  postToThread(
+    orgId: string,
+    params: {
+      thread_id: string;
+      agent_id: string;
+      agent_name?: string;
+      type: MessageType;
+      content: string;
+      context_snapshot?: string;
+      in_reply_to?: string;
+    },
+  ): ThreadMessage {
     const db = getDb();
     const thread = this.getThread(orgId, params.thread_id);
     if (!thread) throw new Error(`Thread ${params.thread_id} not found`);
@@ -199,15 +227,14 @@ export class Consultation {
     // Resolved threads accept late posts (audit/enrichment) because the review
     // phase races with auto-resolve: an ENRICHIT computed against an open
     // thread may arrive milliseconds after the thread transitioned to resolved.
-    if (thread.status === "cancelled")
-      throw new Error(`Thread ${params.thread_id} is cancelled`);
+    if (thread.status === "cancelled") throw new Error(`Thread ${params.thread_id} is cancelled`);
 
     const id = randomUUID();
     // Simple token estimate: ~4 chars per token for English/French
     const tokenEstimate = Math.ceil(params.content.length / 4);
     db.prepare(
       `INSERT INTO thread_messages (id, org_id, thread_id, agent_id, agent_name, type, content, context_snapshot, in_reply_to, round, token_estimate)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       id,
       orgId,
@@ -219,15 +246,18 @@ export class Consultation {
       params.context_snapshot || null,
       params.in_reply_to || null,
       thread.round,
-      tokenEstimate
+      tokenEstimate,
     );
 
-    this.log.debug({
-      thread_id: params.thread_id,
-      agent_id: params.agent_id,
-      type: params.type,
-      content_length: params.content.length,
-    }, "Message posted to thread");
+    this.log.debug(
+      {
+        thread_id: params.thread_id,
+        agent_id: params.agent_id,
+        type: params.type,
+        content_length: params.content.length,
+      },
+      "Message posted to thread",
+    );
 
     return db.prepare("SELECT * FROM thread_messages WHERE id = ?").get(id) as ThreadMessage;
   }
@@ -240,7 +270,7 @@ export class Consultation {
       throw new Error("Only the initiator or the claimant can propose a resolution");
 
     db.prepare(
-      "UPDATE threads SET status = 'resolving', resolution_summary = ? WHERE id = ? AND org_id = ?"
+      "UPDATE threads SET status = 'resolving', resolution_summary = ? WHERE id = ? AND org_id = ?",
     ).run(summary, threadId, orgId);
 
     // Post resolution message
@@ -251,8 +281,7 @@ export class Consultation {
     const db = getDb();
     const thread = this.getThread(orgId, threadId);
     if (!thread) throw new Error(`Thread ${threadId} not found`);
-    if (thread.status !== "resolving")
-      throw new Error(`Thread is ${thread.status}, not resolving`);
+    if (thread.status !== "resolving") throw new Error(`Thread is ${thread.status}, not resolving`);
 
     // B1 fix: post + check + transition must be atomic, else two concurrent
     // approvals each see "all approved" and fire emitResolution twice. Using
@@ -263,7 +292,9 @@ export class Consultation {
       this.postResolutionMessage(orgId, threadId, agentId, "approve", "Approved");
       if (!this.allRespondentsApproved(orgId, threadId)) return false;
       const res = db
-        .prepare("UPDATE threads SET status = 'resolved', resolved_at = ? WHERE id = ? AND org_id = ? AND status = 'resolving'")
+        .prepare(
+          "UPDATE threads SET status = 'resolved', resolved_at = ? WHERE id = ? AND org_id = ? AND status = 'resolving'",
+        )
         .run(new Date().toISOString(), threadId, orgId);
       return res.changes > 0;
     });
@@ -279,8 +310,7 @@ export class Consultation {
     const db = getDb();
     const thread = this.getThread(orgId, threadId);
     if (!thread) throw new Error(`Thread ${threadId} not found`);
-    if (thread.status !== "resolving")
-      throw new Error(`Thread is ${thread.status}, not resolving`);
+    if (thread.status !== "resolving") throw new Error(`Thread is ${thread.status}, not resolving`);
 
     // Post contest message
     this.postResolutionMessage(orgId, threadId, agentId, "contest", reason);
@@ -291,12 +321,12 @@ export class Consultation {
     if (nextRound > thread.max_rounds) {
       // Max rounds reached — force resolve
       db.prepare(
-        "UPDATE threads SET status = 'resolved', resolved_at = ? WHERE id = ? AND org_id = ?"
+        "UPDATE threads SET status = 'resolved', resolved_at = ? WHERE id = ? AND org_id = ?",
       ).run(new Date().toISOString(), threadId, orgId);
       this.emitResolution(threadId, "max_rounds");
     } else {
       db.prepare(
-        "UPDATE threads SET status = 'open', round = ?, resolution_summary = NULL WHERE id = ? AND org_id = ?"
+        "UPDATE threads SET status = 'open', round = ?, resolution_summary = NULL WHERE id = ? AND org_id = ?",
       ).run(nextRound, threadId, orgId);
     }
   }
@@ -305,11 +335,10 @@ export class Consultation {
     const db = getDb();
     const thread = this.getThread(orgId, threadId);
     if (!thread) throw new Error(`Thread ${threadId} not found`);
-    if (thread.initiator_id !== agentId)
-      throw new Error("Only the initiator can cancel");
+    if (thread.initiator_id !== agentId) throw new Error("Only the initiator can cancel");
 
     db.prepare(
-      "UPDATE threads SET status = 'cancelled', resolved_at = ? WHERE id = ? AND org_id = ?"
+      "UPDATE threads SET status = 'cancelled', resolved_at = ? WHERE id = ? AND org_id = ?",
     ).run(new Date().toISOString(), threadId, orgId);
 
     if (reason) {
@@ -325,16 +354,14 @@ export class Consultation {
     }
     if (thread.initiator_id !== agentId) {
       throw new Error(
-        `Only the initiator (${thread.initiator_id}) may close thread ${threadId}, not ${agentId}`
+        `Only the initiator (${thread.initiator_id}) may close thread ${threadId}, not ${agentId}`,
       );
     }
     if (thread.status !== "open" && thread.status !== "resolving") {
-      throw new Error(
-        `Cannot close thread ${threadId} in status '${thread.status}'`
-      );
+      throw new Error(`Cannot close thread ${threadId} in status '${thread.status}'`);
     }
     db.prepare(
-      "UPDATE threads SET status = 'resolved', resolution_summary = ?, resolved_at = ? WHERE id = ? AND org_id = ?"
+      "UPDATE threads SET status = 'resolved', resolution_summary = ?, resolved_at = ? WHERE id = ? AND org_id = ?",
     ).run(summary, new Date().toISOString(), threadId, orgId);
     this.emitResolution(threadId, "closed");
   }
@@ -353,8 +380,9 @@ export class Consultation {
     // register agents under the same agent_id string, an MQTT disconnect for
     // that string will release claims in BOTH orgs. Phase 2 multi-org rollout
     // must thread org from the MQTT topic before this becomes load-bearing.
-    db.prepare("UPDATE threads SET claimed_by = NULL, claimed_at = NULL WHERE claimed_by = ? AND status = 'open'")
-      .run(agentId);
+    db.prepare(
+      "UPDATE threads SET claimed_by = NULL, claimed_at = NULL WHERE claimed_by = ? AND status = 'open'",
+    ).run(agentId);
 
     // Remove departed agent from expected_respondents of all open/resolving threads.
     // We iterate cross-org (no WHERE org_id filter on the SELECT) for the same
@@ -362,30 +390,37 @@ export class Consultation {
     // point-update below is scoped by the row's own org_id (read from the SELECT)
     // as defense in depth against bare id collisions.
     const threads = db
-      .prepare("SELECT id, org_id, expected_respondents FROM threads WHERE status IN ('open', 'resolving')")
+      .prepare(
+        "SELECT id, org_id, expected_respondents FROM threads WHERE status IN ('open', 'resolving')",
+      )
       .all() as { id: string; org_id: string; expected_respondents: string | null }[];
 
     for (const thread of threads) {
-      const respondents: string[] = safeJsonParse<string[]>(thread.expected_respondents, [], this.log, "consultation.setOffline:expected_respondents");
+      const respondents: string[] = safeJsonParse<string[]>(
+        thread.expected_respondents,
+        [],
+        this.log,
+        "consultation.setOffline:expected_respondents",
+      );
       const updated = respondents.filter((r) => r !== agentId);
       db.prepare("UPDATE threads SET expected_respondents = ? WHERE id = ? AND org_id = ?").run(
         JSON.stringify(updated),
         thread.id,
-        thread.org_id
+        thread.org_id,
       );
 
       // If resolving and all remaining approved, resolve
       const t = this.getThreadCrossOrg(thread.id)!;
       if (t.status === "resolving" && this.allRespondentsApproved(thread.org_id, thread.id)) {
         db.prepare(
-          "UPDATE threads SET status = 'resolved', resolved_at = ? WHERE id = ? AND org_id = ?"
+          "UPDATE threads SET status = 'resolved', resolved_at = ? WHERE id = ? AND org_id = ?",
         ).run(new Date().toISOString(), thread.id, thread.org_id);
         this.emitResolution(thread.id, "agent_departure");
       }
       // If open and no respondents left, auto-resolve
       if (t.status === "open" && updated.length === 0) {
         db.prepare(
-          "UPDATE threads SET status = 'resolved', resolved_at = ? WHERE id = ? AND org_id = ?"
+          "UPDATE threads SET status = 'resolved', resolved_at = ? WHERE id = ? AND org_id = ?",
         ).run(new Date().toISOString(), thread.id, thread.org_id);
         this.emitResolution(thread.id, "agent_departure");
       }
@@ -404,23 +439,29 @@ export class Consultation {
     // thread IDs to emit for. The transaction makes both observe the same
     // snapshot.
     const tx = db.transaction(() => {
-      const timedOut = db.prepare(`
+      const timedOut = db
+        .prepare(
+          `
         SELECT id FROM threads
         WHERE status IN ('open', 'resolving')
         AND timeout_seconds > 0
         AND datetime(created_at, '+' || (timeout_seconds * round) || ' seconds') < CURRENT_TIMESTAMP
-      `).all() as { id: string }[];
+      `,
+        )
+        .all() as { id: string }[];
 
       if (timedOut.length === 0) return [];
 
-      db.prepare(`
+      db.prepare(
+        `
         UPDATE threads SET status = 'resolved',
           resolution_summary = 'Résolu par timeout — pas de réponse dans le délai',
           resolved_at = CURRENT_TIMESTAMP
         WHERE status IN ('open', 'resolving')
         AND timeout_seconds > 0
         AND datetime(created_at, '+' || (timeout_seconds * round) || ' seconds') < CURRENT_TIMESTAMP
-      `).run();
+      `,
+      ).run();
 
       return timedOut;
     });
@@ -428,7 +469,10 @@ export class Consultation {
     const timedOut = tx();
     if (timedOut.length === 0) return;
 
-    this.log.info({ count: timedOut.length, thread_ids: timedOut.map(t => t.id) }, "Threads timed out");
+    this.log.info(
+      { count: timedOut.length, thread_ids: timedOut.map((t) => t.id) },
+      "Threads timed out",
+    );
 
     // Emit OUTSIDE the transaction so listeners can re-enter the DB safely.
     for (const t of timedOut) {
@@ -442,41 +486,51 @@ export class Consultation {
     // resolution should call checkTimeouts() explicitly.
     const db = getDb();
     return (
-      (db.prepare("SELECT * FROM threads WHERE id = ? AND org_id = ?").get(threadId, orgId) as Thread) || null
+      (db
+        .prepare("SELECT * FROM threads WHERE id = ? AND org_id = ?")
+        .get(threadId, orgId) as Thread) || null
     );
   }
 
-  getThreadWithMessages(orgId: string, threadId: string): { thread: Thread; messages: ThreadMessage[] } | null {
+  getThreadWithMessages(
+    orgId: string,
+    threadId: string,
+  ): { thread: Thread; messages: ThreadMessage[] } | null {
     const thread = this.getThread(orgId, threadId);
     if (!thread) return null;
     const db = getDb();
     const messages = db
-      .prepare("SELECT tm.* FROM thread_messages tm JOIN threads t ON tm.thread_id = t.id WHERE tm.thread_id = ? AND t.org_id = ? ORDER BY tm.created_at")
+      .prepare(
+        "SELECT tm.* FROM thread_messages tm JOIN threads t ON tm.thread_id = t.id WHERE tm.thread_id = ? AND t.org_id = ? ORDER BY tm.created_at",
+      )
       .all(threadId, orgId) as ThreadMessage[];
     return { thread, messages };
   }
 
-  listThreads(orgId: string, filters: {
-    status?: string;
-    agent_id?: string;
-    module?: string;
-    /**
-     * When set, only return threads that are claimable by this agent:
-     *   assigned_to IS NULL  (open pool — anyone can take it)
-     *   OR assigned_to = agent_id  (directed to me)
-     * Workers use this to filter out dispatches for other agents without
-     * parsing the thread list themselves.
-     */
-    assigned_to_me?: string;
-    /**
-     * P2 perf: bound resolved-thread queries to a recency window. Without
-     * this, the impact scorer would scan all-time resolved threads on every
-     * announce_work call (O(historical-threads) per scoring pass). The window
-     * applies to resolved_at when status='resolved', otherwise to created_at,
-     * so the filter is meaningful for both states.
-     */
-    since_minutes?: number;
-  }): Thread[] {
+  listThreads(
+    orgId: string,
+    filters: {
+      status?: string;
+      agent_id?: string;
+      module?: string;
+      /**
+       * When set, only return threads that are claimable by this agent:
+       *   assigned_to IS NULL  (open pool — anyone can take it)
+       *   OR assigned_to = agent_id  (directed to me)
+       * Workers use this to filter out dispatches for other agents without
+       * parsing the thread list themselves.
+       */
+      assigned_to_me?: string;
+      /**
+       * P2 perf: bound resolved-thread queries to a recency window. Without
+       * this, the impact scorer would scan all-time resolved threads on every
+       * announce_work call (O(historical-threads) per scoring pass). The window
+       * applies to resolved_at when status='resolved', otherwise to created_at,
+       * so the filter is meaningful for both states.
+       */
+      since_minutes?: number;
+    },
+  ): Thread[] {
     // B2 fix: removed checkTimeouts() side-effect; sweeper handles it.
     const db = getDb();
     let sql = "SELECT * FROM threads WHERE org_id = ?";
@@ -539,17 +593,20 @@ export class Consultation {
     return db.prepare(sql).all(...params) as ThreadMessage[];
   }
 
-  logActionSummary(orgId: string, params: {
-    session_id: string;
-    agent_id: string;
-    file_path?: string;
-    summary: string;
-  }): ActionSummary {
+  logActionSummary(
+    orgId: string,
+    params: {
+      session_id: string;
+      agent_id: string;
+      file_path?: string;
+      summary: string;
+    },
+  ): ActionSummary {
     const db = getDb();
     const id = randomUUID();
     db.prepare(
       `INSERT INTO action_summaries (id, org_id, session_id, agent_id, file_path, summary)
-       VALUES (?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?)`,
     ).run(id, orgId, params.session_id, params.agent_id, params.file_path || null, params.summary);
     return db.prepare("SELECT * FROM action_summaries WHERE id = ?").get(id) as ActionSummary;
   }
@@ -569,7 +626,9 @@ export class Consultation {
   getActionSummariesBySession(orgId: string, sessionId: string): ActionSummary[] {
     const db = getDb();
     return db
-      .prepare("SELECT * FROM action_summaries WHERE org_id = ? AND session_id = ? ORDER BY created_at")
+      .prepare(
+        "SELECT * FROM action_summaries WHERE org_id = ? AND session_id = ? ORDER BY created_at",
+      )
       .all(orgId, sessionId) as ActionSummary[];
   }
 
@@ -581,9 +640,7 @@ export class Consultation {
    */
   private getThreadCrossOrg(threadId: string): Thread | null {
     const db = getDb();
-    return (
-      (db.prepare("SELECT * FROM threads WHERE id = ?").get(threadId) as Thread) || null
-    );
+    return (db.prepare("SELECT * FROM threads WHERE id = ?").get(threadId) as Thread) || null;
   }
 
   private postResolutionMessage(
@@ -591,21 +648,26 @@ export class Consultation {
     threadId: string,
     agentId: string,
     type: MessageType,
-    content: string
+    content: string,
   ): void {
     const db = getDb();
     const thread = this.getThread(orgId, threadId)!;
     const id = randomUUID();
     db.prepare(
       `INSERT INTO thread_messages (id, org_id, thread_id, agent_id, type, content, round)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
     ).run(id, orgId, threadId, agentId, type, content, thread.round);
   }
 
   private allRespondentsApproved(orgId: string, threadId: string): boolean {
     const db = getDb();
     const thread = this.getThread(orgId, threadId)!;
-    const expected: string[] = safeJsonParse<string[]>(thread.expected_respondents, [], this.log, "consultation.allRespondentsApproved:expected_respondents");
+    const expected: string[] = safeJsonParse<string[]>(
+      thread.expected_respondents,
+      [],
+      this.log,
+      "consultation.allRespondentsApproved:expected_respondents",
+    );
     if (expected.length === 0) return true;
 
     // Only count approvals from the CURRENT round. A contested resolution
@@ -614,7 +676,7 @@ export class Consultation {
     const approvals = db
       .prepare(
         `SELECT DISTINCT agent_id FROM thread_messages
-         WHERE thread_id = ? AND type = 'approve' AND round = ?`
+         WHERE thread_id = ? AND type = 'approve' AND round = ?`,
       )
       .all(threadId, thread.round) as { agent_id: string }[];
 

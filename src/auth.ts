@@ -100,7 +100,9 @@ export async function verifyToken(token: string): Promise<AuthClaims> {
   };
 }
 
-export async function verifyTokenStrict(token: string): Promise<{ claims: AuthClaims; wasLegacy: boolean }> {
+export async function verifyTokenStrict(
+  token: string,
+): Promise<{ claims: AuthClaims; wasLegacy: boolean }> {
   let payload: Awaited<ReturnType<typeof jwtVerify>>["payload"];
   try {
     ({ payload } = await jwtVerify(token, signingKey, { algorithms: ["HS256"] }));
@@ -115,14 +117,13 @@ export async function verifyTokenStrict(token: string): Promise<{ claims: AuthCl
   // Tolerate missing/unknown role on v0.6 tokens. Default to 'member' (LEAST PRIVILEGE).
   const rawRole = payload.role;
   const role: AuthRole =
-    rawRole === "agent" || rawRole === "admin" || rawRole === "member"
-      ? rawRole
-      : "member";
+    rawRole === "agent" || rawRole === "admin" || rawRole === "member" ? rawRole : "member";
   // v0.7 detection: BOTH user_id AND org must be present strings.
   const hasV07 = typeof payload.user_id === "string" && typeof payload.org === "string";
   return {
     claims: {
-      sub: payload.sub, role,
+      sub: payload.sub,
+      role,
       user_id: typeof payload.user_id === "string" ? payload.user_id : "legacy",
       org: typeof payload.org === "string" ? payload.org : "default",
       jti: typeof payload.jti === "string" ? payload.jti : randomUUID(),
@@ -164,15 +165,14 @@ export async function refreshToken(
       // Tolerate missing/unknown role on v0.6 tokens. Default to 'member' (LEAST PRIVILEGE).
       const rawRole = payload.role;
       const role: AuthRole =
-        rawRole === "agent" || rawRole === "admin" || rawRole === "member"
-          ? rawRole
-          : "member";
+        rawRole === "agent" || rawRole === "admin" || rawRole === "member" ? rawRole : "member";
       const hasV07 = typeof payload.user_id === "string" && typeof payload.org === "string";
       if (!hasV07 && authEnabled) {
         throw new Error("v0.6 token rejected: upgrade required (AUTH_ENABLED=true)");
       }
       claims = {
-        sub: payload.sub, role,
+        sub: payload.sub,
+        role,
         user_id: typeof payload.user_id === "string" ? payload.user_id : "legacy",
         org: typeof payload.org === "string" ? payload.org : "default",
         jti: typeof payload.jti === "string" ? payload.jti : randomUUID(),
@@ -198,7 +198,10 @@ export function revokeAgent(agentId: string, revokedBy: string): void {
   // INTENTIONALLY cross-org: revoked_agents is a global blocklist by design.
   // A revocation issued by an admin must be effective across every org where
   // that agent_id appears — there is no per-org revocation in Phase 1.
-  db.prepare("INSERT OR IGNORE INTO revoked_agents (agent_id, revoked_by) VALUES (?, ?)").run(agentId, revokedBy);
+  db.prepare("INSERT OR IGNORE INTO revoked_agents (agent_id, revoked_by) VALUES (?, ?)").run(
+    agentId,
+    revokedBy,
+  );
 }
 
 const ADMIN_ONLY_ROUTES = ["/api/auth/revoke", "/api/reset"];
@@ -311,14 +314,18 @@ async function verifyPhase2SessionCookie(
     if (!claims.sub) {
       audit("auth.invalid_token", { tier: 2, metadata: { reason: "missing_sub" } });
       return {
-        ok: false, status: 401, error: "Invalid session cookie",
+        ok: false,
+        status: 401,
+        error: "Invalid session cookie",
         wwwAuthenticate: bearerAuthHeader("invalid_token", "Invalid session"),
       };
     }
     if (typeof claims.iat !== "number") {
       audit("auth.invalid_token", { tier: 2, metadata: { reason: "missing_iat" } });
       return {
-        ok: false, status: 401, error: "Invalid session cookie",
+        ok: false,
+        status: 401,
+        error: "Invalid session cookie",
         wwwAuthenticate: bearerAuthHeader("invalid_token", "Invalid session"),
       };
     }
@@ -331,7 +338,9 @@ async function verifyPhase2SessionCookie(
         metadata: { reason: "token_epoch_exceeded" },
       });
       return {
-        ok: false, status: 401, error: "Session invalidated",
+        ok: false,
+        status: 401,
+        error: "Session invalidated",
         wwwAuthenticate: bearerAuthHeader("invalid_token", "Session invalidated"),
       };
     }
@@ -346,7 +355,9 @@ async function verifyPhase2SessionCookie(
           metadata: { reason: "service_token_missing_jti" },
         });
         return {
-          ok: false, status: 401, error: "Invalid service token",
+          ok: false,
+          status: 401,
+          error: "Invalid service token",
           wwwAuthenticate: bearerAuthHeader("invalid_token", "Invalid service token"),
         };
       }
@@ -356,7 +367,9 @@ async function verifyPhase2SessionCookie(
           metadata: { reason: "service_token_revoked" },
         });
         return {
-          ok: false, status: 401, error: "Service token revoked",
+          ok: false,
+          status: 401,
+          error: "Service token revoked",
           wwwAuthenticate: bearerAuthHeader("invalid_token", "Service token revoked"),
         };
       }
@@ -397,7 +410,10 @@ async function verifyPhase2SessionCookie(
   }
 }
 
-export async function authenticateRequest(req: IncomingMessage, options: AuthenticateOptions = { authEnabled: true }): Promise<AuthResult> {
+export async function authenticateRequest(
+  req: IncomingMessage,
+  options: AuthenticateOptions = { authEnabled: true },
+): Promise<AuthResult> {
   const { authEnabled } = options;
   const authHeader = req.headers.authorization;
 
@@ -478,10 +494,7 @@ export async function authenticateRequest(req: IncomingMessage, options: Authent
         }
         const url = req.url || "";
         const pathOnly = url.split(/[?#]/)[0];
-        if (
-          ADMIN_ONLY_ROUTES.some((r) => pathOnly === r) &&
-          ph2.claims.role !== "admin"
-        ) {
+        if (ADMIN_ONLY_ROUTES.some((r) => pathOnly === r) && ph2.claims.role !== "admin") {
           return { ok: false, status: 403, error: "Admin access required" };
         }
         return ph2;

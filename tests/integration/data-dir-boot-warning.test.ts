@@ -29,8 +29,11 @@ const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(__filename), "..", "..");
 
 const require = createRequire(import.meta.url);
-const spawn: (command: string, args: string[], options: SpawnOptions) => ChildProcess =
-  require("cross-spawn");
+const spawn: (
+  command: string,
+  args: string[],
+  options: SpawnOptions,
+) => ChildProcess = require("cross-spawn");
 
 // Exact leading substring of the warning both entry points log — kept
 // stable across src/serve-http.ts and src/index.ts.
@@ -303,5 +306,7 @@ async function waitForHealth(port: number, timeoutMs: number): Promise<void> {
     }
     await new Promise((r) => setTimeout(r, 250));
   }
-  throw new Error(`waitForHealth: /health never returned 200 within ${timeoutMs}ms (last error: ${String(lastErr)})`);
+  throw new Error(
+    `waitForHealth: /health never returned 200 within ${timeoutMs}ms (last error: ${String(lastErr)})`,
+  );
 }

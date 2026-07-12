@@ -6,12 +6,7 @@ import type Database from "better-sqlite3";
 import { AuditQueue, type AuditQueueRow } from "../../src/security/audit-queue.js";
 import { GENESIS_HASH } from "../../src/security/audit-chain.js";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
-import {
-  audit,
-  initAuditQueue,
-  getAuditQueue,
-  resetAuditQueue,
-} from "../../src/security/audit.js";
+import { audit, initAuditQueue, getAuditQueue, resetAuditQueue } from "../../src/security/audit.js";
 
 const require = createRequire(import.meta.url);
 const DatabaseCtor = require("better-sqlite3") as new (
@@ -116,7 +111,9 @@ describe("AuditQueue", () => {
     // pre-fill the internal buffer past CAPACITY without flushing.
     // Strategy: monkey-patch flush() to no-op so buffer accumulates.
     const realFlush = queue.flush.bind(queue);
-    queue.flush = (): void => { /* swallow */ };
+    queue.flush = (): void => {
+      /* swallow */
+    };
     try {
       for (let i = 0; i < 10_000; i++) queue.enqueue(makeRow());
       expect(queue.metrics.enqueued).toBe(10_000);
@@ -159,7 +156,9 @@ describe("AuditQueue", () => {
   it("drain() with dropped > 0 writes a system.shutdown.audit_loss row", () => {
     // Force a drop by filling the buffer past capacity (see overflow test).
     const realFlush = queue.flush.bind(queue);
-    queue.flush = (): void => { /* swallow */ };
+    queue.flush = (): void => {
+      /* swallow */
+    };
     for (let i = 0; i < 10_000; i++) queue.enqueue(makeRow());
     queue.enqueue(makeRow()); // dropped
     queue.enqueue(makeRow()); // dropped
@@ -188,7 +187,9 @@ describe("AuditQueue", () => {
 
   it("drain() is idempotent — second call is a no-op", () => {
     const realFlush = queue.flush.bind(queue);
-    queue.flush = (): void => { /* swallow */ };
+    queue.flush = (): void => {
+      /* swallow */
+    };
     for (let i = 0; i < 10_000; i++) queue.enqueue(makeRow());
     queue.enqueue(makeRow()); // drop
     queue.flush = realFlush;
@@ -233,7 +234,7 @@ describe("AuditQueue", () => {
       calls++;
       if (calls === 2) throw new Error("simulated mid-batch failure");
       return realRun(...args);
-    }) as typeof queue["insertStmt"]["run"];
+    }) as (typeof queue)["insertStmt"]["run"];
 
     queue.enqueue(makeRow({ action: "tx.row.1" }));
     queue.enqueue(makeRow({ action: "tx.row.2" }));
@@ -257,14 +258,16 @@ describe("AuditQueue", () => {
   it("drain() swallows shutdown-row write failure without throwing", () => {
     // Force a drop, then sabotage the shutdown statement so .run() throws.
     const realFlush = queue.flush.bind(queue);
-    queue.flush = (): void => { /* swallow */ };
+    queue.flush = (): void => {
+      /* swallow */
+    };
     for (let i = 0; i < 10_000; i++) queue.enqueue(makeRow());
     queue.enqueue(makeRow()); // drop
     queue.flush = realFlush;
 
     queue["shutdownStmt"].run = (() => {
       throw new Error("simulated shutdown write failure");
-    }) as typeof queue["shutdownStmt"]["run"];
+    }) as (typeof queue)["shutdownStmt"]["run"];
 
     // Drain must NOT throw — telemetry-loss-on-telemetry-loss is logged later (T36).
     expect(() => queue.drain()).not.toThrow();
@@ -334,9 +337,7 @@ describe("AuditQueue", () => {
     queue.drain();
     expect(queue.isClosed()).toBe(true);
     db.close();
-    expect(() =>
-      queue.enqueue(makeRow({ action: "after.drain.closed.db" })),
-    ).not.toThrow();
+    expect(() => queue.enqueue(makeRow({ action: "after.drain.closed.db" }))).not.toThrow();
     // Still counted as "flushed" by enqueue()'s post-drain contract even
     // though writeBatchSync() no-op'd — matches the pre-existing behavior
     // documented for the post-drain sync path.
@@ -401,9 +402,10 @@ describe("AuditQueue", () => {
     queue.flush();
     expect(countRows(db)).toBe(2);
     expect(queue.metrics.flushed).toBe(2);
-    const rows = db
-      .prepare("SELECT prev_hash, row_hash FROM audit_log ORDER BY id ASC")
-      .all() as { prev_hash: string; row_hash: string }[];
+    const rows = db.prepare("SELECT prev_hash, row_hash FROM audit_log ORDER BY id ASC").all() as {
+      prev_hash: string;
+      row_hash: string;
+    }[];
     expect(rows).toHaveLength(2);
     expect(rows[0].prev_hash).toBe(GENESIS_HASH);
     expect(rows[1].prev_hash).toBe(rows[0].row_hash);

@@ -16,11 +16,7 @@ import {
   setupGitHubMsw,
 } from "../helpers/index.js";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
-import {
-  audit,
-  initAuditQueue,
-  resetAuditQueue,
-} from "../../src/security/audit.js";
+import { audit, initAuditQueue, resetAuditQueue } from "../../src/security/audit.js";
 import type { Clock } from "../../src/auth/clock.js";
 
 const require = createRequire(import.meta.url);
@@ -122,9 +118,9 @@ describe("audit helpers", () => {
 
   it("expectAuditRow() throws when a field mismatches", () => {
     audit("helpers.mismatch.action", { tier: 1, outcome: "success" });
-    expect(() =>
-      expectAuditRow("helpers.mismatch.action", { outcome: "failure" }),
-    ).toThrow(/Audit row mismatch on outcome/);
+    expect(() => expectAuditRow("helpers.mismatch.action", { outcome: "failure" })).toThrow(
+      /Audit row mismatch on outcome/,
+    );
   });
 
   it("expectAuditRow() succeeds when latest row matches", () => {
@@ -215,37 +211,35 @@ describe("seedFourOrgs", () => {
     expect(result[0].orgId).toBe("org-acme-001");
     expect(result[3].orgId).toBe("org-delta-004");
 
-    const orgCount = (getDb()
-      .prepare("SELECT COUNT(*) AS n FROM orgs WHERE id LIKE 'org-%'")
-      .get() as { n: number }).n;
+    const orgCount = (
+      getDb().prepare("SELECT COUNT(*) AS n FROM orgs WHERE id LIKE 'org-%'").get() as { n: number }
+    ).n;
     expect(orgCount).toBe(4);
 
-    const userCount = (getDb()
-      .prepare("SELECT COUNT(*) AS n FROM users")
-      .get() as { n: number }).n;
+    const userCount = (getDb().prepare("SELECT COUNT(*) AS n FROM users").get() as { n: number }).n;
     expect(userCount).toBe(8);
 
     // Spot-check role assignment.
-    const adminRole = (getDb()
-      .prepare("SELECT role FROM users WHERE id = ?")
-      .get("u-admin-acme") as { role: string }).role;
+    const adminRole = (
+      getDb().prepare("SELECT role FROM users WHERE id = ?").get("u-admin-acme") as { role: string }
+    ).role;
     expect(adminRole).toBe("admin");
 
-    const memberRole = (getDb()
-      .prepare("SELECT role FROM users WHERE id = ?")
-      .get("u-member-beta") as { role: string }).role;
+    const memberRole = (
+      getDb().prepare("SELECT role FROM users WHERE id = ?").get("u-member-beta") as {
+        role: string;
+      }
+    ).role;
     expect(memberRole).toBe("member");
   });
 
   it("is idempotent: second call doesn't error or duplicate rows", () => {
     seedFourOrgs(getDb() as unknown as Database.Database);
     seedFourOrgs(getDb() as unknown as Database.Database);
-    const orgCount = (getDb()
-      .prepare("SELECT COUNT(*) AS n FROM orgs WHERE id LIKE 'org-%'")
-      .get() as { n: number }).n;
-    const userCount = (getDb()
-      .prepare("SELECT COUNT(*) AS n FROM users")
-      .get() as { n: number }).n;
+    const orgCount = (
+      getDb().prepare("SELECT COUNT(*) AS n FROM orgs WHERE id LIKE 'org-%'").get() as { n: number }
+    ).n;
+    const userCount = (getDb().prepare("SELECT COUNT(*) AS n FROM users").get() as { n: number }).n;
     expect(orgCount).toBe(4);
     expect(userCount).toBe(8);
   });

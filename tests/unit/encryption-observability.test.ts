@@ -7,10 +7,7 @@ import {
   type InitEncryptionDeps,
 } from "../../src/boot-encryption.js";
 import { EnvelopeEncryption } from "../../src/security/envelope-encryption.js";
-import {
-  DecryptionError,
-  type EncryptionContext,
-} from "../../src/security/encryption.js";
+import { DecryptionError, type EncryptionContext } from "../../src/security/encryption.js";
 import {
   encryptionEnabledGauge,
   decryptFailuresCounter,
@@ -47,9 +44,15 @@ const CTX: EncryptionContext = {
 function makeLogger(): Logger {
   const noop = (..._a: unknown[]) => {};
   const fake = {
-    warn: noop, debug: noop, info: noop, error: noop,
-    fatal: noop, trace: noop, silent: noop,
-    child: () => fake, level: "debug",
+    warn: noop,
+    debug: noop,
+    info: noop,
+    error: noop,
+    fatal: noop,
+    trace: noop,
+    silent: noop,
+    child: () => fake,
+    level: "debug",
   };
   return fake as unknown as Logger;
 }
@@ -81,7 +84,11 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  try { db.close(); } catch { /* idempotent */ }
+  try {
+    db.close();
+  } catch {
+    /* idempotent */
+  }
 });
 
 function depsFor(env: Record<string, string | undefined>): InitEncryptionDeps {
@@ -149,9 +156,7 @@ describe("decryptFailuresCounter: real decrypt failure increments with error_cla
     decryptFailuresCounter.inc({ error_class: errName });
 
     const out = await registry.metrics();
-    expect(out).toContain(
-      `coordinator_idp_decrypt_failures_total{error_class="${errName}"} 1`,
-    );
+    expect(out).toContain(`coordinator_idp_decrypt_failures_total{error_class="${errName}"} 1`);
   });
 
   it("counter accumulates across distinct error_class labels", async () => {
@@ -208,9 +213,11 @@ describe("boot-encryption audit emissions: tier + metadata shape", () => {
   it("encryption.token.invalidated carries Tier 1 + user_id_hash via pseudonym(), not user_id_prefix", () => {
     // Seed 1 encrypted row, then run guard 1 (no key + ALLOW_TOKEN_LOSS=1
     // + matching confirm) so per-user invalidated audit fires.
-    db.prepare(
-      "INSERT INTO users (id, idp_access_token, idp_refresh_token) VALUES (?, ?, ?)",
-    ).run("user-pseudonymized", "enc:v1:fakeAccess", "enc:v1:fakeRefresh");
+    db.prepare("INSERT INTO users (id, idp_access_token, idp_refresh_token) VALUES (?, ?, ?)").run(
+      "user-pseudonymized",
+      "enc:v1:fakeAccess",
+      "enc:v1:fakeRefresh",
+    );
 
     runEncryptionGuards(
       depsFor({
@@ -231,9 +238,7 @@ describe("boot-encryption audit emissions: tier + metadata shape", () => {
       }),
     );
     // Guard against regression: the old key MUST NOT appear in metadata.
-    const call = audit.mock.calls.find(
-      (c) => c[0] === "encryption.token.invalidated",
-    );
+    const call = audit.mock.calls.find((c) => c[0] === "encryption.token.invalidated");
     expect(call).toBeDefined();
     const meta = (call![1] as { metadata: Record<string, unknown> }).metadata;
     expect(meta).not.toHaveProperty("user_id_prefix");

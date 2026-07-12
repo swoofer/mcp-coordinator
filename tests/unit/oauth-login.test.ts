@@ -174,9 +174,8 @@ describe("handleAuthLogin — happy path", () => {
     const loc = new URL(res.headers.Location as string);
     const state = loc.searchParams.get("state");
     expect(state).not.toBeNull();
-    const row = db
-      .prepare("SELECT * FROM oauth_state WHERE state = ?")
-      .get(state) as { state: string } | undefined;
+    const row = db.prepare("SELECT * FROM oauth_state WHERE state = ?").get(state) as
+      { state: string } | undefined;
     expect(row).toBeDefined();
     expect(row?.state).toBe(state);
   });
@@ -189,9 +188,9 @@ describe("handleAuthLogin — happy path", () => {
     const challenge = loc.searchParams.get("code_challenge");
     expect(challenge).not.toBeNull();
 
-    const row = db
-      .prepare("SELECT code_verifier FROM oauth_state WHERE state = ?")
-      .get(state) as { code_verifier: string };
+    const row = db.prepare("SELECT code_verifier FROM oauth_state WHERE state = ?").get(state) as {
+      code_verifier: string;
+    };
     const expectedChallenge = crypto
       .createHash("sha256")
       .update(row.code_verifier, "ascii")
@@ -256,9 +255,9 @@ describe("handleAuthLogin — PKCE persistence", () => {
     const loc = new URL(res.headers.Location as string);
     const state = loc.searchParams.get("state")!;
     const challenge = loc.searchParams.get("code_challenge")!;
-    const row = db
-      .prepare("SELECT code_verifier FROM oauth_state WHERE state = ?")
-      .get(state) as { code_verifier: string };
+    const row = db.prepare("SELECT code_verifier FROM oauth_state WHERE state = ?").get(state) as {
+      code_verifier: string;
+    };
     const recomputed = crypto
       .createHash("sha256")
       .update(row.code_verifier, "ascii")
@@ -280,9 +279,9 @@ describe("handleAuthLogin — PKCE persistence", () => {
     await handleAuthLogin(mockReq(), res as unknown as ServerResponse, ctx);
     const loc = new URL(res.headers.Location as string);
     const state = loc.searchParams.get("state")!;
-    const row = db
-      .prepare("SELECT code_verifier FROM oauth_state WHERE state = ?")
-      .get(state) as { code_verifier: string };
+    const row = db.prepare("SELECT code_verifier FROM oauth_state WHERE state = ?").get(state) as {
+      code_verifier: string;
+    };
     expect(row.code_verifier).toHaveLength(43);
     expect(row.code_verifier).toMatch(/^[A-Za-z0-9_-]{43}$/);
   });
@@ -298,9 +297,9 @@ describe("handleAuthLogin — redirect URI normalization", () => {
     );
     // And the persisted row carries the same URI.
     const state = loc.searchParams.get("state")!;
-    const row = db
-      .prepare("SELECT redirect_uri FROM oauth_state WHERE state = ?")
-      .get(state) as { redirect_uri: string };
+    const row = db.prepare("SELECT redirect_uri FROM oauth_state WHERE state = ?").get(state) as {
+      redirect_uri: string;
+    };
     expect(row.redirect_uri).toBe("http://localhost:3000/api/auth/oauth/callback");
   });
 
@@ -510,9 +509,9 @@ describe("handleAuthLogin — picker (multi-provider)", () => {
     );
     const loc = new URL(res.headers.Location as string);
     const state = loc.searchParams.get("state");
-    const row = db
-      .prepare("SELECT provider FROM oauth_state WHERE state = ?")
-      .get(state) as { provider: string };
+    const row = db.prepare("SELECT provider FROM oauth_state WHERE state = ?").get(state) as {
+      provider: string;
+    };
     expect(row.provider).toBe("google");
   });
 

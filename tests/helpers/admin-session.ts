@@ -1,11 +1,7 @@
 import { mintAccessJWT } from "../../src/auth/jwt-mint.js";
 import type { AccessTokenClaims } from "../../src/auth/jwt-mint.js";
 import { generateCsrfToken } from "../../src/auth/csrf.js";
-import {
-  CSRF_COOKIE_NAME,
-  SESSION_COOKIE_NAME,
-  hostCookie,
-} from "../../src/auth/cookies.js";
+import { CSRF_COOKIE_NAME, SESSION_COOKIE_NAME, hostCookie } from "../../src/auth/cookies.js";
 import type { JwtKeyRegistry } from "../../src/auth/jwt-keys.js";
 
 /**
@@ -59,9 +55,7 @@ export interface MakeAdminSessionOptions {
  *
  * Defaults: role="admin", familyId="fam-test", ttlSeconds=900.
  */
-export async function makeAdminSession(
-  opts: MakeAdminSessionOptions,
-): Promise<AdminSession> {
+export async function makeAdminSession(opts: MakeAdminSessionOptions): Promise<AdminSession> {
   const role = opts.role ?? "admin";
   const familyId = opts.familyId ?? "fam-test";
   const ttlSeconds = opts.ttlSeconds ?? 900;
@@ -96,8 +90,7 @@ export async function makeAdminSession(
   });
 
   // Cookie request header is just name=value pairs joined by "; " — no attrs.
-  const cookieHeader =
-    `${SESSION_COOKIE_NAME}=${jwt}; ${CSRF_COOKIE_NAME}=${csrfCookieValue}`;
+  const cookieHeader = `${SESSION_COOKIE_NAME}=${jwt}; ${CSRF_COOKIE_NAME}=${csrfCookieValue}`;
 
   return {
     userId: opts.userId,

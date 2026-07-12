@@ -34,7 +34,10 @@ describe("cli/server/start.ts — createForegroundShutdownHandler (architecture-
       callOrder.push("exit");
     });
 
-    const shutdown = createForegroundShutdownHandler(handle, "/fake/server.pid", { unlinkSync, exit });
+    const shutdown = createForegroundShutdownHandler(handle, "/fake/server.pid", {
+      unlinkSync,
+      exit,
+    });
     await shutdown("SIGTERM");
 
     expect(handle.stop).toHaveBeenCalledTimes(1);
@@ -55,7 +58,11 @@ describe("cli/server/start.ts — createForegroundShutdownHandler (architecture-
     const exit = vi.fn();
     const onError = vi.fn();
 
-    const shutdown = createForegroundShutdownHandler(handle, "/fake/server.pid", { unlinkSync, exit, onError });
+    const shutdown = createForegroundShutdownHandler(handle, "/fake/server.pid", {
+      unlinkSync,
+      exit,
+      onError,
+    });
 
     // Must resolve, not reject: callers invoke this as `void shutdown(signal)`
     // from a process signal listener, so a rejection would be an unhandled
@@ -74,7 +81,10 @@ describe("cli/server/start.ts — createForegroundShutdownHandler (architecture-
     });
     const exit = vi.fn();
 
-    const shutdown = createForegroundShutdownHandler(handle, "/fake/server.pid", { unlinkSync, exit });
+    const shutdown = createForegroundShutdownHandler(handle, "/fake/server.pid", {
+      unlinkSync,
+      exit,
+    });
     await expect(shutdown("SIGTERM")).resolves.toBeUndefined();
     expect(exit).toHaveBeenCalledWith(0);
   });
@@ -92,7 +102,10 @@ describe("cli/server/start.ts — createForegroundShutdownHandler (architecture-
     const unlinkSync = vi.fn();
     const exit = vi.fn();
 
-    const shutdown = createForegroundShutdownHandler(handle, "/fake/server.pid", { unlinkSync, exit });
+    const shutdown = createForegroundShutdownHandler(handle, "/fake/server.pid", {
+      unlinkSync,
+      exit,
+    });
 
     const first = shutdown("SIGTERM");
     const second = shutdown("SIGINT"); // races in while stop() is still pending

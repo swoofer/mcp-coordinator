@@ -35,28 +35,19 @@ interface OrgRow {
   created_at: string;
 }
 
-const ORG_BODY_FIELDS = [
-  "name",
-  "allowlist_github_org",
-  "allowlist_idp_org_id",
-] as const;
+const ORG_BODY_FIELDS = ["name", "allowlist_github_org", "allowlist_idp_org_id"] as const;
 
 /** Admin gate. Returns the AuthClaims on success, null on rejection (response
  *  already written). Mirrors handle-service-tokens.ts §authenticateRequest. */
 async function requireAdmin(
   req: IncomingMessage,
   res: ServerResponse,
-): Promise<
-  | { user_id: string; org: string; role: "admin" }
-  | null
-> {
+): Promise<{ user_id: string; org: string; role: "admin" } | null> {
   const authResult = await authenticateRequest(req, { authEnabled: true });
   if (!authResult.ok) {
     res.writeHead(authResult.status, {
       "Content-Type": "application/json; charset=utf-8",
-      ...(authResult.wwwAuthenticate
-        ? { "WWW-Authenticate": authResult.wwwAuthenticate }
-        : {}),
+      ...(authResult.wwwAuthenticate ? { "WWW-Authenticate": authResult.wwwAuthenticate } : {}),
     });
     res.end(JSON.stringify(appError("UNAUTHORIZED", authResult.error)));
     return null;
@@ -145,10 +136,7 @@ export async function handleCreateOrg(
   // Reject unknown fields up-front (PATCH 11: code-only, no input echo).
   for (const key of Object.keys(body)) {
     if (!ORG_BODY_FIELDS.includes(key as (typeof ORG_BODY_FIELDS)[number])) {
-      writeValidationError(
-        res,
-        new AdminValidationError("UNKNOWN_FIELD", key),
-      );
+      writeValidationError(res, new AdminValidationError("UNKNOWN_FIELD", key));
       return;
     }
   }
@@ -209,11 +197,7 @@ export async function handleCreateOrg(
   } catch (err) {
     /* c8 ignore next — unexpected DB errors bubble up as a 500 via the dispatcher. */
     if (!isOrgNameUniqueViolation(err)) throw err;
-    writeJson(
-      res,
-      409,
-      appError("ORG_NAME_TAKEN", "An org with this name already exists"),
-    );
+    writeJson(res, 409, appError("ORG_NAME_TAKEN", "An org with this name already exists"));
     return;
   }
 
@@ -285,14 +269,8 @@ export async function handleUpdateOrg(
   // Validate each present field. Track which fields are present (undefined
   // means "not in body"; null is a meaningful clear).
   const hasName = Object.prototype.hasOwnProperty.call(body, "name");
-  const hasGithub = Object.prototype.hasOwnProperty.call(
-    body,
-    "allowlist_github_org",
-  );
-  const hasIdp = Object.prototype.hasOwnProperty.call(
-    body,
-    "allowlist_idp_org_id",
-  );
+  const hasGithub = Object.prototype.hasOwnProperty.call(body, "allowlist_github_org");
+  const hasIdp = Object.prototype.hasOwnProperty.call(body, "allowlist_idp_org_id");
 
   let nameValue: string | undefined;
   let githubValue: string | null | undefined;
@@ -300,16 +278,10 @@ export async function handleUpdateOrg(
   try {
     if (hasName) nameValue = validateNameField(body.name, "name");
     if (hasGithub) {
-      githubValue = validateAllowlistField(
-        body.allowlist_github_org,
-        "allowlist_github_org",
-      );
+      githubValue = validateAllowlistField(body.allowlist_github_org, "allowlist_github_org");
     }
     if (hasIdp) {
-      idpValue = validateAllowlistField(
-        body.allowlist_idp_org_id,
-        "allowlist_idp_org_id",
-      );
+      idpValue = validateAllowlistField(body.allowlist_idp_org_id, "allowlist_idp_org_id");
     }
   } catch (err) {
     /* c8 ignore next — validators only throw AdminValidationError. */
@@ -367,9 +339,7 @@ export async function handleUpdateOrg(
 
       if (sets.length > 0) {
         params.push(orgId);
-        ctx.db
-          .prepare(`UPDATE orgs SET ${sets.join(", ")} WHERE id = ?`)
-          .run(...params);
+        ctx.db.prepare(`UPDATE orgs SET ${sets.join(", ")} WHERE id = ?`).run(...params);
       }
 
       const fresh = ctx.db
@@ -392,11 +362,7 @@ export async function handleUpdateOrg(
   } catch (err) {
     /* c8 ignore next — unexpected DB errors bubble up as a 500 via the dispatcher. */
     if (!isOrgNameUniqueViolation(err)) throw err;
-    writeJson(
-      res,
-      409,
-      appError("ORG_NAME_TAKEN", "An org with this name already exists"),
-    );
+    writeJson(res, 409, appError("ORG_NAME_TAKEN", "An org with this name already exists"));
     return;
   }
 

@@ -109,9 +109,9 @@ describe("EnvelopeEncryption", () => {
     // base64url decode succeeds, length check raises MalformedCiphertext.
     // For a string that fails base64 in strict mode, Node treats invalid chars
     // as stop tokens; the resulting buffer may be short, also raising MalformedCiphertext.
-    expect(() =>
-      provider.decrypt("enc:v1:not-valid-base64!@#", FIXED_CONTEXT),
-    ).toThrow(MalformedCiphertext);
+    expect(() => provider.decrypt("enc:v1:not-valid-base64!@#", FIXED_CONTEXT)).toThrow(
+      MalformedCiphertext,
+    );
   });
 
   it("7. truncated ciphertext (<88 bytes) → MalformedCiphertext with length msg", () => {
@@ -130,36 +130,28 @@ describe("EnvelopeEncryption", () => {
   it("8. unknown versions v2, v99, v999 → UnknownCipherVersion", () => {
     const provider = new EnvelopeEncryption(KEY_A);
     for (const v of ["2", "99", "999"]) {
-      expect(() =>
-        provider.decrypt(`enc:v${v}:abcdef`, FIXED_CONTEXT),
-      ).toThrow(UnknownCipherVersion);
+      expect(() => provider.decrypt(`enc:v${v}:abcdef`, FIXED_CONTEXT)).toThrow(
+        UnknownCipherVersion,
+      );
     }
   });
 
   describe("9. out-of-range versions → MalformedCiphertext", () => {
     const provider = new EnvelopeEncryption(KEY_A);
     it("v0 rejected (no leading zero)", () => {
-      expect(() => provider.decrypt("enc:v0:abc", FIXED_CONTEXT)).toThrow(
-        MalformedCiphertext,
-      );
+      expect(() => provider.decrypt("enc:v0:abc", FIXED_CONTEXT)).toThrow(MalformedCiphertext);
     });
     it("v01 rejected (leading zero)", () => {
-      expect(() => provider.decrypt("enc:v01:abc", FIXED_CONTEXT)).toThrow(
-        MalformedCiphertext,
-      );
+      expect(() => provider.decrypt("enc:v01:abc", FIXED_CONTEXT)).toThrow(MalformedCiphertext);
     });
     it("v1000 rejected (>999)", () => {
-      expect(() => provider.decrypt("enc:v1000:abc", FIXED_CONTEXT)).toThrow(
-        MalformedCiphertext,
-      );
+      expect(() => provider.decrypt("enc:v1000:abc", FIXED_CONTEXT)).toThrow(MalformedCiphertext);
     });
   });
 
   it("10. plaintext passthrough on missing prefix (legacy lazy-migration)", () => {
     const provider = new EnvelopeEncryption(KEY_A);
-    expect(provider.decrypt("plain text token", FIXED_CONTEXT)).toBe(
-      "plain text token",
-    );
+    expect(provider.decrypt("plain text token", FIXED_CONTEXT)).toBe("plain text token");
   });
 
   it("11. format injection forcing-function (length-prefixed AAD is parser-proof)", () => {

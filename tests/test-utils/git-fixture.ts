@@ -14,7 +14,7 @@ export function createGitFixture(commits: FixtureCommit[]): string {
   execSync("git init -q", { cwd: dir });
   execSync('git config user.email "test@test.com"', { cwd: dir });
   execSync('git config user.name "Test"', { cwd: dir });
-  execSync('git config core.autocrlf false', { cwd: dir });
+  execSync("git config core.autocrlf false", { cwd: dir });
   for (const c of commits) {
     for (const [p, content] of Object.entries(c.files)) {
       const fp = join(dir, p);

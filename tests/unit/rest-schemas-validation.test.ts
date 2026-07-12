@@ -49,10 +49,18 @@ function mockRes(): { res: ServerResponse; getStatus: () => number; getBody: () 
   const chunks: string[] = [];
   const res = {
     setHeader: () => {},
-    writeHead(s: number) { status = s; },
-    end(buf?: string) { if (buf) chunks.push(buf); },
+    writeHead(s: number) {
+      status = s;
+    },
+    end(buf?: string) {
+      if (buf) chunks.push(buf);
+    },
   } as unknown as ServerResponse;
-  return { res, getStatus: () => status, getBody: () => (chunks.length ? JSON.parse(chunks.join("")) : null) };
+  return {
+    res,
+    getStatus: () => status,
+    getBody: () => (chunks.length ? JSON.parse(chunks.join("")) : null),
+  };
 }
 
 function makeCtx(): RestContext {
@@ -61,16 +69,28 @@ function makeCtx(): RestContext {
     services,
     httpLog: { info: () => {}, debug: () => {}, warn: () => {}, error: () => {} } as never,
     authEnabled: false,
-    claims: { sub: "legacy", user_id: "legacy", org: "default", role: "admin", jti: "j-schema-test" },
+    claims: {
+      sub: "legacy",
+      user_id: "legacy",
+      org: "default",
+      role: "admin",
+      jti: "j-schema-test",
+    },
     getRunConfig: () => runConfig,
-    setRunConfig: (cfg) => { runConfig = cfg; },
+    setRunConfig: (cfg) => {
+      runConfig = cfg;
+    },
   };
 }
 
 describe("REST body validation (qualite-code-02 / architecture-15)", () => {
   it("POST /api/register with non-array modules -> 400 structured, no crash", async () => {
     const { res, getStatus, getBody } = mockRes();
-    await handleRest(mockReq({ agent_id: "a1", name: "A1", modules: "not-an-array" }, "/api/register"), res, makeCtx());
+    await handleRest(
+      mockReq({ agent_id: "a1", name: "A1", modules: "not-an-array" }, "/api/register"),
+      res,
+      makeCtx(),
+    );
     expect(getStatus()).toBe(400);
     const body = getBody();
     expect(body.code).toBe("INVALID_REQUEST");
@@ -96,7 +116,11 @@ describe("REST body validation (qualite-code-02 / architecture-15)", () => {
 
   it("POST /api/register with valid modules array still succeeds unchanged", async () => {
     const { res, getStatus, getBody } = mockRes();
-    await handleRest(mockReq({ agent_id: "a2", name: "A2", modules: ["src/auth"] }, "/api/register"), res, makeCtx());
+    await handleRest(
+      mockReq({ agent_id: "a2", name: "A2", modules: ["src/auth"] }, "/api/register"),
+      res,
+      makeCtx(),
+    );
     expect(getStatus()).toBe(200);
     expect(JSON.parse(getBody().modules)).toEqual(["src/auth"]);
   });
@@ -104,9 +128,19 @@ describe("REST body validation (qualite-code-02 / architecture-15)", () => {
   it("POST /api/announce with non-array target_modules -> 400 structured, not 500", async () => {
     services.registry.register("default", "a1", "Agent A", ["src/auth"]);
     const { res, getStatus, getBody } = mockRes();
-    await handleRest(mockReq({
-      agent_id: "a1", subject: "test", target_modules: "src/auth", target_files: [],
-    }, "/api/announce"), res, makeCtx());
+    await handleRest(
+      mockReq(
+        {
+          agent_id: "a1",
+          subject: "test",
+          target_modules: "src/auth",
+          target_files: [],
+        },
+        "/api/announce",
+      ),
+      res,
+      makeCtx(),
+    );
     expect(getStatus()).toBe(400);
     expect(getBody().code).toBe("INVALID_REQUEST");
   });
@@ -114,9 +148,19 @@ describe("REST body validation (qualite-code-02 / architecture-15)", () => {
   it("POST /api/announce with valid body still succeeds (plan/keep_open/assigned_to optional tolerance)", async () => {
     services.registry.register("default", "a1", "Agent A", ["src/auth"]);
     const { res, getStatus, getBody } = mockRes();
-    await handleRest(mockReq({
-      agent_id: "a1", subject: "test", target_modules: ["src/auth"], target_files: ["src/auth/x.ts"],
-    }, "/api/announce"), res, makeCtx());
+    await handleRest(
+      mockReq(
+        {
+          agent_id: "a1",
+          subject: "test",
+          target_modules: ["src/auth"],
+          target_files: ["src/auth/x.ts"],
+        },
+        "/api/announce",
+      ),
+      res,
+      makeCtx(),
+    );
     expect(getStatus()).toBe(200);
     expect(getBody().thread_id).toBeDefined();
   });
@@ -130,7 +174,11 @@ describe("REST body validation (qualite-code-02 / architecture-15)", () => {
 
   it("POST /api/unclaim-task with empty-string agent_id -> 400 (preserves old truthy-check tolerance)", async () => {
     const { res, getStatus } = mockRes();
-    await handleRest(mockReq({ thread_id: "t1", agent_id: "" }, "/api/unclaim-task"), res, makeCtx());
+    await handleRest(
+      mockReq({ thread_id: "t1", agent_id: "" }, "/api/unclaim-task"),
+      res,
+      makeCtx(),
+    );
     expect(getStatus()).toBe(400);
   });
 
@@ -143,7 +191,11 @@ describe("REST body validation (qualite-code-02 / architecture-15)", () => {
 
   it("POST /api/token-usage with a free-form object body still succeeds (no fixed shape by design)", async () => {
     const { res, getStatus, getBody } = mockRes();
-    await handleRest(mockReq({ agent_id: "a1", tokens_in: 100, anything: { nested: true } }, "/api/token-usage"), res, makeCtx());
+    await handleRest(
+      mockReq({ agent_id: "a1", tokens_in: 100, anything: { nested: true } }, "/api/token-usage"),
+      res,
+      makeCtx(),
+    );
     expect(getStatus()).toBe(200);
     expect(getBody().ok).toBe(true);
   });
@@ -157,22 +209,40 @@ describe("REST body validation (qualite-code-02 / architecture-15)", () => {
 
   it("POST /api/check-conflict with valid body still succeeds", async () => {
     const { res, getStatus } = mockRes();
-    await handleRest(mockReq({ file: "src/x.ts", agent_id: "a1" }, "/api/check-conflict"), res, makeCtx());
+    await handleRest(
+      mockReq({ file: "src/x.ts", agent_id: "a1" }, "/api/check-conflict"),
+      res,
+      makeCtx(),
+    );
     expect(getStatus()).toBe(200);
   });
 
   it("POST /api/log-file without optional agent_name still succeeds (optional tolerance)", async () => {
     services.registry.register("default", "a1", "Agent A", []);
     const { res, getStatus } = mockRes();
-    await handleRest(mockReq({
-      session_id: "s1", agent_id: "a1", tool_name: "Edit", file: "src/x.ts",
-    }, "/api/log-file"), res, makeCtx());
+    await handleRest(
+      mockReq(
+        {
+          session_id: "s1",
+          agent_id: "a1",
+          tool_name: "Edit",
+          file: "src/x.ts",
+        },
+        "/api/log-file",
+      ),
+      res,
+      makeCtx(),
+    );
     expect(getStatus()).toBe(200);
   });
 
   it("POST /api/log-file with missing required tool_name -> 400 structured", async () => {
     const { res, getStatus, getBody } = mockRes();
-    await handleRest(mockReq({ session_id: "s1", agent_id: "a1", file: "src/x.ts" }, "/api/log-file"), res, makeCtx());
+    await handleRest(
+      mockReq({ session_id: "s1", agent_id: "a1", file: "src/x.ts" }, "/api/log-file"),
+      res,
+      makeCtx(),
+    );
     expect(getStatus()).toBe(400);
     expect(getBody().code).toBe("INVALID_REQUEST");
   });

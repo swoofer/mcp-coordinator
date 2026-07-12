@@ -40,11 +40,7 @@ export interface OAuthError {
   error_uri?: string;
 }
 
-export function oauthError(
-  error: string,
-  description?: string,
-  uri?: string,
-): OAuthError {
+export function oauthError(error: string, description?: string, uri?: string): OAuthError {
   const body: OAuthError = { error };
   if (description !== undefined) body.error_description = description;
   if (uri !== undefined) body.error_uri = uri;

@@ -18,9 +18,7 @@ describe("Dockerfile (production image)", () => {
   });
 
   it("uses a multi-stage build with two FROM statements", () => {
-    const fromLines = dockerfile
-      .split("\n")
-      .filter((l) => /^\s*FROM\s+/i.test(l));
+    const fromLines = dockerfile.split("\n").filter((l) => /^\s*FROM\s+/i.test(l));
     expect(fromLines.length).toBeGreaterThanOrEqual(2);
   });
 
@@ -89,7 +87,14 @@ describe(".dockerignore", () => {
     const ignore = readFileSync(DOCKERIGNORE, "utf-8");
     // Each pattern must appear on its own line — substring matching is
     // sufficient because docker globs aren't regex.
-    for (const pattern of ["tests/", "dist/", ".git/", "node_modules/", "docs/superpowers/", "*.md"]) {
+    for (const pattern of [
+      "tests/",
+      "dist/",
+      ".git/",
+      "node_modules/",
+      "docs/superpowers/",
+      "*.md",
+    ]) {
       expect(ignore).toContain(pattern);
     }
     // LICENSE must be re-included so the runtime stage can COPY it.

@@ -35,12 +35,15 @@ export class MacOSCredentialReader implements CredentialReader {
       // -s = service, -w = print password only (the stored JSON blob).
       const result = await execFileP("security", [
         "find-generic-password",
-        "-s", "Claude Code-credentials",
+        "-s",
+        "Claude Code-credentials",
         "-w",
       ]);
       stdout = result.stdout;
     } catch (err) {
-      throw new Error(`security CLI failed — Keychain entry likely missing (${(err as Error).message})`);
+      throw new Error(
+        `security CLI failed — Keychain entry likely missing (${(err as Error).message})`,
+      );
     }
 
     const raw = stdout.trim();
@@ -77,12 +80,18 @@ export class WindowsCredentialReader implements CredentialReader {
   }
 }
 
-export function createCredentialReader(platform: NodeJS.Platform = process.platform): CredentialReader {
+export function createCredentialReader(
+  platform: NodeJS.Platform = process.platform,
+): CredentialReader {
   switch (platform) {
-    case "darwin":  return new MacOSCredentialReader();
-    case "linux":   return new LinuxCredentialReader();
-    case "win32":   return new WindowsCredentialReader();
-    default:        throw new NotImplementedError(platform);
+    case "darwin":
+      return new MacOSCredentialReader();
+    case "linux":
+      return new LinuxCredentialReader();
+    case "win32":
+      return new WindowsCredentialReader();
+    default:
+      throw new NotImplementedError(platform);
   }
 }
 

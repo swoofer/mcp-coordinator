@@ -98,7 +98,11 @@ describe("handleReadyz", () => {
     const originalPrepare = db.prepare.bind(db);
     const spy = vi.spyOn(db, "prepare").mockImplementation((sql: string) => {
       if (sql === "SELECT 1") {
-        return { get: () => { throw new Error("disk i/o"); } } as never;
+        return {
+          get: () => {
+            throw new Error("disk i/o");
+          },
+        } as never;
       }
       return originalPrepare(sql);
     });
@@ -108,7 +112,10 @@ describe("handleReadyz", () => {
     handleReadyz(mockReq(), res as unknown as ServerResponse, services as never);
 
     expect(res.statusCode).toBe(503);
-    const body = res.body as { status: string; checks: { db: { ok: boolean; error?: string }; mqtt: { ok: boolean } } };
+    const body = res.body as {
+      status: string;
+      checks: { db: { ok: boolean; error?: string }; mqtt: { ok: boolean } };
+    };
     expect(body.status).toBe("not_ready");
     expect(body.checks.db.ok).toBe(false);
     expect(body.checks.db.error).toContain("disk i/o");
@@ -124,7 +131,10 @@ describe("handleReadyz", () => {
     handleReadyz(mockReq(), res as unknown as ServerResponse, services as never);
 
     expect(res.statusCode).toBe(503);
-    const body = res.body as { status: string; checks: { db: { ok: boolean }; mqtt: { ok: boolean; error?: string } } };
+    const body = res.body as {
+      status: string;
+      checks: { db: { ok: boolean }; mqtt: { ok: boolean; error?: string } };
+    };
     expect(body.status).toBe("not_ready");
     expect(body.checks.db.ok).toBe(true);
     expect(body.checks.mqtt.ok).toBe(false);
@@ -136,7 +146,11 @@ describe("handleReadyz", () => {
     const originalPrepare = db.prepare.bind(db);
     const spy = vi.spyOn(db, "prepare").mockImplementation((sql: string) => {
       if (sql === "SELECT 1") {
-        return { get: () => { throw new Error("locked"); } } as never;
+        return {
+          get: () => {
+            throw new Error("locked");
+          },
+        } as never;
       }
       return originalPrepare(sql);
     });

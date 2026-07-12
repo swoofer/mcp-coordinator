@@ -50,8 +50,6 @@ export function assertSecretEntropy(buf: Buffer, minBits: number = 128): void {
   }
   const totalBits = h * buf.length;
   if (totalBits < minBits) {
-    throw new Error(
-      `secret entropy: ${totalBits.toFixed(1)} bits estimated, minimum ${minBits}`,
-    );
+    throw new Error(`secret entropy: ${totalBits.toFixed(1)} bits estimated, minimum ${minBits}`);
   }
 }

@@ -1,11 +1,4 @@
-import {
-  describe,
-  it,
-  expect,
-  beforeAll,
-  afterAll,
-  beforeEach,
-} from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { Readable } from "node:stream";
 import fs from "node:fs";
@@ -17,10 +10,7 @@ import { RateLimiter } from "../../src/auth/rate-limit.js";
 import { buildJwtKeyRegistry } from "../../src/auth/jwt-keys.js";
 import { MembershipCache } from "../../src/auth/membership-cache.js";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
-import type {
-  IdPProvider,
-  ExchangeCodeResult,
-} from "../../src/auth/providers/types.js";
+import type { IdPProvider, ExchangeCodeResult } from "../../src/auth/providers/types.js";
 import { makeTestEncryption, selectIdpToken } from "../helpers/encryption.js";
 import type { DatabaseAdapter } from "../../src/db-adapter.js";
 
@@ -164,14 +154,12 @@ describe("handleOAuthToken — authorization_code encrypts IdP tokens", () => {
     expect(typeof body.access_token).toBe("string");
 
     const userRow = getDb()
-      .prepare(
-        "SELECT id, idp_access_token, idp_refresh_token FROM users WHERE idp_user_id = ?",
-      )
+      .prepare("SELECT id, idp_access_token, idp_refresh_token FROM users WHERE idp_user_id = ?")
       .get("gh-token-1") as {
-        id: string;
-        idp_access_token: string;
-        idp_refresh_token: string | null;
-      };
+      id: string;
+      idp_access_token: string;
+      idp_refresh_token: string | null;
+    };
     expect(userRow).toBeDefined();
     expect(userRow.idp_access_token.startsWith("enc:v1:")).toBe(true);
     expect(userRow.idp_refresh_token).not.toBeNull();

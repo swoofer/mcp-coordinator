@@ -55,8 +55,8 @@ describe("metricRoute", () => {
   });
 
   it("normalizes multiple id segments in one path", () => {
-    expect(
-      metricRoute("/api/org/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/agent/12345678"),
-    ).toBe("/api/org/:id/agent/:id");
+    expect(metricRoute("/api/org/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/agent/12345678")).toBe(
+      "/api/org/:id/agent/:id",
+    );
   });
 });

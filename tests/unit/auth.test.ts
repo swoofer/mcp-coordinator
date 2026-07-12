@@ -1,6 +1,15 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
-import { initAuth, createToken, verifyToken, refreshToken, authenticateRequest, isRevoked, revokeAgent, resetPhase2Auth } from "../../src/auth.js";
+import {
+  initAuth,
+  createToken,
+  verifyToken,
+  refreshToken,
+  authenticateRequest,
+  isRevoked,
+  revokeAgent,
+  resetPhase2Auth,
+} from "../../src/auth.js";
 import type { IncomingMessage } from "http";
 import fs from "fs";
 
@@ -130,14 +139,19 @@ describe("authenticateRequest guard", () => {
   });
 
   it("rejects request with invalid token", async () => {
-    const result = await authenticateRequest(mockRequest({ authorization: "Bearer invalid.token.here" }), { authEnabled: true });
+    const result = await authenticateRequest(
+      mockRequest({ authorization: "Bearer invalid.token.here" }),
+      { authEnabled: true },
+    );
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.status).toBe(401);
   });
 
   it("accepts request with valid agent token", async () => {
     const token = await createToken("agent-guard", "agent");
-    const result = await authenticateRequest(mockRequest({ authorization: `Bearer ${token}` }), { authEnabled: true });
+    const result = await authenticateRequest(mockRequest({ authorization: `Bearer ${token}` }), {
+      authEnabled: true,
+    });
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.claims.sub).toBe("agent-guard");
@@ -167,7 +181,9 @@ describe("authenticateRequest guard", () => {
   it("rejects revoked agent token", async () => {
     const token = await createToken("agent-revoked", "agent");
     revokeAgent("agent-revoked", "admin-1");
-    const result = await authenticateRequest(mockRequest({ authorization: `Bearer ${token}` }), { authEnabled: true });
+    const result = await authenticateRequest(mockRequest({ authorization: `Bearer ${token}` }), {
+      authEnabled: true,
+    });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.status).toBe(403);
   });
@@ -184,7 +200,10 @@ describe("authenticateRequest guard", () => {
   it("populates WWW-Authenticate with error=expired_token on expired JWT", async () => {
     const expiredToken = await createToken("agent-exp", "agent", "0s");
     await new Promise((r) => setTimeout(r, 1100));
-    const result = await authenticateRequest(mockRequest({ authorization: `Bearer ${expiredToken}` }), { authEnabled: true });
+    const result = await authenticateRequest(
+      mockRequest({ authorization: `Bearer ${expiredToken}` }),
+      { authEnabled: true },
+    );
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.wwwAuthenticate).toMatch(/error="expired_token"/);
@@ -228,18 +247,16 @@ describe("Auth endpoint flows", () => {
     const agentId = "revoke-flow-agent";
     const token = await createToken(agentId, "agent");
 
-    const before = await authenticateRequest(
-      mockRequest({ authorization: `Bearer ${token}` }),
-      { authEnabled: true },
-    );
+    const before = await authenticateRequest(mockRequest({ authorization: `Bearer ${token}` }), {
+      authEnabled: true,
+    });
     expect(before.ok).toBe(true);
 
     revokeAgent(agentId, "admin-test");
 
-    const after = await authenticateRequest(
-      mockRequest({ authorization: `Bearer ${token}` }),
-      { authEnabled: true },
-    );
+    const after = await authenticateRequest(mockRequest({ authorization: `Bearer ${token}` }), {
+      authEnabled: true,
+    });
     expect(after.ok).toBe(false);
     if (!after.ok) expect(after.status).toBe(403);
   });
@@ -269,7 +286,9 @@ describe("Auth disabled pass-through", () => {
     // is checked in serve-http.ts before calling authenticateRequest.
     // This test verifies the guard works in isolation.
     const token = await createToken("pass-through-agent", "agent");
-    const result = await authenticateRequest(mockRequest({ authorization: `Bearer ${token}` }), { authEnabled: true });
+    const result = await authenticateRequest(mockRequest({ authorization: `Bearer ${token}` }), {
+      authEnabled: true,
+    });
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.claims.sub).toBe("pass-through-agent");
@@ -296,8 +315,15 @@ describe("BUG: ADMIN_ONLY_ROUTES bypass with query string", () => {
 describe("revoked_agents table", () => {
   it("exists and accepts inserts", () => {
     const db = getDb();
-    db.prepare("INSERT INTO revoked_agents (agent_id, revoked_by) VALUES (?, ?)").run("a1", "admin1");
-    const row = db.prepare("SELECT * FROM revoked_agents WHERE agent_id = ?").get("a1") as { agent_id: string; revoked_by: string; revoked_at: string };
+    db.prepare("INSERT INTO revoked_agents (agent_id, revoked_by) VALUES (?, ?)").run(
+      "a1",
+      "admin1",
+    );
+    const row = db.prepare("SELECT * FROM revoked_agents WHERE agent_id = ?").get("a1") as {
+      agent_id: string;
+      revoked_by: string;
+      revoked_at: string;
+    };
     expect(row.agent_id).toBe("a1");
     expect(row.revoked_by).toBe("admin1");
     expect(row.revoked_at).toBeDefined();
@@ -305,11 +331,15 @@ describe("revoked_agents table", () => {
 
   it("enforces primary key uniqueness", () => {
     const db = getDb();
-    db.prepare("INSERT INTO revoked_agents (agent_id, revoked_by) VALUES (?, ?)").run("a2", "admin1");
+    db.prepare("INSERT INTO revoked_agents (agent_id, revoked_by) VALUES (?, ?)").run(
+      "a2",
+      "admin1",
+    );
     expect(() => {
-      db.prepare("INSERT INTO revoked_agents (agent_id, revoked_by) VALUES (?, ?)").run("a2", "admin1");
+      db.prepare("INSERT INTO revoked_agents (agent_id, revoked_by) VALUES (?, ?)").run(
+        "a2",
+        "admin1",
+      );
     }).toThrow();
   });
 });
-
-

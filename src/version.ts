@@ -16,7 +16,10 @@ export function getVersion(): string {
   // may be a synthetic non-file URL that throws TypeError on fileURLToPath.
   try {
     const here = dirname(fileURLToPath(import.meta.url));
-    for (const candidate of [resolve(here, "..", "package.json"), resolve(here, "..", "..", "package.json")]) {
+    for (const candidate of [
+      resolve(here, "..", "package.json"),
+      resolve(here, "..", "..", "package.json"),
+    ]) {
       try {
         const json = JSON.parse(readFileSync(candidate, "utf-8")) as { version?: string };
         if (json.version) return json.version;

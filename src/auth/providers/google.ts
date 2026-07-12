@@ -1,15 +1,6 @@
 import { z } from "zod";
-import {
-  createRemoteJWKSet,
-  jwtVerify,
-  errors as joseErrors,
-  type JWTPayload,
-} from "jose";
-import type {
-  IdPProvider,
-  ExchangeCodeResult,
-  IdpUserInfo,
-} from "./types.js";
+import { createRemoteJWKSet, jwtVerify, errors as joseErrors, type JWTPayload } from "jose";
+import type { IdPProvider, ExchangeCodeResult, IdpUserInfo } from "./types.js";
 import { IdPTokenRevoked, IdPTransientError } from "./errors.js";
 
 /**
@@ -99,12 +90,7 @@ export class GoogleProvider implements IdPProvider {
     this.jwks = createRemoteJWKSet(new URL(cfg.jwksUrl ?? DEFAULT_JWKS_URL));
   }
 
-  buildAuthUrl(
-    state: string,
-    redirectUri: string,
-    codeChallenge?: string,
-    nonce?: string,
-  ): string {
+  buildAuthUrl(state: string, redirectUri: string, codeChallenge?: string, nonce?: string): string {
     const u = new URL(this.authorizeUrl);
     u.searchParams.set("client_id", this.cfg.clientId);
     u.searchParams.set("redirect_uri", redirectUri);

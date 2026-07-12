@@ -49,10 +49,7 @@ export interface InitEncryptionDeps {
  * decodeMasterKey) on malformed or catastrophically low-entropy keys. Low-but-
  * not-catastrophic entropy emits a warn log and returns the key anyway.
  */
-export function loadEncryptionKey(
-  env: NodeJS.ProcessEnv,
-  logger: Logger,
-): Buffer | null {
+export function loadEncryptionKey(env: NodeJS.ProcessEnv, logger: Logger): Buffer | null {
   const raw = env.COORDINATOR_ENCRYPTION_KEY;
   if (!raw) return null;
   return decodeMasterKey(raw, logger);
@@ -92,19 +89,19 @@ export function runEncryptionGuards(
     .get();
 
   const storedFingerprintRow = db
-    .prepare(
-      "SELECT value FROM system_config WHERE key = 'encryption.key_fingerprint'",
-    )
+    .prepare("SELECT value FROM system_config WHERE key = 'encryption.key_fingerprint'")
     .get() as { value: string } | undefined;
   const storedFingerprint = storedFingerprintRow?.value ?? null;
 
   // ── Guard 1: encrypted rows present but no key supplied. ────────────────
   if (hasEncryptedRows && !key) {
-    const count = (db
-      .prepare(
-        "SELECT COUNT(*) AS n FROM users WHERE idp_access_token GLOB 'enc:v[0-9]*:*' OR idp_refresh_token GLOB 'enc:v[0-9]*:*'",
-      )
-      .get() as { n: number }).n;
+    const count = (
+      db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM users WHERE idp_access_token GLOB 'enc:v[0-9]*:*' OR idp_refresh_token GLOB 'enc:v[0-9]*:*'",
+        )
+        .get() as { n: number }
+    ).n;
     const expectedConfirm = `I_UNDERSTAND_THIS_NULLS_${count}_ROWS`;
     if (env.COORDINATOR_ALLOW_TOKEN_LOSS !== "1") {
       throw new BootValidationError(
@@ -151,20 +148,10 @@ export function runEncryptionGuards(
     );
     for (const r of invalidatedRows) {
       if (r.idp_access_token && r.idp_access_token.startsWith("enc:v")) {
-        stash.run(
-          r.id,
-          "idp_access_token",
-          r.idp_access_token,
-          "key_absent_token_loss_allowed",
-        );
+        stash.run(r.id, "idp_access_token", r.idp_access_token, "key_absent_token_loss_allowed");
       }
       if (r.idp_refresh_token && r.idp_refresh_token.startsWith("enc:v")) {
-        stash.run(
-          r.id,
-          "idp_refresh_token",
-          r.idp_refresh_token,
-          "key_absent_token_loss_allowed",
-        );
+        stash.run(r.id, "idp_refresh_token", r.idp_refresh_token, "key_absent_token_loss_allowed");
       }
       nullify.run(r.id);
       if (audit) {
@@ -189,12 +176,7 @@ export function runEncryptionGuards(
   }
 
   // ── Guard 2: key present, encrypted rows present, fingerprint mismatch. ─
-  if (
-    hasEncryptedRows &&
-    key &&
-    storedFingerprint &&
-    storedFingerprint !== fingerprint
-  ) {
+  if (hasEncryptedRows && key && storedFingerprint && storedFingerprint !== fingerprint) {
     if (env.COORDINATOR_ALLOW_KEY_ROTATION !== "1") {
       throw new BootValidationError(
         `Database was encrypted with a different key (stored fingerprint=${storedFingerprint}, current key fingerprint=${fingerprint}). ` +
@@ -211,9 +193,7 @@ export function runEncryptionGuards(
         },
       });
     }
-    db.prepare(
-      "DELETE FROM system_config WHERE key = 'encryption.key_fingerprint'",
-    ).run();
+    db.prepare("DELETE FROM system_config WHERE key = 'encryption.key_fingerprint'").run();
     return {
       rawProvider: new EnvelopeEncryption(key),
       keyFingerprint: fingerprint,
@@ -298,9 +278,10 @@ export function buildWrappedProvider(args: BuildWrappedProviderArgs): Encryption
     encrypt(plaintext: string, ctx: EncryptionContext): string {
       const ct = rawProvider.encrypt(plaintext, ctx);
       if (!persisted) {
-        db.prepare(
-          "INSERT OR IGNORE INTO system_config (key, value) VALUES (?, ?)",
-        ).run("encryption.key_fingerprint", keyFingerprint);
+        db.prepare("INSERT OR IGNORE INTO system_config (key, value) VALUES (?, ?)").run(
+          "encryption.key_fingerprint",
+          keyFingerprint,
+        );
         persisted = true;
         if (audit) {
           audit("encryption.config.loaded", {

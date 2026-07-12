@@ -49,7 +49,10 @@ describe("wsToDuplex — write backpressure (performance-04)", () => {
     let sendCalls = 0;
     const pendingCbs: Array<(err?: Error) => void> = [];
     const ws = new EventEmitter() as unknown as FakeWebSocket;
-    ws.send = (_data, cb) => { sendCalls++; pendingCbs.push(cb); };
+    ws.send = (_data, cb) => {
+      sendCalls++;
+      pendingCbs.push(cb);
+    };
     ws.pause = () => {};
     ws.resume = () => {};
     ws.close = () => {};
@@ -87,7 +90,9 @@ describe("wsToDuplex — write backpressure (performance-04)", () => {
     // production code.
     let sendCalls = 0;
     const buggyWs: { send: (data: unknown) => void } = {
-      send: () => { sendCalls++; /* never flushes, real socket buffer grows unbounded */ },
+      send: () => {
+        sendCalls++; /* never flushes, real socket buffer grows unbounded */
+      },
     };
 
     const buggyDuplex = new Duplex({
@@ -165,8 +170,12 @@ describe("wsToDuplex — read backpressure (performance-04)", () => {
     ws.send = (_d, cb) => cb();
     let pauseCalls = 0;
     let resumeCalls = 0;
-    ws.pause = () => { pauseCalls++; };
-    ws.resume = () => { resumeCalls++; };
+    ws.pause = () => {
+      pauseCalls++;
+    };
+    ws.resume = () => {
+      resumeCalls++;
+    };
     ws.close = () => {};
 
     const duplex = wsToDuplex(asWebSocket(ws));
@@ -202,7 +211,9 @@ describe("wsToDuplex — read backpressure (performance-04)", () => {
     const ws = new EventEmitter() as unknown as FakeWebSocket;
     ws.send = (_d, cb) => cb();
     let pauseCalls = 0;
-    ws.pause = () => { pauseCalls++; };
+    ws.pause = () => {
+      pauseCalls++;
+    };
     ws.resume = () => {};
     ws.close = () => {};
 
@@ -250,12 +261,20 @@ describe("startEmbeddedMqttBroker over WS — non-regression + maxPayload (perfo
     const pub = mqtt.connect(wsUrl, { clientId: "pub-1", reconnectPeriod: 0 });
     try {
       await Promise.all([
-        new Promise<void>((resolve, reject) => { sub.once("connect", () => resolve()); sub.once("error", reject); }),
-        new Promise<void>((resolve, reject) => { pub.once("connect", () => resolve()); pub.once("error", reject); }),
+        new Promise<void>((resolve, reject) => {
+          sub.once("connect", () => resolve());
+          sub.once("error", reject);
+        }),
+        new Promise<void>((resolve, reject) => {
+          pub.once("connect", () => resolve());
+          pub.once("error", reject);
+        }),
       ]);
 
       await new Promise<void>((resolve, reject) => {
-        sub.subscribe("coordinator/default/perf04/topic", { qos: 1 }, (err) => (err ? reject(err) : resolve()));
+        sub.subscribe("coordinator/default/perf04/topic", { qos: 1 }, (err) =>
+          err ? reject(err) : resolve(),
+        );
       });
 
       const received = new Promise<string>((resolve) => {
@@ -292,11 +311,19 @@ describe("startEmbeddedMqttBroker over WS — non-regression + maxPayload (perfo
     const pub = mqtt.connect(wsUrl, { clientId: "pub-2", reconnectPeriod: 0 });
     try {
       await Promise.all([
-        new Promise<void>((resolve, reject) => { sub.once("connect", () => resolve()); sub.once("error", reject); }),
-        new Promise<void>((resolve, reject) => { pub.once("connect", () => resolve()); pub.once("error", reject); }),
+        new Promise<void>((resolve, reject) => {
+          sub.once("connect", () => resolve());
+          sub.once("error", reject);
+        }),
+        new Promise<void>((resolve, reject) => {
+          pub.once("connect", () => resolve());
+          pub.once("error", reject);
+        }),
       ]);
       await new Promise<void>((resolve, reject) => {
-        sub.subscribe("coordinator/default/perf04/topic2", { qos: 0 }, (err) => (err ? reject(err) : resolve()));
+        sub.subscribe("coordinator/default/perf04/topic2", { qos: 0 }, (err) =>
+          err ? reject(err) : resolve(),
+        );
       });
       const received = new Promise<string>((resolve) => {
         sub.once("message", (_topic, payload) => resolve(payload.toString()));

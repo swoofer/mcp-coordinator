@@ -6,10 +6,7 @@ import {
   IdPTransientError,
   ProviderCapabilityError,
 } from "../../src/auth/providers/errors.js";
-import {
-  MembershipCache,
-  type StaleServedEvent,
-} from "../../src/auth/membership-cache.js";
+import { MembershipCache, type StaleServedEvent } from "../../src/auth/membership-cache.js";
 
 class FakeClock implements Clock {
   constructor(public current = 1_000_000) {}
@@ -28,7 +25,10 @@ interface FakeBehavior {
   noListMemberships?: boolean;
 }
 
-function makeFakeProvider(name: string, behavior: FakeBehavior): IdPProvider & {
+function makeFakeProvider(
+  name: string,
+  behavior: FakeBehavior,
+): IdPProvider & {
   callCount: number;
   setBehavior(b: FakeBehavior): void;
 } {
@@ -120,16 +120,15 @@ describe("MembershipCache.getMemberships", () => {
     const result = await cache.getMemberships("user-1", provider, "tok");
     expect(result).toEqual(["acme"]);
     expect(cache.metrics.staleServed).toBe(1);
-    expect(events).toEqual([
-      { userId: "user-1", provider: "github", ageSeconds: 120 },
-    ]);
+    expect(events).toEqual([{ userId: "user-1", provider: "github", ageSeconds: 120 }]);
   });
 
   it("IdPTransientError with no cached entry: re-throws", async () => {
     const cache = new MembershipCache(clock);
     const provider = makeFakeProvider("github", { throwTransient: true });
-    await expect(cache.getMemberships("user-1", provider, "tok"))
-      .rejects.toBeInstanceOf(IdPTransientError);
+    await expect(cache.getMemberships("user-1", provider, "tok")).rejects.toBeInstanceOf(
+      IdPTransientError,
+    );
     expect(cache.metrics.staleServed).toBe(0);
     expect(cache.size()).toBe(0);
   });
@@ -145,8 +144,9 @@ describe("MembershipCache.getMemberships", () => {
     await cache.getMemberships("user-1", provider, "tok");
     clock.advance(601); // past 10min stale window (601 >= STALE_MAX_S=600)
     provider.setBehavior({ throwTransient: true });
-    await expect(cache.getMemberships("user-1", provider, "tok"))
-      .rejects.toBeInstanceOf(IdPTransientError);
+    await expect(cache.getMemberships("user-1", provider, "tok")).rejects.toBeInstanceOf(
+      IdPTransientError,
+    );
     expect(cache.metrics.staleServed).toBe(0);
   });
 
@@ -157,8 +157,9 @@ describe("MembershipCache.getMemberships", () => {
     await cache.getMemberships("user-1", provider, "tok");
     clock.advance(120);
     provider.setBehavior({ throwRevoked: true });
-    await expect(cache.getMemberships("user-1", provider, "tok"))
-      .rejects.toBeInstanceOf(IdPTokenRevoked);
+    await expect(cache.getMemberships("user-1", provider, "tok")).rejects.toBeInstanceOf(
+      IdPTokenRevoked,
+    );
     expect(cache.metrics.staleServed).toBe(0);
     expect(events).toEqual([]);
   });
@@ -166,8 +167,9 @@ describe("MembershipCache.getMemberships", () => {
   it("provider has no listMemberships: throws ProviderCapabilityError", async () => {
     const cache = new MembershipCache(clock);
     const provider = makeFakeProvider("github", { noListMemberships: true });
-    await expect(cache.getMemberships("user-1", provider, "tok"))
-      .rejects.toBeInstanceOf(ProviderCapabilityError);
+    await expect(cache.getMemberships("user-1", provider, "tok")).rejects.toBeInstanceOf(
+      ProviderCapabilityError,
+    );
   });
 
   it("normalizes memberships to lowercase", async () => {
@@ -224,8 +226,7 @@ describe("MembershipCache.getMemberships", () => {
     provider.listMemberships = vi.fn(async () => {
       throw new Error("boom");
     });
-    await expect(cache.getMemberships("user-1", provider, "tok"))
-      .rejects.toThrow("boom");
+    await expect(cache.getMemberships("user-1", provider, "tok")).rejects.toThrow("boom");
     expect(cache.metrics.staleServed).toBe(0);
     expect(events).toEqual([]);
   });

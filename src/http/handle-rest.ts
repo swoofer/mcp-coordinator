@@ -97,14 +97,30 @@ const METHOD_ROUTES: Record<string, RestHandler> = {
 // original if/else chain. None of their prefixes are a prefix of (or equal
 // to) any key in ROUTES/METHOD_ROUTES, so trying all exact matches first is
 // equivalent to the original interleaved ordering.
-const PREFIX_ROUTES: Array<{ test: (url: string, method: string | undefined) => boolean; handler: RestHandler }> = [
-  { test: (url) => url?.startsWith("/api/consultation/") && url?.endsWith("/status"), handler: handleConsultationStatus },
-  { test: (url) => url?.startsWith("/api/pending-introspections"), handler: handlePendingIntrospections },
+const PREFIX_ROUTES: Array<{
+  test: (url: string, method: string | undefined) => boolean;
+  handler: RestHandler;
+}> = [
+  {
+    test: (url) => url?.startsWith("/api/consultation/") && url?.endsWith("/status"),
+    handler: handleConsultationStatus,
+  },
+  {
+    test: (url) => url?.startsWith("/api/pending-introspections"),
+    handler: handlePendingIntrospections,
+  },
   { test: (url) => url?.startsWith("/api/agent-status/"), handler: handleAgentStatus },
-  { test: (url, method) => url?.startsWith("/api/scoring-stats") && method === "GET", handler: handleScoringStats },
+  {
+    test: (url, method) => url?.startsWith("/api/scoring-stats") && method === "GET",
+    handler: handleScoringStats,
+  },
 ];
 
-export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx: RestContext): Promise<void> {
+export async function handleRest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RestContext,
+): Promise<void> {
   const { httpLog } = ctx;
   const url = req.url || "";
   let body: Record<string, unknown>;
@@ -118,7 +134,11 @@ export async function handleRest(req: IncomingMessage, res: ServerResponse, ctx:
   const agentId = (body as Record<string, unknown>).agent_id as string | undefined;
   // Dashboard/work-stealing polls these endpoints every few seconds — demote to debug
   // to keep the info log focused on coordination events (announce, claim, resolve, etc).
-  const isPoll = url === "/api/hot-files" || url === "/api/threads-active" || url === "/api/status" || url === "/api/quota";
+  const isPoll =
+    url === "/api/hot-files" ||
+    url === "/api/threads-active" ||
+    url === "/api/status" ||
+    url === "/api/quota";
   // Note: /api/quota/refresh is NOT in the poll list — it's a manual user
   // action and deserves an info-level log for auditability.
   // securite-auth-03: url may carry ?token=<jwt> on a GET request — mask

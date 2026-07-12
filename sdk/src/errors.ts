@@ -135,9 +135,19 @@ export function makeCoordinatorError(
   const code = envelope.code;
   switch (code) {
     case "UNAUTHORIZED":
-      return new UnauthorizedError(envelope.message, httpStatus, envelope.request_id, envelope.details);
+      return new UnauthorizedError(
+        envelope.message,
+        httpStatus,
+        envelope.request_id,
+        envelope.details,
+      );
     case "FORBIDDEN":
-      return new ForbiddenError(envelope.message, httpStatus, envelope.request_id, envelope.details);
+      return new ForbiddenError(
+        envelope.message,
+        httpStatus,
+        envelope.request_id,
+        envelope.details,
+      );
     case "RATE_LIMITED":
       return new RateLimitedError(
         envelope.message,
@@ -147,9 +157,19 @@ export function makeCoordinatorError(
         envelope.details,
       );
     case "NOT_IN_ALLOWLIST":
-      return new NotInAllowlistError(envelope.message, httpStatus, envelope.request_id, envelope.details);
+      return new NotInAllowlistError(
+        envelope.message,
+        httpStatus,
+        envelope.request_id,
+        envelope.details,
+      );
     case "USER_NOT_PROVISIONED":
-      return new UserNotProvisionedError(envelope.message, httpStatus, envelope.request_id, envelope.details);
+      return new UserNotProvisionedError(
+        envelope.message,
+        httpStatus,
+        envelope.request_id,
+        envelope.details,
+      );
     case "LOGIN_LOCKED":
       return new LoginLockedError(
         envelope.message,
@@ -159,17 +179,47 @@ export function makeCoordinatorError(
         envelope.details,
       );
     case "IDP_UNAVAILABLE":
-      return new IdpUnavailableError(envelope.message, httpStatus, envelope.request_id, envelope.details);
+      return new IdpUnavailableError(
+        envelope.message,
+        httpStatus,
+        envelope.request_id,
+        envelope.details,
+      );
     case "IDP_TOKEN_REVOKED":
-      return new IdpTokenRevokedError(envelope.message, httpStatus, envelope.request_id, envelope.details);
+      return new IdpTokenRevokedError(
+        envelope.message,
+        httpStatus,
+        envelope.request_id,
+        envelope.details,
+      );
     case "INVALID_STATE":
-      return new InvalidStateError(envelope.message, httpStatus, envelope.request_id, envelope.details);
+      return new InvalidStateError(
+        envelope.message,
+        httpStatus,
+        envelope.request_id,
+        envelope.details,
+      );
     case "STATE_ALREADY_CONSUMED":
-      return new StateAlreadyConsumedError(envelope.message, httpStatus, envelope.request_id, envelope.details);
+      return new StateAlreadyConsumedError(
+        envelope.message,
+        httpStatus,
+        envelope.request_id,
+        envelope.details,
+      );
     case "STATE_EXPIRED":
-      return new StateExpiredError(envelope.message, httpStatus, envelope.request_id, envelope.details);
+      return new StateExpiredError(
+        envelope.message,
+        httpStatus,
+        envelope.request_id,
+        envelope.details,
+      );
     case "CSRF_FAILED":
-      return new CsrfFailedError(envelope.message, httpStatus, envelope.request_id, envelope.details);
+      return new CsrfFailedError(
+        envelope.message,
+        httpStatus,
+        envelope.request_id,
+        envelope.details,
+      );
     case "NOT_FOUND":
       return new NotFoundError(envelope.message, httpStatus, envelope.request_id, envelope.details);
     default:

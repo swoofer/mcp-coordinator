@@ -21,16 +21,16 @@ export function resolveOrgFromIdpOrgId(
   idpOrgId: string,
 ): AllowlistMatch | null {
   const row = db
-    .prepare(`
+    .prepare(
+      `
       SELECT id, name, allowlist_idp_org_id
       FROM orgs
       WHERE LOWER(allowlist_idp_org_id) = LOWER(?)
       ORDER BY allowlist_idp_org_id ASC
       LIMIT 1
-    `)
-    .get(idpOrgId) as
-    | { id: string; name: string; allowlist_idp_org_id: string }
-    | undefined;
+    `,
+    )
+    .get(idpOrgId) as { id: string; name: string; allowlist_idp_org_id: string } | undefined;
   if (!row) return null;
   return {
     org_id: row.id,
@@ -60,16 +60,16 @@ export function resolveOrgFromMemberships(
 
   const placeholders = memberships.map(() => "?").join(",");
   const row = db
-    .prepare(`
+    .prepare(
+      `
       SELECT id, name, allowlist_github_org
       FROM orgs
       WHERE LOWER(allowlist_github_org) IN (${placeholders})
       ORDER BY allowlist_github_org ASC
       LIMIT 1
-    `)
-    .get(...memberships) as
-    | { id: string; name: string; allowlist_github_org: string }
-    | undefined;
+    `,
+    )
+    .get(...memberships) as { id: string; name: string; allowlist_github_org: string } | undefined;
 
   if (!row) return null;
   return {

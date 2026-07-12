@@ -10,12 +10,7 @@ import {
   closeDb as closeGlobalDb,
 } from "../../src/database.js";
 import { auditLog, audit, resetAuditQueue } from "../../src/security/audit.js";
-import {
-  authenticateRequest,
-  initAuth,
-  resetPhase2Auth,
-  createToken,
-} from "../../src/auth.js";
+import { authenticateRequest, initAuth, resetPhase2Auth, createToken } from "../../src/auth.js";
 import { dispatchAuthRoutes } from "../../src/http/auth-routes.js";
 import type { AuthHandlerContext } from "../../src/auth/context.js";
 import { deriveStateBindingKey } from "../../src/auth/crypto-keys.js";
@@ -66,8 +61,14 @@ afterEach(() => {
   }
   resetPhase2Auth();
   resetAuditQueue();
-  try { closeGlobalDb(); } catch { /* ignore */ }
-  try { fs.rmSync(DIR, { recursive: true, force: true }); } catch {
+  try {
+    closeGlobalDb();
+  } catch {
+    /* ignore */
+  }
+  try {
+    fs.rmSync(DIR, { recursive: true, force: true });
+  } catch {
     /* Windows EBUSY ignored — vitest re-runs handle file locks */
   }
 });
@@ -137,8 +138,15 @@ describe("Phase 1 backcompat — COORDINATOR_OAUTH_ENABLED unset/false", () => {
       metadata: { phase: 1 },
     });
     const row = getGlobalDb()
-      .prepare("SELECT action, actor_user_id, actor_org_id, metadata_json FROM audit_log WHERE action = 'thread.create'")
-      .get() as { action: string; actor_user_id: string; actor_org_id: string; metadata_json: string };
+      .prepare(
+        "SELECT action, actor_user_id, actor_org_id, metadata_json FROM audit_log WHERE action = 'thread.create'",
+      )
+      .get() as {
+      action: string;
+      actor_user_id: string;
+      actor_org_id: string;
+      metadata_json: string;
+    };
     expect(row.actor_user_id).toBe("phase1-user");
     expect(row.actor_org_id).toBe("default");
     expect(JSON.parse(row.metadata_json)).toEqual({ phase: 1 });
@@ -154,7 +162,9 @@ describe("Phase 1 backcompat — COORDINATOR_OAUTH_ENABLED unset/false", () => {
       metadata: { reason: "phase1-test" },
     });
     const row = getGlobalDb()
-      .prepare("SELECT action, target, outcome FROM audit_log WHERE action = 'auth.refresh.rotated'")
+      .prepare(
+        "SELECT action, target, outcome FROM audit_log WHERE action = 'auth.refresh.rotated'",
+      )
       .get() as { action: string; target: string; outcome: string };
     expect(row.action).toBe("auth.refresh.rotated");
     expect(row.target).toBe("user-phase1");
@@ -167,15 +177,13 @@ describe("Phase 1 backcompat — COORDINATOR_OAUTH_ENABLED unset/false", () => {
     const req = mockRequest({}, "/api/threads", "GET");
     let writeHeadCalled = false;
     const res = {
-      writeHead: () => { writeHeadCalled = true; },
+      writeHead: () => {
+        writeHeadCalled = true;
+      },
       end: () => {},
       setHeader: () => {},
     } as unknown as import("node:http").ServerResponse;
-    const handled = await dispatchAuthRoutes(
-      req,
-      res,
-      {} as unknown as AuthHandlerContext,
-    );
+    const handled = await dispatchAuthRoutes(req, res, {} as unknown as AuthHandlerContext);
     expect(handled).toBe(false);
     // No response written — caller (serve-http) falls through to handleRest.
     expect(writeHeadCalled).toBe(false);
@@ -216,11 +224,7 @@ describe("Phase 1 backcompat — COORDINATOR_OAUTH_ENABLED unset/false", () => {
     });
     expect(token.split(".")).toHaveLength(3);
     // Use the token to authenticate.
-    const req = mockRequest(
-      { authorization: `Bearer ${token}` },
-      "/api/threads",
-      "GET",
-    );
+    const req = mockRequest({ authorization: `Bearer ${token}` }, "/api/threads", "GET");
     const result = await authenticateRequest(req, { authEnabled: true });
     expect(result.ok).toBe(true);
     if (result.ok) {

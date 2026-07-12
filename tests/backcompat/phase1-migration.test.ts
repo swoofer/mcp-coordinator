@@ -94,25 +94,46 @@ beforeAll(async () => {
   // Seed REALISTIC Phase 1 data — multiple users, multiple refresh tokens,
   // multiple audit rows — so backfills are exercised on more than one row.
   const insertUser = raw.prepare(
-    "INSERT INTO users (id, org_id, email, idp_provider, idp_user_id, role) VALUES (?,?,?,?,?,?)"
+    "INSERT INTO users (id, org_id, email, idp_provider, idp_user_id, role) VALUES (?,?,?,?,?,?)",
   );
   insertUser.run("user-alice", "default", "alice@example.com", "github", "alice-gh", "member");
   insertUser.run("user-bob", "default", "bob@example.com", "github", "bob-gh", "admin");
   insertUser.run("user-carol", "default", "carol@example.com", "github", "carol-gh", "member");
 
   const insertRefresh = raw.prepare(
-    "INSERT INTO refresh_tokens (id, org_id, user_id, jti, expires_at) VALUES (?,?,?,?,?)"
+    "INSERT INTO refresh_tokens (id, org_id, user_id, jti, expires_at) VALUES (?,?,?,?,?)",
   );
   insertRefresh.run("rt-1", "default", "user-alice", "jti-1", "2099-01-01T00:00:00Z");
-  insertRefresh.run("rt-2", "default", "user-bob",   "jti-2", "2099-01-01T00:00:00Z");
-  insertRefresh.run("rt-3", "default", "user-bob",   "jti-3", "2099-01-01T00:00:00Z"); // 2nd device
+  insertRefresh.run("rt-2", "default", "user-bob", "jti-2", "2099-01-01T00:00:00Z");
+  insertRefresh.run("rt-3", "default", "user-bob", "jti-3", "2099-01-01T00:00:00Z"); // 2nd device
 
   const insertAudit = raw.prepare(
-    "INSERT INTO audit_log (user_id, org_id, action, ip, user_agent, metadata) VALUES (?,?,?,?,?,?)"
+    "INSERT INTO audit_log (user_id, org_id, action, ip, user_agent, metadata) VALUES (?,?,?,?,?,?)",
   );
-  insertAudit.run("user-alice", "default", "auth.login.success", "1.2.3.4", "Mozilla/5.0", JSON.stringify({ phase: 1 }));
-  insertAudit.run("user-bob",   "default", "thread.create", "5.6.7.8", "Mozilla/5.0", JSON.stringify({ thread_id: "t1" }));
-  insertAudit.run(null, "default", "auth.login.failure", "9.10.11.12", "evil-bot/1.0", JSON.stringify({ reason: "bad_password" }));
+  insertAudit.run(
+    "user-alice",
+    "default",
+    "auth.login.success",
+    "1.2.3.4",
+    "Mozilla/5.0",
+    JSON.stringify({ phase: 1 }),
+  );
+  insertAudit.run(
+    "user-bob",
+    "default",
+    "thread.create",
+    "5.6.7.8",
+    "Mozilla/5.0",
+    JSON.stringify({ thread_id: "t1" }),
+  );
+  insertAudit.run(
+    null,
+    "default",
+    "auth.login.failure",
+    "9.10.11.12",
+    "evil-bot/1.0",
+    JSON.stringify({ reason: "bad_password" }),
+  );
 
   raw.exec("PRAGMA user_version = 7;");
   raw.close();
@@ -123,7 +144,11 @@ beforeAll(async () => {
 
 afterAll(() => {
   closeDb();
-  try { fs.rmSync(DIR, { recursive: true, force: true }); } catch { /* EBUSY ignored */ }
+  try {
+    fs.rmSync(DIR, { recursive: true, force: true });
+  } catch {
+    /* EBUSY ignored */
+  }
 });
 
 describe("Phase 1 → v8 migration (T43)", () => {
@@ -137,9 +162,10 @@ describe("Phase 1 → v8 migration (T43)", () => {
   });
 
   it("users primary_org_id column receives renamed Phase 1 org_id data", () => {
-    const rows = getDb()
-      .prepare("SELECT id, primary_org_id FROM users ORDER BY id")
-      .all() as { id: string; primary_org_id: string }[];
+    const rows = getDb().prepare("SELECT id, primary_org_id FROM users ORDER BY id").all() as {
+      id: string;
+      primary_org_id: string;
+    }[];
     expect(rows).toHaveLength(3);
     for (const r of rows) {
       expect(r.primary_org_id).toBe("default");
@@ -164,9 +190,14 @@ describe("Phase 1 → v8 migration (T43)", () => {
     const phase1Rows = getDb()
       .prepare(
         "SELECT action, outcome, actor_user_id, actor_ip FROM audit_log " +
-        "WHERE action IN ('auth.login.success', 'thread.create', 'auth.login.failure') ORDER BY id",
+          "WHERE action IN ('auth.login.success', 'thread.create', 'auth.login.failure') ORDER BY id",
       )
-      .all() as { action: string; outcome: string; actor_user_id: string | null; actor_ip: string }[];
+      .all() as {
+      action: string;
+      outcome: string;
+      actor_user_id: string | null;
+      actor_ip: string;
+    }[];
     expect(phase1Rows).toHaveLength(3);
     for (const r of phase1Rows) {
       expect(r.outcome).toBe("legacy_unknown");
@@ -184,7 +215,7 @@ describe("Phase 1 → v8 migration (T43)", () => {
     const rows = getDb()
       .prepare(
         "SELECT outcome, metadata_json FROM audit_log " +
-        "WHERE action = 'migration.audit_backfill' ORDER BY id",
+          "WHERE action = 'migration.audit_backfill' ORDER BY id",
       )
       .all() as { outcome: string; metadata_json: string }[];
     expect(rows).toHaveLength(1);
@@ -197,15 +228,13 @@ describe("Phase 1 → v8 migration (T43)", () => {
 
   it("refresh_tokens Phase 1 rows get family_id backfilled (random hex), parent_jti=NULL", () => {
     const rows = getDb()
-      .prepare(
-        "SELECT id, family_id, parent_jti, replay_count FROM refresh_tokens ORDER BY id",
-      )
+      .prepare("SELECT id, family_id, parent_jti, replay_count FROM refresh_tokens ORDER BY id")
       .all() as {
-        id: string;
-        family_id: string;
-        parent_jti: string | null;
-        replay_count: number;
-      }[];
+      id: string;
+      family_id: string;
+      parent_jti: string | null;
+      replay_count: number;
+    }[];
     expect(rows).toHaveLength(3);
     for (const r of rows) {
       // randomblob(16) → 32 lowercase hex chars
@@ -240,9 +269,9 @@ describe("Phase 1 → v8 migration (T43)", () => {
     closeDb();
     initDatabase(DIR);
 
-    const userOrgsCount = getDb()
-      .prepare("SELECT COUNT(*) AS c FROM user_orgs")
-      .get() as { c: number };
+    const userOrgsCount = getDb().prepare("SELECT COUNT(*) AS c FROM user_orgs").get() as {
+      c: number;
+    };
     expect(userOrgsCount.c).toBe(3); // Not 6, not 9.
 
     const backfillCount = getDb()
@@ -250,9 +279,7 @@ describe("Phase 1 → v8 migration (T43)", () => {
       .get() as { c: number };
     expect(backfillCount.c).toBe(1); // Only the first migration emitted the marker.
 
-    const v = getDb()
-      .prepare("PRAGMA user_version")
-      .get() as { user_version: number };
+    const v = getDb().prepare("PRAGMA user_version").get() as { user_version: number };
     expect(v.user_version).toBe(10);
   });
 
@@ -268,9 +295,10 @@ describe("Phase 1 → v8 migration (T43)", () => {
     closeDb();
     initDatabase(DIR);
 
-    const after = getDb()
-      .prepare("SELECT id, family_id FROM refresh_tokens ORDER BY id")
-      .all() as { id: string; family_id: string }[];
+    const after = getDb().prepare("SELECT id, family_id FROM refresh_tokens ORDER BY id").all() as {
+      id: string;
+      family_id: string;
+    }[];
 
     expect(after).toEqual(before);
   });

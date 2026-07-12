@@ -7,9 +7,11 @@ function mockRes(): { res: ServerResponse; getBody: () => Record<string, unknown
   const res = {
     setHeader: () => {},
     writeHead: () => {},
-    end(buf?: string) { if (buf) chunks.push(buf); },
+    end(buf?: string) {
+      if (buf) chunks.push(buf);
+    },
   } as unknown as ServerResponse;
-  return { res, getBody: () => chunks.length ? JSON.parse(chunks.join("")) : {} };
+  return { res, getBody: () => (chunks.length ? JSON.parse(chunks.join("")) : {}) };
 }
 
 describe("/healthz auth config reporting", () => {
@@ -31,6 +33,8 @@ describe("/healthz auth config reporting", () => {
       jwtSecretSet: false,
     });
     const body = getBody();
-    expect(body.warnings).toContain("AUTH_ENABLED=true but COORDINATOR_JWT_SECRET is unset — sessions invalidate on restart");
+    expect(body.warnings).toContain(
+      "AUTH_ENABLED=true but COORDINATOR_JWT_SECRET is unset — sessions invalidate on restart",
+    );
   });
 });

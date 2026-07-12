@@ -27,8 +27,11 @@ export function parseBody(req: IncomingMessage): Promise<Record<string, unknown>
     });
     req.on("end", () => {
       const body = Buffer.concat(chunks).toString("utf-8");
-      try { resolve(body ? JSON.parse(body) : {}); }
-      catch { reject(new Error("Invalid JSON")); }
+      try {
+        resolve(body ? JSON.parse(body) : {});
+      } catch {
+        reject(new Error("Invalid JSON"));
+      }
     });
     req.on("error", reject);
   });
@@ -62,7 +65,10 @@ export function safeEqual(a: string, b: string): boolean {
   return timingSafeEqual(Buffer.from(a), Buffer.from(b));
 }
 
-export function jsonAuthError(res: ServerResponse, authResult: Exclude<AuthResult, { ok: true }>): void {
+export function jsonAuthError(
+  res: ServerResponse,
+  authResult: Exclude<AuthResult, { ok: true }>,
+): void {
   if (authResult.wwwAuthenticate) {
     res.setHeader("WWW-Authenticate", authResult.wwwAuthenticate);
   }
@@ -91,7 +97,8 @@ export function redactTokenParam(url: string): string {
 // routes in handle-rest.ts (consultation thread ids, agent ids) plus any
 // numeric id scheme, without touching plain route words (e.g. "agents",
 // "threads-active") so REST route templates stay distinguishable.
-const UUID_SEGMENT_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+const UUID_SEGMENT_RE =
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 const LONG_HEX_SEGMENT_RE = /^[0-9a-fA-F]{16,}$/;
 const LONG_NUMERIC_SEGMENT_RE = /^\d{4,}$/;
 

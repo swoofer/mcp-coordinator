@@ -38,10 +38,7 @@ export interface JwtKeyRegistry {
  * 4. Unset COORDINATOR_JWT_SECRET_PREV + restart. Old kid no longer
  *    resolves; tokens signed with prev (if any remain) 401 on verify.
  */
-export function buildJwtKeyRegistry(
-  currentSecret: Buffer,
-  prevSecret?: Buffer,
-): JwtKeyRegistry {
+export function buildJwtKeyRegistry(currentSecret: Buffer, prevSecret?: Buffer): JwtKeyRegistry {
   const current = {
     kid: "hs256-v1" as CurrentKid,
     key: new Uint8Array(currentSecret),

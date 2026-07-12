@@ -10,7 +10,7 @@ let handle: ServerHandle, dataDir: string, port: number;
 const FAKE_REPO_ROOT = "/abs/path";
 
 async function getFreePort(): Promise<number> {
-  return new Promise(r => {
+  return new Promise((r) => {
     const s = http.createServer().listen(0, () => {
       const p = (s.address() as any).port;
       s.close(() => r(p));
@@ -18,17 +18,26 @@ async function getFreePort(): Promise<number> {
   });
 }
 
-function postJson(p: number, urlPath: string, body: unknown): Promise<{ status: number; body: any }> {
+function postJson(
+  p: number,
+  urlPath: string,
+  body: unknown,
+): Promise<{ status: number; body: any }> {
   return new Promise((resolve, reject) => {
     const data = JSON.stringify(body);
     const req = http.request(
-      { hostname: "localhost", port: p, path: urlPath, method: "POST",
-        headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(data) } },
+      {
+        hostname: "localhost",
+        port: p,
+        path: urlPath,
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(data) },
+      },
       (res) => {
         let buf = "";
-        res.on("data", c => buf += c);
+        res.on("data", (c) => (buf += c));
         res.on("end", () => resolve({ status: res.statusCode!, body: buf ? JSON.parse(buf) : {} }));
-      }
+      },
     );
     req.on("error", reject);
     req.write(data);
@@ -41,7 +50,12 @@ describe("repo-relative path contract", () => {
     dataDir = mkdtempSync(path.join(tmpdir(), "path-contract-"));
     process.env.COORDINATOR_REPO_ROOT = FAKE_REPO_ROOT;
     port = await getFreePort();
-    handle = await startServer({ port, dataDir, mqttTcpPort: await getFreePort(), registerSignalHandlers: false });
+    handle = await startServer({
+      port,
+      dataDir,
+      mqttTcpPort: await getFreePort(),
+      registerSignalHandlers: false,
+    });
   });
   afterAll(async () => {
     delete process.env.COORDINATOR_REPO_ROOT;
@@ -55,7 +69,9 @@ describe("repo-relative path contract", () => {
       file_path: `${FAKE_REPO_ROOT}/src/foo.ts`,
     });
     expect(r.status).toBe(200);
-    const row = getDb().prepare("SELECT file_path FROM working_files WHERE agent_id = ?").get("alice") as any;
+    const row = getDb()
+      .prepare("SELECT file_path FROM working_files WHERE agent_id = ?")
+      .get("alice") as any;
     expect(row.file_path).toBe("src/foo.ts");
   });
 
@@ -74,7 +90,9 @@ describe("repo-relative path contract", () => {
       file_path: "src/bar.ts",
     });
     expect(r.status).toBe(200);
-    const row = getDb().prepare("SELECT file_path FROM working_files WHERE agent_id = ?").get("carol") as any;
+    const row = getDb()
+      .prepare("SELECT file_path FROM working_files WHERE agent_id = ?")
+      .get("carol") as any;
     expect(row.file_path).toBe("src/bar.ts");
   });
 });

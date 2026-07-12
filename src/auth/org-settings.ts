@@ -55,9 +55,8 @@ export function getOrgSetting(
     const columns = getOrgsColumns(db);
     if (columns.has(key)) {
       // Safe: key is validated against the schema-derived Set.
-      const row = db
-        .prepare(`SELECT ${key} AS value FROM orgs WHERE id = ?`)
-        .get(orgId) as { value: string | null } | undefined;
+      const row = db.prepare(`SELECT ${key} AS value FROM orgs WHERE id = ?`).get(orgId) as
+        { value: string | null } | undefined;
       if (row && row.value !== null && row.value !== undefined) {
         return String(row.value);
       }

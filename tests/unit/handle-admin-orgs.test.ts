@@ -5,14 +5,7 @@
 // emits Tier 1 audit events that depend on AsyncLocalStorage contexts
 // (withRequestId + withAuditContext) so every handler call here is wrapped to
 // mirror the live serve-http.ts dispatch.
-import {
-  describe,
-  it,
-  expect,
-  beforeAll,
-  afterAll,
-  beforeEach,
-} from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { Readable } from "node:stream";
 import fs from "node:fs";
@@ -28,16 +21,9 @@ import { RateLimiter } from "../../src/auth/rate-limit.js";
 import { buildJwtKeyRegistry } from "../../src/auth/jwt-keys.js";
 import { MembershipCache } from "../../src/auth/membership-cache.js";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
-import {
-  initAuth,
-  initPhase2Auth,
-  resetPhase2Auth,
-} from "../../src/auth.js";
+import { initAuth, initPhase2Auth, resetPhase2Auth } from "../../src/auth.js";
 import type Database from "better-sqlite3";
-import type {
-  IdPProvider,
-  ExchangeCodeResult,
-} from "../../src/auth/providers/types.js";
+import type { IdPProvider, ExchangeCodeResult } from "../../src/auth/providers/types.js";
 import { makeAdminSession, type AdminSession } from "../helpers/admin-session.js";
 import { withAuditContext } from "../../src/auth/audit-context.js";
 import { withRequestId } from "../../src/auth/request-id.js";
@@ -117,14 +103,10 @@ function mockRequest(opts: MockReqOpts = {}): IncomingMessage {
       headers.authorization = `Bearer ${opts.session.jwt}`;
     }
     const cookieHeader =
-      opts.cookieHeader === null
-        ? undefined
-        : (opts.cookieHeader ?? opts.session.cookieHeader);
+      opts.cookieHeader === null ? undefined : (opts.cookieHeader ?? opts.session.cookieHeader);
     if (cookieHeader) headers.cookie = cookieHeader;
     const csrf =
-      opts.csrfHeader === null
-        ? undefined
-        : (opts.csrfHeader ?? opts.session.csrfHeader);
+      opts.csrfHeader === null ? undefined : (opts.csrfHeader ?? opts.session.csrfHeader);
     if (csrf !== undefined) headers["x-csrf-token"] = csrf;
   } else {
     if (opts.cookieHeader && opts.cookieHeader !== null) {
@@ -181,11 +163,7 @@ function seedOrg(
     .run(id, name, allowGh, allowIdp);
 }
 
-function seedUser(
-  id: string,
-  role: "admin" | "member" = "admin",
-  orgId = "org-acme-001",
-): void {
+function seedUser(id: string, role: "admin" | "member" = "admin", orgId = "org-acme-001"): void {
   getDb()
     .prepare(
       `INSERT INTO users
@@ -193,18 +171,7 @@ function seedUser(
           idp_access_token, role, last_login_at, token_epoch)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-    .run(
-      id,
-      orgId,
-      `${id}@example.com`,
-      id,
-      "github",
-      `gh-${id}`,
-      "tok",
-      role,
-      "0",
-      0,
-    );
+    .run(id, orgId, `${id}@example.com`, id, "github", `gh-${id}`, "tok", role, "0", 0);
 }
 
 /** Wrap a handler invocation in the AsyncLocalStorage contexts the live
@@ -282,9 +249,7 @@ describe("handleListOrgs", () => {
   it("returns 401 when no session", async () => {
     const req = mockRequest({ method: "GET" });
     const res = mockResponse();
-    await runHandler(() =>
-      handleListOrgs(req, res as unknown as ServerResponse, makeCtx()),
-    );
+    await runHandler(() => handleListOrgs(req, res as unknown as ServerResponse, makeCtx()));
     expect(res.statusCode).toBe(401);
     const body = parseBody(res);
     expect(body.code).toBe("UNAUTHORIZED");
@@ -295,9 +260,7 @@ describe("handleListOrgs", () => {
     const session = await adminSession("member");
     const req = mockRequest({ method: "GET", session, useBearer: true });
     const res = mockResponse();
-    await runHandler(() =>
-      handleListOrgs(req, res as unknown as ServerResponse, makeCtx()),
-    );
+    await runHandler(() => handleListOrgs(req, res as unknown as ServerResponse, makeCtx()));
     expect(res.statusCode).toBe(403);
     expect(parseBody(res).code).toBe("FORBIDDEN");
   });
@@ -309,9 +272,7 @@ describe("handleListOrgs", () => {
 
     const req = mockRequest({ method: "GET", session, useBearer: true });
     const res = mockResponse();
-    await runHandler(() =>
-      handleListOrgs(req, res as unknown as ServerResponse, makeCtx()),
-    );
+    await runHandler(() => handleListOrgs(req, res as unknown as ServerResponse, makeCtx()));
     expect(res.statusCode).toBe(200);
     const body = parseBody(res) as { orgs: Array<Record<string, unknown>> };
     // includes default, org-acme-001 (from seed), org-1, org-2
@@ -337,9 +298,7 @@ describe("handleListOrgs", () => {
       useBearer: false,
     });
     const res = mockResponse();
-    await runHandler(() =>
-      handleListOrgs(req, res as unknown as ServerResponse, makeCtx()),
-    );
+    await runHandler(() => handleListOrgs(req, res as unknown as ServerResponse, makeCtx()));
     expect(res.statusCode).toBe(200);
   });
 
@@ -347,12 +306,8 @@ describe("handleListOrgs", () => {
     const session = await adminSession("admin");
     const req = mockRequest({ method: "GET", session, useBearer: true });
     const res = mockResponse();
-    await runHandler(() =>
-      handleListOrgs(req, res as unknown as ServerResponse, makeCtx()),
-    );
-    const rows = getDb()
-      .prepare("SELECT * FROM audit_log WHERE action LIKE 'admin.org.%'")
-      .all();
+    await runHandler(() => handleListOrgs(req, res as unknown as ServerResponse, makeCtx()));
+    const rows = getDb().prepare("SELECT * FROM audit_log WHERE action LIKE 'admin.org.%'").all();
     expect(rows).toHaveLength(0);
   });
 });
@@ -364,9 +319,7 @@ describe("handleCreateOrg", () => {
   it("returns 401 when no session", async () => {
     const req = mockRequest({ method: "POST", body: JSON.stringify({ name: "X" }) });
     const res = mockResponse();
-    await runHandler(() =>
-      handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()),
-    );
+    await runHandler(() => handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()));
     expect(res.statusCode).toBe(401);
   });
 
@@ -379,9 +332,7 @@ describe("handleCreateOrg", () => {
       useBearer: true,
     });
     const res = mockResponse();
-    await runHandler(() =>
-      handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()),
-    );
+    await runHandler(() => handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()));
     expect(res.statusCode).toBe(403);
   });
 
@@ -395,9 +346,7 @@ describe("handleCreateOrg", () => {
       cookieHeader: `${SESSION_COOKIE_NAME}=${session.jwt}`, // omit CSRF cookie
     });
     const res = mockResponse();
-    await runHandler(() =>
-      handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()),
-    );
+    await runHandler(() => handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()));
     expect(res.statusCode).toBe(403);
     expect(parseBody(res).code).toBe("CSRF_FAILED");
   });
@@ -412,9 +361,7 @@ describe("handleCreateOrg", () => {
       csrfHeader: "wrong-value-different-length",
     });
     const res = mockResponse();
-    await runHandler(() =>
-      handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()),
-    );
+    await runHandler(() => handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()));
     expect(res.statusCode).toBe(403);
     expect(parseBody(res).code).toBe("CSRF_FAILED");
   });
@@ -432,9 +379,7 @@ describe("handleCreateOrg", () => {
       csrfHeader: same,
     });
     const res = mockResponse();
-    await runHandler(() =>
-      handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()),
-    );
+    await runHandler(() => handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()));
     expect(res.statusCode).toBe(403);
   });
 
@@ -447,9 +392,7 @@ describe("handleCreateOrg", () => {
       useBearer: true,
     });
     const res = mockResponse();
-    await runHandler(() =>
-      handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()),
-    );
+    await runHandler(() => handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()));
     expect(res.statusCode).toBe(400);
     expect(parseBody(res).code).toBe("INVALID_REQUEST");
   });
@@ -463,9 +406,7 @@ describe("handleCreateOrg", () => {
       useBearer: true,
     });
     const res = mockResponse();
-    await runHandler(() =>
-      handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()),
-    );
+    await runHandler(() => handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()));
     expect(res.statusCode).toBe(400);
   });
 
@@ -478,9 +419,7 @@ describe("handleCreateOrg", () => {
       useBearer: true,
     });
     const res = mockResponse();
-    await runHandler(() =>
-      handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()),
-    );
+    await runHandler(() => handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()));
     expect(res.statusCode).toBe(400);
   });
 
@@ -493,9 +432,7 @@ describe("handleCreateOrg", () => {
       useBearer: true,
     });
     const res = mockResponse();
-    await runHandler(() =>
-      handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()),
-    );
+    await runHandler(() => handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()));
     expect(res.statusCode).toBe(400);
   });
 
@@ -509,9 +446,7 @@ describe("handleCreateOrg", () => {
       useBearer: true,
     });
     const res = mockResponse();
-    await runHandler(() =>
-      handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()),
-    );
+    await runHandler(() => handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()));
     expect(res.statusCode).toBe(400);
     expect(parseBody(res).code).toBe("INVALID_REQUEST");
   });
@@ -525,9 +460,7 @@ describe("handleCreateOrg", () => {
       useBearer: true,
     });
     const res = mockResponse();
-    await runHandler(() =>
-      handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()),
-    );
+    await runHandler(() => handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()));
     expect(res.statusCode).toBe(400);
     expect(parseBody(res).code).toBe("UNKNOWN_FIELD");
   });
@@ -541,9 +474,7 @@ describe("handleCreateOrg", () => {
       useBearer: true,
     });
     const res = mockResponse();
-    await runHandler(() =>
-      handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()),
-    );
+    await runHandler(() => handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()));
     expect(res.statusCode).toBe(400);
     expect(parseBody(res).code).toBe("MISSING_FIELD");
   });
@@ -557,9 +488,7 @@ describe("handleCreateOrg", () => {
       useBearer: true,
     });
     const res = mockResponse();
-    await runHandler(() =>
-      handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()),
-    );
+    await runHandler(() => handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()));
     expect(res.statusCode).toBe(400);
     expect(parseBody(res).code).toBe("WRONG_TYPE");
   });
@@ -573,9 +502,7 @@ describe("handleCreateOrg", () => {
       useBearer: true,
     });
     const res = mockResponse();
-    await runHandler(() =>
-      handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()),
-    );
+    await runHandler(() => handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()));
     expect(res.statusCode).toBe(400);
     expect(parseBody(res).code).toBe("TOO_LONG");
   });
@@ -589,9 +516,7 @@ describe("handleCreateOrg", () => {
       useBearer: true,
     });
     const res = mockResponse();
-    await runHandler(() =>
-      handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()),
-    );
+    await runHandler(() => handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()));
     expect(res.statusCode).toBe(400);
     expect(parseBody(res).code).toBe("CONTROL_BYTES");
   });
@@ -605,9 +530,7 @@ describe("handleCreateOrg", () => {
       useBearer: true,
     });
     const res = mockResponse();
-    await runHandler(() =>
-      handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()),
-    );
+    await runHandler(() => handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()));
     expect(res.statusCode).toBe(400);
     expect(parseBody(res).code).toBe("WRONG_TYPE");
   });
@@ -621,9 +544,7 @@ describe("handleCreateOrg", () => {
       useBearer: true,
     });
     const res = mockResponse();
-    await runHandler(() =>
-      handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()),
-    );
+    await runHandler(() => handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()));
     expect(res.statusCode).toBe(400);
     expect(parseBody(res).code).toBe("WRONG_TYPE");
   });
@@ -641,10 +562,10 @@ describe("handleCreateOrg", () => {
       useBearer: true,
     });
     const res = mockResponse();
-    await runHandler(
-      () => handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()),
-      { userId: session.userId, orgId: session.orgId },
-    );
+    await runHandler(() => handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()), {
+      userId: session.userId,
+      orgId: session.orgId,
+    });
     expect(res.statusCode).toBe(201);
     const body = parseBody(res) as { org: Record<string, unknown> };
     expect(body.org.name).toBe("Brand New Org");
@@ -684,10 +605,10 @@ describe("handleCreateOrg", () => {
       useBearer: true,
     });
     const res = mockResponse();
-    await runHandler(
-      () => handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()),
-      { userId: session.userId, orgId: session.orgId },
-    );
+    await runHandler(() => handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()), {
+      userId: session.userId,
+      orgId: session.orgId,
+    });
     expect(res.statusCode).toBe(201);
     const body = parseBody(res) as { org: Record<string, unknown> };
     expect(body.org.allowlist_github_org).toBeNull();
@@ -713,10 +634,10 @@ describe("handleCreateOrg", () => {
       useBearer: true,
     });
     const res = mockResponse();
-    await runHandler(
-      () => handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()),
-      { userId: session.userId, orgId: session.orgId },
-    );
+    await runHandler(() => handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()), {
+      userId: session.userId,
+      orgId: session.orgId,
+    });
     expect(res.statusCode).toBe(201);
     const body = parseBody(res) as { org: Record<string, unknown> };
     expect(body.org.allowlist_github_org).toBeNull();
@@ -732,10 +653,10 @@ describe("handleCreateOrg", () => {
       useBearer: true,
     });
     const res = mockResponse();
-    await runHandler(
-      () => handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()),
-      { userId: session.userId, orgId: session.orgId },
-    );
+    await runHandler(() => handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()), {
+      userId: session.userId,
+      orgId: session.orgId,
+    });
     expect(res.statusCode).toBe(409);
     const body = parseBody(res);
     expect(body.code).toBe("ORG_NAME_TAKEN");
@@ -776,9 +697,7 @@ describe("handleUpdateOrg", () => {
       body: JSON.stringify({ name: "X" }),
     });
     const res = mockResponse();
-    await runHandler(() =>
-      handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()),
-    );
+    await runHandler(() => handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()));
     expect(res.statusCode).toBe(401);
   });
 
@@ -787,9 +706,7 @@ describe("handleUpdateOrg", () => {
     seedOrg("org-target", "Old");
     const req = patchReq({ session });
     const res = mockResponse();
-    await runHandler(() =>
-      handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()),
-    );
+    await runHandler(() => handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()));
     expect(res.statusCode).toBe(403);
   });
 
@@ -801,9 +718,7 @@ describe("handleUpdateOrg", () => {
       cookieHeader: `${SESSION_COOKIE_NAME}=${session.jwt}`,
     });
     const res = mockResponse();
-    await runHandler(() =>
-      handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()),
-    );
+    await runHandler(() => handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()));
     expect(res.statusCode).toBe(403);
     expect(parseBody(res).code).toBe("CSRF_FAILED");
   });
@@ -818,9 +733,7 @@ describe("handleUpdateOrg", () => {
       useBearer: true,
     });
     const res = mockResponse();
-    await runHandler(() =>
-      handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()),
-    );
+    await runHandler(() => handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()));
     expect(res.statusCode).toBe(400);
     expect(parseBody(res).code).toBe("BAD_PATH");
   });
@@ -836,9 +749,7 @@ describe("handleUpdateOrg", () => {
       useBearer: true,
     });
     const res = mockResponse();
-    await runHandler(() =>
-      handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()),
-    );
+    await runHandler(() => handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()));
     expect(res.statusCode).toBe(400);
     expect(parseBody(res).code).toBe("BAD_PATH");
   });
@@ -853,9 +764,7 @@ describe("handleUpdateOrg", () => {
       useBearer: true,
     });
     const res = mockResponse();
-    await runHandler(() =>
-      handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()),
-    );
+    await runHandler(() => handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()));
     expect(res.statusCode).toBe(400);
     expect(parseBody(res).code).toBe("BAD_ID");
   });
@@ -864,9 +773,7 @@ describe("handleUpdateOrg", () => {
     const session = await adminSession("admin");
     const req = patchReq({ session, body: "" });
     const res = mockResponse();
-    await runHandler(() =>
-      handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()),
-    );
+    await runHandler(() => handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()));
     expect(res.statusCode).toBe(400);
     expect(parseBody(res).code).toBe("INVALID_REQUEST");
   });
@@ -876,9 +783,7 @@ describe("handleUpdateOrg", () => {
     seedOrg("org-target", "Old");
     const req = patchReq({ session, body: "{}" });
     const res = mockResponse();
-    await runHandler(() =>
-      handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()),
-    );
+    await runHandler(() => handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()));
     expect(res.statusCode).toBe(400);
     expect(parseBody(res).code).toBe("EMPTY_BODY");
   });
@@ -891,9 +796,7 @@ describe("handleUpdateOrg", () => {
       body: JSON.stringify({ name: "OK", evil: 1 }),
     });
     const res = mockResponse();
-    await runHandler(() =>
-      handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()),
-    );
+    await runHandler(() => handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()));
     expect(res.statusCode).toBe(400);
     expect(parseBody(res).code).toBe("UNKNOWN_FIELD");
   });
@@ -906,9 +809,7 @@ describe("handleUpdateOrg", () => {
       body: JSON.stringify({ name: "x".repeat(201) }),
     });
     const res = mockResponse();
-    await runHandler(() =>
-      handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()),
-    );
+    await runHandler(() => handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()));
     expect(res.statusCode).toBe(400);
     expect(parseBody(res).code).toBe("TOO_LONG");
   });
@@ -921,9 +822,7 @@ describe("handleUpdateOrg", () => {
       body: JSON.stringify({ allowlist_github_org: 42 }),
     });
     const res = mockResponse();
-    await runHandler(() =>
-      handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()),
-    );
+    await runHandler(() => handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()));
     expect(res.statusCode).toBe(400);
     expect(parseBody(res).code).toBe("WRONG_TYPE");
   });
@@ -936,9 +835,7 @@ describe("handleUpdateOrg", () => {
       body: JSON.stringify({ allowlist_idp_org_id: 1 }),
     });
     const res = mockResponse();
-    await runHandler(() =>
-      handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()),
-    );
+    await runHandler(() => handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()));
     expect(res.statusCode).toBe(400);
     expect(parseBody(res).code).toBe("WRONG_TYPE");
   });
@@ -951,10 +848,10 @@ describe("handleUpdateOrg", () => {
       body: JSON.stringify({ name: "Whatever" }),
     });
     const res = mockResponse();
-    await runHandler(
-      () => handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()),
-      { userId: session.userId, orgId: session.orgId },
-    );
+    await runHandler(() => handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()), {
+      userId: session.userId,
+      orgId: session.orgId,
+    });
     expect(res.statusCode).toBe(404);
     expect(parseBody(res).code).toBe("NOT_FOUND");
 
@@ -970,10 +867,10 @@ describe("handleUpdateOrg", () => {
       body: JSON.stringify({ name: "NewName" }),
     });
     const res = mockResponse();
-    await runHandler(
-      () => handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()),
-      { userId: session.userId, orgId: session.orgId },
-    );
+    await runHandler(() => handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()), {
+      userId: session.userId,
+      orgId: session.orgId,
+    });
     expect(res.statusCode).toBe(200);
     const body = parseBody(res) as { org: Record<string, unknown> };
     expect(body.org.name).toBe("NewName");
@@ -981,9 +878,10 @@ describe("handleUpdateOrg", () => {
     expect(body.org.allowlist_github_org).toBe("gh-old");
     expect(body.org.allowlist_idp_org_id).toBe("idp-old");
 
-    const dbRow = getDb()
-      .prepare("SELECT name FROM orgs WHERE id = ?")
-      .get("org-target") as Record<string, unknown>;
+    const dbRow = getDb().prepare("SELECT name FROM orgs WHERE id = ?").get("org-target") as Record<
+      string,
+      unknown
+    >;
     expect(dbRow.name).toBe("NewName");
 
     const audits = findAuditRows("admin.org.updated");
@@ -1009,10 +907,10 @@ describe("handleUpdateOrg", () => {
       body: JSON.stringify({ allowlist_github_org: null }),
     });
     const res = mockResponse();
-    await runHandler(
-      () => handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()),
-      { userId: session.userId, orgId: session.orgId },
-    );
+    await runHandler(() => handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()), {
+      userId: session.userId,
+      orgId: session.orgId,
+    });
     expect(res.statusCode).toBe(200);
     const dbRow = getDb()
       .prepare("SELECT allowlist_github_org FROM orgs WHERE id = ?")
@@ -1035,19 +933,17 @@ describe("handleUpdateOrg", () => {
       body: JSON.stringify({ allowlist_idp_org_id: null }),
     });
     const res = mockResponse();
-    await runHandler(
-      () => handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()),
-      { userId: session.userId, orgId: session.orgId },
-    );
+    await runHandler(() => handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()), {
+      userId: session.userId,
+      orgId: session.orgId,
+    });
     expect(res.statusCode).toBe(200);
     const dbRow = getDb()
       .prepare("SELECT allowlist_idp_org_id FROM orgs WHERE id = ?")
       .get("org-target") as Record<string, unknown>;
     expect(dbRow.allowlist_idp_org_id).toBeNull();
 
-    const meta = JSON.parse(
-      findAuditRows("admin.org.updated")[0]!.metadata_json as string,
-    );
+    const meta = JSON.parse(findAuditRows("admin.org.updated")[0]!.metadata_json as string);
     expect(meta.changed_fields).toEqual(["allowlist_idp_org_id"]);
     expect(meta.allowlist_idp_org_id_before).toBe("idp-old");
     expect(meta.allowlist_idp_org_id_after).toBeNull();
@@ -1065,19 +961,13 @@ describe("handleUpdateOrg", () => {
       }),
     });
     const res = mockResponse();
-    await runHandler(
-      () => handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()),
-      { userId: session.userId, orgId: session.orgId },
-    );
+    await runHandler(() => handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()), {
+      userId: session.userId,
+      orgId: session.orgId,
+    });
     expect(res.statusCode).toBe(200);
-    const meta = JSON.parse(
-      findAuditRows("admin.org.updated")[0]!.metadata_json as string,
-    );
-    expect(meta.changed_fields).toEqual([
-      "name",
-      "allowlist_github_org",
-      "allowlist_idp_org_id",
-    ]);
+    const meta = JSON.parse(findAuditRows("admin.org.updated")[0]!.metadata_json as string);
+    expect(meta.changed_fields).toEqual(["name", "allowlist_github_org", "allowlist_idp_org_id"]);
     expect(meta.name_after).toBe("New");
     expect(meta.allowlist_github_org_after).toBe("gh-new");
     expect(meta.allowlist_idp_org_id_after).toBe("idp-new");
@@ -1099,14 +989,12 @@ describe("handleUpdateOrg", () => {
       }),
     });
     const res = mockResponse();
-    await runHandler(
-      () => handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()),
-      { userId: session.userId, orgId: session.orgId },
-    );
+    await runHandler(() => handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()), {
+      userId: session.userId,
+      orgId: session.orgId,
+    });
     expect(res.statusCode).toBe(200);
-    const meta = JSON.parse(
-      findAuditRows("admin.org.updated")[0]!.metadata_json as string,
-    );
+    const meta = JSON.parse(findAuditRows("admin.org.updated")[0]!.metadata_json as string);
     expect(meta.changed_fields).toEqual([]);
     expect(meta.name_before).toBeUndefined();
   });
@@ -1121,10 +1009,10 @@ describe("handleUpdateOrg", () => {
       body: JSON.stringify({ name: "AlphaName" }),
     });
     const res = mockResponse();
-    await runHandler(
-      () => handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()),
-      { userId: session.userId, orgId: session.orgId },
-    );
+    await runHandler(() => handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()), {
+      userId: session.userId,
+      orgId: session.orgId,
+    });
     expect(res.statusCode).toBe(409);
     expect(parseBody(res).code).toBe("ORG_NAME_TAKEN");
     // No audit row on the failed update
@@ -1143,10 +1031,10 @@ describe("handleUpdateOrg", () => {
       useBearer: true,
     });
     const res = mockResponse();
-    await runHandler(
-      () => handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()),
-      { userId: session.userId, orgId: session.orgId },
-    );
+    await runHandler(() => handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()), {
+      userId: session.userId,
+      orgId: session.orgId,
+    });
     expect(res.statusCode).toBe(200);
     expect((parseBody(res) as { org: { name: string } }).org.name).toBe("Decoded");
   });
@@ -1168,9 +1056,7 @@ describe("defensive branches", () => {
       .run(session.userId);
     const req = mockRequest({ method: "GET", session, useBearer: true });
     const res = mockResponse();
-    await runHandler(() =>
-      handleListOrgs(req, res as unknown as ServerResponse, makeCtx()),
-    );
+    await runHandler(() => handleListOrgs(req, res as unknown as ServerResponse, makeCtx()));
     expect(res.statusCode).toBe(403);
     // Header object must NOT contain WWW-Authenticate
     expect(res.headers["WWW-Authenticate"]).toBeUndefined();
@@ -1179,9 +1065,7 @@ describe("defensive branches", () => {
   it("accepts an array-valued X-CSRF-Token header (uses first element)", async () => {
     const session = await adminSession("admin");
     // Build the request manually so we can set headers["x-csrf-token"] as an array.
-    const stream = Readable.from([
-      Buffer.from(JSON.stringify({ name: "ArrayHeader" }), "utf8"),
-    ]);
+    const stream = Readable.from([Buffer.from(JSON.stringify({ name: "ArrayHeader" }), "utf8")]);
     const headers: Record<string, string | string[]> = {
       authorization: `Bearer ${session.jwt}`,
       cookie: session.cookieHeader,
@@ -1192,10 +1076,10 @@ describe("defensive branches", () => {
     (stream as unknown as { url: string }).url = "/api/admin/orgs";
     const req = stream as unknown as IncomingMessage;
     const res = mockResponse();
-    await runHandler(
-      () => handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()),
-      { userId: session.userId, orgId: session.orgId },
-    );
+    await runHandler(() => handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()), {
+      userId: session.userId,
+      orgId: session.orgId,
+    });
     expect(res.statusCode).toBe(201);
   });
 
@@ -1213,9 +1097,7 @@ describe("defensive branches", () => {
     // on line 314 plus the `?? ""` on line 315.
     const req = stream as unknown as IncomingMessage;
     const res = mockResponse();
-    await runHandler(() =>
-      handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()),
-    );
+    await runHandler(() => handleUpdateOrg(req, res as unknown as ServerResponse, makeCtx()));
     expect(res.statusCode).toBe(400);
     expect(parseBody(res).code).toBe("BAD_PATH");
   });
@@ -1228,10 +1110,9 @@ describe("request_id propagation", () => {
   it("auto-injects request_id on error envelope", async () => {
     const req = mockRequest({ method: "GET" });
     const res = mockResponse();
-    await runHandler(
-      () => handleListOrgs(req, res as unknown as ServerResponse, makeCtx()),
-      { requestId: "req-fixed-id-123" },
-    );
+    await runHandler(() => handleListOrgs(req, res as unknown as ServerResponse, makeCtx()), {
+      requestId: "req-fixed-id-123",
+    });
     expect(res.statusCode).toBe(401);
     expect(parseBody(res).request_id).toBe("req-fixed-id-123");
   });
@@ -1246,10 +1127,9 @@ describe("request_id propagation", () => {
       cookieHeader: `${SESSION_COOKIE_NAME}=${session.jwt}`,
     });
     const res = mockResponse();
-    await runHandler(
-      () => handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()),
-      { requestId: "req-csrf-id-456" },
-    );
+    await runHandler(() => handleCreateOrg(req, res as unknown as ServerResponse, makeCtx()), {
+      requestId: "req-csrf-id-456",
+    });
     expect(parseBody(res).request_id).toBe("req-csrf-id-456");
   });
 });

@@ -1,9 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import Database from "better-sqlite3";
-import {
-  resolveOrgFromMemberships,
-  resolveOrgFromIdpOrgId,
-} from "../../src/auth/allowlist.js";
+import { resolveOrgFromMemberships, resolveOrgFromIdpOrgId } from "../../src/auth/allowlist.js";
 
 let db: Database.Database;
 
@@ -26,19 +23,19 @@ afterEach(() => {
 });
 
 function insertOrg(id: string, name: string, allowlist: string | null) {
-  db.prepare(
-    "INSERT INTO orgs (id, name, allowlist_github_org) VALUES (?, ?, ?)",
-  ).run(id, name, allowlist);
+  db.prepare("INSERT INTO orgs (id, name, allowlist_github_org) VALUES (?, ?, ?)").run(
+    id,
+    name,
+    allowlist,
+  );
 }
 
-function insertOrgWithIdpOrgId(
-  id: string,
-  name: string,
-  allowlistIdpOrgId: string | null,
-) {
-  db.prepare(
-    "INSERT INTO orgs (id, name, allowlist_idp_org_id) VALUES (?, ?, ?)",
-  ).run(id, name, allowlistIdpOrgId);
+function insertOrgWithIdpOrgId(id: string, name: string, allowlistIdpOrgId: string | null) {
+  db.prepare("INSERT INTO orgs (id, name, allowlist_idp_org_id) VALUES (?, ?, ?)").run(
+    id,
+    name,
+    allowlistIdpOrgId,
+  );
 }
 
 describe("resolveOrgFromMemberships", () => {

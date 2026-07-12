@@ -60,7 +60,13 @@ afterAll(() => {
  * Returns the announce_work params used in the timing run so the snapshot
  * test can compare scoring output against a known-correct baseline.
  */
-function seedScale(): { org_id: string; agent_id: string; target_modules: string[]; target_files: string[]; depends_on_files: string[] } {
+function seedScale(): {
+  org_id: string;
+  agent_id: string;
+  target_modules: string[];
+  target_files: string[];
+  depends_on_files: string[];
+} {
   // 50 agents, agent ids agent-00 .. agent-49.
   const agentIds: string[] = [];
   for (let i = 0; i < 50; i++) {
@@ -78,9 +84,7 @@ function seedScale(): { org_id: string; agent_id: string; target_modules: string
     const agent = agentIds[f % agentIds.length];
     // Files 0..9 are "shared" (scored against). The rest are unrelated noise
     // that the index must skim past efficiently.
-    const filePath = f < 50
-      ? `src/shared/types-${f % 10}.ts`
-      : `src/mod-${f % 50}/file-${f}.ts`;
+    const filePath = f < 50 ? `src/shared/types-${f % 10}.ts` : `src/mod-${f % 50}/file-${f}.ts`;
     tracker.log({
       org_id: "default",
       session_id: `s-${f}`,
@@ -109,13 +113,13 @@ function seedScale(): { org_id: string; agent_id: string; target_modules: string
     if (!isRecent) {
       // Backdate stale threads so O2's window-filter excludes them.
       db.prepare(
-        "UPDATE threads SET created_at = datetime('now', '-2 hours'), resolved_at = datetime('now', '-2 hours'), status = 'resolved' WHERE id = ?"
+        "UPDATE threads SET created_at = datetime('now', '-2 hours'), resolved_at = datetime('now', '-2 hours'), status = 'resolved' WHERE id = ?",
       ).run(thread.id);
     } else {
       // Force recent threads into 'resolved' so they hit the Layer 0
       // resolved-window code path (rather than the open/resolving path).
       db.prepare(
-        "UPDATE threads SET status = 'resolved', resolved_at = CURRENT_TIMESTAMP WHERE id = ?"
+        "UPDATE threads SET status = 'resolved', resolved_at = CURRENT_TIMESTAMP WHERE id = ?",
       ).run(thread.id);
     }
   }
@@ -177,7 +181,9 @@ describe("P2 perf - impact-scorer at scale", () => {
     // The recent resolved-thread initiators (agents 0..9) all targeted
     // types-0.ts → Layer 0a should fire for them too. Verify at least one
     // score-100 result has an "announced same file" reason.
-    const announcedReasons = scores.flatMap((s) => s.reasons).filter((r) => r.includes("announced same file"));
+    const announcedReasons = scores
+      .flatMap((s) => s.reasons)
+      .filter((r) => r.includes("announced same file"));
     expect(announcedReasons.length).toBeGreaterThan(0);
 
     // O2 invariant: the 90 stale threads (2 hours old) must NOT contribute
@@ -198,4 +204,3 @@ describe("P2 perf - impact-scorer at scale", () => {
     expect(mod3Agent!.reasons.some((r) => r.includes("module overlap"))).toBe(true);
   });
 });
-

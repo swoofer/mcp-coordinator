@@ -33,7 +33,8 @@ function stubFetch(
   responder: (url: string, init?: RequestInit) => StubResponse | Promise<StubResponse>,
 ): FetchImpl {
   return (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    const url = typeof input === "string" ? input : (input instanceof URL ? input.toString() : input.url);
+    const url =
+      typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
     const r = await responder(url, init);
     const status = r.status ?? 200;
     return {
@@ -171,7 +172,10 @@ describe("probeGitHubCreds", () => {
   });
 
   it("returns ok when GitHub responds bad_verification_code", async () => {
-    const f = stubFetch(() => ({ status: 200, body: JSON.stringify({ error: "bad_verification_code" }) }));
+    const f = stubFetch(() => ({
+      status: 200,
+      body: JSON.stringify({ error: "bad_verification_code" }),
+    }));
     const r = await probeGitHubCreds("id", "secret", f);
     expect(r.severity).toBe("ok");
   });

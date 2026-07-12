@@ -21,7 +21,7 @@ describe("PlanQuality", () => {
 
   it("returns with_plan for specific plan", () => {
     const result = assessPlanQuality(
-      "Ajouter un champ optionnel role_permissions: string[] dans src/shared/types.ts Ã  l'interface User. CrÃ©er un type UserPublic sans ce champ pour les routes API dans src/api/routes.ts."
+      "Ajouter un champ optionnel role_permissions: string[] dans src/shared/types.ts Ã  l'interface User. CrÃ©er un type UserPublic sans ce champ pour les routes API dans src/api/routes.ts.",
     );
     expect(result.mode).toBe("with_plan");
     expect(result.score).toBeGreaterThanOrEqual(2);
@@ -37,7 +37,9 @@ describe("PlanQuality", () => {
 
   it("returns with_plan when 2 of 3 checks pass", () => {
     // Mentions files + concrete approach but short
-    const result = assessPlanQuality("Ajouter refreshToken dans src/auth/middleware.ts aprÃ¨s createToken");
+    const result = assessPlanQuality(
+      "Ajouter refreshToken dans src/auth/middleware.ts aprÃ¨s createToken",
+    );
     expect(result.mode).toBe("with_plan");
     expect(result.score).toBeGreaterThanOrEqual(2);
   });
@@ -47,7 +49,8 @@ describe("PlanQuality", () => {
     //  a separate error boundary for the login flow that replaces the old middleware"
     // The vaguePatterns regex anchors at ^ so "fix" at the start negates concrete_approach
     // even though the plan clearly contains concrete actions (adding, creating, replaces)
-    const plan = "Fix the module by adding a new validation handler in src/auth/validate.ts and creating a separate error boundary for the login flow that replaces the old middleware";
+    const plan =
+      "Fix the module by adding a new validation handler in src/auth/validate.ts and creating a separate error boundary for the login flow that replaces the old middleware";
     const result = assessPlanQuality(plan);
     expect(result.checks.mentions_files).toBe(true);
     expect(result.checks.sufficient_detail).toBe(true);
@@ -58,10 +61,10 @@ describe("PlanQuality", () => {
   });
 
   it("BUG: concrete_approach is false for 'Update by implementing new cache in src/cache/redis.ts with wrapper pattern for all existing calls'", () => {
-    const plan = "Update by implementing new cache in src/cache/redis.ts with wrapper pattern for all existing calls to the database layer";
+    const plan =
+      "Update by implementing new cache in src/cache/redis.ts with wrapper pattern for all existing calls to the database layer";
     const result = assessPlanQuality(plan);
     // "implement" and "wrapper" are concrete, but "Update" at start triggers vaguePatterns
     expect(result.checks.concrete_approach).toBe(true);
   });
 });
-

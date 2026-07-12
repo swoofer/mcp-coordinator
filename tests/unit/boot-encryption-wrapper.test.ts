@@ -1,9 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { randomBytes } from "node:crypto";
 import Database from "better-sqlite3";
-import {
-  buildWrappedProvider,
-} from "../../src/boot-encryption.js";
+import { buildWrappedProvider } from "../../src/boot-encryption.js";
 import {
   PassthroughEncryption,
   type EncryptionContext,
@@ -36,7 +34,10 @@ const CTX: EncryptionContext = {
 };
 
 let db: Database.Database;
-type AuditFn = (action: string, options: { tier?: 1 | 2; metadata?: Record<string, unknown> }) => void;
+type AuditFn = (
+  action: string,
+  options: { tier?: 1 | 2; metadata?: Record<string, unknown> },
+) => void;
 let audit: AuditFn & ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
@@ -45,7 +46,11 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  try { db.close(); } catch { /* idempotent */ }
+  try {
+    db.close();
+  } catch {
+    /* idempotent */
+  }
 });
 
 function fingerprintRows(): Array<{ value: string }> {
@@ -75,13 +80,10 @@ describe("buildWrappedProvider — first encrypt persists fingerprint", () => {
     expect(rows[0]?.value).toBe(fp);
 
     expect(audit).toHaveBeenCalledTimes(1);
-    expect(audit).toHaveBeenCalledWith(
-      "encryption.config.loaded",
-      {
-        tier: 1,
-        metadata: { key_fingerprint: fp, key_source: "env" },
-      },
-    );
+    expect(audit).toHaveBeenCalledWith("encryption.config.loaded", {
+      tier: 1,
+      metadata: { key_fingerprint: fp, key_source: "env" },
+    });
   });
 
   it("subsequent encrypt() calls do NOT INSERT or audit again (idempotent)", () => {

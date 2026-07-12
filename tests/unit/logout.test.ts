@@ -3,11 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { Readable } from "node:stream";
 import fs from "node:fs";
 import { SignJWT } from "jose";
-import {
-  handleLogout,
-  handleLogoutAll,
-  handleRevoke,
-} from "../../src/auth/logout.js";
+import { handleLogout, handleLogoutAll, handleRevoke } from "../../src/auth/logout.js";
 import type { AuthHandlerContext } from "../../src/auth/context.js";
 import { FakeClock } from "../helpers/clock.js";
 import { singleProviderRegistry } from "../helpers/index.js";
@@ -15,19 +11,11 @@ import { RateLimiter } from "../../src/auth/rate-limit.js";
 import { buildJwtKeyRegistry } from "../../src/auth/jwt-keys.js";
 import { MembershipCache } from "../../src/auth/membership-cache.js";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
-import {
-  initAuth,
-  initPhase2Auth,
-  resetPhase2Auth,
-  createToken,
-} from "../../src/auth.js";
+import { initAuth, initPhase2Auth, resetPhase2Auth, createToken } from "../../src/auth.js";
 import { readTokenEpoch } from "../../src/auth/token-epoch.js";
 import { findAuditRows } from "../helpers/audit.js";
 import type Database from "better-sqlite3";
-import type {
-  IdPProvider,
-  ExchangeCodeResult,
-} from "../../src/auth/providers/types.js";
+import type { IdPProvider, ExchangeCodeResult } from "../../src/auth/providers/types.js";
 
 /**
  * T23 — POST /api/auth/logout, /logout-all, /revoke.
@@ -98,9 +86,7 @@ interface MockReqOpts {
  * bodyless logout/logout-all we still pass a Readable so the type matches.
  */
 function mockRequest(opts: MockReqOpts = {}): IncomingMessage {
-  const encoded = opts.body
-    ? new URLSearchParams(opts.body).toString()
-    : "";
+  const encoded = opts.body ? new URLSearchParams(opts.body).toString() : "";
   let stream: Readable;
   if (opts.streamError) {
     stream = new Readable({
@@ -263,10 +249,13 @@ async function mintRefreshJWT(opts: RefreshMintOpts = {}): Promise<string> {
     .sign(new Uint8Array(SIGNING_SECRET));
 }
 
-function getRefreshRow(jti: string): { user_id: string; revoked_at: string | null; revoked_reason: string | null } | undefined {
+function getRefreshRow(
+  jti: string,
+): { user_id: string; revoked_at: string | null; revoked_reason: string | null } | undefined {
   return getDb()
     .prepare("SELECT user_id, revoked_at, revoked_reason FROM refresh_tokens WHERE jti = ?")
-    .get(jti) as { user_id: string; revoked_at: string | null; revoked_reason: string | null } | undefined;
+    .get(jti) as
+    { user_id: string; revoked_at: string | null; revoked_reason: string | null } | undefined;
 }
 
 function setCookieValues(res: MockResponse): string[] {
@@ -293,7 +282,9 @@ beforeEach(() => {
   // v0.9 (issue #79): revoked_agents now has FK on org_id → orgs(id); preserve
   // 'default' so the test below's INSERT INTO revoked_agents satisfies the FK.
   getDb().exec("DELETE FROM orgs WHERE id <> 'default'");
-  getDb().prepare("INSERT OR IGNORE INTO orgs (id, name) VALUES ('default', 'Default Organization')").run();
+  getDb()
+    .prepare("INSERT OR IGNORE INTO orgs (id, name) VALUES ('default', 'Default Organization')")
+    .run();
   getDb().exec("DELETE FROM revoked_agents");
   resetPhase2Auth();
   clock = new FakeClock(Math.floor(Date.now() / 1000));
@@ -382,8 +373,12 @@ describe("handleLogout", () => {
     await handleLogout(req, res as unknown as ServerResponse, makeCtx());
     const cookies = setCookieValues(res);
     expect(cookies).toHaveLength(2);
-    expect(cookies.some((c) => c.startsWith("__Host-coordinator_session=") && /Max-Age=0/.test(c))).toBe(true);
-    expect(cookies.some((c) => c.startsWith("__Host-coordinator_csrf=") && /Max-Age=0/.test(c))).toBe(true);
+    expect(
+      cookies.some((c) => c.startsWith("__Host-coordinator_session=") && /Max-Age=0/.test(c)),
+    ).toBe(true);
+    expect(
+      cookies.some((c) => c.startsWith("__Host-coordinator_csrf=") && /Max-Age=0/.test(c)),
+    ).toBe(true);
   });
 
   it("emits Tier 2 audit auth.logout.local with user_id + family_id", async () => {
@@ -477,11 +472,10 @@ describe("handleLogoutAll", () => {
     // claims.iat >= epoch still holds after multiple bumps. 1000s headroom
     // dwarfs the +6 bumps this test triggers.
     const futureIat = clock.now() + 1000;
-    const mkReq = async () => mockRequest({
-      cookie: sessionCookie(
-        await mintSessionJWT({ family_id: "fam-A", iat: futureIat }),
-      ),
-    });
+    const mkReq = async () =>
+      mockRequest({
+        cookie: sessionCookie(await mintSessionJWT({ family_id: "fam-A", iat: futureIat })),
+      });
     // First 5 succeed.
     for (let i = 0; i < 5; i++) {
       const res = mockResponse();
@@ -520,8 +514,12 @@ describe("handleLogoutAll", () => {
     await handleLogoutAll(req, res as unknown as ServerResponse, makeCtx());
     const cookies = setCookieValues(res);
     expect(cookies).toHaveLength(2);
-    expect(cookies.some((c) => c.startsWith("__Host-coordinator_session=") && /Max-Age=0/.test(c))).toBe(true);
-    expect(cookies.some((c) => c.startsWith("__Host-coordinator_csrf=") && /Max-Age=0/.test(c))).toBe(true);
+    expect(
+      cookies.some((c) => c.startsWith("__Host-coordinator_session=") && /Max-Age=0/.test(c)),
+    ).toBe(true);
+    expect(
+      cookies.some((c) => c.startsWith("__Host-coordinator_csrf=") && /Max-Age=0/.test(c)),
+    ).toBe(true);
   });
 
   it("bumps token_epoch for the caller (T03 readTokenEpoch reflects increase)", async () => {

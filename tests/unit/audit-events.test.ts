@@ -25,9 +25,7 @@ describe("audit-events tier registry", () => {
   });
 
   it("does not double-classify an event in both Tier 1 and Tier 2", () => {
-    const overlap = TIER1_EVENTS.filter((e) =>
-      (TIER2_EVENTS as readonly string[]).includes(e),
-    );
+    const overlap = TIER1_EVENTS.filter((e) => (TIER2_EVENTS as readonly string[]).includes(e));
     expect(overlap).toEqual([]);
   });
 

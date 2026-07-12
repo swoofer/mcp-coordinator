@@ -55,18 +55,30 @@ function getFreePort(): Promise<number> {
 }
 
 function httpRequest(opts: {
-  port: number; method: string; path: string; body?: unknown;
+  port: number;
+  method: string;
+  path: string;
+  body?: unknown;
 }): Promise<{ status: number; body: string; headers: http.IncomingHttpHeaders }> {
   return new Promise((resolve, reject) => {
     const bodyStr = opts.body !== undefined ? JSON.stringify(opts.body) : undefined;
-    const req = http.request({
-      host: "127.0.0.1", port: opts.port, path: opts.path, method: opts.method, timeout: 5000,
-      headers: bodyStr ? { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(bodyStr) } : {},
-    }, (res) => {
-      let body = "";
-      res.on("data", (c) => (body += c));
-      res.on("end", () => resolve({ status: res.statusCode || 0, body, headers: res.headers }));
-    });
+    const req = http.request(
+      {
+        host: "127.0.0.1",
+        port: opts.port,
+        path: opts.path,
+        method: opts.method,
+        timeout: 5000,
+        headers: bodyStr
+          ? { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(bodyStr) }
+          : {},
+      },
+      (res) => {
+        let body = "";
+        res.on("data", (c) => (body += c));
+        res.on("end", () => resolve({ status: res.statusCode || 0, body, headers: res.headers }));
+      },
+    );
     req.on("error", reject);
     req.on("timeout", () => req.destroy(new Error("HTTP timeout")));
     if (bodyStr) req.write(bodyStr);

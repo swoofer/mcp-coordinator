@@ -70,10 +70,7 @@ export function mapGitHubHttpError(status: number, label: string = "GitHub"): Er
  * point pagination at an attacker-controlled host, leaking the OAuth
  * Bearer token carried by `apiHeaders`.
  */
-export function parseNextLink(
-  linkHeader: string | null,
-  expectedOrigin: string,
-): string | null {
+export function parseNextLink(linkHeader: string | null, expectedOrigin: string): string | null {
   if (!linkHeader) return null;
   for (const part of linkHeader.split(",")) {
     const match = part.match(/<([^>]+)>\s*;\s*rel="next"/);
@@ -204,10 +201,7 @@ export async function fetchGitHubUserInfo(
  * headers. SSRF-guarded via `parseNextLink` against the configured
  * `apiBaseUrl`.
  */
-export async function listGitHubOrgs(
-  apiBaseUrl: string,
-  accessToken: string,
-): Promise<string[]> {
+export async function listGitHubOrgs(apiBaseUrl: string, accessToken: string): Promise<string[]> {
   const logins: string[] = [];
   const expectedOrigin = new URL(apiBaseUrl).origin;
   let url: string | null = `${apiBaseUrl}/user/orgs?per_page=100`;

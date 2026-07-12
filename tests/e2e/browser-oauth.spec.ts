@@ -18,10 +18,7 @@ import { coordinatorFixture, expect } from "./helpers/coordinator-fixture.js";
 const test = coordinatorFixture;
 
 test.describe("browser OAuth flow", () => {
-  test("happy path: login -> callback -> success -> /me", async ({
-    page,
-    coordinatorUrl,
-  }) => {
+  test("happy path: login -> callback -> success -> /me", async ({ page, coordinatorUrl }) => {
     await page.goto(`${coordinatorUrl}/auth/login`);
     await expect(page).toHaveURL(/\/auth\/success/);
     await expect(page.locator("h1")).toContainText("signed in");
@@ -37,11 +34,7 @@ test.describe("browser OAuth flow", () => {
     expect(me.org.name).toBe("acme");
   });
 
-  test("user not in any allowlisted org -> 403", async ({
-    page,
-    coordinatorUrl,
-    mockGithub,
-  }) => {
+  test("user not in any allowlisted org -> 403", async ({ page, coordinatorUrl, mockGithub }) => {
     mockGithub.setMembershipsResponse([{ login: "wrong-org" }]);
 
     // The /auth/login -> mock /authorize -> /api/auth/oauth/callback chain
@@ -60,10 +53,7 @@ test.describe("browser OAuth flow", () => {
     expect(body.code).toBe("NOT_IN_ALLOWLIST");
   });
 
-  test("logout clears session and /me returns 401", async ({
-    page,
-    coordinatorUrl,
-  }) => {
+  test("logout clears session and /me returns 401", async ({ page, coordinatorUrl }) => {
     await page.goto(`${coordinatorUrl}/auth/login`);
     await expect(page).toHaveURL(/\/auth\/success/);
 

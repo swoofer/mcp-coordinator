@@ -173,7 +173,12 @@ describe("pid-lock", () => {
 
     it("propagates non-EEXIST errors from openSync", () => {
       // Try to create a lock inside a non-existent directory
-      const bogus = path.join(os.tmpdir(), `nope-${randomBytes(4).toString("hex")}`, "nested", "x.lock");
+      const bogus = path.join(
+        os.tmpdir(),
+        `nope-${randomBytes(4).toString("hex")}`,
+        "nested",
+        "x.lock",
+      );
       expect(() => acquireLock(bogus)).toThrow();
     });
   });

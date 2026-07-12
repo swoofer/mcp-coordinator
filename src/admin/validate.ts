@@ -26,11 +26,7 @@ export class AdminValidationError extends Error {
  * Validate a string field. Reject if not a string, too long (>maxBytes UTF-8),
  * too short (<1 byte), or contains control bytes (\x00-\x1F except \t \n \r).
  */
-export function validateNameField(
-  value: unknown,
-  field: string,
-  maxBytes = 200,
-): string {
+export function validateNameField(value: unknown, field: string, maxBytes = 200): string {
   if (value === undefined || value === null) {
     throw new AdminValidationError("MISSING_FIELD", field);
   }
@@ -74,10 +70,7 @@ export function validateAllowlistField(
 /**
  * Validate a role assignment.
  */
-export function validateRoleField(
-  value: unknown,
-  field = "role",
-): "admin" | "member" {
+export function validateRoleField(value: unknown, field = "role"): "admin" | "member" {
   if (value !== "admin" && value !== "member") {
     throw new AdminValidationError("INVALID_ROLE", field);
   }

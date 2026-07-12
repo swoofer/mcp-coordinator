@@ -30,9 +30,7 @@ describe("orgs.name UNIQUE INDEX (T03)", () => {
   it("creates idx_orgs_name on a fresh DB", () => {
     const db = getDb();
     const row = db
-      .prepare(
-        "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_orgs_name'",
-      )
+      .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_orgs_name'")
       .get() as { name: string } | undefined;
     expect(row).toBeDefined();
     expect(row?.name).toBe("idx_orgs_name");
@@ -40,35 +38,23 @@ describe("orgs.name UNIQUE INDEX (T03)", () => {
 
   it("rejects a second INSERT with the same name", () => {
     const db = getDb();
-    db.prepare("INSERT INTO orgs (id, name) VALUES (?, ?)").run(
-      "org-unique-a",
-      "acme-unique-1",
-    );
+    db.prepare("INSERT INTO orgs (id, name) VALUES (?, ?)").run("org-unique-a", "acme-unique-1");
     expect(() =>
-      db
-        .prepare("INSERT INTO orgs (id, name) VALUES (?, ?)")
-        .run("org-unique-b", "acme-unique-1"),
+      db.prepare("INSERT INTO orgs (id, name) VALUES (?, ?)").run("org-unique-b", "acme-unique-1"),
     ).toThrow(/UNIQUE constraint failed.*orgs\.name/);
   });
 
   it("allows re-inserting the same name only after deletion", () => {
     const db = getDb();
-    db.prepare("INSERT INTO orgs (id, name) VALUES (?, ?)").run(
-      "org-recycle-a",
-      "recycle-name",
-    );
+    db.prepare("INSERT INTO orgs (id, name) VALUES (?, ?)").run("org-recycle-a", "recycle-name");
     expect(() =>
-      db
-        .prepare("INSERT INTO orgs (id, name) VALUES (?, ?)")
-        .run("org-recycle-b", "recycle-name"),
+      db.prepare("INSERT INTO orgs (id, name) VALUES (?, ?)").run("org-recycle-b", "recycle-name"),
     ).toThrow(/UNIQUE constraint failed/);
 
     db.prepare("DELETE FROM orgs WHERE id = ?").run("org-recycle-a");
 
     expect(() =>
-      db
-        .prepare("INSERT INTO orgs (id, name) VALUES (?, ?)")
-        .run("org-recycle-b", "recycle-name"),
+      db.prepare("INSERT INTO orgs (id, name) VALUES (?, ?)").run("org-recycle-b", "recycle-name"),
     ).not.toThrow();
   });
 
@@ -76,9 +62,10 @@ describe("orgs.name UNIQUE INDEX (T03)", () => {
     const db = getDb();
     // PRAGMA index_list returns one row per index on the table; `unique` column
     // is 1 for UNIQUE indexes, 0 for plain ones.
-    const indexes = db
-      .prepare("PRAGMA index_list(orgs)")
-      .all() as Array<{ name: string; unique: number }>;
+    const indexes = db.prepare("PRAGMA index_list(orgs)").all() as Array<{
+      name: string;
+      unique: number;
+    }>;
     const idx = indexes.find((i) => i.name === "idx_orgs_name");
     expect(idx).toBeDefined();
     expect(idx?.unique).toBe(1);

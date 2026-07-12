@@ -61,7 +61,10 @@ const BASH_AVAILABLE: boolean = (() => {
 
 // Use `bash` on PATH so the suite works on Windows (Git Bash) and Linux CI.
 // execFileSync returns the script's stdout on success and throws on non-zero exit.
-function runLint(script: string, args: string[] = []): { status: number; stdout: string; stderr: string } {
+function runLint(
+  script: string,
+  args: string[] = [],
+): { status: number; stdout: string; stderr: string } {
   try {
     const stdout = execFileSync("bash", [path.join(SCRIPTS_DIR, script), ...args], {
       cwd: REPO_ROOT,
@@ -119,7 +122,7 @@ describe.skipIf(!BASH_AVAILABLE)("lint scripts (Phase 2 guard rails)", () => {
 
   describe("lint-no-current-timestamp.sh", () => {
     it("catches synthetic CURRENT_TIMESTAMP violation", () => {
-      writeFixture("src/oauth-state.ts", "db.exec(\"INSERT ... DEFAULT CURRENT_TIMESTAMP\");\n");
+      writeFixture("src/oauth-state.ts", 'db.exec("INSERT ... DEFAULT CURRENT_TIMESTAMP");\n');
       const { status, stderr } = runLint("lint-no-current-timestamp.sh", [sandbox]);
       expect(status).toBe(1);
       expect(stderr).toMatch(/CURRENT_TIMESTAMP/);
@@ -146,14 +149,17 @@ describe.skipIf(!BASH_AVAILABLE)("lint scripts (Phase 2 guard rails)", () => {
     });
 
     it("catches synthetic DELETE FROM audit_log violation", () => {
-      writeFixture("src/handler.ts", "db.prepare(\"DELETE FROM audit_log\").run();\n");
+      writeFixture("src/handler.ts", 'db.prepare("DELETE FROM audit_log").run();\n');
       const { status, stderr } = runLint("lint-no-audit-mutation.sh", [sandbox]);
       expect(status).toBe(1);
       expect(stderr).toMatch(/audit_log/);
     });
 
     it("passes on a clean sandbox", () => {
-      writeFixture("src/handler.ts", "db.prepare(\"INSERT INTO audit_log VALUES (?)\").run('x');\n");
+      writeFixture(
+        "src/handler.ts",
+        "db.prepare(\"INSERT INTO audit_log VALUES (?)\").run('x');\n",
+      );
       const { status } = runLint("lint-no-audit-mutation.sh", [sandbox]);
       expect(status).toBe(0);
     });
@@ -207,7 +213,9 @@ describe.skipIf(!BASH_AVAILABLE)("lint scripts (Phase 2 guard rails)", () => {
         "export const x = render(`<div>${userInput}</div>`, {});\n",
         "utf-8",
       );
-      const { status, stderr } = runLint("lint-html-escape.sh", [path.join(sandbox, "src", "auth", "pages")]);
+      const { status, stderr } = runLint("lint-html-escape.sh", [
+        path.join(sandbox, "src", "auth", "pages"),
+      ]);
       expect(status).toBe(1);
       expect(stderr).toMatch(/\$\{/);
     });
@@ -221,14 +229,10 @@ describe.skipIf(!BASH_AVAILABLE)("lint scripts (Phase 2 guard rails)", () => {
 
   describe("lint-no-direct-env-in-auth.sh", () => {
     it("catches synthetic process.env.COORDINATOR_ violation", () => {
-      writeFixture(
-        "src/auth/handler.ts",
-        "const s = process.env.COORDINATOR_JWT_SECRET;\n",
-      );
-      const { status, stderr } = runLint(
-        "lint-no-direct-env-in-auth.sh",
-        [path.join(sandbox, "src", "auth")],
-      );
+      writeFixture("src/auth/handler.ts", "const s = process.env.COORDINATOR_JWT_SECRET;\n");
+      const { status, stderr } = runLint("lint-no-direct-env-in-auth.sh", [
+        path.join(sandbox, "src", "auth"),
+      ]);
       expect(status).toBe(1);
       expect(stderr).toMatch(/process\.env\.COORDINATOR_/);
     });
@@ -238,22 +242,17 @@ describe.skipIf(!BASH_AVAILABLE)("lint scripts (Phase 2 guard rails)", () => {
         "src/auth/handler.ts",
         "const s = getOrgSetting(db, orgId, 'jwt_secret', '');\n",
       );
-      const { status } = runLint(
-        "lint-no-direct-env-in-auth.sh",
-        [path.join(sandbox, "src", "auth")],
-      );
+      const { status } = runLint("lint-no-direct-env-in-auth.sh", [
+        path.join(sandbox, "src", "auth"),
+      ]);
       expect(status).toBe(0);
     });
 
     it("allowlists src/auth/org-settings.ts (the shim may read env)", () => {
-      writeFixture(
-        "src/auth/org-settings.ts",
-        "const s = process.env.COORDINATOR_JWT_SECRET;\n",
-      );
-      const { status } = runLint(
-        "lint-no-direct-env-in-auth.sh",
-        [path.join(sandbox, "src", "auth")],
-      );
+      writeFixture("src/auth/org-settings.ts", "const s = process.env.COORDINATOR_JWT_SECRET;\n");
+      const { status } = runLint("lint-no-direct-env-in-auth.sh", [
+        path.join(sandbox, "src", "auth"),
+      ]);
       expect(status).toBe(0);
     });
 

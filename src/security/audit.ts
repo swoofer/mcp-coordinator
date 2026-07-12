@@ -126,7 +126,9 @@ export function audit(action: string, options: AuditOptions = {}): void {
  */
 function insertAuditRowWithChain(
   db: import("../db-adapter.js").DatabaseAdapter,
-  row: AuditQueueRow | (Omit<AuditQueueRow, "outcome" | "request_id"> & { outcome: null; request_id: null }),
+  row:
+    | AuditQueueRow
+    | (Omit<AuditQueueRow, "outcome" | "request_id"> & { outcome: null; request_id: null }),
   hasOutcomeAndRequestId: boolean,
 ): void {
   const tipStmt = db.prepare(
@@ -156,10 +158,17 @@ function insertAuditRowWithChain(
           prev_hash, row_hash)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
-      row.actor_user_id, row.actor_org_id, row.action, row.target,
-      row.actor_ip, row.actor_user_agent, row.request_id, row.outcome,
+      row.actor_user_id,
+      row.actor_org_id,
+      row.action,
+      row.target,
+      row.actor_ip,
+      row.actor_user_agent,
+      row.request_id,
+      row.outcome,
       row.metadata_json,
-      prevHash, rowHash,
+      prevHash,
+      rowHash,
     );
   } else {
     db.prepare(
@@ -169,9 +178,15 @@ function insertAuditRowWithChain(
           prev_hash, row_hash)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
-      row.actor_user_id, row.actor_org_id, row.action, row.target,
-      row.actor_ip, row.actor_user_agent, row.metadata_json,
-      prevHash, rowHash,
+      row.actor_user_id,
+      row.actor_org_id,
+      row.action,
+      row.target,
+      row.actor_ip,
+      row.actor_user_agent,
+      row.metadata_json,
+      prevHash,
+      rowHash,
     );
   }
 }

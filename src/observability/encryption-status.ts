@@ -52,10 +52,7 @@ export async function getEncryptionStatus(): Promise<{
   // with no observed increments returns values=[], yielding total=0.
   // prom-client guarantees every hashmap entry has a numeric `value`, so
   // no defensive fallback needed here (and one would defeat 100% branch).
-  const total = metric.values.reduce(
-    (sum: number, v: { value: number }) => sum + v.value,
-    0,
-  );
+  const total = metric.values.reduce((sum: number, v: { value: number }) => sum + v.value, 0);
   return {
     enabled: _status.enabled,
     key_source: _status.key_source,

@@ -12,10 +12,7 @@ import { buildJwtKeyRegistry } from "../../src/auth/jwt-keys.js";
 import { MembershipCache } from "../../src/auth/membership-cache.js";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
 import { computeFingerprint } from "../../src/auth/oauth-finalize.js";
-import type {
-  IdPProvider,
-  ExchangeCodeResult,
-} from "../../src/auth/providers/types.js";
+import type { IdPProvider, ExchangeCodeResult } from "../../src/auth/providers/types.js";
 import { findAuditRows } from "../helpers/audit.js";
 import { PassthroughEncryption } from "../../src/security/encryption.js";
 
@@ -115,11 +112,7 @@ function seedOrg(orgId = "org-acme"): void {
     .run(orgId, "Acme", "acme");
 }
 
-function seedUser(
-  id = "u-alice",
-  orgId = "org-acme",
-  tokenEpoch = 0,
-): void {
+function seedUser(id = "u-alice", orgId = "org-acme", tokenEpoch = 0): void {
   getDb()
     .prepare(
       `INSERT INTO users
@@ -425,9 +418,7 @@ describe("refreshTokenGrant — hard reuse", () => {
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body!);
     const accessParts = (body.access_token as string).split(".");
-    const accessPayload = JSON.parse(
-      Buffer.from(accessParts[1], "base64url").toString("utf8"),
-    );
+    const accessPayload = JSON.parse(Buffer.from(accessParts[1], "base64url").toString("utf8"));
     // successor.family_id was null → fallback to "".
     expect(accessPayload.family_id).toBe("");
   });
@@ -497,9 +488,7 @@ describe("refreshTokenGrant — grace window same-fingerprint re-mint", () => {
     expect(body.expires_in).toBe(900);
 
     // No new row inserted — the successor is reused as-is.
-    const rows = getDb()
-      .prepare("SELECT jti FROM refresh_tokens")
-      .all() as Array<{ jti: string }>;
+    const rows = getDb().prepare("SELECT jti FROM refresh_tokens").all() as Array<{ jti: string }>;
     expect(rows).toHaveLength(2);
 
     // No chain_revoked or suspicious_replay audit emitted.
@@ -508,9 +497,7 @@ describe("refreshTokenGrant — grace window same-fingerprint re-mint", () => {
 
     // Decoded refresh token: jti matches successor row.
     const refreshParts = (body.refresh_token as string).split(".");
-    const refreshPayload = JSON.parse(
-      Buffer.from(refreshParts[1], "base64url").toString("utf8"),
-    );
+    const refreshPayload = JSON.parse(Buffer.from(refreshParts[1], "base64url").toString("utf8"));
     expect(refreshPayload.jti).toBe("jti-succ-g1");
     expect(refreshPayload.family_id).toBe(familyId);
   });
@@ -839,16 +826,12 @@ describe("refreshTokenGrant — audit content + edge cases", () => {
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body!);
     const refreshParts = (body.refresh_token as string).split(".");
-    const payload = JSON.parse(
-      Buffer.from(refreshParts[1], "base64url").toString("utf8"),
-    );
+    const payload = JSON.parse(Buffer.from(refreshParts[1], "base64url").toString("utf8"));
     expect(payload.family_id).toBe(familyId);
 
     // Access token also carries the same family_id.
     const accessParts = (body.access_token as string).split(".");
-    const accessPayload = JSON.parse(
-      Buffer.from(accessParts[1], "base64url").toString("utf8"),
-    );
+    const accessPayload = JSON.parse(Buffer.from(accessParts[1], "base64url").toString("utf8"));
     expect(accessPayload.family_id).toBe(familyId);
   });
 
@@ -935,9 +918,7 @@ describe("refreshTokenGrant — audit content + edge cases", () => {
     // Idempotent: the family-revoke UPDATE WHERE revoked_at IS NULL touches
     // 0 rows (old already revoked, successor already revoked) and that's
     // fine. The audit still fires.
-    const meta = JSON.parse(
-      findAuditRows("auth.refresh.chain_revoked")[0].metadata_json as string,
-    );
+    const meta = JSON.parse(findAuditRows("auth.refresh.chain_revoked")[0].metadata_json as string);
     expect(meta.reason).toBe("replay_threshold_hit");
   });
 });

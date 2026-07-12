@@ -148,13 +148,7 @@ export class AuditQueue {
           request_id: null,
           target: null,
         });
-        this.shutdownStmt.run(
-          "system.shutdown.audit_loss",
-          "failure",
-          metadata,
-          prevHash,
-          rowHash,
-        );
+        this.shutdownStmt.run("system.shutdown.audit_loss", "failure", metadata, prevHash, rowHash);
       } catch (err) {
         // Final-row write failure is itself unrecoverable telemetry loss;
         // log path will be added by T36 logger. For now, swallow — the
@@ -234,10 +228,17 @@ export class AuditQueue {
           target: r.target,
         });
         insertStmt.run(
-          r.actor_user_id, r.actor_org_id, r.action, r.target,
-          r.actor_ip, r.actor_user_agent, r.request_id, r.outcome,
+          r.actor_user_id,
+          r.actor_org_id,
+          r.action,
+          r.target,
+          r.actor_ip,
+          r.actor_user_agent,
+          r.request_id,
+          r.outcome,
           r.metadata_json,
-          prevHash, rowHash,
+          prevHash,
+          rowHash,
         );
         prevHash = rowHash;
       }

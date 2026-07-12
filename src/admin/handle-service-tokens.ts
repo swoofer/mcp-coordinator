@@ -57,20 +57,14 @@ export async function handleIssueServiceToken(
   if (!authResult.ok) {
     res.writeHead(authResult.status, {
       "Content-Type": "application/json; charset=utf-8",
-      ...(authResult.wwwAuthenticate
-        ? { "WWW-Authenticate": authResult.wwwAuthenticate }
-        : {}),
+      ...(authResult.wwwAuthenticate ? { "WWW-Authenticate": authResult.wwwAuthenticate } : {}),
     });
     res.end(JSON.stringify(appError("UNAUTHORIZED", authResult.error)));
     return;
   }
   if (authResult.claims.role !== "admin") {
     res.writeHead(403, { "Content-Type": "application/json; charset=utf-8" });
-    res.end(
-      JSON.stringify(
-        appError("FORBIDDEN", "Only admins can issue service tokens"),
-      ),
-    );
+    res.end(JSON.stringify(appError("FORBIDDEN", "Only admins can issue service tokens")));
     return;
   }
 
@@ -87,9 +81,7 @@ export async function handleIssueServiceToken(
         res.writeHead(400, {
           "Content-Type": "application/json; charset=utf-8",
         });
-        res.end(
-          JSON.stringify(appError("INVALID_REQUEST", "Request body too large")),
-        );
+        res.end(JSON.stringify(appError("INVALID_REQUEST", "Request body too large")));
         return;
       }
       chunks.push(buf);
@@ -97,9 +89,7 @@ export async function handleIssueServiceToken(
     body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
   } catch {
     res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
-    res.end(
-      JSON.stringify(appError("INVALID_REQUEST", "Could not parse JSON body")),
-    );
+    res.end(JSON.stringify(appError("INVALID_REQUEST", "Could not parse JSON body")));
     return;
   }
 
@@ -111,9 +101,7 @@ export async function handleIssueServiceToken(
     typeof body.reason !== "string"
   ) {
     res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
-    res.end(
-      JSON.stringify(appError("INVALID_REQUEST", "Missing required fields")),
-    );
+    res.end(JSON.stringify(appError("INVALID_REQUEST", "Missing required fields")));
     return;
   }
 
@@ -122,11 +110,7 @@ export async function handleIssueServiceToken(
     ttlSeconds = parseDurationSeconds(body.ttl);
   } catch {
     res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
-    res.end(
-      JSON.stringify(
-        appError("INVALID_TTL", "Invalid TTL format; use Ns/Nm/Nh/Nd"),
-      ),
-    );
+    res.end(JSON.stringify(appError("INVALID_TTL", "Invalid TTL format; use Ns/Nm/Nh/Nd")));
     return;
   }
 
@@ -195,20 +179,14 @@ export async function handleListServiceTokens(
   if (!authResult.ok) {
     res.writeHead(authResult.status, {
       "Content-Type": "application/json; charset=utf-8",
-      ...(authResult.wwwAuthenticate
-        ? { "WWW-Authenticate": authResult.wwwAuthenticate }
-        : {}),
+      ...(authResult.wwwAuthenticate ? { "WWW-Authenticate": authResult.wwwAuthenticate } : {}),
     });
     res.end(JSON.stringify(appError("UNAUTHORIZED", authResult.error)));
     return;
   }
   if (authResult.claims.role !== "admin") {
     res.writeHead(403, { "Content-Type": "application/json; charset=utf-8" });
-    res.end(
-      JSON.stringify(
-        appError("FORBIDDEN", "Only admins can list service tokens"),
-      ),
-    );
+    res.end(JSON.stringify(appError("FORBIDDEN", "Only admins can list service tokens")));
     return;
   }
 
@@ -241,11 +219,7 @@ export async function handleListServiceTokens(
         revoked_at: r.revoked_at,
         revoked_reason: r.revoked_reason,
         status:
-          r.revoked_at !== null
-            ? "revoked"
-            : Number(r.expires_at) < now
-              ? "expired"
-              : "active",
+          r.revoked_at !== null ? "revoked" : Number(r.expires_at) < now ? "expired" : "active",
       })),
     }),
   );
@@ -268,36 +242,21 @@ export async function handleRevokeServiceToken(
   if (!authResult.ok) {
     res.writeHead(authResult.status, {
       "Content-Type": "application/json; charset=utf-8",
-      ...(authResult.wwwAuthenticate
-        ? { "WWW-Authenticate": authResult.wwwAuthenticate }
-        : {}),
+      ...(authResult.wwwAuthenticate ? { "WWW-Authenticate": authResult.wwwAuthenticate } : {}),
     });
     res.end(JSON.stringify(appError("UNAUTHORIZED", authResult.error)));
     return;
   }
   if (authResult.claims.role !== "admin") {
     res.writeHead(403, { "Content-Type": "application/json; charset=utf-8" });
-    res.end(
-      JSON.stringify(
-        appError("FORBIDDEN", "Only admins can revoke service tokens"),
-      ),
-    );
+    res.end(JSON.stringify(appError("FORBIDDEN", "Only admins can revoke service tokens")));
     return;
   }
 
-  const revoked = revokeServiceToken(
-    ctx.db,
-    ctx.clock,
-    jti,
-    authResult.claims.user_id,
-  );
+  const revoked = revokeServiceToken(ctx.db, ctx.clock, jti, authResult.claims.user_id);
   if (!revoked) {
     res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
-    res.end(
-      JSON.stringify(
-        appError("NOT_FOUND", "Service token not found or already revoked"),
-      ),
-    );
+    res.end(JSON.stringify(appError("NOT_FOUND", "Service token not found or already revoked")));
     return;
   }
 

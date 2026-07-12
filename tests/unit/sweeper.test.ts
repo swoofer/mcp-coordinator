@@ -150,11 +150,7 @@ function seedDevice(code: string, expiresAtEpoch: number): void {
   ).run(code, `uc-${code}`, `n-${code}`, String(expiresAtEpoch));
 }
 
-function seedRefreshToken(opts: {
-  id: string;
-  expiresAt: number;
-  revokedAt: number | null;
-}): void {
+function seedRefreshToken(opts: { id: string; expiresAt: number; revokedAt: number | null }): void {
   db.prepare(
     `INSERT INTO refresh_tokens (id, org_id, user_id, jti, expires_at, revoked_at)
      VALUES (?, ?, ?, ?, ?, ?)`,
@@ -169,9 +165,10 @@ function seedRefreshToken(opts: {
 }
 
 function seedAudit(action: string, createdAtEpoch: number): void {
-  db.prepare(
-    `INSERT INTO audit_log (action, outcome, created_at) VALUES (?, 'success', ?)`,
-  ).run(action, isoFromEpoch(createdAtEpoch));
+  db.prepare(`INSERT INTO audit_log (action, outcome, created_at) VALUES (?, 'success', ?)`).run(
+    action,
+    isoFromEpoch(createdAtEpoch),
+  );
 }
 
 // ───── Phase 1 table seed helpers (performance-01) ─────
@@ -286,9 +283,9 @@ describe("Sweeper — refresh_tokens (revoked retention)", () => {
     const revoked200dAgo = clock.now() - 200 * 86400;
     seedRefreshToken({ id: "rt-old", expiresAt: clock.now() + 3600, revokedAt: revoked200dAgo });
     sweeper.runPass();
-    expect(
-      (db.prepare("SELECT COUNT(*) AS c FROM refresh_tokens").get() as { c: number }).c,
-    ).toBe(0);
+    expect((db.prepare("SELECT COUNT(*) AS c FROM refresh_tokens").get() as { c: number }).c).toBe(
+      0,
+    );
     expect(sweeper.metrics.rowsDeletedByTable.refresh_tokens_revoked).toBe(1);
   });
 
@@ -296,9 +293,9 @@ describe("Sweeper — refresh_tokens (revoked retention)", () => {
     const revoked100dAgo = clock.now() - 100 * 86400;
     seedRefreshToken({ id: "rt-keep", expiresAt: clock.now() + 3600, revokedAt: revoked100dAgo });
     sweeper.runPass();
-    expect(
-      (db.prepare("SELECT COUNT(*) AS c FROM refresh_tokens").get() as { c: number }).c,
-    ).toBe(1);
+    expect((db.prepare("SELECT COUNT(*) AS c FROM refresh_tokens").get() as { c: number }).c).toBe(
+      1,
+    );
     expect(sweeper.metrics.rowsDeletedByTable.refresh_tokens_revoked).toBe(0);
   });
 
@@ -308,9 +305,9 @@ describe("Sweeper — refresh_tokens (revoked retention)", () => {
     seedRefreshToken({ id: "rt-env", expiresAt: clock.now() + 3600, revokedAt: revoked100dAgo });
     sweeper.runPass();
     // 100d > 90d retention → should now be deleted.
-    expect(
-      (db.prepare("SELECT COUNT(*) AS c FROM refresh_tokens").get() as { c: number }).c,
-    ).toBe(0);
+    expect((db.prepare("SELECT COUNT(*) AS c FROM refresh_tokens").get() as { c: number }).c).toBe(
+      0,
+    );
     expect(sweeper.metrics.rowsDeletedByTable.refresh_tokens_revoked).toBe(1);
   });
 });
@@ -321,9 +318,9 @@ describe("Sweeper — refresh_tokens (lingering expired un-revoked)", () => {
     const expired35dAgo = clock.now() - 35 * 86400;
     seedRefreshToken({ id: "rt-35d", expiresAt: expired35dAgo, revokedAt: null });
     sweeper.runPass();
-    expect(
-      (db.prepare("SELECT COUNT(*) AS c FROM refresh_tokens").get() as { c: number }).c,
-    ).toBe(0);
+    expect((db.prepare("SELECT COUNT(*) AS c FROM refresh_tokens").get() as { c: number }).c).toBe(
+      0,
+    );
     expect(sweeper.metrics.rowsDeletedByTable.refresh_tokens_expired).toBe(1);
   });
 
@@ -331,9 +328,9 @@ describe("Sweeper — refresh_tokens (lingering expired un-revoked)", () => {
     const expired20dAgo = clock.now() - 20 * 86400;
     seedRefreshToken({ id: "rt-20d", expiresAt: expired20dAgo, revokedAt: null });
     sweeper.runPass();
-    expect(
-      (db.prepare("SELECT COUNT(*) AS c FROM refresh_tokens").get() as { c: number }).c,
-    ).toBe(1);
+    expect((db.prepare("SELECT COUNT(*) AS c FROM refresh_tokens").get() as { c: number }).c).toBe(
+      1,
+    );
     expect(sweeper.metrics.rowsDeletedByTable.refresh_tokens_expired).toBe(0);
   });
 });
@@ -344,9 +341,7 @@ describe("Sweeper — audit_log Tier 1", () => {
     const t1Action = TIER1_EVENTS[0]; // auth.refresh.chain_revoked
     seedAudit(t1Action, clock.now() - 400 * 86400);
     sweeper.runPass();
-    expect(
-      (db.prepare("SELECT COUNT(*) AS c FROM audit_log").get() as { c: number }).c,
-    ).toBe(0);
+    expect((db.prepare("SELECT COUNT(*) AS c FROM audit_log").get() as { c: number }).c).toBe(0);
     expect(sweeper.metrics.rowsDeletedByTable.audit_log_tier1).toBe(1);
   });
 
@@ -354,9 +349,7 @@ describe("Sweeper — audit_log Tier 1", () => {
     const t1Action = TIER1_EVENTS[1];
     seedAudit(t1Action, clock.now() - 300 * 86400);
     sweeper.runPass();
-    expect(
-      (db.prepare("SELECT COUNT(*) AS c FROM audit_log").get() as { c: number }).c,
-    ).toBe(1);
+    expect((db.prepare("SELECT COUNT(*) AS c FROM audit_log").get() as { c: number }).c).toBe(1);
     expect(sweeper.metrics.rowsDeletedByTable.audit_log_tier1).toBe(0);
   });
 });
@@ -367,9 +360,7 @@ describe("Sweeper — audit_log Tier 2", () => {
     const t2Action = TIER2_EVENTS[0]; // auth.login.success
     seedAudit(t2Action, clock.now() - 100 * 86400);
     sweeper.runPass();
-    expect(
-      (db.prepare("SELECT COUNT(*) AS c FROM audit_log").get() as { c: number }).c,
-    ).toBe(0);
+    expect((db.prepare("SELECT COUNT(*) AS c FROM audit_log").get() as { c: number }).c).toBe(0);
     expect(sweeper.metrics.rowsDeletedByTable.audit_log_tier2).toBe(1);
   });
 
@@ -377,9 +368,7 @@ describe("Sweeper — audit_log Tier 2", () => {
     const t2Action = TIER2_EVENTS[1];
     seedAudit(t2Action, clock.now() - 80 * 86400);
     sweeper.runPass();
-    expect(
-      (db.prepare("SELECT COUNT(*) AS c FROM audit_log").get() as { c: number }).c,
-    ).toBe(1);
+    expect((db.prepare("SELECT COUNT(*) AS c FROM audit_log").get() as { c: number }).c).toBe(1);
     expect(sweeper.metrics.rowsDeletedByTable.audit_log_tier2).toBe(0);
   });
 
@@ -388,9 +377,7 @@ describe("Sweeper — audit_log Tier 2", () => {
     // older than every retention window — must survive.
     seedAudit("unknown.custom.action", clock.now() - 9999 * 86400);
     sweeper.runPass();
-    expect(
-      (db.prepare("SELECT COUNT(*) AS c FROM audit_log").get() as { c: number }).c,
-    ).toBe(1);
+    expect((db.prepare("SELECT COUNT(*) AS c FROM audit_log").get() as { c: number }).c).toBe(1);
   });
 });
 
@@ -399,18 +386,18 @@ describe("Sweeper — file_activity (created_at, default 7d)", () => {
   it("deletes rows older than file_activity_retention_days (default 7)", () => {
     seedFileActivity(clock.now() - 10 * 86400);
     sweeper.runPass();
-    expect(
-      (db.prepare("SELECT COUNT(*) AS c FROM file_activity").get() as { c: number }).c,
-    ).toBe(0);
+    expect((db.prepare("SELECT COUNT(*) AS c FROM file_activity").get() as { c: number }).c).toBe(
+      0,
+    );
     expect(sweeper.metrics.rowsDeletedByTable.file_activity).toBe(1);
   });
 
   it("keeps rows within the 7d window", () => {
     seedFileActivity(clock.now() - 3 * 86400);
     sweeper.runPass();
-    expect(
-      (db.prepare("SELECT COUNT(*) AS c FROM file_activity").get() as { c: number }).c,
-    ).toBe(1);
+    expect((db.prepare("SELECT COUNT(*) AS c FROM file_activity").get() as { c: number }).c).toBe(
+      1,
+    );
     expect(sweeper.metrics.rowsDeletedByTable.file_activity).toBe(0);
   });
 });
@@ -435,18 +422,18 @@ describe("Sweeper — thread_messages (created_at, default 30d)", () => {
   it("deletes rows older than thread_messages_retention_days (default 30)", () => {
     seedThreadMessage(clock.now() - 40 * 86400);
     sweeper.runPass();
-    expect(
-      (db.prepare("SELECT COUNT(*) AS c FROM thread_messages").get() as { c: number }).c,
-    ).toBe(0);
+    expect((db.prepare("SELECT COUNT(*) AS c FROM thread_messages").get() as { c: number }).c).toBe(
+      0,
+    );
     expect(sweeper.metrics.rowsDeletedByTable.thread_messages).toBe(1);
   });
 
   it("keeps rows within the 30d window", () => {
     seedThreadMessage(clock.now() - 20 * 86400);
     sweeper.runPass();
-    expect(
-      (db.prepare("SELECT COUNT(*) AS c FROM thread_messages").get() as { c: number }).c,
-    ).toBe(1);
+    expect((db.prepare("SELECT COUNT(*) AS c FROM thread_messages").get() as { c: number }).c).toBe(
+      1,
+    );
     expect(sweeper.metrics.rowsDeletedByTable.thread_messages).toBe(0);
   });
 });
@@ -475,18 +462,18 @@ describe("Sweeper — layer_firings (fired_at, default 30d)", () => {
   it("deletes rows older than layer_firings_retention_days (default 30) using fired_at, not created_at", () => {
     seedLayerFiring(clock.now() - 40 * 86400);
     sweeper.runPass();
-    expect(
-      (db.prepare("SELECT COUNT(*) AS c FROM layer_firings").get() as { c: number }).c,
-    ).toBe(0);
+    expect((db.prepare("SELECT COUNT(*) AS c FROM layer_firings").get() as { c: number }).c).toBe(
+      0,
+    );
     expect(sweeper.metrics.rowsDeletedByTable.layer_firings).toBe(1);
   });
 
   it("keeps rows within the 30d window", () => {
     seedLayerFiring(clock.now() - 20 * 86400);
     sweeper.runPass();
-    expect(
-      (db.prepare("SELECT COUNT(*) AS c FROM layer_firings").get() as { c: number }).c,
-    ).toBe(1);
+    expect((db.prepare("SELECT COUNT(*) AS c FROM layer_firings").get() as { c: number }).c).toBe(
+      1,
+    );
     expect(sweeper.metrics.rowsDeletedByTable.layer_firings).toBe(0);
   });
 });
@@ -498,9 +485,9 @@ describe("Sweeper — Phase 1 retention boundaries", () => {
     seedFileActivity(clock.now() - retentionSeconds + 1); // just under → keep
     seedFileActivity(clock.now() - retentionSeconds - 1); // just over → delete
     sweeper.runPass();
-    expect(
-      (db.prepare("SELECT COUNT(*) AS c FROM file_activity").get() as { c: number }).c,
-    ).toBe(1);
+    expect((db.prepare("SELECT COUNT(*) AS c FROM file_activity").get() as { c: number }).c).toBe(
+      1,
+    );
     expect(sweeper.metrics.rowsDeletedByTable.file_activity).toBe(1);
   });
 
@@ -509,9 +496,9 @@ describe("Sweeper — Phase 1 retention boundaries", () => {
     seedLayerFiring(clock.now() - retentionSeconds + 1); // just under → keep
     seedLayerFiring(clock.now() - retentionSeconds - 1); // just over → delete
     sweeper.runPass();
-    expect(
-      (db.prepare("SELECT COUNT(*) AS c FROM layer_firings").get() as { c: number }).c,
-    ).toBe(1);
+    expect((db.prepare("SELECT COUNT(*) AS c FROM layer_firings").get() as { c: number }).c).toBe(
+      1,
+    );
     expect(sweeper.metrics.rowsDeletedByTable.layer_firings).toBe(1);
   });
 });
@@ -541,13 +528,12 @@ describe("Sweeper — adaptive chained runs", () => {
       }
     });
     tx();
-    expect(
-      (db.prepare("SELECT COUNT(*) AS c FROM oauth_state").get() as { c: number }).c,
-    ).toBe(3500);
+    expect((db.prepare("SELECT COUNT(*) AS c FROM oauth_state").get() as { c: number }).c).toBe(
+      3500,
+    );
     sweeper.runPass();
-    const remaining = (
-      db.prepare("SELECT COUNT(*) AS c FROM oauth_state").get() as { c: number }
-    ).c;
+    const remaining = (db.prepare("SELECT COUNT(*) AS c FROM oauth_state").get() as { c: number })
+      .c;
     expect(remaining).toBe(500);
     expect(sweeper.metrics.rowsDeletedByTable.oauth_state).toBe(3000);
   });
@@ -567,9 +553,7 @@ describe("Sweeper — adaptive chained runs", () => {
     });
     tx();
     sweeper.runPass();
-    expect(
-      (db.prepare("SELECT COUNT(*) AS c FROM oauth_state").get() as { c: number }).c,
-    ).toBe(0);
+    expect((db.prepare("SELECT COUNT(*) AS c FROM oauth_state").get() as { c: number }).c).toBe(0);
     expect(sweeper.metrics.totalRuns).toBe(1);
   });
 });

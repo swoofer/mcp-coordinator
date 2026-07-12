@@ -7,9 +7,19 @@ import { silentLogger, type Logger } from "./logger.js";
 import type { Metrics } from "./metrics.js";
 
 const DEFAULT_DENYLIST = [
-  /package-lock\.json$/, /pnpm-lock\.yaml$/, /yarn\.lock$/, /\.lock$/,
-  /\/dist\//, /\/build\//, /\/\.next\//, /\/__snapshots__\//,
-  /\.min\.js$/, /\.map$/, /\/coverage\//, /\/node_modules\//, /\.snap$/,
+  /package-lock\.json$/,
+  /pnpm-lock\.yaml$/,
+  /yarn\.lock$/,
+  /\.lock$/,
+  /\/dist\//,
+  /\/build\//,
+  /\/\.next\//,
+  /\/__snapshots__\//,
+  /\.min\.js$/,
+  /\.map$/,
+  /\/coverage\//,
+  /\/node_modules\//,
+  /\.snap$/,
 ];
 
 interface BuilderOpts {
@@ -49,7 +59,9 @@ export class GitCochangeBuilder {
   async build(orgId: string): Promise<void> {
     const db = getDb();
     const setMeta = (k: string, v: string) =>
-      db.prepare("INSERT OR REPLACE INTO git_cochange_meta (org_id, k, v) VALUES (?, ?, ?)").run(orgId, k, v);
+      db
+        .prepare("INSERT OR REPLACE INTO git_cochange_meta (org_id, k, v) VALUES (?, ?, ?)")
+        .run(orgId, k, v);
 
     if (!existsSync(path.join(this.repoRoot, ".git"))) {
       this.log.info({}, "Layer 4 unavailable: no .git");
@@ -66,8 +78,9 @@ export class GitCochangeBuilder {
     }
 
     let stdout: string | null = null;
-    try { stdout = await this.runGitLog(); }
-    catch (err) {
+    try {
+      stdout = await this.runGitLog();
+    } catch (err) {
       this.log.warn({ err }, "git log failed");
       setMeta("available", "false");
       setMeta("last_error", String((err as Error).message));
@@ -105,13 +118,16 @@ export class GitCochangeBuilder {
     }
 
     if (promiscuous.size > 0) {
-      this.log.info({ count: promiscuous.size, files: Array.from(promiscuous) }, "Layer 4 dynamic predictor cap excluded files");
+      this.log.info(
+        { count: promiscuous.size, files: Array.from(promiscuous) },
+        "Layer 4 dynamic predictor cap excluded files",
+      );
     }
 
     // Scope the DELETE to this org only — never wipe another org's rows.
     db.prepare("DELETE FROM git_cochange WHERE org_id = ?").run(orgId);
     const stmt = db.prepare(
-      "INSERT INTO git_cochange (org_id, file_a, file_b, count, total_commits, computed_at) VALUES (?, ?, ?, ?, ?, datetime('now'))"
+      "INSERT INTO git_cochange (org_id, file_a, file_b, count, total_commits, computed_at) VALUES (?, ?, ?, ?, ?, datetime('now'))",
     );
     const insertMany = db.transaction(() => {
       for (const [key, count] of pairs.entries()) {
@@ -131,13 +147,32 @@ export class GitCochangeBuilder {
   }
 
   /** Query co-change partners for a file, scoped to the given org. */
-  query(orgId: string, filePath: string): Array<{ org_id: string; file_a: string; file_b: string; count: number; total_commits: number; computed_at: string }> {
+  query(
+    orgId: string,
+    filePath: string,
+  ): Array<{
+    org_id: string;
+    file_a: string;
+    file_b: string;
+    count: number;
+    total_commits: number;
+    computed_at: string;
+  }> {
     const db = getDb();
-    return db.prepare(
-      `SELECT org_id, file_a, file_b, count, total_commits, computed_at FROM git_cochange
+    return db
+      .prepare(
+        `SELECT org_id, file_a, file_b, count, total_commits, computed_at FROM git_cochange
        WHERE org_id = ? AND (file_a = ? OR file_b = ?)
-       ORDER BY count DESC LIMIT 50`
-    ).all(orgId, filePath, filePath) as Array<{ org_id: string; file_a: string; file_b: string; count: number; total_commits: number; computed_at: string }>;
+       ORDER BY count DESC LIMIT 50`,
+      )
+      .all(orgId, filePath, filePath) as Array<{
+      org_id: string;
+      file_a: string;
+      file_b: string;
+      count: number;
+      total_commits: number;
+      computed_at: string;
+    }>;
   }
 
   private runGitLog(): Promise<string> {
@@ -159,7 +194,10 @@ export class GitCochangeBuilder {
         resolve("TIMEOUT");
       }, this.timeoutMs);
       proc.stdout.on("data", (c) => (buf += c.toString("utf-8")));
-      proc.on("error", (err) => { clearTimeout(timer); reject(err); });
+      proc.on("error", (err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
       proc.on("close", (code) => {
         clearTimeout(timer);
         if (code === 0) resolve(buf);
@@ -174,7 +212,7 @@ export class GitCochangeBuilder {
     // Between commits the NUL separator also acts as delimiter.
     // We split on NUL first, then detect SHA boundaries within tokens.
 
-    const tokens = stdout.split("\0").filter(t => t.length > 0);
+    const tokens = stdout.split("\0").filter((t) => t.length > 0);
     const pairs = new Map<string, number>();
     let totalCommits = 0;
     let currentFiles: string[] = [];
@@ -182,12 +220,16 @@ export class GitCochangeBuilder {
     const flush = () => {
       if (currentFiles.length === 0) return;
       // Skip massive commits (likely sweeps)
-      if (currentFiles.length > 200) { currentFiles = []; return; }
+      if (currentFiles.length > 200) {
+        currentFiles = [];
+        return;
+      }
       // Apply denylist
-      const eligible = currentFiles.filter(f => !DEFAULT_DENYLIST.some(re => re.test(f)));
+      const eligible = currentFiles.filter((f) => !DEFAULT_DENYLIST.some((re) => re.test(f)));
       for (let i = 0; i < eligible.length; i++) {
         for (let j = i + 1; j < eligible.length; j++) {
-          const [a, b] = eligible[i] < eligible[j] ? [eligible[i], eligible[j]] : [eligible[j], eligible[i]];
+          const [a, b] =
+            eligible[i] < eligible[j] ? [eligible[i], eligible[j]] : [eligible[j], eligible[i]];
           const key = `${a}|${b}`;
           pairs.set(key, (pairs.get(key) ?? 0) + 1);
         }
@@ -260,6 +302,9 @@ export class GitCochangeBuilder {
   }
 
   stopScheduler(): void {
-    if (this.timer) { clearTimeout(this.timer); this.timer = null; }
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
   }
 }

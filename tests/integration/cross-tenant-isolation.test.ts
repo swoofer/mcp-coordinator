@@ -47,10 +47,7 @@ import {
 import { withAuditContext } from "../../src/auth/audit-context.js";
 import { withRequestId } from "../../src/auth/request-id.js";
 import { audit } from "../../src/security/audit.js";
-import {
-  createOAuthState,
-  consumeOAuthState,
-} from "../../src/auth/oauth-state.js";
+import { createOAuthState, consumeOAuthState } from "../../src/auth/oauth-state.js";
 
 const PHASE1_SECRET = "phase1-test-secret-at-least-32-chars-long!";
 const SIGNING_SECRET = Buffer.alloc(32, 0x77);
@@ -256,9 +253,7 @@ describe("T31 / refresh-token isolation", () => {
 
     // Beta family is intact, unrevoked, single row.
     const betaRows = db
-      .prepare(
-        "SELECT jti, revoked_at FROM refresh_tokens WHERE family_id = ?",
-      )
+      .prepare("SELECT jti, revoked_at FROM refresh_tokens WHERE family_id = ?")
       .all(betaFam) as Array<{ jti: string; revoked_at: string | null }>;
     expect(betaRows).toHaveLength(1);
     expect(betaRows[0]?.revoked_at).toBeNull();
@@ -389,16 +384,15 @@ describe("T31 / allowlist row + FK integrity", () => {
     // user_orgs.org_id REFERENCES orgs(id) ON DELETE RESTRICT.
     // users.primary_org_id REFERENCES orgs(id) (default NO ACTION = RESTRICT-ish).
     // Either reference blocks the DELETE — both are present after backfill.
-    expect(() =>
-      db.prepare("DELETE FROM orgs WHERE id = ?").run("org-acme-001"),
-    ).toThrow(/FOREIGN KEY constraint failed/i);
+    expect(() => db.prepare("DELETE FROM orgs WHERE id = ?").run("org-acme-001")).toThrow(
+      /FOREIGN KEY constraint failed/i,
+    );
 
     // Deleting a user does NOT cascade out of user_orgs (the user_orgs row
     // has ON DELETE CASCADE on user_id), but it must NOT silently delete
     // the org. Verify the org row still exists post-attempted-delete.
-    const orgRow = db
-      .prepare("SELECT id FROM orgs WHERE id = ?")
-      .get("org-acme-001") as { id: string } | undefined;
+    const orgRow = db.prepare("SELECT id FROM orgs WHERE id = ?").get("org-acme-001") as
+      { id: string } | undefined;
     expect(orgRow?.id).toBe("org-acme-001");
   });
 });
@@ -433,11 +427,10 @@ describe("T31 / service token isolation", () => {
 
     // JWT carries the same active_org_id (defense in depth: claim must
     // match DB row org_id even though the verifier re-checks DB).
-    const { payload } = await jwtVerify(
-      issued.accessToken,
-      new Uint8Array(SIGNING_SECRET),
-      { algorithms: ["HS256"], issuer: ISSUER },
-    );
+    const { payload } = await jwtVerify(issued.accessToken, new Uint8Array(SIGNING_SECRET), {
+      algorithms: ["HS256"],
+      issuer: ISSUER,
+    });
     expect(payload.active_org_id).toBe("org-acme-001");
     expect(payload.sub).toBe("u-admin-acme");
   });
@@ -468,9 +461,7 @@ describe("T31 / service token isolation", () => {
     // No refresh_tokens row was created — precondition guard runs BEFORE
     // any INSERT (service-tokens.ts spec).
     const rowCount = db
-      .prepare(
-        "SELECT COUNT(*) AS n FROM refresh_tokens WHERE user_id = ? AND org_id = ?",
-      )
+      .prepare("SELECT COUNT(*) AS n FROM refresh_tokens WHERE user_id = ? AND org_id = ?")
       .get("u-admin-acme", "org-beta-002") as { n: number };
     expect(rowCount.n).toBe(0);
 
@@ -579,10 +570,7 @@ describe("T31 / user_orgs isolation", () => {
     const users = db
       .prepare("SELECT user_id FROM user_orgs WHERE org_id = ? ORDER BY user_id")
       .all("org-acme-001") as Array<{ user_id: string }>;
-    expect(users.map((u) => u.user_id)).toEqual([
-      "u-admin-acme",
-      "u-member-acme",
-    ]);
+    expect(users.map((u) => u.user_id)).toEqual(["u-admin-acme", "u-member-acme"]);
     // Negative-control: no beta users appear under acme's org_id.
     expect(users.map((u) => u.user_id)).not.toContain("u-admin-beta");
     expect(users.map((u) => u.user_id)).not.toContain("u-member-beta");
@@ -608,10 +596,7 @@ describe("T31 / user_orgs isolation", () => {
     const memberships = db
       .prepare("SELECT org_id FROM user_orgs WHERE user_id = ? ORDER BY org_id")
       .all("u-admin-acme") as Array<{ org_id: string }>;
-    expect(memberships.map((m) => m.org_id)).toEqual([
-      "org-acme-001",
-      "org-beta-002",
-    ]);
+    expect(memberships.map((m) => m.org_id)).toEqual(["org-acme-001", "org-beta-002"]);
   });
 });
 
@@ -631,14 +616,8 @@ describe("T31 / oauth_state isolation", () => {
 
     // Tag the rows with distinct org_ids manually to simulate post-callback
     // org resolution; the consume CAS only filters by state value.
-    db.prepare("UPDATE oauth_state SET org_id = ? WHERE state = ?").run(
-      "org-acme-001",
-      a.state,
-    );
-    db.prepare("UPDATE oauth_state SET org_id = ? WHERE state = ?").run(
-      "org-beta-002",
-      b.state,
-    );
+    db.prepare("UPDATE oauth_state SET org_id = ? WHERE state = ?").run("org-acme-001", a.state);
+    db.prepare("UPDATE oauth_state SET org_id = ? WHERE state = ?").run("org-beta-002", b.state);
 
     const consumedA = consumeOAuthState(db, clock, a.state);
     expect(consumedA?.redirect_uri).toBe("https://app/cb?o=acme");
@@ -656,9 +635,9 @@ describe("T31 / oauth_state isolation", () => {
   it("20: oauth_state.org_id is nullable; a state created without org_id is still consumable", () => {
     const db = getDb() as unknown as Database.Database;
     const { state } = createOAuthState(db, clock, "github", "https://app/cb");
-    const row = db
-      .prepare("SELECT org_id FROM oauth_state WHERE state = ?")
-      .get(state) as { org_id: string | null };
+    const row = db.prepare("SELECT org_id FROM oauth_state WHERE state = ?").get(state) as {
+      org_id: string | null;
+    };
     // Created without org_id — resolver runs at callback, not at create.
     expect(row.org_id).toBeNull();
 

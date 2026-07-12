@@ -6,11 +6,7 @@ import {
   deriveStateBindingKey,
   STATE_BINDING_INFO,
 } from "../../src/auth/crypto-keys.js";
-import {
-  ACCEPTED_KIDS,
-  buildJwtKeyRegistry,
-  isAcceptedKid,
-} from "../../src/auth/jwt-keys.js";
+import { ACCEPTED_KIDS, buildJwtKeyRegistry, isAcceptedKid } from "../../src/auth/jwt-keys.js";
 import {
   mintAccessJWT,
   mintRefreshJWT,
@@ -23,10 +19,7 @@ import { assertSecretEntropy } from "../../src/auth/entropy.js";
 // Fixed 32-byte secret for deterministic JWT/HKDF tests. NOT used with
 // assertSecretEntropy (only two distinct byte values; would fail the
 // Shannon check). NEVER use these bytes in production.
-const TEST_SECRET = Buffer.from(
-  "a".repeat(16) + "B".repeat(16),
-  "utf8",
-);
+const TEST_SECRET = Buffer.from("a".repeat(16) + "B".repeat(16), "utf8");
 // A high-entropy random secret for entropy tests below.
 const RANDOM_32 = crypto.randomBytes(32);
 
@@ -101,10 +94,7 @@ describe("jwt-keys: kid registry and allowlist", () => {
 
   // ---- v0.8.1 prev-secret overlap cases --------------------------------
   it("buildJwtKeyRegistry(current, prev) registers prev under 'hs256-v0' for verify", () => {
-    const prev = Buffer.from(
-      "X".repeat(16) + "y".repeat(16),
-      "utf8",
-    );
+    const prev = Buffer.from("X".repeat(16) + "y".repeat(16), "utf8");
     const reg = buildJwtKeyRegistry(TEST_SECRET, prev);
     const got = reg.getKey("hs256-v0");
     expect(got).toBeInstanceOf(Uint8Array);
@@ -251,9 +241,7 @@ describe("jwt-mint: access and refresh token minting", () => {
     const payload = decodeJwtPayload(jwt);
     const jti = payload.jti as string;
     expect(jti).toHaveLength(36);
-    expect(jti).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
-    );
+    expect(jti).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
   });
 
   it("mintRefreshJWT returns { jwt, jti } and produces a valid JWT shape", async () => {
@@ -416,9 +404,7 @@ describe("jwt-mint: access and refresh token minting", () => {
 
     // Cross-check: verifying with a different key fails.
     const wrongKey = new Uint8Array(TEST_SECRET.length).fill(0xff);
-    await expect(
-      jwtVerify(jwt, wrongKey, { algorithms: ["HS256"] }),
-    ).rejects.toThrow();
+    await expect(jwtVerify(jwt, wrongKey, { algorithms: ["HS256"] })).rejects.toThrow();
   });
 });
 
@@ -451,9 +437,7 @@ describe("entropy: assertSecretEntropy boot check", () => {
   });
 
   it("all-zero 32-byte buffer throws", () => {
-    expect(() => assertSecretEntropy(Buffer.alloc(32))).toThrow(
-      /all bytes identical/,
-    );
+    expect(() => assertSecretEntropy(Buffer.alloc(32))).toThrow(/all bytes identical/);
   });
 
   it("empty buffer throws with explicit message", () => {
@@ -461,9 +445,7 @@ describe("entropy: assertSecretEntropy boot check", () => {
   });
 
   it("dictionary word 'change-me' encoded as UTF-8 throws", () => {
-    expect(() => assertSecretEntropy(Buffer.from("change-me", "utf8"))).toThrow(
-      /dictionary word/,
-    );
+    expect(() => assertSecretEntropy(Buffer.from("change-me", "utf8"))).toThrow(/dictionary word/);
   });
 
   it("dictionary word substring inside a longer buffer also throws", () => {

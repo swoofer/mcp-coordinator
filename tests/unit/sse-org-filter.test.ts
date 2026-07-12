@@ -12,7 +12,10 @@ beforeAll(() => {
   // v0.9 (issue #79): SseEmitter.emit() INSERTs into events; FK on events.org_id.
   seedTestOrgs(getDb(), ["org-a", "org-b"]);
 });
-afterAll(() => { closeDb(); fs.rmSync(DIR, { recursive: true, force: true }); });
+afterAll(() => {
+  closeDb();
+  fs.rmSync(DIR, { recursive: true, force: true });
+});
 
 describe("SseEmitter org_id filtering", () => {
   it("emits to listeners in matching org only", async () => {

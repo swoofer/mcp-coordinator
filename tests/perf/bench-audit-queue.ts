@@ -82,7 +82,7 @@ async function scenarioA(n: number): Promise<{
   const sorted = Array.from(lat).sort((a, b) => a - b);
   db.close();
   return {
-    enqueue_ns_p50: sorted[Math.floor(n * 0.50)]!,
+    enqueue_ns_p50: sorted[Math.floor(n * 0.5)]!,
     enqueue_ns_p99: sorted[Math.floor(n * 0.99)]!,
     drain_ms: drainMs,
     enqueued: metrics.enqueued,
@@ -131,13 +131,17 @@ async function main(): Promise<void> {
 
   console.log("\naudit-queue (scenario A: normal load):");
   console.log(`  N=${N_NORMAL}`);
-  console.log(`  enqueue p50=${a.enqueue_ns_p50.toFixed(0)}ns, p99=${a.enqueue_ns_p99.toFixed(0)}ns`);
+  console.log(
+    `  enqueue p50=${a.enqueue_ns_p50.toFixed(0)}ns, p99=${a.enqueue_ns_p99.toFixed(0)}ns`,
+  );
   console.log(`  drain=${a.drain_ms.toFixed(1)}ms, batches=${a.batches}`);
   console.log(`  enqueued=${a.enqueued}, flushed=${a.flushed}, dropped=${a.dropped}`);
 
   console.log("\naudit-queue (scenario B: burst):");
   console.log(`  N=${N_BURST}, total=${b.total_ms.toFixed(1)}ms`);
-  console.log(`  enqueued=${b.enqueued}, flushed=${b.flushed}, dropped=${b.dropped}, batches=${b.batches}`);
+  console.log(
+    `  enqueued=${b.enqueued}, flushed=${b.flushed}, dropped=${b.dropped}, batches=${b.batches}`,
+  );
 
   const summary = {
     bench: "audit-queue",

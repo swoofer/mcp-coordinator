@@ -71,15 +71,26 @@ beforeAll(async () => {
     PRAGMA user_version = 7;
   `);
   // Seed Phase 1 sample data so backfills + renames are exercised on real rows.
-  raw.prepare(
-    "INSERT INTO users (id, org_id, email, idp_provider, idp_user_id, role) VALUES (?,?,?,?,?,?)"
-  ).run("user-1", "default", "alice@example.com", "github", "alice-gh", "member");
-  raw.prepare(
-    "INSERT INTO refresh_tokens (id, org_id, user_id, jti, expires_at) VALUES (?,?,?,?,?)"
-  ).run("rt-1", "default", "user-1", "jti-phase1-1", "2099-01-01T00:00:00Z");
-  raw.prepare(
-    "INSERT INTO audit_log (user_id, org_id, action, ip, user_agent, metadata) VALUES (?,?,?,?,?,?)"
-  ).run("user-1", "default", "auth.login.success", "1.2.3.4", "Mozilla/5.0", JSON.stringify({ phase: 1 }));
+  raw
+    .prepare(
+      "INSERT INTO users (id, org_id, email, idp_provider, idp_user_id, role) VALUES (?,?,?,?,?,?)",
+    )
+    .run("user-1", "default", "alice@example.com", "github", "alice-gh", "member");
+  raw
+    .prepare("INSERT INTO refresh_tokens (id, org_id, user_id, jti, expires_at) VALUES (?,?,?,?,?)")
+    .run("rt-1", "default", "user-1", "jti-phase1-1", "2099-01-01T00:00:00Z");
+  raw
+    .prepare(
+      "INSERT INTO audit_log (user_id, org_id, action, ip, user_agent, metadata) VALUES (?,?,?,?,?,?)",
+    )
+    .run(
+      "user-1",
+      "default",
+      "auth.login.success",
+      "1.2.3.4",
+      "Mozilla/5.0",
+      JSON.stringify({ phase: 1 }),
+    );
   raw.close();
 
   // Run real v0.8 migration via initDatabase.
@@ -123,9 +134,11 @@ describe("v0.7 → v0.8 migration", () => {
 
   it("audit_log Phase 1 rows backfilled with outcome='legacy_unknown'", () => {
     const db = getDb();
-    const row = db.prepare(
-      "SELECT outcome, actor_user_id, actor_ip FROM audit_log WHERE action = 'auth.login.success'"
-    ).get() as { outcome: string; actor_user_id: string; actor_ip: string };
+    const row = db
+      .prepare(
+        "SELECT outcome, actor_user_id, actor_ip FROM audit_log WHERE action = 'auth.login.success'",
+      )
+      .get() as { outcome: string; actor_user_id: string; actor_ip: string };
     expect(row.outcome).toBe("legacy_unknown");
     expect(row.actor_user_id).toBe("user-1"); // data preserved through rename
     expect(row.actor_ip).toBe("1.2.3.4");
@@ -133,9 +146,11 @@ describe("v0.7 → v0.8 migration", () => {
 
   it("audit_log emits migration.audit_backfill provenance event", () => {
     const db = getDb();
-    const row = db.prepare(
-      "SELECT outcome, metadata_json FROM audit_log WHERE action = 'migration.audit_backfill'"
-    ).get() as { outcome: string; metadata_json: string };
+    const row = db
+      .prepare(
+        "SELECT outcome, metadata_json FROM audit_log WHERE action = 'migration.audit_backfill'",
+      )
+      .get() as { outcome: string; metadata_json: string };
     expect(row.outcome).toBe("success");
     const meta = JSON.parse(row.metadata_json);
     expect(meta.from_version).toBe(7);
@@ -145,7 +160,10 @@ describe("v0.7 → v0.8 migration", () => {
 
   it("users.org_id renamed to primary_org_id; token_epoch + idp_access_token added", () => {
     const db = getDb();
-    const cols = db.prepare("PRAGMA table_info(users)").all() as { name: string; dflt_value: string | null }[];
+    const cols = db.prepare("PRAGMA table_info(users)").all() as {
+      name: string;
+      dflt_value: string | null;
+    }[];
     const names = cols.map((c) => c.name);
     expect(names).toContain("primary_org_id");
     expect(names).toContain("token_epoch");
@@ -158,8 +176,11 @@ describe("v0.7 → v0.8 migration", () => {
 
   it("user_orgs table created and backfilled from users.primary_org_id", () => {
     const db = getDb();
-    const userOrgs = db.prepare("SELECT user_id, org_id, role FROM user_orgs").all() as
-      { user_id: string; org_id: string; role: string }[];
+    const userOrgs = db.prepare("SELECT user_id, org_id, role FROM user_orgs").all() as {
+      user_id: string;
+      org_id: string;
+      role: string;
+    }[];
     expect(userOrgs).toHaveLength(1);
     expect(userOrgs[0]).toMatchObject({ user_id: "user-1", org_id: "default", role: "member" });
   });
@@ -172,11 +193,21 @@ describe("v0.7 → v0.8 migration", () => {
 
   it("oauth_state table created with required schema (+ v0.10.1 nonce)", () => {
     const db = getDb();
-    const cols = db.prepare("PRAGMA table_info(oauth_state)").all() as { name: string; pk: number }[];
+    const cols = db.prepare("PRAGMA table_info(oauth_state)").all() as {
+      name: string;
+      pk: number;
+    }[];
     const names = cols.map((c) => c.name).sort();
     expect(names).toEqual([
-      "code_verifier", "consumed_at", "created_at", "expires_at",
-      "nonce", "org_id", "provider", "redirect_uri", "state",
+      "code_verifier",
+      "consumed_at",
+      "created_at",
+      "expires_at",
+      "nonce",
+      "org_id",
+      "provider",
+      "redirect_uri",
+      "state",
     ]);
     // state is the PK
     expect(cols.find((c) => c.name === "state")?.pk).toBe(1);
@@ -195,16 +226,19 @@ describe("v0.7 → v0.8 migration", () => {
 
   it("refresh_tokens Phase 1 row gets family_id backfilled (non-NULL uuid-like)", () => {
     const db = getDb();
-    const row = db.prepare("SELECT family_id, parent_jti FROM refresh_tokens WHERE id = 'rt-1'").get() as
-      { family_id: string; parent_jti: string | null };
+    const row = db
+      .prepare("SELECT family_id, parent_jti FROM refresh_tokens WHERE id = 'rt-1'")
+      .get() as { family_id: string; parent_jti: string | null };
     expect(row.family_id).toMatch(/^[0-9a-f]{32}$/); // hex(randomblob(16)) = 32 lowercase hex chars
     expect(row.parent_jti).toBeNull(); // Phase 1 row is family root
   });
 
   it("refresh_tokens partial UNIQUE index on parent_jti exists (V4 FIX 6)", () => {
     const db = getDb();
-    const idx = db.prepare("PRAGMA index_list(refresh_tokens)").all() as
-      { name: string; unique: number }[];
+    const idx = db.prepare("PRAGMA index_list(refresh_tokens)").all() as {
+      name: string;
+      unique: number;
+    }[];
     const parentIdx = idx.find((i) => i.name === "idx_refresh_parent");
     expect(parentIdx).toBeDefined();
     expect(parentIdx?.unique).toBe(1);
@@ -212,8 +246,10 @@ describe("v0.7 → v0.8 migration", () => {
 
   it("device_auth_requests gains requester_* + failed_approval_attempts", () => {
     const db = getDb();
-    const cols = db.prepare("PRAGMA table_info(device_auth_requests)").all() as
-      { name: string; dflt_value: string | null }[];
+    const cols = db.prepare("PRAGMA table_info(device_auth_requests)").all() as {
+      name: string;
+      dflt_value: string | null;
+    }[];
     const names = cols.map((c) => c.name);
     expect(names).toContain("requester_ip");
     expect(names).toContain("requester_user_agent");
@@ -225,8 +261,12 @@ describe("v0.7 → v0.8 migration", () => {
 
   it("device_auth_requests gains denied_at + denied_reason (V4 FIX 21)", () => {
     const db = getDb();
-    const cols = db.prepare("PRAGMA table_info(device_auth_requests)").all() as
-      { name: string; type: string; notnull: number; dflt_value: string | null }[];
+    const cols = db.prepare("PRAGMA table_info(device_auth_requests)").all() as {
+      name: string;
+      type: string;
+      notnull: number;
+      dflt_value: string | null;
+    }[];
     const names = cols.map((c) => c.name);
     expect(names).toContain("denied_at");
     expect(names).toContain("denied_reason");
@@ -241,8 +281,12 @@ describe("v0.7 → v0.8 migration", () => {
 
   it("device_auth_requests gains last_polled_at + interval (T18 poll grant)", () => {
     const db = getDb();
-    const cols = db.prepare("PRAGMA table_info(device_auth_requests)").all() as
-      { name: string; type: string; notnull: number; dflt_value: string | null }[];
+    const cols = db.prepare("PRAGMA table_info(device_auth_requests)").all() as {
+      name: string;
+      type: string;
+      notnull: number;
+      dflt_value: string | null;
+    }[];
     const names = cols.map((c) => c.name);
     expect(names).toContain("last_polled_at");
     expect(names).toContain("interval");
@@ -259,7 +303,10 @@ describe("v0.7 → v0.8 migration", () => {
 
   it("system_state table created for NR12 restore detection", () => {
     const db = getDb();
-    const cols = db.prepare("PRAGMA table_info(system_state)").all() as { name: string; pk: number }[];
+    const cols = db.prepare("PRAGMA table_info(system_state)").all() as {
+      name: string;
+      pk: number;
+    }[];
     const names = cols.map((c) => c.name).sort();
     expect(names).toEqual(["key", "updated_at", "value"]);
     expect(cols.find((c) => c.name === "key")?.pk).toBe(1);
@@ -267,8 +314,11 @@ describe("v0.7 → v0.8 migration", () => {
 
   it("users_legacy_v0_7 compat view returns same logical data as users", () => {
     const db = getDb();
-    const viewRow = db.prepare("SELECT id, org_id, email FROM users_legacy_v0_7").get() as
-      { id: string; org_id: string; email: string };
+    const viewRow = db.prepare("SELECT id, org_id, email FROM users_legacy_v0_7").get() as {
+      id: string;
+      org_id: string;
+      email: string;
+    };
     expect(viewRow.id).toBe("user-1");
     expect(viewRow.org_id).toBe("default"); // primary_org_id aliased back to org_id
     expect(viewRow.email).toBe("alice@example.com");
@@ -288,9 +338,9 @@ describe("v0.7 → v0.8 migration", () => {
     const db = getDb();
     const userOrgsCount = db.prepare("SELECT COUNT(*) AS c FROM user_orgs").get() as { c: number };
     expect(userOrgsCount.c).toBe(1); // not 2
-    const backfillRowCount = db.prepare(
-      "SELECT COUNT(*) AS c FROM audit_log WHERE action = 'migration.audit_backfill'"
-    ).get() as { c: number };
+    const backfillRowCount = db
+      .prepare("SELECT COUNT(*) AS c FROM audit_log WHERE action = 'migration.audit_backfill'")
+      .get() as { c: number };
     expect(backfillRowCount.c).toBe(1); // not 2
     // Version still at the current head (8 after v0.8, 9 after v0.9 FK migration).
     const v = db.prepare("PRAGMA user_version").get() as { user_version: number };

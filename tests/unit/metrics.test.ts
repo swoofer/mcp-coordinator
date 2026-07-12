@@ -33,7 +33,11 @@ beforeEach(() => {
 });
 
 afterAll(async () => {
-  try { closeDb(); } catch { /* already closed */ }
+  try {
+    closeDb();
+  } catch {
+    /* already closed */
+  }
   // Windows holds the .db handle briefly after better-sqlite3 close() (Defender/indexer);
   // use the async API so retries give the event loop time to drain pending releases.
   await fs.promises.rm(TEST_DIR, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 });
@@ -75,9 +79,15 @@ describe("Metrics counters", () => {
     metrics.recordHttpRequest("/health", 200);
 
     const text = (await metrics.render()).body;
-    expect(text).toMatch(/mcp_coordinator_http_requests_total\{route="\/api\/agents",status="200"\}\s+2/);
-    expect(text).toMatch(/mcp_coordinator_http_requests_total\{route="\/api\/agents",status="500"\}\s+1/);
-    expect(text).toMatch(/mcp_coordinator_http_requests_total\{route="\/health",status="200"\}\s+1/);
+    expect(text).toMatch(
+      /mcp_coordinator_http_requests_total\{route="\/api\/agents",status="200"\}\s+2/,
+    );
+    expect(text).toMatch(
+      /mcp_coordinator_http_requests_total\{route="\/api\/agents",status="500"\}\s+1/,
+    );
+    expect(text).toMatch(
+      /mcp_coordinator_http_requests_total\{route="\/health",status="200"\}\s+1/,
+    );
   });
 
   it("recordAuthRejected increments", async () => {
@@ -197,14 +207,20 @@ describe("Metrics text exposition format", () => {
         cb();
       },
     }) as unknown as import("http").ServerResponse & { writtenStatus?: number };
-    (fakeRes as unknown as { writeHead: (s: number, h: Record<string, string>) => void }).writeHead =
-      (s: number, h: Record<string, string>) => {
-        writtenStatus = s;
-        writtenHeaders = h;
-      };
+    (
+      fakeRes as unknown as { writeHead: (s: number, h: Record<string, string>) => void }
+    ).writeHead = (s: number, h: Record<string, string>) => {
+      writtenStatus = s;
+      writtenHeaders = h;
+    };
 
     const fakeReq = {} as import("http").IncomingMessage;
-    await serveMetrics(fakeReq, fakeRes as unknown as import("http").ServerResponse, services, metrics);
+    await serveMetrics(
+      fakeReq,
+      fakeRes as unknown as import("http").ServerResponse,
+      services,
+      metrics,
+    );
 
     expect(writtenStatus).toBe(200);
     expect(writtenHeaders["Content-Type"]).toMatch(/text\/plain/);
@@ -225,5 +241,3 @@ describe("Metrics text exposition format", () => {
     expect(t2).toMatch(/mcp_coordinator_announces_total\{result="thread_opened"\}\s+1/);
   });
 });
-
-

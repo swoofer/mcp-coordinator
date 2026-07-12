@@ -46,9 +46,15 @@ async function isPortListening(port: number): Promise<boolean> {
   for (const host of ["127.0.0.1", "::1"]) {
     const ok = await new Promise<boolean>((resolve) => {
       const sock = net.connect({ host, port, timeout: 1000 });
-      sock.once("connect", () => { sock.destroy(); resolve(true); });
+      sock.once("connect", () => {
+        sock.destroy();
+        resolve(true);
+      });
       sock.once("error", () => resolve(false));
-      sock.once("timeout", () => { sock.destroy(); resolve(false); });
+      sock.once("timeout", () => {
+        sock.destroy();
+        resolve(false);
+      });
     });
     if (ok) return true;
   }

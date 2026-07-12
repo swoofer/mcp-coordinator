@@ -2,15 +2,8 @@ import path from "path";
 import { mkdirSync, chmodSync } from "fs";
 import { createRequire } from "module";
 import type { DatabaseAdapter } from "./db-adapter.js";
-import {
-  GENESIS_HASH,
-  computeRowHash,
-  type AuditChainFields,
-} from "./security/audit-chain.js";
-import {
-  runOrgsUniquenessGuard,
-  emitDuplicatesAcceptedAudit,
-} from "./boot-orgs-uniqueness.js";
+import { GENESIS_HASH, computeRowHash, type AuditChainFields } from "./security/audit-chain.js";
+import { runOrgsUniquenessGuard, emitDuplicatesAcceptedAudit } from "./boot-orgs-uniqueness.js";
 
 const require = createRequire(import.meta.url);
 
@@ -67,9 +60,7 @@ function backfillAuditChain(mdb: MigrationDb): void {
   const rows = selectStmt.all() as AuditRowForBackfill[];
   if (rows.length === 0) return;
 
-  const updateStmt = mdb.prepare(
-    "UPDATE audit_log SET prev_hash = ?, row_hash = ? WHERE id = ?",
-  );
+  const updateStmt = mdb.prepare("UPDATE audit_log SET prev_hash = ?, row_hash = ? WHERE id = ?");
 
   // better-sqlite3 exposes db.transaction(...); via the adapter we drop
   // to a plain BEGIN/COMMIT pair, which works on every backend.
@@ -377,10 +368,12 @@ export function initDatabase(dataDir: string): void {
       .prepare("PRAGMA user_version")
       .get() as { user_version: number } | undefined;
     foundVersion = v?.user_version ?? 0;
-  } catch { foundVersion = 0; }
+  } catch {
+    foundVersion = 0;
+  }
   if (foundVersion > CURRENT_USER_VERSION) {
     throw new Error(
-      `Database schema is from a newer version (${foundVersion}) than this binary supports (${CURRENT_USER_VERSION}). Downgrade not supported.`
+      `Database schema is from a newer version (${foundVersion}) than this binary supports (${CURRENT_USER_VERSION}). Downgrade not supported.`,
     );
   }
 
@@ -403,45 +396,85 @@ export function initDatabase(dataDir: string): void {
   // POSIX-only: chmod is a no-op on Windows (NTFS permissions don't map).
   try {
     chmodSync(path.join(dataDir, "coordinator.db"), 0o600);
-  } catch { /* non-POSIX or permission error — log-only would be too noisy */ }
+  } catch {
+    /* non-POSIX or permission error — log-only would be too noisy */
+  }
 
   // Migrations for existing databases — columns may already exist
-  try { db.exec("ALTER TABLE threads ADD COLUMN claimed_by TEXT"); } catch { /* already exists */ }
-  try { db.exec("ALTER TABLE threads ADD COLUMN claimed_at TEXT"); } catch { /* already exists */ }
+  try {
+    db.exec("ALTER TABLE threads ADD COLUMN claimed_by TEXT");
+  } catch {
+    /* already exists */
+  }
+  try {
+    db.exec("ALTER TABLE threads ADD COLUMN claimed_at TEXT");
+  } catch {
+    /* already exists */
+  }
   // F4: track unclaim count to poison threads that no agent manages to complete.
   // Without this, an aborted task bounces back into the pool indefinitely and
   // gets re-claimed by the same (or next) agent in a tight failure loop.
-  try { db.exec("ALTER TABLE threads ADD COLUMN unclaim_count INTEGER DEFAULT 0"); } catch { /* already exists */ }
+  try {
+    db.exec("ALTER TABLE threads ADD COLUMN unclaim_count INTEGER DEFAULT 0");
+  } catch {
+    /* already exists */
+  }
   // Directed-dispatch: a thread with `assigned_to` set is claimable only by
   // that specific agent. NULL = anyone can claim (backwards compat with
   // existing work-stealing). Used by lead/worker presets and sequential
   // pipelines that need explicit hand-offs instead of first-come claims.
-  try { db.exec("ALTER TABLE threads ADD COLUMN assigned_to TEXT"); } catch { /* already exists */ }
+  try {
+    db.exec("ALTER TABLE threads ADD COLUMN assigned_to TEXT");
+  } catch {
+    /* already exists */
+  }
 
   // v0.6: per-edit symbol metadata on file_activity
-  try { db.exec("ALTER TABLE file_activity ADD COLUMN symbols_touched TEXT"); } catch { /* already exists */ }
-  try { db.exec("ALTER TABLE file_activity ADD COLUMN content_hash TEXT"); } catch { /* already exists */ }
+  try {
+    db.exec("ALTER TABLE file_activity ADD COLUMN symbols_touched TEXT");
+  } catch {
+    /* already exists */
+  }
+  try {
+    db.exec("ALTER TABLE file_activity ADD COLUMN content_hash TEXT");
+  } catch {
+    /* already exists */
+  }
 
   // v0.7: multi-tenant org_id column on every table that participates in scoping.
   // SQLite lacks online DDL — each ALTER briefly blocks writes. Migration is
   // idempotent (already-exists is caught silently).
   // SECURITY: `t` is from a compile-time constant array only — never user input.
   const TABLES_NEEDING_ORG = [
-    "agents", "threads", "thread_messages", "action_summaries",
-    "file_activity", "events", "dependency_map", "introspections",
-    "agent_activity_status", "revoked_agents", "working_files",
-    "git_cochange", "git_cochange_meta", "layer_firings",
+    "agents",
+    "threads",
+    "thread_messages",
+    "action_summaries",
+    "file_activity",
+    "events",
+    "dependency_map",
+    "introspections",
+    "agent_activity_status",
+    "revoked_agents",
+    "working_files",
+    "git_cochange",
+    "git_cochange_meta",
+    "layer_firings",
   ] as const;
   for (const t of TABLES_NEEDING_ORG) {
     try {
       db.exec(`ALTER TABLE ${t} ADD COLUMN org_id TEXT NOT NULL DEFAULT 'default'`);
-    } catch { /* already exists */ }
+    } catch {
+      /* already exists */
+    }
   }
 
   // v0.7: scan index for events table — getEventsSince queries by (org_id, id)
   try {
     db.exec("CREATE INDEX IF NOT EXISTS idx_events_org_id ON events(org_id, id)");
-  } catch { /* already exists */ }
+  } catch {
+    /* already exists */
+  }
 
   // v0.7.1: composite indexes for org-scoped hot queries (Tasks 15/17 reads).
   // Created AFTER the ALTER loop above — these indexes reference org_id which
@@ -450,14 +483,24 @@ export function initDatabase(dataDir: string): void {
   // path index alone forces a full scan of all-org rows before the WHERE
   // org_id filter applies.
   try {
-    db.exec("CREATE INDEX IF NOT EXISTS idx_file_activity_org_path_time ON file_activity(org_id, file_path, created_at)");
-  } catch { /* already exists */ }
+    db.exec(
+      "CREATE INDEX IF NOT EXISTS idx_file_activity_org_path_time ON file_activity(org_id, file_path, created_at)",
+    );
+  } catch {
+    /* already exists */
+  }
   try {
     db.exec("CREATE INDEX IF NOT EXISTS idx_threads_org_status ON threads(org_id, status)");
-  } catch { /* already exists */ }
+  } catch {
+    /* already exists */
+  }
   try {
-    db.exec("CREATE INDEX IF NOT EXISTS idx_summaries_org_agent ON action_summaries(org_id, agent_id)");
-  } catch { /* already exists */ }
+    db.exec(
+      "CREATE INDEX IF NOT EXISTS idx_summaries_org_agent ON action_summaries(org_id, agent_id)",
+    );
+  } catch {
+    /* already exists */
+  }
 
   // v0.7: SQLite lacks ALTER PRIMARY KEY. Pattern per table:
   //   1. Create new table with composite PK.
@@ -474,7 +517,10 @@ export function initDatabase(dataDir: string): void {
     indexCreateSqls: string[],
   ): void {
     // Check if migration already happened by inspecting PK columns
-    const cols = targetDb.prepare(`PRAGMA table_info(${tableName})`).all() as { name: string; pk: number }[];
+    const cols = targetDb.prepare(`PRAGMA table_info(${tableName})`).all() as {
+      name: string;
+      pk: number;
+    }[];
     const pkCols = cols.filter((c) => c.pk > 0).map((c) => c.name);
     if (pkCols.includes("org_id")) return; // already migrated
 
@@ -487,7 +533,9 @@ export function initDatabase(dataDir: string): void {
       targetDb.exec("BEGIN");
       try {
         targetDb.exec(newCreateSql.replace(tableName, `${tableName}_new`));
-        targetDb.exec(`INSERT INTO ${tableName}_new (${columnList}) SELECT ${columnList} FROM ${tableName}`);
+        targetDb.exec(
+          `INSERT INTO ${tableName}_new (${columnList}) SELECT ${columnList} FROM ${tableName}`,
+        );
         targetDb.exec(`DROP TABLE ${tableName}`);
         targetDb.exec(`ALTER TABLE ${tableName}_new RENAME TO ${tableName}`);
         for (const idxSql of indexCreateSqls) targetDb.exec(idxSql);
@@ -501,7 +549,9 @@ export function initDatabase(dataDir: string): void {
     }
   }
 
-  migrateToCompositePK(db, "agents",
+  migrateToCompositePK(
+    db,
+    "agents",
     `CREATE TABLE agents (
       id TEXT NOT NULL,
       org_id TEXT NOT NULL DEFAULT 'default',
@@ -524,7 +574,9 @@ export function initDatabase(dataDir: string): void {
     ["CREATE UNIQUE INDEX IF NOT EXISTS idx_agents_id ON agents(id)"],
   );
 
-  migrateToCompositePK(db, "agent_activity_status",
+  migrateToCompositePK(
+    db,
+    "agent_activity_status",
     `CREATE TABLE agent_activity_status (
       agent_id TEXT NOT NULL,
       org_id TEXT NOT NULL DEFAULT 'default',
@@ -539,7 +591,9 @@ export function initDatabase(dataDir: string): void {
     [],
   );
 
-  migrateToCompositePK(db, "revoked_agents",
+  migrateToCompositePK(
+    db,
+    "revoked_agents",
     `CREATE TABLE revoked_agents (
       agent_id TEXT NOT NULL,
       org_id TEXT NOT NULL DEFAULT 'default',
@@ -551,7 +605,9 @@ export function initDatabase(dataDir: string): void {
     [],
   );
 
-  migrateToCompositePK(db, "working_files",
+  migrateToCompositePK(
+    db,
+    "working_files",
     `CREATE TABLE working_files (
       agent_id TEXT NOT NULL,
       file_path TEXT NOT NULL,
@@ -568,7 +624,9 @@ export function initDatabase(dataDir: string): void {
     ],
   );
 
-  migrateToCompositePK(db, "dependency_map",
+  migrateToCompositePK(
+    db,
+    "dependency_map",
     `CREATE TABLE dependency_map (
       module_id TEXT NOT NULL,
       org_id TEXT NOT NULL DEFAULT 'default',
@@ -581,7 +639,9 @@ export function initDatabase(dataDir: string): void {
     [],
   );
 
-  migrateToCompositePK(db, "git_cochange",
+  migrateToCompositePK(
+    db,
+    "git_cochange",
     `CREATE TABLE git_cochange (
       file_a TEXT NOT NULL,
       file_b TEXT NOT NULL,
@@ -599,7 +659,9 @@ export function initDatabase(dataDir: string): void {
     ],
   );
 
-  migrateToCompositePK(db, "git_cochange_meta",
+  migrateToCompositePK(
+    db,
+    "git_cochange_meta",
     `CREATE TABLE git_cochange_meta (
       k TEXT NOT NULL,
       org_id TEXT NOT NULL DEFAULT 'default',
@@ -633,34 +695,88 @@ export function initDatabase(dataDir: string): void {
   db.exec("PRAGMA foreign_keys = OFF");
   try {
     // --- audit_log column renames (V4 FIX 1) ----------------------------------
-    try { db.exec("ALTER TABLE audit_log RENAME COLUMN user_id TO actor_user_id"); } catch { /* already renamed */ }
-    try { db.exec("ALTER TABLE audit_log RENAME COLUMN org_id TO actor_org_id"); } catch { /* already renamed */ }
-    try { db.exec("ALTER TABLE audit_log RENAME COLUMN ip TO actor_ip"); } catch { /* already renamed */ }
-    try { db.exec("ALTER TABLE audit_log RENAME COLUMN user_agent TO actor_user_agent"); } catch { /* already renamed */ }
-    try { db.exec("ALTER TABLE audit_log RENAME COLUMN metadata TO metadata_json"); } catch { /* already renamed */ }
+    try {
+      db.exec("ALTER TABLE audit_log RENAME COLUMN user_id TO actor_user_id");
+    } catch {
+      /* already renamed */
+    }
+    try {
+      db.exec("ALTER TABLE audit_log RENAME COLUMN org_id TO actor_org_id");
+    } catch {
+      /* already renamed */
+    }
+    try {
+      db.exec("ALTER TABLE audit_log RENAME COLUMN ip TO actor_ip");
+    } catch {
+      /* already renamed */
+    }
+    try {
+      db.exec("ALTER TABLE audit_log RENAME COLUMN user_agent TO actor_user_agent");
+    } catch {
+      /* already renamed */
+    }
+    try {
+      db.exec("ALTER TABLE audit_log RENAME COLUMN metadata TO metadata_json");
+    } catch {
+      /* already renamed */
+    }
 
     // --- audit_log: new columns + retention sweeper index ---------------------
-    try { db.exec("ALTER TABLE audit_log ADD COLUMN request_id TEXT"); } catch { /* already exists */ }
-    try { db.exec("ALTER TABLE audit_log ADD COLUMN outcome TEXT"); } catch { /* already exists */ }
-    try { db.exec("CREATE INDEX IF NOT EXISTS idx_audit_request_id ON audit_log(request_id)"); } catch { /* already exists */ }
-    try { db.exec("CREATE INDEX IF NOT EXISTS idx_audit_outcome_time ON audit_log(outcome, created_at)"); } catch { /* already exists */ }
+    try {
+      db.exec("ALTER TABLE audit_log ADD COLUMN request_id TEXT");
+    } catch {
+      /* already exists */
+    }
+    try {
+      db.exec("ALTER TABLE audit_log ADD COLUMN outcome TEXT");
+    } catch {
+      /* already exists */
+    }
+    try {
+      db.exec("CREATE INDEX IF NOT EXISTS idx_audit_request_id ON audit_log(request_id)");
+    } catch {
+      /* already exists */
+    }
+    try {
+      db.exec(
+        "CREATE INDEX IF NOT EXISTS idx_audit_outcome_time ON audit_log(outcome, created_at)",
+      );
+    } catch {
+      /* already exists */
+    }
 
     // --- audit_log: backfill Phase 1 rows with outcome='legacy_unknown' --------
     // Idempotent: only fills NULLs. Inserts a single migration audit row on first run.
     try {
-      const updateResult = (db as unknown as {
-        prepare: (sql: string) => { run: () => { changes: number } };
-      }).prepare("UPDATE audit_log SET outcome = 'legacy_unknown' WHERE outcome IS NULL").run();
+      const updateResult = (
+        db as unknown as {
+          prepare: (sql: string) => { run: () => { changes: number } };
+        }
+      )
+        .prepare("UPDATE audit_log SET outcome = 'legacy_unknown' WHERE outcome IS NULL")
+        .run();
       if (updateResult.changes > 0) {
         // First-run only: emit migration provenance event
-        (db as unknown as {
-          prepare: (sql: string) => { run: (...args: unknown[]) => unknown };
-        }).prepare(
-          "INSERT INTO audit_log (action, outcome, metadata_json, created_at) " +
-          "VALUES ('migration.audit_backfill', 'success', ?, CURRENT_TIMESTAMP)"
-        ).run(JSON.stringify({ rows_marked_legacy: updateResult.changes, from_version: 7, to_version: 8 }));
+        (
+          db as unknown as {
+            prepare: (sql: string) => { run: (...args: unknown[]) => unknown };
+          }
+        )
+          .prepare(
+            "INSERT INTO audit_log (action, outcome, metadata_json, created_at) " +
+              "VALUES ('migration.audit_backfill', 'success', ?, CURRENT_TIMESTAMP)",
+          )
+          .run(
+            JSON.stringify({
+              rows_marked_legacy: updateResult.changes,
+              from_version: 7,
+              to_version: 8,
+            }),
+          );
       }
-    } catch { /* defensive: any failure means migration already happened */ }
+    } catch {
+      /* defensive: any failure means migration already happened */
+    }
 
     // --- audit_log: hash chain (T50 v0.9.1) -----------------------------------
     // Each row carries prev_hash (the previous row's row_hash) + row_hash
@@ -674,11 +790,21 @@ export function initDatabase(dataDir: string): void {
     // evidence only. Operators wanting deletion + retroactive-tamper
     // detection must pair the chain with the external tip-attestation
     // workflow in docs/ops/audit-integrity.md.
-    try { db.exec("ALTER TABLE audit_log ADD COLUMN prev_hash TEXT"); } catch { /* already exists */ }
-    try { db.exec("ALTER TABLE audit_log ADD COLUMN row_hash TEXT"); } catch { /* already exists */ }
+    try {
+      db.exec("ALTER TABLE audit_log ADD COLUMN prev_hash TEXT");
+    } catch {
+      /* already exists */
+    }
+    try {
+      db.exec("ALTER TABLE audit_log ADD COLUMN row_hash TEXT");
+    } catch {
+      /* already exists */
+    }
     try {
       backfillAuditChain(db as unknown as MigrationDb);
-    } catch { /* defensive: any failure means backfill already happened */ }
+    } catch {
+      /* defensive: any failure means backfill already happened */
+    }
 
     // --- users: rename org_id → primary_org_id + new columns ------------------
     // NOTE: SQLite ALTER TABLE RENAME COLUMN automatically updates indexes that
@@ -686,26 +812,58 @@ export function initDatabase(dataDir: string): void {
     // to work as an index on primary_org_id under its old name — DO NOT drop +
     // recreate, because SCHEMA on subsequent boots tries to recreate idx_users_org
     // referencing the now-non-existent org_id column and would fail.
-    try { db.exec("ALTER TABLE users RENAME COLUMN org_id TO primary_org_id"); } catch { /* already renamed */ }
-    try { db.exec("ALTER TABLE users ADD COLUMN token_epoch INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
+    try {
+      db.exec("ALTER TABLE users RENAME COLUMN org_id TO primary_org_id");
+    } catch {
+      /* already renamed */
+    }
+    try {
+      db.exec("ALTER TABLE users ADD COLUMN token_epoch INTEGER NOT NULL DEFAULT 0");
+    } catch {
+      /* already exists */
+    }
     // idp_access_token: stores GitHub access token for refresh-time membership re-check.
     // Plaintext in v0.8; encrypted at-rest in v0.7.5 (SQLCipher whole-DB). NEVER in JWT/cookie/logs.
-    try { db.exec("ALTER TABLE users ADD COLUMN idp_access_token TEXT"); } catch { /* already exists */ }
+    try {
+      db.exec("ALTER TABLE users ADD COLUMN idp_access_token TEXT");
+    } catch {
+      /* already exists */
+    }
     // idp_refresh_token: T54 (v0.10.0) -- GitHub App user-to-server tokens
     // expire (8h), so the App provider stores the refresh token here.
     // OAuth App users keep this column NULL forever. Same plaintext +
     // never-in-logs posture as idp_access_token.
-    try { db.exec("ALTER TABLE users ADD COLUMN idp_refresh_token TEXT"); } catch { /* already exists */ }
+    try {
+      db.exec("ALTER TABLE users ADD COLUMN idp_refresh_token TEXT");
+    } catch {
+      /* already exists */
+    }
 
     // --- orgs: allowlist_github_org column (B-NEW-4 Phase 5 readiness) --------
-    try { db.exec("ALTER TABLE orgs ADD COLUMN allowlist_github_org TEXT"); } catch { /* already exists */ }
-    try { db.exec("CREATE INDEX IF NOT EXISTS idx_orgs_allowlist ON orgs(allowlist_github_org)"); } catch { /* already exists */ }
+    try {
+      db.exec("ALTER TABLE orgs ADD COLUMN allowlist_github_org TEXT");
+    } catch {
+      /* already exists */
+    }
+    try {
+      db.exec("CREATE INDEX IF NOT EXISTS idx_orgs_allowlist ON orgs(allowlist_github_org)");
+    } catch {
+      /* already exists */
+    }
     // --- orgs: allowlist_idp_org_id column (T56, v0.10.2) ---------------------
     // Generic IdP-supplied org identifier; matched against
     // IdpUserInfo.idp_org_id. GoogleProvider stores the Workspace hd
     // claim there. OAuth App / GitHub App stay on allowlist_github_org.
-    try { db.exec("ALTER TABLE orgs ADD COLUMN allowlist_idp_org_id TEXT"); } catch { /* already exists */ }
-    try { db.exec("CREATE INDEX IF NOT EXISTS idx_orgs_allowlist_idp ON orgs(allowlist_idp_org_id)"); } catch { /* already exists */ }
+    try {
+      db.exec("ALTER TABLE orgs ADD COLUMN allowlist_idp_org_id TEXT");
+    } catch {
+      /* already exists */
+    }
+    try {
+      db.exec("CREATE INDEX IF NOT EXISTS idx_orgs_allowlist_idp ON orgs(allowlist_idp_org_id)");
+    } catch {
+      /* already exists */
+    }
 
     // --- user_orgs join table (Q1 V2 N:M-ready, 1:1 invariant app-layer) ------
     db.exec(`CREATE TABLE IF NOT EXISTS user_orgs (
@@ -720,9 +878,9 @@ export function initDatabase(dataDir: string): void {
     // Idempotent via WHERE NOT EXISTS (re-runs do nothing on already-backfilled DBs).
     db.exec(
       "INSERT INTO user_orgs (user_id, org_id, role, joined_at) " +
-      "SELECT id, primary_org_id, role, COALESCE(created_at, CURRENT_TIMESTAMP) " +
-      "FROM users " +
-      "WHERE NOT EXISTS (SELECT 1 FROM user_orgs WHERE user_orgs.user_id = users.id)"
+        "SELECT id, primary_org_id, role, COALESCE(created_at, CURRENT_TIMESTAMP) " +
+        "FROM users " +
+        "WHERE NOT EXISTS (SELECT 1 FROM user_orgs WHERE user_orgs.user_id = users.id)",
     );
 
     // --- oauth_state table (Q4 PKCE state storage; 10-min TTL + atomic CAS) ---
@@ -739,38 +897,112 @@ export function initDatabase(dataDir: string): void {
     db.exec("CREATE INDEX IF NOT EXISTS idx_oauth_state_expires ON oauth_state(expires_at)");
     // T55 (v0.10.1): OIDC nonce. Optional; only OIDCProvider stores a
     // value here. Nullable so existing rows + non-OIDC flows keep NULL.
-    try { db.exec("ALTER TABLE oauth_state ADD COLUMN nonce TEXT"); } catch { /* already exists */ }
+    try {
+      db.exec("ALTER TABLE oauth_state ADD COLUMN nonce TEXT");
+    } catch {
+      /* already exists */
+    }
 
     // --- refresh_tokens: family lineage + reuse detection (Q7 V4 FIX 6) -------
-    try { db.exec("ALTER TABLE refresh_tokens ADD COLUMN family_id TEXT"); } catch { /* already exists */ }
-    try { db.exec("ALTER TABLE refresh_tokens ADD COLUMN parent_jti TEXT"); } catch { /* already exists */ }
+    try {
+      db.exec("ALTER TABLE refresh_tokens ADD COLUMN family_id TEXT");
+    } catch {
+      /* already exists */
+    }
+    try {
+      db.exec("ALTER TABLE refresh_tokens ADD COLUMN parent_jti TEXT");
+    } catch {
+      /* already exists */
+    }
     // CHECK constraint on revoked_reason enforced at app layer + CI lint
     // (SQLite cannot ADD CHECK via ALTER post-creation). Allowed values:
     //   rotated|reuse_detected|suspicious_replay|logout|logout_all|admin|
     //   key_rotation|idle_expired|restore_invalidation
-    try { db.exec("ALTER TABLE refresh_tokens ADD COLUMN revoked_reason TEXT"); } catch { /* already exists */ }
-    try { db.exec("ALTER TABLE refresh_tokens ADD COLUMN replay_count INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
-    try { db.exec("ALTER TABLE refresh_tokens ADD COLUMN consumer_fingerprint TEXT"); } catch { /* already exists */ }
+    try {
+      db.exec("ALTER TABLE refresh_tokens ADD COLUMN revoked_reason TEXT");
+    } catch {
+      /* already exists */
+    }
+    try {
+      db.exec("ALTER TABLE refresh_tokens ADD COLUMN replay_count INTEGER NOT NULL DEFAULT 0");
+    } catch {
+      /* already exists */
+    }
+    try {
+      db.exec("ALTER TABLE refresh_tokens ADD COLUMN consumer_fingerprint TEXT");
+    } catch {
+      /* already exists */
+    }
     // Backfill family_id for Phase 1 rows: each becomes its own family root.
     // randomblob(16) hex = 32 chars (~128 bits), unique per row.
-    db.exec("UPDATE refresh_tokens SET family_id = lower(hex(randomblob(16))) WHERE family_id IS NULL");
+    db.exec(
+      "UPDATE refresh_tokens SET family_id = lower(hex(randomblob(16))) WHERE family_id IS NULL",
+    );
     // Indexes per V4 FIX 6 (partial UNIQUE on parent_jti — multiple NULL parents allowed for roots,
     // but each non-NULL parent_jti has exactly one successor row).
-    try { db.exec("CREATE INDEX IF NOT EXISTS idx_refresh_family ON refresh_tokens(family_id, revoked_at)"); } catch { /* already exists */ }
-    try { db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_refresh_parent ON refresh_tokens(parent_jti) WHERE parent_jti IS NOT NULL"); } catch { /* already exists */ }
-    try { db.exec("CREATE INDEX IF NOT EXISTS idx_refresh_user_active ON refresh_tokens(user_id, revoked_at)"); } catch { /* already exists */ }
-    try { db.exec("CREATE INDEX IF NOT EXISTS idx_refresh_expires ON refresh_tokens(expires_at)"); } catch { /* already exists */ }
+    try {
+      db.exec(
+        "CREATE INDEX IF NOT EXISTS idx_refresh_family ON refresh_tokens(family_id, revoked_at)",
+      );
+    } catch {
+      /* already exists */
+    }
+    try {
+      db.exec(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_refresh_parent ON refresh_tokens(parent_jti) WHERE parent_jti IS NOT NULL",
+      );
+    } catch {
+      /* already exists */
+    }
+    try {
+      db.exec(
+        "CREATE INDEX IF NOT EXISTS idx_refresh_user_active ON refresh_tokens(user_id, revoked_at)",
+      );
+    } catch {
+      /* already exists */
+    }
+    try {
+      db.exec("CREATE INDEX IF NOT EXISTS idx_refresh_expires ON refresh_tokens(expires_at)");
+    } catch {
+      /* already exists */
+    }
 
     // --- device_auth_requests: requester forensics + brute-force defense ------
-    try { db.exec("ALTER TABLE device_auth_requests ADD COLUMN requester_ip TEXT"); } catch { /* already exists */ }
-    try { db.exec("ALTER TABLE device_auth_requests ADD COLUMN requester_user_agent TEXT"); } catch { /* already exists */ }
-    try { db.exec("ALTER TABLE device_auth_requests ADD COLUMN requester_country TEXT"); } catch { /* already exists */ }
-    try { db.exec("ALTER TABLE device_auth_requests ADD COLUMN failed_approval_attempts INTEGER NOT NULL DEFAULT 0"); } catch { /* already exists */ }
+    try {
+      db.exec("ALTER TABLE device_auth_requests ADD COLUMN requester_ip TEXT");
+    } catch {
+      /* already exists */
+    }
+    try {
+      db.exec("ALTER TABLE device_auth_requests ADD COLUMN requester_user_agent TEXT");
+    } catch {
+      /* already exists */
+    }
+    try {
+      db.exec("ALTER TABLE device_auth_requests ADD COLUMN requester_country TEXT");
+    } catch {
+      /* already exists */
+    }
+    try {
+      db.exec(
+        "ALTER TABLE device_auth_requests ADD COLUMN failed_approval_attempts INTEGER NOT NULL DEFAULT 0",
+      );
+    } catch {
+      /* already exists */
+    }
     // V4 FIX 21: denial tracking. denied_at (unix seconds) set on rejection or
     // brute-force lockout; denied_reason ∈ {user_denied, too_many_failed_approvals,
     // brute_force_lockout}. Both nullable; existing rows get NULL.
-    try { db.exec("ALTER TABLE device_auth_requests ADD COLUMN denied_at INTEGER"); } catch { /* already exists */ }
-    try { db.exec("ALTER TABLE device_auth_requests ADD COLUMN denied_reason TEXT"); } catch { /* already exists */ }
+    try {
+      db.exec("ALTER TABLE device_auth_requests ADD COLUMN denied_at INTEGER");
+    } catch {
+      /* already exists */
+    }
+    try {
+      db.exec("ALTER TABLE device_auth_requests ADD COLUMN denied_reason TEXT");
+    } catch {
+      /* already exists */
+    }
     // T18 device-flow token endpoint (grant_type=device_code poll):
     //   last_polled_at INTEGER — last poll timestamp (unix seconds); enables V4 FIX 18
     //     atomic CAS for per-device slow_down enforcement. Nullable: existing rows + new
@@ -778,12 +1010,28 @@ export function initDatabase(dataDir: string): void {
     //   interval INTEGER NOT NULL DEFAULT 5 — current poll cadence per RFC 8628 §3.5
     //     (default 5s matches T17's verification_uri response). Server may bump on
     //     slow_down responses.
-    try { db.exec("ALTER TABLE device_auth_requests ADD COLUMN last_polled_at INTEGER"); } catch { /* already exists */ }
-    try { db.exec("ALTER TABLE device_auth_requests ADD COLUMN interval INTEGER NOT NULL DEFAULT 5"); } catch { /* already exists */ }
+    try {
+      db.exec("ALTER TABLE device_auth_requests ADD COLUMN last_polled_at INTEGER");
+    } catch {
+      /* already exists */
+    }
+    try {
+      db.exec("ALTER TABLE device_auth_requests ADD COLUMN interval INTEGER NOT NULL DEFAULT 5");
+    } catch {
+      /* already exists */
+    }
     // T20 POST /auth/device/approve: approved_at INTEGER — unix seconds when
     // the approving user submitted the form. Nullable: NULL until approve.
-    try { db.exec("ALTER TABLE device_auth_requests ADD COLUMN approved_at INTEGER"); } catch { /* already exists */ }
-    try { db.exec("CREATE INDEX IF NOT EXISTS idx_device_expires ON device_auth_requests(expires_at)"); } catch { /* already exists */ }
+    try {
+      db.exec("ALTER TABLE device_auth_requests ADD COLUMN approved_at INTEGER");
+    } catch {
+      /* already exists */
+    }
+    try {
+      db.exec("CREATE INDEX IF NOT EXISTS idx_device_expires ON device_auth_requests(expires_at)");
+    } catch {
+      /* already exists */
+    }
 
     // --- system_state table (NR12 restore detection + recovery markers) -------
     db.exec(`CREATE TABLE IF NOT EXISTS system_state (
@@ -798,11 +1046,13 @@ export function initDatabase(dataDir: string): void {
     try {
       db.exec(
         "CREATE VIEW IF NOT EXISTS users_legacy_v0_7 AS " +
-        "SELECT id, primary_org_id AS org_id, email, name, idp_provider, idp_user_id, " +
-        "role, created_at, last_login_at, token_epoch " +
-        "FROM users"
+          "SELECT id, primary_org_id AS org_id, email, name, idp_provider, idp_user_id, " +
+          "role, created_at, last_login_at, token_epoch " +
+          "FROM users",
       );
-    } catch { /* idempotent; view recreation is no-op */ }
+    } catch {
+      /* idempotent; view recreation is no-op */
+    }
 
     // v0.8: bump version marker LAST — after every CREATE/ALTER/UPDATE above succeeded.
     db.exec("PRAGMA user_version = 8");
@@ -856,10 +1106,7 @@ export function initDatabase(dataDir: string): void {
   // the still-being-initialized module-level reference + the audit queue is
   // not initialized until bootPhase2.
   if (orgsUniquenessResult.pendingDuplicatesAcceptedAudit) {
-    emitDuplicatesAcceptedAudit(
-      db,
-      orgsUniquenessResult.pendingDuplicatesAcceptedAudit,
-    );
+    emitDuplicatesAcceptedAudit(db, orgsUniquenessResult.pendingDuplicatesAcceptedAudit);
   }
 }
 
@@ -880,9 +1127,11 @@ export function initDatabase(dataDir: string): void {
  * FK self-check would fail). Operators see the repair counts in audit_log.
  */
 function migrateOrgsFkV9(targetDb: DatabaseAdapter): void {
-  const v = (targetDb as unknown as {
-    prepare: (sql: string) => { get: () => unknown };
-  })
+  const v = (
+    targetDb as unknown as {
+      prepare: (sql: string) => { get: () => unknown };
+    }
+  )
     .prepare("PRAGMA user_version")
     .get() as { user_version: number } | undefined;
   if ((v?.user_version ?? 0) >= 9) return;
@@ -919,9 +1168,7 @@ function migrateOrgsFkV9(targetDb: DatabaseAdapter): void {
         FOREIGN KEY (org_id) REFERENCES orgs(id) ON DELETE RESTRICT
       )`,
       columnList: "id, org_id, name, modules, status, registered_at, last_seen_at",
-      indexCreateSqls: [
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_agents_id ON agents(id)",
-      ],
+      indexCreateSqls: ["CREATE UNIQUE INDEX IF NOT EXISTS idx_agents_id ON agents(id)"],
     },
 
     // --- threads (NOT composite-PK migrated; standalone PK on id) ----------
@@ -1008,8 +1255,7 @@ function migrateOrgsFkV9(targetDb: DatabaseAdapter): void {
         FOREIGN KEY (agent_id) REFERENCES agents(id),
         FOREIGN KEY (org_id) REFERENCES orgs(id) ON DELETE RESTRICT
       )`,
-      columnList:
-        "id, session_id, agent_id, file_path, summary, created_at, org_id",
+      columnList: "id, session_id, agent_id, file_path, summary, created_at, org_id",
       indexCreateSqls: [
         "CREATE INDEX IF NOT EXISTS idx_summaries_agent ON action_summaries(agent_id)",
         "CREATE INDEX IF NOT EXISTS idx_summaries_session ON action_summaries(session_id)",
@@ -1153,8 +1399,7 @@ function migrateOrgsFkV9(targetDb: DatabaseAdapter): void {
         PRIMARY KEY (org_id, agent_id, file_path),
         FOREIGN KEY (org_id) REFERENCES orgs(id) ON DELETE RESTRICT
       )`,
-      columnList:
-        "agent_id, file_path, org_id, started_at, last_activity_at, claim_until",
+      columnList: "agent_id, file_path, org_id, started_at, last_activity_at, claim_until",
       indexCreateSqls: [
         "CREATE INDEX IF NOT EXISTS idx_working_files_path  ON working_files(file_path)",
         "CREATE INDEX IF NOT EXISTS idx_working_files_until ON working_files(claim_until)",
@@ -1221,9 +1466,7 @@ function migrateOrgsFkV9(targetDb: DatabaseAdapter): void {
   // via `INSERT OR IGNORE INTO orgs (id, name) VALUES ('default', ...)`, but
   // we re-assert here so a deployment that somehow lost the row gets it back
   // before we re-parent orphans onto it.
-  targetDb.exec(
-    "INSERT OR IGNORE INTO orgs (id, name) VALUES ('default', 'Default Organization')",
-  );
+  targetDb.exec("INSERT OR IGNORE INTO orgs (id, name) VALUES ('default', 'Default Organization')");
 
   // Pre-flight: detect & re-parent orphans. For each table, count rows whose
   // org_id has no matching orgs.id row, then UPDATE them to 'default'. Emits
@@ -1232,37 +1475,49 @@ function migrateOrgsFkV9(targetDb: DatabaseAdapter): void {
   // would fail otherwise.
   const reparentCounts: Record<string, number> = {};
   for (const spec of SPECS) {
-    const orphanRow = (targetDb as unknown as {
-      prepare: (sql: string) => { get: () => unknown };
-    }).prepare(
-      `SELECT COUNT(*) AS n FROM ${spec.table} WHERE org_id NOT IN (SELECT id FROM orgs)`,
-    ).get() as { n: number } | undefined;
+    const orphanRow = (
+      targetDb as unknown as {
+        prepare: (sql: string) => { get: () => unknown };
+      }
+    )
+      .prepare(`SELECT COUNT(*) AS n FROM ${spec.table} WHERE org_id NOT IN (SELECT id FROM orgs)`)
+      .get() as { n: number } | undefined;
     const n = orphanRow?.n ?? 0;
     if (n > 0) {
-      (targetDb as unknown as {
-        prepare: (sql: string) => { run: () => { changes: number } };
-      }).prepare(
-        `UPDATE ${spec.table} SET org_id = 'default' WHERE org_id NOT IN (SELECT id FROM orgs)`,
-      ).run();
+      (
+        targetDb as unknown as {
+          prepare: (sql: string) => { run: () => { changes: number } };
+        }
+      )
+        .prepare(
+          `UPDATE ${spec.table} SET org_id = 'default' WHERE org_id NOT IN (SELECT id FROM orgs)`,
+        )
+        .run();
       reparentCounts[spec.table] = n;
     }
   }
   if (Object.keys(reparentCounts).length > 0) {
     try {
-      (targetDb as unknown as {
-        prepare: (sql: string) => { run: (...args: unknown[]) => unknown };
-      }).prepare(
-        "INSERT INTO audit_log (action, outcome, metadata_json, created_at) " +
-          "VALUES ('migration.org_fk_reparent', 'success', ?, CURRENT_TIMESTAMP)",
-      ).run(
-        JSON.stringify({
-          reparented_to: "default",
-          counts: reparentCounts,
-          from_version: 8,
-          to_version: 9,
-        }),
-      );
-    } catch { /* audit_log shape mismatch; non-fatal */ }
+      (
+        targetDb as unknown as {
+          prepare: (sql: string) => { run: (...args: unknown[]) => unknown };
+        }
+      )
+        .prepare(
+          "INSERT INTO audit_log (action, outcome, metadata_json, created_at) " +
+            "VALUES ('migration.org_fk_reparent', 'success', ?, CURRENT_TIMESTAMP)",
+        )
+        .run(
+          JSON.stringify({
+            reparented_to: "default",
+            counts: reparentCounts,
+            from_version: 8,
+            to_version: 9,
+          }),
+        );
+    } catch {
+      /* audit_log shape mismatch; non-fatal */
+    }
   }
 
   // Run the table-copy migration. PRAGMA foreign_keys must be OFF outside
@@ -1276,14 +1531,14 @@ function migrateOrgsFkV9(targetDb: DatabaseAdapter): void {
         // Idempotency check: skip tables that already have the FK. We detect
         // by parsing `PRAGMA foreign_key_list` for an entry pointing to
         // orgs(id). If found, this table was migrated in a prior partial run.
-        const fkRows = (targetDb as unknown as {
-          prepare: (sql: string) => { all: () => unknown[] };
-        })
+        const fkRows = (
+          targetDb as unknown as {
+            prepare: (sql: string) => { all: () => unknown[] };
+          }
+        )
           .prepare(`PRAGMA foreign_key_list(${spec.table})`)
           .all() as { table: string; from: string }[];
-        const alreadyHasOrgFk = fkRows.some(
-          (r) => r.table === "orgs" && r.from === "org_id",
-        );
+        const alreadyHasOrgFk = fkRows.some((r) => r.table === "orgs" && r.from === "org_id");
         if (alreadyHasOrgFk) continue;
 
         // Defensive column intersection: a partial-history DB (e.g. an old
@@ -1294,9 +1549,11 @@ function migrateOrgsFkV9(targetDb: DatabaseAdapter): void {
         // is the same outcome as if a plain `ALTER TABLE ADD COLUMN` had run
         // at boot. SECURITY: column names come from the compile-time
         // `columnList` string only — never user input.
-        const sourceCols = (targetDb as unknown as {
-          prepare: (sql: string) => { all: () => unknown[] };
-        })
+        const sourceCols = (
+          targetDb as unknown as {
+            prepare: (sql: string) => { all: () => unknown[] };
+          }
+        )
           .prepare(`PRAGMA table_info(${spec.table})`)
           .all() as { name: string }[];
         const sourceColSet = new Set(sourceCols.map((c) => c.name));
@@ -1308,13 +1565,10 @@ function migrateOrgsFkV9(targetDb: DatabaseAdapter): void {
 
         targetDb.exec(spec.createSql);
         targetDb.exec(
-          `INSERT INTO ${spec.table}_new (${copyCols}) ` +
-            `SELECT ${copyCols} FROM ${spec.table}`,
+          `INSERT INTO ${spec.table}_new (${copyCols}) ` + `SELECT ${copyCols} FROM ${spec.table}`,
         );
         targetDb.exec(`DROP TABLE ${spec.table}`);
-        targetDb.exec(
-          `ALTER TABLE ${spec.table}_new RENAME TO ${spec.table}`,
-        );
+        targetDb.exec(`ALTER TABLE ${spec.table}_new RENAME TO ${spec.table}`);
         for (const idxSql of spec.indexCreateSqls) targetDb.exec(idxSql);
       }
 
@@ -1323,9 +1577,11 @@ function migrateOrgsFkV9(targetDb: DatabaseAdapter): void {
       // violation indicates a bug in the migration itself (NOT in the data —
       // orphans were repaired up-front). Abort + ROLLBACK so the operator
       // sees a clean failure and the DB stays at user_version=8.
-      const fkCheck = (targetDb as unknown as {
-        prepare: (sql: string) => { all: () => unknown[] };
-      })
+      const fkCheck = (
+        targetDb as unknown as {
+          prepare: (sql: string) => { all: () => unknown[] };
+        }
+      )
         .prepare("PRAGMA foreign_key_check")
         .all() as unknown[];
       if (fkCheck.length > 0) {
@@ -1368,9 +1624,11 @@ function migrateOrgsFkV9(targetDb: DatabaseAdapter): void {
  * (CREATE INDEX IF NOT EXISTS makes a partial re-run harmless).
  */
 function migrateSweepIndexesV10(targetDb: DatabaseAdapter): void {
-  const v = (targetDb as unknown as {
-    prepare: (sql: string) => { get: () => unknown };
-  })
+  const v = (
+    targetDb as unknown as {
+      prepare: (sql: string) => { get: () => unknown };
+    }
+  )
     .prepare("PRAGMA user_version")
     .get() as { user_version: number } | undefined;
   if ((v?.user_version ?? 0) >= 10) return;

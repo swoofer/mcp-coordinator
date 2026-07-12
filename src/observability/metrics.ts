@@ -17,13 +17,7 @@
  *   - identifier_type — ip | family | user  (rate limit dimension)
  *   - table       — sweeper deletion target table
  */
-import {
-  Registry,
-  Counter,
-  Gauge,
-  Histogram,
-  collectDefaultMetrics,
-} from "prom-client";
+import { Registry, Counter, Gauge, Histogram, collectDefaultMetrics } from "prom-client";
 
 export const registry = new Registry();
 
@@ -32,9 +26,7 @@ export const registry = new Registry();
  * up through multi-second IdP-bound calls. Same shape recommended by
  * spec §17.1.
  */
-const COMMON_BUCKETS = [
-  0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5,
-] as const;
+const COMMON_BUCKETS = [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5] as const;
 
 // ── Auth activity ───────────────────────────────────────────────────────
 

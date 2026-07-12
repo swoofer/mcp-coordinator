@@ -32,9 +32,17 @@ describe("B1 fix - approveResolution CAS pattern", () => {
     consultation.onResolve((e) => events.push(e));
 
     const thread = consultation.announceWork("default", {
-      agent_id: "a1", subject: "B1 test", target_modules: ["src/auth"], target_files: [],
+      agent_id: "a1",
+      subject: "B1 test",
+      target_modules: ["src/auth"],
+      target_files: [],
     });
-    consultation.postToThread("default", { thread_id: thread.id, agent_id: "a2", type: "context", content: "ok" });
+    consultation.postToThread("default", {
+      thread_id: thread.id,
+      agent_id: "a2",
+      type: "context",
+      content: "ok",
+    });
     consultation.proposeResolution("default", thread.id, "a1", "Agreed");
     consultation.approveResolution("default", thread.id, "a2", "Agent B");
 
@@ -44,18 +52,31 @@ describe("B1 fix - approveResolution CAS pattern", () => {
   it("CAS UPDATE...WHERE status='resolving' affects 0 rows when status was already changed", () => {
     registry.register("default", "a2", "Agent B", ["src/auth"]);
     const thread = consultation.announceWork("default", {
-      agent_id: "a1", subject: "B1 CAS test", target_modules: ["src/auth"], target_files: [],
+      agent_id: "a1",
+      subject: "B1 CAS test",
+      target_modules: ["src/auth"],
+      target_files: [],
     });
-    consultation.postToThread("default", { thread_id: thread.id, agent_id: "a2", type: "context", content: "ok" });
+    consultation.postToThread("default", {
+      thread_id: thread.id,
+      agent_id: "a2",
+      type: "context",
+      content: "ok",
+    });
     consultation.proposeResolution("default", thread.id, "a1", "Agreed");
 
     // Simulate a race winner: another path already transitioned to resolved
     const db = getDb();
-    db.prepare("UPDATE threads SET status='resolved', resolved_at=? WHERE id=?").run(new Date().toISOString(), thread.id);
+    db.prepare("UPDATE threads SET status='resolved', resolved_at=? WHERE id=?").run(
+      new Date().toISOString(),
+      thread.id,
+    );
 
     // The CAS-style UPDATE the loser would issue must affect 0 rows (no race won)
     const res = db
-      .prepare("UPDATE threads SET status='resolved', resolved_at=? WHERE id=? AND status='resolving'")
+      .prepare(
+        "UPDATE threads SET status='resolved', resolved_at=? WHERE id=? AND status='resolving'",
+      )
       .run(new Date().toISOString(), thread.id);
     expect(res.changes).toBe(0);
   });
@@ -66,9 +87,17 @@ describe("B1 fix - approveResolution CAS pattern", () => {
     consultation.onResolve((e) => events.push(e));
 
     const thread = consultation.announceWork("default", {
-      agent_id: "a1", subject: "B1 reject double", target_modules: ["src/auth"], target_files: [],
+      agent_id: "a1",
+      subject: "B1 reject double",
+      target_modules: ["src/auth"],
+      target_files: [],
     });
-    consultation.postToThread("default", { thread_id: thread.id, agent_id: "a2", type: "context", content: "ok" });
+    consultation.postToThread("default", {
+      thread_id: thread.id,
+      agent_id: "a2",
+      type: "context",
+      content: "ok",
+    });
     consultation.proposeResolution("default", thread.id, "a1", "Agreed");
     consultation.approveResolution("default", thread.id, "a2", "Agent B");
 
@@ -87,7 +116,10 @@ describe("B1 fix - announceWork transaction atomicity", () => {
     registry.register("default", "a2", "Agent B", ["src/auth"]);
 
     const thread = consultation.announceWork("default", {
-      agent_id: "a1", subject: "B1 atomicity", target_modules: ["src/auth"], target_files: [],
+      agent_id: "a1",
+      subject: "B1 atomicity",
+      target_modules: ["src/auth"],
+      target_files: [],
     });
 
     // Add a3 AFTER announce. Should NOT appear in respondents.
@@ -101,7 +133,10 @@ describe("B1 fix - announceWork transaction atomicity", () => {
   it("respondents list is consistent with status (auto-resolve when 0 respondents)", () => {
     // No other agents online → autoResolve should be true
     const thread = consultation.announceWork("default", {
-      agent_id: "a1", subject: "B1 consistency", target_modules: ["src/auth"], target_files: [],
+      agent_id: "a1",
+      subject: "B1 consistency",
+      target_modules: ["src/auth"],
+      target_files: [],
     });
     expect(thread.status).toBe("resolved");
     expect(JSON.parse(thread.expected_respondents || "[]")).toEqual([]);

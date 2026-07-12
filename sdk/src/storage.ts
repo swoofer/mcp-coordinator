@@ -70,14 +70,16 @@ export class FileTokenStore implements TokenStore {
     // save() on this instance to fully finish (including its rename)
     // before starting its own write+rename. `.catch(() => {})` on the
     // prior tail means a failed earlier save doesn't block this one.
-    const task = this.writeQueue.catch(() => {}).then(async () => {
-      const tmpPath = `${this.filePath}.tmp.${process.pid}.${crypto.randomUUID()}`;
-      await fs.promises.writeFile(tmpPath, JSON.stringify(tokens, null, 2), {
-        encoding: "utf8",
-        mode: 0o600,
+    const task = this.writeQueue
+      .catch(() => {})
+      .then(async () => {
+        const tmpPath = `${this.filePath}.tmp.${process.pid}.${crypto.randomUUID()}`;
+        await fs.promises.writeFile(tmpPath, JSON.stringify(tokens, null, 2), {
+          encoding: "utf8",
+          mode: 0o600,
+        });
+        await fs.promises.rename(tmpPath, this.filePath);
       });
-      await fs.promises.rename(tmpPath, this.filePath);
-    });
     this.writeQueue = task;
     return task;
   }

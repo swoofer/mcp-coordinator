@@ -1,15 +1,6 @@
 import { z } from "zod";
-import {
-  createRemoteJWKSet,
-  jwtVerify,
-  errors as joseErrors,
-  type JWTPayload,
-} from "jose";
-import type {
-  IdPProvider,
-  ExchangeCodeResult,
-  IdpUserInfo,
-} from "./types.js";
+import { createRemoteJWKSet, jwtVerify, errors as joseErrors, type JWTPayload } from "jose";
+import type { IdPProvider, ExchangeCodeResult, IdpUserInfo } from "./types.js";
 import { IdPTokenRevoked, IdPTransientError } from "./errors.js";
 
 /**
@@ -119,8 +110,7 @@ export class OIDCProvider implements IdPProvider {
     // Some issuers (Keycloak realms) terminate the issuer URL without a
     // trailing slash; normalize so concatenation is idempotent.
     const normalizedIssuer = cfg.issuerUrl.replace(/\/$/, "");
-    this.discoveryUrl =
-      cfg.discoveryUrl ?? `${normalizedIssuer}/.well-known/openid-configuration`;
+    this.discoveryUrl = cfg.discoveryUrl ?? `${normalizedIssuer}/.well-known/openid-configuration`;
   }
 
   async buildAuthUrl(
@@ -245,8 +235,7 @@ export class OIDCProvider implements IdPProvider {
     // requires a usable identifier -- prefer email, fall back to
     // preferred_username, fall back to sub. Operators wanting
     // strict-email mode can subclass and override.
-    const email =
-      claims.email ?? claims.preferred_username ?? claims.sub;
+    const email = claims.email ?? claims.preferred_username ?? claims.sub;
 
     const user: IdpUserInfo = {
       idp_user_id: claims.sub,
@@ -347,10 +336,7 @@ export class OIDCProvider implements IdPProvider {
  * Exported for unit-testing the path resolution independently of
  * the OIDC provider lifecycle.
  */
-export function extractGroupsFromClaims(
-  payload: unknown,
-  claimPath: string,
-): string[] {
+export function extractGroupsFromClaims(payload: unknown, claimPath: string): string[] {
   if (typeof payload !== "object" || payload === null) return [];
   let cursor: unknown = payload;
   for (const segment of claimPath.split(".")) {

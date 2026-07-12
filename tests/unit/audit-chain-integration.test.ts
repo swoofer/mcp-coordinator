@@ -3,24 +3,14 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import fs from "node:fs";
 import type Database from "better-sqlite3";
-import {
-  audit,
-  initAuditQueue,
-  resetAuditQueue,
-  getAuditQueue,
-} from "../../src/security/audit.js";
+import { audit, initAuditQueue, resetAuditQueue, getAuditQueue } from "../../src/security/audit.js";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
-import {
-  GENESIS_HASH,
-  computeRowHash,
-} from "../../src/security/audit-chain.js";
+import { GENESIS_HASH, computeRowHash } from "../../src/security/audit-chain.js";
 import { withAuditContext } from "../../src/auth/audit-context.js";
 import { withRequestId } from "../../src/auth/request-id.js";
 
 const require = createRequire(import.meta.url);
-const DatabaseCtor = require("better-sqlite3") as new (
-  path: string,
-) => Database.Database;
+const DatabaseCtor = require("better-sqlite3") as new (path: string) => Database.Database;
 
 const TEST_DIR = "data-test-audit-chain-integration";
 
@@ -176,9 +166,7 @@ describe("audit hash chain -- end-to-end through audit() Tier 2 batched", () => 
     getAuditQueue()!.flush();
 
     const rows = readChain();
-    expect(rows.map((r) => r.action)).toEqual([
-      "t1.a", "t2.b", "t1.c", "t2.d",
-    ]);
+    expect(rows.map((r) => r.action)).toEqual(["t1.a", "t2.b", "t1.c", "t2.d"]);
     expect(rows[0].prev_hash).toBe(GENESIS_HASH);
     for (let i = 1; i < rows.length; i++) {
       expect(rows[i].prev_hash, `link ${i}`).toBe(rows[i - 1].row_hash);
@@ -194,12 +182,10 @@ describe("audit hash chain -- backfill on pre-existing rows", () => {
     // NULL hashes.
     const db = getDb();
     db.prepare(
-      "INSERT INTO audit_log (action, outcome, prev_hash, row_hash) " +
-        "VALUES (?, ?, NULL, NULL)",
+      "INSERT INTO audit_log (action, outcome, prev_hash, row_hash) " + "VALUES (?, ?, NULL, NULL)",
     ).run("legacy.event.alpha", "success");
     db.prepare(
-      "INSERT INTO audit_log (action, outcome, prev_hash, row_hash) " +
-        "VALUES (?, ?, NULL, NULL)",
+      "INSERT INTO audit_log (action, outcome, prev_hash, row_hash) " + "VALUES (?, ?, NULL, NULL)",
     ).run("legacy.event.beta", "success");
 
     // Re-run initDatabase: the backfill loop should walk the unhashed
@@ -235,17 +221,20 @@ describe("audit hash chain -- backfill on pre-existing rows", () => {
     const prevHash = GENESIS_HASH;
     const fakeHash = computeRowHash(prevHash, {
       action: "first.event",
-      actor_org_id: null, actor_ip: null, actor_user_agent: null,
-      actor_user_id: null, metadata_json: null,
-      outcome: "success", request_id: null, target: null,
+      actor_org_id: null,
+      actor_ip: null,
+      actor_user_agent: null,
+      actor_user_id: null,
+      metadata_json: null,
+      outcome: "success",
+      request_id: null,
+      target: null,
     });
     db.prepare(
-      "INSERT INTO audit_log (action, outcome, prev_hash, row_hash) " +
-        "VALUES (?, ?, ?, ?)",
+      "INSERT INTO audit_log (action, outcome, prev_hash, row_hash) " + "VALUES (?, ?, ?, ?)",
     ).run("first.event", "success", prevHash, fakeHash);
     db.prepare(
-      "INSERT INTO audit_log (action, outcome, prev_hash, row_hash) " +
-        "VALUES (?, ?, NULL, NULL)",
+      "INSERT INTO audit_log (action, outcome, prev_hash, row_hash) " + "VALUES (?, ?, NULL, NULL)",
     ).run("second.event", "success");
 
     closeDb();
@@ -267,8 +256,10 @@ describe("audit hash chain -- tamper detection", () => {
 
     // Tamper: change row 2's action in-place without updating row_hash.
     const db = getDb();
-    db.prepare("UPDATE audit_log SET action = ? WHERE action = ?")
-      .run("ATTACKER_INSERTED", "victim.event");
+    db.prepare("UPDATE audit_log SET action = ? WHERE action = ?").run(
+      "ATTACKER_INSERTED",
+      "victim.event",
+    );
 
     const rows = readChain();
     const tampered = rows.find((r) => r.action === "ATTACKER_INSERTED")!;

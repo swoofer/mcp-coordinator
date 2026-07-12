@@ -54,8 +54,16 @@ beforeEach(() => {
 afterEach(() => {
   resetPhase2Auth();
   resetAuditQueue();
-  try { closeGlobalDb(); } catch { /* ignore */ }
-  try { fs.rmSync(DIR, { recursive: true, force: true }); } catch { /* EBUSY ignored */ }
+  try {
+    closeGlobalDb();
+  } catch {
+    /* ignore */
+  }
+  try {
+    fs.rmSync(DIR, { recursive: true, force: true });
+  } catch {
+    /* EBUSY ignored */
+  }
 });
 
 describe("Phase 1 JWT acceptance under v0.8.0 auth.ts", () => {
@@ -66,9 +74,7 @@ describe("Phase 1 JWT acceptance under v0.8.0 auth.ts", () => {
     });
     expect(token.split(".")).toHaveLength(3);
     // Inspect the claims by decoding the middle segment (base64url JSON).
-    const payload = JSON.parse(
-      Buffer.from(token.split(".")[1], "base64url").toString("utf8"),
-    );
+    const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString("utf8"));
     expect(payload.role).toBe("admin");
     expect(payload.org).toBe("default");
     expect(payload.user_id).toBe("agent-1");
@@ -84,11 +90,7 @@ describe("Phase 1 JWT acceptance under v0.8.0 auth.ts", () => {
       user_id: "agent-phase1",
       org: "default",
     });
-    const req = mockRequest(
-      { authorization: `Bearer ${token}` },
-      "/api/threads",
-      "GET",
-    );
+    const req = mockRequest({ authorization: `Bearer ${token}` }, "/api/threads", "GET");
     const result = await authenticateRequest(req, { authEnabled: true });
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -119,11 +121,7 @@ describe("Phase 1 JWT acceptance under v0.8.0 auth.ts", () => {
       user_id: "agent-phase1",
       org: "default",
     });
-    const req = mockRequest(
-      { authorization: `Bearer ${token}` },
-      "/api/threads",
-      "GET",
-    );
+    const req = mockRequest({ authorization: `Bearer ${token}` }, "/api/threads", "GET");
     const result = await authenticateRequest(req, { authEnabled: true });
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -178,9 +176,7 @@ describe("Phase 1 JWT acceptance under v0.8.0 auth.ts", () => {
     // Mint a Phase 1-shaped token using a different signing key — must NOT
     // verify against the current secret. Confirms the v0.8 upgrade didn't
     // accidentally widen the acceptable signer set.
-    const wrongKey = new TextEncoder().encode(
-      "a-completely-different-secret-32-chars!",
-    );
+    const wrongKey = new TextEncoder().encode("a-completely-different-secret-32-chars!");
     const forgedToken = await new SignJWT({
       role: "admin",
       user_id: "evil",
@@ -190,11 +186,7 @@ describe("Phase 1 JWT acceptance under v0.8.0 auth.ts", () => {
       .setSubject("evil")
       .setExpirationTime("1h")
       .sign(wrongKey);
-    const req = mockRequest(
-      { authorization: `Bearer ${forgedToken}` },
-      "/api/threads",
-      "GET",
-    );
+    const req = mockRequest({ authorization: `Bearer ${forgedToken}` }, "/api/threads", "GET");
     const result = await authenticateRequest(req, { authEnabled: true });
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -213,11 +205,7 @@ describe("Phase 1 JWT acceptance under v0.8.0 auth.ts", () => {
       .setSubject("v06-agent")
       .setExpirationTime("1h")
       .sign(key);
-    const req = mockRequest(
-      { authorization: `Bearer ${v06Token}` },
-      "/api/threads",
-      "GET",
-    );
+    const req = mockRequest({ authorization: `Bearer ${v06Token}` }, "/api/threads", "GET");
     const result = await authenticateRequest(req, { authEnabled: true });
     expect(result.ok).toBe(false);
     if (!result.ok) {

@@ -41,25 +41,17 @@ async function loginAsAdmin(
 }
 
 test.describe("admin UI — landing page", () => {
-  test("navigates to admin.html and shows nav + tiles", async ({
-    page,
-    coordinatorUrl,
-  }) => {
+  test("navigates to admin.html and shows nav + tiles", async ({ page, coordinatorUrl }) => {
     await loginAsAdmin(page, coordinatorUrl);
 
     await page.goto(`${coordinatorUrl}/dashboard/admin.html`);
 
     // Header + Admin chip
-    await expect(page.locator("header.admin-header h1")).toContainText(
-      "mcp-coordinator",
-    );
+    await expect(page.locator("header.admin-header h1")).toContainText("mcp-coordinator");
 
     // Nav links
     const nav = page.locator("nav.admin-nav");
-    await expect(nav.locator("a", { hasText: "Orgs" })).toHaveAttribute(
-      "href",
-      "admin-orgs.html",
-    );
+    await expect(nav.locator("a", { hasText: "Orgs" })).toHaveAttribute("href", "admin-orgs.html");
     await expect(nav.locator("a", { hasText: "Users" })).toHaveAttribute(
       "href",
       "admin-users.html",
@@ -72,10 +64,7 @@ test.describe("admin UI — landing page", () => {
 });
 
 test.describe("admin UI — orgs page CRUD", () => {
-  test("create, edit, and duplicate-name handling", async ({
-    page,
-    coordinatorUrl,
-  }) => {
+  test("create, edit, and duplicate-name handling", async ({ page, coordinatorUrl }) => {
     await loginAsAdmin(page, coordinatorUrl);
 
     // Navigate via the landing-page nav link rather than a hard goto — exercises
@@ -104,11 +93,10 @@ test.describe("admin UI — orgs page CRUD", () => {
     // attribute; the visual side-effect lives in CSS that we don't touch
     // here per T14 constraints.
     const modal = page.locator("#org-modal");
-    const modalIsOpen = async (): Promise<boolean> =>
-      (await modal.getAttribute("hidden")) === null;
+    const modalIsOpen = async (): Promise<boolean> => (await modal.getAttribute("hidden")) === null;
 
     // Dispatch a synthetic click event so the always-rendered backdrop
-     // (CSS quirk noted above) can't intercept it at the document level.
+    // (CSS quirk noted above) can't intercept it at the document level.
     await page.locator("#new-org-btn").dispatchEvent("click");
     await expect.poll(modalIsOpen).toBe(true);
     await expect(page.locator("#org-modal-title")).toHaveText("New org");
@@ -149,7 +137,7 @@ test.describe("admin UI — orgs page CRUD", () => {
 
     // --- DUPLICATE NAME -----------------------------------------------------
     // Dispatch a synthetic click event so the always-rendered backdrop
-     // (CSS quirk noted above) can't intercept it at the document level.
+    // (CSS quirk noted above) can't intercept it at the document level.
     await page.locator("#new-org-btn").dispatchEvent("click");
     await expect.poll(modalIsOpen).toBe(true);
     await page.locator("#org-name").fill("acme"); // already exists
@@ -189,9 +177,7 @@ test.describe("admin UI — users page", () => {
     const memberOpt = roleSelect.locator("option[value='member']");
     await expect(memberOpt).toHaveAttribute("disabled", "");
     // Inline hint text rendered in the same cell.
-    await expect(adminRow.locator(".empty-state")).toHaveText(
-      /Last admin .* cannot demote/i,
-    );
+    await expect(adminRow.locator(".empty-state")).toHaveText(/Last admin .* cannot demote/i);
 
     // --- Org filter ---------------------------------------------------------
     // Org filter is populated from /api/admin/orgs; "acme" should be present.
@@ -231,10 +217,7 @@ test.describe("admin UI — users page", () => {
     // programmatically (bypassing the disabled option) would still be
     // rejected by the server. Skipped here to keep the test deterministic
     // and avoid coupling to DOM internals that the UI deliberately blocks.
-    await expect(roleSelect.locator("option[value='member']")).toHaveAttribute(
-      "disabled",
-      "",
-    );
+    await expect(roleSelect.locator("option[value='member']")).toHaveAttribute("disabled", "");
   });
 });
 
@@ -249,8 +232,7 @@ test.describe("admin UI — security headers", () => {
     // page.goto()'s return — the latter can resolve before headers are exposed
     // on the response object in some flake-prone scenarios.
     const responsePromise = page.waitForResponse(
-      (r) =>
-        r.url().endsWith("/dashboard/admin.html") && r.request().method() === "GET",
+      (r) => r.url().endsWith("/dashboard/admin.html") && r.request().method() === "GET",
     );
     await page.goto(`${coordinatorUrl}/dashboard/admin.html`);
     const resp = await responsePromise;

@@ -157,11 +157,7 @@ afterEach(() => {
 describe("handleDevicePage (GET /auth/device)", () => {
   it("returns 200 + HTML body containing the user_code entry form", async () => {
     const res = mockResponse();
-    await handleDevicePage(
-      mockReq("/auth/device"),
-      res as unknown as ServerResponse,
-      ctx,
-    );
+    await handleDevicePage(mockReq("/auth/device"), res as unknown as ServerResponse, ctx);
     expect(res.statusCode).toBe(200);
     expect(res.headers["Content-Type"]).toBe("text/html; charset=utf-8");
     expect(res.body).toContain("<form");
@@ -171,11 +167,7 @@ describe("handleDevicePage (GET /auth/device)", () => {
 
   it("sets __Host-coordinator_csrf cookie with Secure + SameSite=Strict + Max-Age=600", async () => {
     const res = mockResponse();
-    await handleDevicePage(
-      mockReq("/auth/device"),
-      res as unknown as ServerResponse,
-      ctx,
-    );
+    await handleDevicePage(mockReq("/auth/device"), res as unknown as ServerResponse, ctx);
     const cookies = setCookieEntries(res);
     expect(cookies.length).toBe(1);
     const csrfCookie = cookies[0]!;
@@ -188,11 +180,7 @@ describe("handleDevicePage (GET /auth/device)", () => {
 
   it("renders no error block when ?error= is not present", async () => {
     const res = mockResponse();
-    await handleDevicePage(
-      mockReq("/auth/device"),
-      res as unknown as ServerResponse,
-      ctx,
-    );
+    await handleDevicePage(mockReq("/auth/device"), res as unknown as ServerResponse, ctx);
     expect(res.body).not.toContain('class="error"');
   });
 
@@ -250,11 +238,7 @@ describe("handleDevicePage (GET /auth/device)", () => {
 
   it("emits the CSP + X-Frame-Options + Cache-Control headers via sendHtml", async () => {
     const res = mockResponse();
-    await handleDevicePage(
-      mockReq("/auth/device"),
-      res as unknown as ServerResponse,
-      ctx,
-    );
+    await handleDevicePage(mockReq("/auth/device"), res as unknown as ServerResponse, ctx);
     expect(res.headers["Content-Security-Policy"]).toContain("default-src 'none'");
     expect(res.headers["X-Frame-Options"]).toBe("DENY");
     expect(res.headers["Cache-Control"]).toBe("no-store");
@@ -362,7 +346,7 @@ describe("handleDeviceConfirmPage (GET /auth/device/confirm)", () => {
     expect(res.body).toContain('action="/auth/device/approve"');
     expect(res.body).toContain('name="_csrf"');
     expect(res.body).toContain('name="user_code"');
-    expect(res.body).toContain("value=\"GOOD-1234\"");
+    expect(res.body).toContain('value="GOOD-1234"');
     expect(res.body).toContain("203.0.113.5");
     expect(res.body).toContain("Mozilla/5.0");
     expect(res.body).toContain("US");
@@ -391,7 +375,7 @@ describe("handleDeviceConfirmPage (GET /auth/device/confirm)", () => {
       expires_at: clock.now() + 600,
       requester_ip: "<script>alert(1)</script>",
       requester_user_agent: "<img src=x onerror=alert(2)>",
-      requester_country: "\"><b>boom</b>",
+      requester_country: '"><b>boom</b>',
     });
     const res = mockResponse();
     await handleDeviceConfirmPage(
@@ -402,7 +386,7 @@ describe("handleDeviceConfirmPage (GET /auth/device/confirm)", () => {
     expect(res.statusCode).toBe(200);
     expect(res.body).not.toContain("<script>alert(1)</script>");
     expect(res.body).not.toContain("<img src=x onerror=alert(2)>");
-    expect(res.body).not.toContain("\"><b>boom</b>");
+    expect(res.body).not.toContain('"><b>boom</b>');
     expect(res.body).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
     expect(res.body).toContain("&lt;img src=x onerror=alert(2)&gt;");
   });
@@ -447,33 +431,21 @@ describe("handleDeviceConfirmPage (GET /auth/device/confirm)", () => {
 describe("handleSuccessPage (GET /auth/success)", () => {
   it("returns 200 + HTML body", async () => {
     const res = mockResponse();
-    await handleSuccessPage(
-      mockReq("/auth/success"),
-      res as unknown as ServerResponse,
-      ctx,
-    );
+    await handleSuccessPage(mockReq("/auth/success"), res as unknown as ServerResponse, ctx);
     expect(res.statusCode).toBe(200);
     expect(res.headers["Content-Type"]).toBe("text/html; charset=utf-8");
   });
 
   it("body contains 'You're signed in' confirmation text", async () => {
     const res = mockResponse();
-    await handleSuccessPage(
-      mockReq("/auth/success"),
-      res as unknown as ServerResponse,
-      ctx,
-    );
+    await handleSuccessPage(mockReq("/auth/success"), res as unknown as ServerResponse, ctx);
     // Literal text in the template — no escapeHtml applied. Plain apostrophe.
     expect(res.body).toContain("You're signed in");
   });
 
   it("emits CSP + X-Frame-Options + Cache-Control headers via sendHtml", async () => {
     const res = mockResponse();
-    await handleSuccessPage(
-      mockReq("/auth/success"),
-      res as unknown as ServerResponse,
-      ctx,
-    );
+    await handleSuccessPage(mockReq("/auth/success"), res as unknown as ServerResponse, ctx);
     expect(res.headers["Content-Security-Policy"]).toContain("default-src 'none'");
     expect(res.headers["X-Frame-Options"]).toBe("DENY");
     expect(res.headers["Cache-Control"]).toBe("no-store");

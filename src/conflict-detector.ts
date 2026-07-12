@@ -31,13 +31,21 @@ export class ConflictDetector {
     for (const thread of activeThreads) {
       if (thread.initiator_id === params.agent_id) continue;
 
-      const threadModules: string[] = safeJsonParse<string[]>(thread.target_modules, [], this.log, "conflict-detector.detect:target_modules");
-      const threadFiles: string[] = safeJsonParse<string[]>(thread.target_files, [], this.log, "conflict-detector.detect:target_files");
+      const threadModules: string[] = safeJsonParse<string[]>(
+        thread.target_modules,
+        [],
+        this.log,
+        "conflict-detector.detect:target_modules",
+      );
+      const threadFiles: string[] = safeJsonParse<string[]>(
+        thread.target_files,
+        [],
+        this.log,
+        "conflict-detector.detect:target_files",
+      );
 
       // 1. Module overlap
-      const moduleOverlap = params.target_modules.filter((m) =>
-        threadModules.includes(m)
-      );
+      const moduleOverlap = params.target_modules.filter((m) => threadModules.includes(m));
       if (moduleOverlap.length > 0) {
         conflicts.push({
           type: "module_overlap",
@@ -50,9 +58,7 @@ export class ConflictDetector {
       }
 
       // 2. File overlap
-      const fileOverlap = params.target_files.filter((f) =>
-        threadFiles.includes(f)
-      );
+      const fileOverlap = params.target_files.filter((f) => threadFiles.includes(f));
       if (fileOverlap.length > 0) {
         conflicts.push({
           type: "file_overlap",
@@ -82,11 +88,14 @@ export class ConflictDetector {
         }
         // Reverse: someone depends on what we're modifying
         const radius = this.depMap.getBlastRadius(params.org_id, targetModule);
-        this.log.debug({
-          module_id: targetModule,
-          direct_dependents: radius.direct_dependents,
-          indirect_dependents: radius.indirect_dependents,
-        }, "Blast radius calculated");
+        this.log.debug(
+          {
+            module_id: targetModule,
+            direct_dependents: radius.direct_dependents,
+            indirect_dependents: radius.indirect_dependents,
+          },
+          "Blast radius calculated",
+        );
         for (const dependent of [...radius.direct_dependents, ...radius.indirect_dependents]) {
           if (threadModules.includes(dependent)) {
             conflicts.push({
@@ -104,11 +113,16 @@ export class ConflictDetector {
 
     // 4. Hot file overlap (from actual file activity, not just declared files)
     for (const targetFile of params.target_files) {
-      const activity = this.fileTracker.checkFileConflict(params.org_id, targetFile, params.agent_id, 60);
+      const activity = this.fileTracker.checkFileConflict(
+        params.org_id,
+        targetFile,
+        params.agent_id,
+        60,
+      );
       if (activity.conflict) {
         for (const otherAgent of activity.agents) {
           // Avoid duplicating with file_overlap already detected
-          if (!conflicts.some(c => c.agent_id === otherAgent && c.type === "file_overlap")) {
+          if (!conflicts.some((c) => c.agent_id === otherAgent && c.type === "file_overlap")) {
             conflicts.push({
               type: "file_overlap",
               severity: "warning",
@@ -123,12 +137,15 @@ export class ConflictDetector {
     }
 
     if (conflicts.length > 0) {
-      this.log.warn({
-        agent_id: params.agent_id,
-        conflict_count: conflicts.length,
-        types: [...new Set(conflicts.map(c => c.type))],
-        modules: params.target_modules,
-      }, "Conflicts detected");
+      this.log.warn(
+        {
+          agent_id: params.agent_id,
+          conflict_count: conflicts.length,
+          types: [...new Set(conflicts.map((c) => c.type))],
+          modules: params.target_modules,
+        },
+        "Conflicts detected",
+      );
     }
 
     return conflicts;

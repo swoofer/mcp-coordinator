@@ -17,9 +17,7 @@ import type { DatabaseAdapter } from "../../src/db-adapter.js";
  * ID sets) yields the same row set.
  */
 export function seedTestOrgs(db: DatabaseAdapter, orgIds: readonly string[]): void {
-  const stmt = db.prepare(
-    "INSERT OR IGNORE INTO orgs (id, name) VALUES (?, ?)",
-  );
+  const stmt = db.prepare("INSERT OR IGNORE INTO orgs (id, name) VALUES (?, ?)");
   for (const id of orgIds) {
     stmt.run(id, id);
   }

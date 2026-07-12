@@ -121,7 +121,9 @@ export function createServerRestoreCommand(): Command {
       console.log("Restore complete.");
       console.log(`  Source:    ${tarPath}`);
       console.log(`  ConfigDir: ${configDir}`);
-      console.log(`  Restored:  ${entries.filter((e) => e === "config.json" || e === "data").join(", ")}`);
+      console.log(
+        `  Restored:  ${entries.filter((e) => e === "config.json" || e === "data").join(", ")}`,
+      );
       if (snapshotPath !== null) {
         console.log(`  Previous:  ${snapshotPath}  (delete once verified)`);
       }

@@ -42,10 +42,7 @@ describe("registerPlaintextReminder", () => {
   it("production + no key: logs error at startup + every 24h", () => {
     const logger = makeLogger();
     const env: NodeJS.ProcessEnv = { NODE_ENV: "production" };
-    const stop = registerPlaintextReminder(
-      { env, logger: logger as unknown as Logger },
-      null,
-    );
+    const stop = registerPlaintextReminder({ env, logger: logger as unknown as Logger }, null);
     try {
       // 1 immediate startup error.
       expect(logger.error).toHaveBeenCalledTimes(1);
@@ -69,10 +66,7 @@ describe("registerPlaintextReminder", () => {
   it("development (NODE_ENV unset) + no key: logs warn at startup + every 24h", () => {
     const logger = makeLogger();
     const env: NodeJS.ProcessEnv = {}; // NODE_ENV unset → warn branch
-    const stop = registerPlaintextReminder(
-      { env, logger: logger as unknown as Logger },
-      null,
-    );
+    const stop = registerPlaintextReminder({ env, logger: logger as unknown as Logger }, null);
     try {
       expect(logger.warn).toHaveBeenCalledTimes(1);
       expect(logger.error).toHaveBeenCalledTimes(0);
@@ -93,10 +87,7 @@ describe("registerPlaintextReminder", () => {
     const logger = makeLogger();
     const env: NodeJS.ProcessEnv = { NODE_ENV: "production" };
     const key = randomBytes(32);
-    const stop = registerPlaintextReminder(
-      { env, logger: logger as unknown as Logger },
-      key,
-    );
+    const stop = registerPlaintextReminder({ env, logger: logger as unknown as Logger }, key);
 
     // No startup log, no reminder scheduled.
     expect(logger.error).toHaveBeenCalledTimes(0);
@@ -114,10 +105,7 @@ describe("registerPlaintextReminder", () => {
   it("teardown stops further reminders", () => {
     const logger = makeLogger();
     const env: NodeJS.ProcessEnv = {};
-    const stop = registerPlaintextReminder(
-      { env, logger: logger as unknown as Logger },
-      null,
-    );
+    const stop = registerPlaintextReminder({ env, logger: logger as unknown as Logger }, null);
     expect(logger.warn).toHaveBeenCalledTimes(1); // startup
 
     // Tear down before any reminder fires.
@@ -132,10 +120,7 @@ describe("registerPlaintextReminder", () => {
   it("teardown is idempotent: calling twice does not throw", () => {
     const logger = makeLogger();
     const env: NodeJS.ProcessEnv = {};
-    const stop = registerPlaintextReminder(
-      { env, logger: logger as unknown as Logger },
-      null,
-    );
+    const stop = registerPlaintextReminder({ env, logger: logger as unknown as Logger }, null);
     expect(() => stop()).not.toThrow();
     expect(() => stop()).not.toThrow();
     expect(() => stop()).not.toThrow();
@@ -149,16 +134,10 @@ describe("registerPlaintextReminder", () => {
     const loggerA = makeLogger();
     const loggerB = makeLogger();
 
-    const stopA = registerPlaintextReminder(
-      { env, logger: loggerA as unknown as Logger },
-      null,
-    );
+    const stopA = registerPlaintextReminder({ env, logger: loggerA as unknown as Logger }, null);
     stopA();
 
-    const stopB = registerPlaintextReminder(
-      { env, logger: loggerB as unknown as Logger },
-      null,
-    );
+    const stopB = registerPlaintextReminder({ env, logger: loggerB as unknown as Logger }, null);
     stopB();
 
     // Two registrations → two setInterval calls and two clearInterval calls.

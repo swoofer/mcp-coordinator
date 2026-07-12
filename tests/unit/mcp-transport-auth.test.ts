@@ -41,9 +41,7 @@ afterAll(() => {
 });
 
 // Build a minimal IncomingMessage mock for MCP requests.
-function mockMcpRequest(
-  headers: Record<string, string> = {},
-): IncomingMessage {
+function mockMcpRequest(headers: Record<string, string> = {}): IncomingMessage {
   return { headers, url: "/mcp", method: "POST" } as unknown as IncomingMessage;
 }
 
@@ -53,10 +51,7 @@ describe("MCP new-session branch — no mcp-session-id header", () => {
   it("rejects POST /mcp with no Authorization header → 401", async () => {
     // authenticateMcpRequest calls authenticateRequest(req, { authEnabled: true })
     // when AUTH_ENABLED=true. Tested directly at the same callsite level.
-    const result = await authenticateRequest(
-      mockMcpRequest(),
-      { authEnabled: true },
-    );
+    const result = await authenticateRequest(mockMcpRequest(), { authEnabled: true });
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.status).toBe(401);
@@ -69,10 +64,9 @@ describe("MCP new-session branch — no mcp-session-id header", () => {
       user_id: "u-new",
       org: "default",
     });
-    const result = await authenticateRequest(
-      mockMcpRequest({ authorization: `Bearer ${token}` }),
-      { authEnabled: true },
-    );
+    const result = await authenticateRequest(mockMcpRequest({ authorization: `Bearer ${token}` }), {
+      authEnabled: true,
+    });
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.claims.sub).toBe("agent-new");
@@ -156,10 +150,7 @@ describe("MCP existing-session branch — with mcp-session-id header", () => {
 describe("MCP auth gate — AUTH_ENABLED=false (open-coordinator mode)", () => {
   it("no Authorization header → synthetic legacy claims (auth passes)", async () => {
     // authenticateMcpRequest returns synthetic claims when AUTH_ENABLED=false.
-    const result = await authenticateRequest(
-      mockMcpRequest(),
-      { authEnabled: false },
-    );
+    const result = await authenticateRequest(mockMcpRequest(), { authEnabled: false });
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.claims.user_id).toBe("legacy");

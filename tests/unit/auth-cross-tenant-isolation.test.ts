@@ -54,20 +54,40 @@ beforeEach(async () => {
   // Truncate per-test so each case starts with a clean slate.
   // Order matters for FK constraints: children before parents.
   for (const t of [
-    "introspections", "thread_messages", "threads", "action_summaries",
-    "working_files", "file_activity", "agent_activity_status",
-    "dependency_map", "events", "layer_firings", "audit_log",
+    "introspections",
+    "thread_messages",
+    "threads",
+    "action_summaries",
+    "working_files",
+    "file_activity",
+    "agent_activity_status",
+    "dependency_map",
+    "events",
+    "layer_firings",
+    "audit_log",
     "agents",
   ]) {
-    try { db.exec(`DELETE FROM ${t}`); } catch { /* table may not exist in this migration state */ }
+    try {
+      db.exec(`DELETE FROM ${t}`);
+    } catch {
+      /* table may not exist in this migration state */
+    }
   }
   // Ensure both orgs exist (orgs table persists across beforeEach wipes).
   db.prepare("INSERT OR IGNORE INTO orgs (id, name) VALUES ('org-a', 'Org A')").run();
   db.prepare("INSERT OR IGNORE INTO orgs (id, name) VALUES ('org-b', 'Org B')").run();
   // Pre-register the canonical agents so FK constraints are satisfied for
   // file_activity, agent_activity_status, threads, and introspections.
-  await postAs("/api/register", tokenA, { agent_id: "agent-a", name: "AgentA-default", modules: [] });
-  await postAs("/api/register", tokenB, { agent_id: "agent-b", name: "AgentB-default", modules: [] });
+  await postAs("/api/register", tokenA, {
+    agent_id: "agent-a",
+    name: "AgentA-default",
+    modules: [],
+  });
+  await postAs("/api/register", tokenB, {
+    agent_id: "agent-b",
+    name: "AgentB-default",
+    modules: [],
+  });
 });
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -79,13 +99,22 @@ interface RequestOptions {
   method?: "GET" | "POST";
 }
 
-async function callAs({ url, body, orgToken, method = "POST" }: RequestOptions): Promise<{ status: number; data: unknown }> {
+async function callAs({
+  url,
+  body,
+  orgToken,
+  method = "POST",
+}: RequestOptions): Promise<{ status: number; data: unknown }> {
   let statusCode = 200;
   const chunks: string[] = [];
   const res = {
     setHeader: () => {},
-    writeHead(s: number) { statusCode = s; },
-    end(buf?: string) { if (buf) chunks.push(buf); },
+    writeHead(s: number) {
+      statusCode = s;
+    },
+    end(buf?: string) {
+      if (buf) chunks.push(buf);
+    },
   } as unknown as ServerResponse;
 
   const req = new Readable({ read() {} }) as unknown as IncomingMessage;
@@ -114,7 +143,13 @@ async function callAs({ url, body, orgToken, method = "POST" }: RequestOptions):
       debug: () => {},
       warn: () => {},
       error: () => {},
-      child: () => ({ info: () => {}, debug: () => {}, warn: () => {}, error: () => {}, child: () => ({} as never) }),
+      child: () => ({
+        info: () => {},
+        debug: () => {},
+        warn: () => {},
+        error: () => {},
+        child: () => ({}) as never,
+      }),
     } as never,
     authEnabled: true,
     claims: authResult.claims,
@@ -150,11 +185,10 @@ function getAs(url: string, orgToken: string) {
 // ─── tests ────────────────────────────────────────────────────────────────────
 
 describe("cross-tenant isolation defense-in-depth", () => {
-
   // ── /api/register + /api/status ──────────────────────────────────────────
   it("/api/register + /api/status: org A cannot see org B's agents", async () => {
     await postAs("/api/register", tokenA, { agent_id: "agent-a", name: "AgentAlpha", modules: [] });
-    await postAs("/api/register", tokenB, { agent_id: "agent-b", name: "AgentBeta",  modules: [] });
+    await postAs("/api/register", tokenB, { agent_id: "agent-b", name: "AgentBeta", modules: [] });
 
     const statusA = await postAs("/api/status", tokenA, {});
     expect(statusA.status).toBe(200);
@@ -169,7 +203,7 @@ describe("cross-tenant isolation defense-in-depth", () => {
   // ── /api/session-start ───────────────────────────────────────────────────
   it("/api/session-start: briefing scoped to org", async () => {
     await postAs("/api/register", tokenA, { agent_id: "agent-a", name: "AgentAlpha", modules: [] });
-    await postAs("/api/register", tokenB, { agent_id: "agent-b", name: "AgentBeta",  modules: [] });
+    await postAs("/api/register", tokenB, { agent_id: "agent-b", name: "AgentBeta", modules: [] });
 
     const briefingB = await postAs("/api/session-start", tokenB, {});
     expect(briefingB.status).toBe(200);
@@ -184,14 +218,23 @@ describe("cross-tenant isolation defense-in-depth", () => {
     // Also register a second org-a agent for this purpose.
     await postAs("/api/register", tokenA, { agent_id: "agent-a2", name: "AgentA2", modules: [] });
     await postAs("/api/log-file", tokenA, {
-      session_id: "s-a1", agent_id: "agent-a", tool_name: "Edit", file: "x.ts",
+      session_id: "s-a1",
+      agent_id: "agent-a",
+      tool_name: "Edit",
+      file: "x.ts",
     });
     await postAs("/api/log-file", tokenA, {
-      session_id: "s-a2", agent_id: "agent-a2", tool_name: "Edit", file: "x.ts",
+      session_id: "s-a2",
+      agent_id: "agent-a2",
+      tool_name: "Edit",
+      file: "x.ts",
     });
     // org-b also edits the same file — must NOT appear in org-a's hot-files
     await postAs("/api/log-file", tokenB, {
-      session_id: "s-b", agent_id: "agent-b", tool_name: "Edit", file: "x.ts",
+      session_id: "s-b",
+      agent_id: "agent-b",
+      tool_name: "Edit",
+      file: "x.ts",
     });
 
     const hotA = await postAs("/api/hot-files", tokenA, {});
@@ -205,14 +248,23 @@ describe("cross-tenant isolation defense-in-depth", () => {
   // ── /api/check-conflict ──────────────────────────────────────────────────
   it("/api/check-conflict: doesn't surface other-org agents", async () => {
     await postAs("/api/log-file", tokenA, {
-      session_id: "s", agent_id: "agent-a", tool_name: "Edit", file: "shared.ts",
+      session_id: "s",
+      agent_id: "agent-a",
+      tool_name: "Edit",
+      file: "shared.ts",
     });
     await postAs("/api/log-file", tokenB, {
-      session_id: "s", agent_id: "agent-b", tool_name: "Edit", file: "shared.ts",
+      session_id: "s",
+      agent_id: "agent-b",
+      tool_name: "Edit",
+      file: "shared.ts",
     });
 
     // org-a checks for conflict on shared.ts — should only see org-a agents
-    const result = await postAs("/api/check-conflict", tokenA, { file: "shared.ts", agent_id: "agent-a-other" });
+    const result = await postAs("/api/check-conflict", tokenA, {
+      file: "shared.ts",
+      agent_id: "agent-a-other",
+    });
     expect(result.status).toBe(200);
     expect(JSON.stringify(result.data)).not.toContain("agent-b");
   });
@@ -286,11 +338,21 @@ describe("cross-tenant isolation defense-in-depth", () => {
 
   // ── /api/working-files/start ─────────────────────────────────────────────
   it("/api/working-files/start: claims scoped to org (DB-level check)", async () => {
-    await postAs("/api/working-files/start", tokenA, { agent_id: "agent-a", file_path: "shared.ts" });
-    await postAs("/api/working-files/start", tokenB, { agent_id: "agent-b", file_path: "shared.ts" });
+    await postAs("/api/working-files/start", tokenA, {
+      agent_id: "agent-a",
+      file_path: "shared.ts",
+    });
+    await postAs("/api/working-files/start", tokenB, {
+      agent_id: "agent-b",
+      file_path: "shared.ts",
+    });
 
-    const rowsA = getDb().prepare("SELECT * FROM working_files WHERE org_id = 'org-a'").all() as { agent_id: string }[];
-    const rowsB = getDb().prepare("SELECT * FROM working_files WHERE org_id = 'org-b'").all() as { agent_id: string }[];
+    const rowsA = getDb().prepare("SELECT * FROM working_files WHERE org_id = 'org-a'").all() as {
+      agent_id: string;
+    }[];
+    const rowsB = getDb().prepare("SELECT * FROM working_files WHERE org_id = 'org-b'").all() as {
+      agent_id: string;
+    }[];
 
     expect(rowsA.map((r) => r.agent_id)).toContain("agent-a");
     expect(rowsA.map((r) => r.agent_id)).not.toContain("agent-b");
@@ -357,22 +419,32 @@ describe("cross-tenant isolation defense-in-depth", () => {
   it("/api/pending-introspections: doesn't return other-org introspections", async () => {
     // Announce threads first to satisfy introspections FK (thread_id REFERENCES threads(id)).
     const annA = await postAs("/api/announce", tokenA, {
-      agent_id: "agent-a", subject: "thread for introspection A",
-      plan: "p", target_modules: [], target_files: [],
+      agent_id: "agent-a",
+      subject: "thread for introspection A",
+      plan: "p",
+      target_modules: [],
+      target_files: [],
     });
     const annB = await postAs("/api/announce", tokenB, {
-      agent_id: "agent-b", subject: "thread for introspection B",
-      plan: "p", target_modules: [], target_files: [],
+      agent_id: "agent-b",
+      subject: "thread for introspection B",
+      plan: "p",
+      target_modules: [],
+      target_files: [],
     });
     const tidA = (annA.data as { thread_id: string }).thread_id;
     const tidB = (annB.data as { thread_id: string }).thread_id;
     // Insert introspections directly: public API only creates them via announce workflow
-    getDb().prepare(
-      "INSERT INTO introspections (id, org_id, thread_id, agent_id, score, status) VALUES ('i1', 'org-a', ?, 'agent-a', 5, 'pending')"
-    ).run(tidA);
-    getDb().prepare(
-      "INSERT INTO introspections (id, org_id, thread_id, agent_id, score, status) VALUES ('i2', 'org-b', ?, 'agent-b', 5, 'pending')"
-    ).run(tidB);
+    getDb()
+      .prepare(
+        "INSERT INTO introspections (id, org_id, thread_id, agent_id, score, status) VALUES ('i1', 'org-a', ?, 'agent-a', 5, 'pending')",
+      )
+      .run(tidA);
+    getDb()
+      .prepare(
+        "INSERT INTO introspections (id, org_id, thread_id, agent_id, score, status) VALUES ('i2', 'org-b', ?, 'agent-b', 5, 'pending')",
+      )
+      .run(tidB);
 
     // Handler reads agent_id from URL query string (not request body)
     const listA = await getAs("/api/pending-introspections?agent_id=agent-a", tokenA);
@@ -402,7 +474,10 @@ describe("cross-tenant isolation defense-in-depth", () => {
     await postAs("/api/register", tokenB, { agent_id: "agent-b", name: "B1", modules: [] });
 
     // Craft a token with org="" — should not accidentally match any scoped rows
-    const evilToken = await createToken("attacker", "agent", undefined, { user_id: "evil", org: "" });
+    const evilToken = await createToken("attacker", "agent", undefined, {
+      user_id: "evil",
+      org: "",
+    });
     const result = await postAs("/api/status", evilToken, {});
     // No exception, no agents leaked
     const data = JSON.stringify(result.data);

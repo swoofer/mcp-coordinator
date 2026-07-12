@@ -74,7 +74,12 @@ describe("ghost-endpoint routing (architecture-01, protocole-mcp-03)", () => {
     it("GET /healthz returns 200 with the same alive body shape as /livez", async () => {
       const port = await getFreePort();
       dataDir = mkdtempSync(path.join(tmpdir(), "ghost-endpoints-"));
-      handle = await startServer({ port, dataDir, mqttTcpPort: await getFreePort(), mqttWsPath: "/mqtt" });
+      handle = await startServer({
+        port,
+        dataDir,
+        mqttTcpPort: await getFreePort(),
+        mqttWsPath: "/mqtt",
+      });
 
       const [healthzRes, livezRes] = await Promise.all([
         fetch(`http://127.0.0.1:${port}/healthz`),
@@ -93,7 +98,12 @@ describe("ghost-endpoint routing (architecture-01, protocole-mcp-03)", () => {
     it("GET /health/ready returns 200 with checks.db/audit_queue/sweeper/draining (Phase 2 readiness shape)", async () => {
       const port = await getFreePort();
       dataDir = mkdtempSync(path.join(tmpdir(), "ghost-endpoints-"));
-      handle = await startServer({ port, dataDir, mqttTcpPort: await getFreePort(), mqttWsPath: "/mqtt" });
+      handle = await startServer({
+        port,
+        dataDir,
+        mqttTcpPort: await getFreePort(),
+        mqttWsPath: "/mqtt",
+      });
 
       const res = await fetch(`http://127.0.0.1:${port}/health/ready`);
       expect(res.status).toBe(200);
@@ -130,7 +140,12 @@ describe("ghost-endpoint routing (architecture-01, protocole-mcp-03)", () => {
       process.env.COORDINATOR_GITHUB_ORG = "acme-ghost-endpoints";
 
       dataDir = mkdtempSync(path.join(tmpdir(), "ghost-endpoints-"));
-      handle = await startServer({ port, dataDir, mqttTcpPort: await getFreePort(), mqttWsPath: "/mqtt" });
+      handle = await startServer({
+        port,
+        dataDir,
+        mqttTcpPort: await getFreePort(),
+        mqttWsPath: "/mqtt",
+      });
 
       const res = await fetch(`http://127.0.0.1:${port}/.well-known/oauth-authorization-server`);
       expect(res.status).toBe(200);
@@ -147,7 +162,12 @@ describe("ghost-endpoint routing (architecture-01, protocole-mcp-03)", () => {
       const port = await getFreePort();
       dataDir = mkdtempSync(path.join(tmpdir(), "ghost-endpoints-"));
       // COORDINATOR_OAUTH_ENABLED intentionally left unset.
-      handle = await startServer({ port, dataDir, mqttTcpPort: await getFreePort(), mqttWsPath: "/mqtt" });
+      handle = await startServer({
+        port,
+        dataDir,
+        mqttTcpPort: await getFreePort(),
+        mqttWsPath: "/mqtt",
+      });
 
       const res = await fetch(`http://127.0.0.1:${port}/.well-known/oauth-authorization-server`);
       expect(res.status).toBe(404);
@@ -181,7 +201,12 @@ describe("ghost-endpoint routing (architecture-01, protocole-mcp-03)", () => {
       const port = await getFreePort();
       setPhase2Env(port);
       dataDir = mkdtempSync(path.join(tmpdir(), "ghost-endpoints-"));
-      handle = await startServer({ port, dataDir, mqttTcpPort: await getFreePort(), mqttWsPath: "/mqtt" });
+      handle = await startServer({
+        port,
+        dataDir,
+        mqttTcpPort: await getFreePort(),
+        mqttWsPath: "/mqtt",
+      });
 
       const res = await fetch(`http://127.0.0.1:${port}/metrics/auth`);
       expect(res.status).toBe(200);
@@ -197,7 +222,12 @@ describe("ghost-endpoint routing (architecture-01, protocole-mcp-03)", () => {
       setPhase2Env(port);
       process.env.COORDINATOR_METRICS_BEARER = "test-metrics-bearer-token";
       dataDir = mkdtempSync(path.join(tmpdir(), "ghost-endpoints-"));
-      handle = await startServer({ port, dataDir, mqttTcpPort: await getFreePort(), mqttWsPath: "/mqtt" });
+      handle = await startServer({
+        port,
+        dataDir,
+        mqttTcpPort: await getFreePort(),
+        mqttWsPath: "/mqtt",
+      });
 
       const res = await fetch(`http://127.0.0.1:${port}/metrics/auth`, {
         headers: { Authorization: "Bearer test-metrics-bearer-token" },
@@ -217,7 +247,12 @@ describe("ghost-endpoint routing (architecture-01, protocole-mcp-03)", () => {
       const port = await getFreePort();
       setPhase2Env(port);
       dataDir = mkdtempSync(path.join(tmpdir(), "ghost-endpoints-"));
-      handle = await startServer({ port, dataDir, mqttTcpPort: await getFreePort(), mqttWsPath: "/mqtt" });
+      handle = await startServer({
+        port,
+        dataDir,
+        mqttTcpPort: await getFreePort(),
+        mqttWsPath: "/mqtt",
+      });
 
       let statusCode = 0;
       let body = "";
@@ -248,7 +283,12 @@ describe("ghost-endpoint routing (architecture-01, protocole-mcp-03)", () => {
       const port = await getFreePort();
       dataDir = mkdtempSync(path.join(tmpdir(), "ghost-endpoints-"));
       // COORDINATOR_OAUTH_ENABLED intentionally left unset.
-      handle = await startServer({ port, dataDir, mqttTcpPort: await getFreePort(), mqttWsPath: "/mqtt" });
+      handle = await startServer({
+        port,
+        dataDir,
+        mqttTcpPort: await getFreePort(),
+        mqttWsPath: "/mqtt",
+      });
 
       const res = await fetch(`http://127.0.0.1:${port}/metrics/auth`);
       expect(res.status).toBe(404);

@@ -191,12 +191,8 @@ describe("bootPhase2 — architecture-10: Bun runtime + OAuth fail-fast", () => 
     applyValidEnv();
     (globalThis as Record<string, unknown>).Bun = { version: "1.9.9" };
     try {
-      expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
-        BootValidationError,
-      );
-      expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
-        /Bun runtime/,
-      );
+      expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(BootValidationError);
+      expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(/Bun runtime/);
     } finally {
       delete (globalThis as Record<string, unknown>).Bun;
     }
@@ -206,9 +202,7 @@ describe("bootPhase2 — architecture-10: Bun runtime + OAuth fail-fast", () => 
     applyValidEnv();
     (globalThis as Record<string, unknown>).Bun = { version: "1.9.9" };
     try {
-      expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
-        BootValidationError,
-      );
+      expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(BootValidationError);
       const rows = db.prepare("SELECT COUNT(*) AS n FROM orgs").get() as {
         n: number;
       };
@@ -241,9 +235,7 @@ describe("bootPhase2 — required env validation", () => {
   it("throws BootValidationError when COORDINATOR_JWT_SECRET is missing", () => {
     applyValidEnv();
     delete process.env.COORDINATOR_JWT_SECRET;
-    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
-      BootValidationError,
-    );
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(BootValidationError);
     expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
       /COORDINATOR_JWT_SECRET is required/,
     );
@@ -284,9 +276,7 @@ describe("bootPhase2 — required env validation", () => {
   it("throws when a required env var is whitespace-only (treated as missing)", () => {
     applyValidEnv();
     process.env.COORDINATOR_GITHUB_ORG = "   ";
-    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
-      BootValidationError,
-    );
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(BootValidationError);
   });
 });
 
@@ -294,9 +284,7 @@ describe("bootPhase2 — PUBLIC_URL validation", () => {
   it("throws when PUBLIC_URL is not a valid URL", () => {
     applyValidEnv();
     process.env.COORDINATOR_PUBLIC_URL = "not-a-url";
-    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
-      /is not a valid URL/,
-    );
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(/is not a valid URL/);
   });
 
   it("throws when PUBLIC_URL uses an unsupported scheme (ftp://)", () => {
@@ -353,17 +341,13 @@ describe("bootPhase2 — JWT secret entropy", () => {
   it("rejects a dictionary-word secret (e.g. 'changeme')", () => {
     applyValidEnv();
     process.env.COORDINATOR_JWT_SECRET = "changeme";
-    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
-      /secret entropy/,
-    );
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(/secret entropy/);
   });
 
   it("rejects an all-same-byte secret", () => {
     applyValidEnv();
     process.env.COORDINATOR_JWT_SECRET = "a".repeat(64);
-    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
-      /secret entropy/,
-    );
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(/secret entropy/);
   });
 
   it("accepts a valid high-entropy secret", () => {
@@ -384,9 +368,9 @@ describe("bootPhase2 — bootstrap orgs row (B-NEW-4)", () => {
     expect(before.n).toBe(0);
     const result = bootPhase2({ enabled: true, db, clock });
     expect(result).not.toBeNull();
-    const rows = db
-      .prepare("SELECT allowlist_github_org FROM orgs")
-      .all() as Array<{ allowlist_github_org: string }>;
+    const rows = db.prepare("SELECT allowlist_github_org FROM orgs").all() as Array<{
+      allowlist_github_org: string;
+    }>;
     expect(rows).toHaveLength(1);
     expect(rows[0].allowlist_github_org).toBe("acme");
     void result!.shutdown();
@@ -394,9 +378,11 @@ describe("bootPhase2 — bootstrap orgs row (B-NEW-4)", () => {
 
   it("does NOT duplicate-INSERT when an orgs row already matches (case-insensitive)", () => {
     applyValidEnv();
-    db.prepare(
-      "INSERT INTO orgs (id, name, allowlist_github_org) VALUES (?, ?, ?)",
-    ).run("org-existing", "ACME Corp", "ACME");
+    db.prepare("INSERT INTO orgs (id, name, allowlist_github_org) VALUES (?, ?, ?)").run(
+      "org-existing",
+      "ACME Corp",
+      "ACME",
+    );
     const result = bootPhase2({ enabled: true, db, clock });
     expect(result).not.toBeNull();
     const rows = db.prepare("SELECT COUNT(*) AS n FROM orgs").get() as {
@@ -433,9 +419,7 @@ describe("bootPhase2 — NR12 restore detection", () => {
     const result = bootPhase2({ enabled: true, db, clock });
     expect(result).not.toBeNull();
     const recoveryRows = db
-      .prepare(
-        "SELECT COUNT(*) AS n FROM audit_log WHERE action LIKE 'recovery.%'",
-      )
+      .prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action LIKE 'recovery.%'")
       .get() as { n: number };
     expect(recoveryRows.n).toBe(0);
     void result!.shutdown();
@@ -448,9 +432,7 @@ describe("bootPhase2 — NR12 restore detection", () => {
       `INSERT INTO audit_log (action, created_at)
        VALUES (?, datetime(?, 'unixepoch'))`,
     ).run("seed.stale", stale);
-    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
-      /Restore suspected/,
-    );
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(/Restore suspected/);
   });
 
   it("audit_log > 5min stale + ALLOW_RESTORE=true: bumps token_epoch + emits recovery audits", () => {
@@ -460,9 +442,11 @@ describe("bootPhase2 — NR12 restore detection", () => {
     // users table has NOT NULL columns we satisfy by listing them explicitly.
     // We pre-create the required parent org row to satisfy the FK on
     // primary_org_id (B-NEW-4 bootstrap runs later in boot, so we'd race it).
-    db.prepare(
-      "INSERT OR IGNORE INTO orgs (id, name, allowlist_github_org) VALUES (?, ?, ?)",
-    ).run("org-seed", "seed", "acme");
+    db.prepare("INSERT OR IGNORE INTO orgs (id, name, allowlist_github_org) VALUES (?, ?, ?)").run(
+      "org-seed",
+      "seed",
+      "acme",
+    );
     db.prepare(
       `INSERT INTO users (
          id, primary_org_id, email, idp_provider, idp_user_id, role, token_epoch
@@ -478,22 +462,18 @@ describe("bootPhase2 — NR12 restore detection", () => {
     expect(result).not.toBeNull();
 
     // token_epoch should have been bumped (> 0 after bump).
-    const userRow = db
-      .prepare("SELECT token_epoch FROM users WHERE id = ?")
-      .get("u-1") as { token_epoch: number };
+    const userRow = db.prepare("SELECT token_epoch FROM users WHERE id = ?").get("u-1") as {
+      token_epoch: number;
+    };
     expect(userRow.token_epoch).toBeGreaterThan(0);
 
     // Recovery audits should be present.
     const tepoch = db
-      .prepare(
-        "SELECT COUNT(*) AS n FROM audit_log WHERE action = ?",
-      )
+      .prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action = ?")
       .get("recovery.token_epoch_global_bump") as { n: number };
     expect(tepoch.n).toBe(1);
     const completed = db
-      .prepare(
-        "SELECT COUNT(*) AS n FROM audit_log WHERE action = ?",
-      )
+      .prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action = ?")
       .get("recovery.completed") as { n: number };
     expect(completed.n).toBe(1);
 
@@ -557,9 +537,7 @@ describe("bootPhase2 — success path", () => {
     const result = bootPhase2({ enabled: true, db, clock });
     expect(result).not.toBeNull();
     const row = db
-      .prepare(
-        "SELECT metadata_json FROM audit_log WHERE action = ?",
-      )
+      .prepare("SELECT metadata_json FROM audit_log WHERE action = ?")
       .get("config.boot") as { metadata_json: string };
     expect(row).toBeDefined();
     const meta = JSON.parse(row.metadata_json);
@@ -611,9 +589,7 @@ describe("bootPhase2 — JWT prev-secret rotation overlap (v0.8.1)", () => {
     expect(result).not.toBeNull();
 
     const row = db
-      .prepare(
-        "SELECT COUNT(*) AS n FROM audit_log WHERE action = ?",
-      )
+      .prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action = ?")
       .get("config.key_rotation") as { n: number };
     expect(row.n).toBe(0);
 
@@ -633,8 +609,7 @@ describe("bootPhase2 — JWT prev-secret rotation overlap (v0.8.1)", () => {
     // The registry now resolves hs256-v0 to the prev key bytes.
     const v0 = result!.context.signingKeys.getKey("hs256-v0");
     expect(v0).toBeInstanceOf(Uint8Array);
-    expect(Buffer.from(v0!).equals(Buffer.from(STRONG_SECRET_PREV, "utf8")))
-      .toBe(true);
+    expect(Buffer.from(v0!).equals(Buffer.from(STRONG_SECRET_PREV, "utf8"))).toBe(true);
     // Current kid still signs new tokens with the current secret.
     expect(result!.context.signingKeys.current.kid).toBe("hs256-v1");
     expect(
@@ -645,9 +620,7 @@ describe("bootPhase2 — JWT prev-secret rotation overlap (v0.8.1)", () => {
 
     // Tier 1 audit row emitted with both kids + rotated_at="unset".
     const audit = db
-      .prepare(
-        "SELECT metadata_json FROM audit_log WHERE action = ?",
-      )
+      .prepare("SELECT metadata_json FROM audit_log WHERE action = ?")
       .get("config.key_rotation") as { metadata_json: string } | undefined;
     expect(audit).toBeDefined();
     const meta = JSON.parse(audit!.metadata_json);
@@ -663,24 +636,19 @@ describe("bootPhase2 — JWT prev-secret rotation overlap (v0.8.1)", () => {
     process.env.COORDINATOR_JWT_SECRET_PREV = "changeme";
     // assertSecretEntropy throws a generic Error (not BootValidationError);
     // either way boot must fail before composing the registry.
-    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
-      /secret entropy/,
-    );
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(/secret entropy/);
   });
 
   it("COORDINATOR_JWT_SECRET_PREV_ROTATED_AT (ISO timestamp): surfaces in audit metadata", () => {
     applyValidEnv();
     process.env.COORDINATOR_JWT_SECRET_PREV = STRONG_SECRET_PREV;
-    process.env.COORDINATOR_JWT_SECRET_PREV_ROTATED_AT =
-      "2026-05-15T00:00:00Z";
+    process.env.COORDINATOR_JWT_SECRET_PREV_ROTATED_AT = "2026-05-15T00:00:00Z";
 
     const result = bootPhase2({ enabled: true, db, clock });
     expect(result).not.toBeNull();
 
     const audit = db
-      .prepare(
-        "SELECT metadata_json FROM audit_log WHERE action = ?",
-      )
+      .prepare("SELECT metadata_json FROM audit_log WHERE action = ?")
       .get("config.key_rotation") as { metadata_json: string };
     const meta = JSON.parse(audit.metadata_json);
     expect(meta.rotated_at).toBe("2026-05-15T00:00:00Z");
@@ -699,9 +667,7 @@ describe("bootPhase2 — JWT prev-secret rotation overlap (v0.8.1)", () => {
 
     expect(result!.context.signingKeys.getKey("hs256-v0")).toBeUndefined();
     const row = db
-      .prepare(
-        "SELECT COUNT(*) AS n FROM audit_log WHERE action = ?",
-      )
+      .prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action = ?")
       .get("config.key_rotation") as { n: number };
     expect(row.n).toBe(0);
 
@@ -723,12 +689,10 @@ describe("bootPhase2 — GHES base URL wiring (v0.8.1-P2)", () => {
     const result = bootPhase2({ enabled: true, db, clock });
     expect(result).not.toBeNull();
 
-    const authUrl = await result!.context.providers.get("github")!.buildAuthUrl(
-      "state-x",
-      "https://coordinator.example.com/cb",
-    );
-    expect(authUrl.startsWith("https://github.com/login/oauth/authorize"))
-      .toBe(true);
+    const authUrl = await result!.context.providers
+      .get("github")!
+      .buildAuthUrl("state-x", "https://coordinator.example.com/cb");
+    expect(authUrl.startsWith("https://github.com/login/oauth/authorize")).toBe(true);
 
     void result!.shutdown();
   });
@@ -736,19 +700,15 @@ describe("bootPhase2 — GHES base URL wiring (v0.8.1-P2)", () => {
   it("both env vars set: GitHubProvider uses the GHES overrides", async () => {
     applyValidEnv();
     process.env.COORDINATOR_GITHUB_AUTH_BASE_URL = "https://github.example.com";
-    process.env.COORDINATOR_GITHUB_API_BASE_URL =
-      "https://github.example.com/api/v3";
+    process.env.COORDINATOR_GITHUB_API_BASE_URL = "https://github.example.com/api/v3";
 
     const result = bootPhase2({ enabled: true, db, clock });
     expect(result).not.toBeNull();
 
-    const authUrl = await result!.context.providers.get("github")!.buildAuthUrl(
-      "state-x",
-      "https://coordinator.example.com/cb",
-    );
-    expect(
-      authUrl.startsWith("https://github.example.com/login/oauth/authorize"),
-    ).toBe(true);
+    const authUrl = await result!.context.providers
+      .get("github")!
+      .buildAuthUrl("state-x", "https://coordinator.example.com/cb");
+    expect(authUrl.startsWith("https://github.example.com/login/oauth/authorize")).toBe(true);
 
     void result!.shutdown();
   });
@@ -761,13 +721,10 @@ describe("bootPhase2 — GHES base URL wiring (v0.8.1-P2)", () => {
     const result = bootPhase2({ enabled: true, db, clock });
     expect(result).not.toBeNull();
 
-    const authUrl = await result!.context.providers.get("github")!.buildAuthUrl(
-      "state-x",
-      "https://coordinator.example.com/cb",
-    );
-    expect(
-      authUrl.startsWith("https://github.example.com/login/oauth/authorize"),
-    ).toBe(true);
+    const authUrl = await result!.context.providers
+      .get("github")!
+      .buildAuthUrl("state-x", "https://coordinator.example.com/cb");
+    expect(authUrl.startsWith("https://github.example.com/login/oauth/authorize")).toBe(true);
     // api base default is exercised indirectly: provider construction
     // succeeded with only the auth override, proving the conditional spread
     // didn't accidentally pass undefined as apiBaseUrl.
@@ -783,12 +740,10 @@ describe("bootPhase2 — GHES base URL wiring (v0.8.1-P2)", () => {
     const result = bootPhase2({ enabled: true, db, clock });
     expect(result).not.toBeNull();
 
-    const authUrl = await result!.context.providers.get("github")!.buildAuthUrl(
-      "state-x",
-      "https://coordinator.example.com/cb",
-    );
-    expect(authUrl.startsWith("https://github.com/login/oauth/authorize"))
-      .toBe(true);
+    const authUrl = await result!.context.providers
+      .get("github")!
+      .buildAuthUrl("state-x", "https://coordinator.example.com/cb");
+    expect(authUrl.startsWith("https://github.com/login/oauth/authorize")).toBe(true);
 
     void result!.shutdown();
   });
@@ -797,9 +752,7 @@ describe("bootPhase2 — GHES base URL wiring (v0.8.1-P2)", () => {
     applyValidEnv();
     process.env.COORDINATOR_GITHUB_AUTH_BASE_URL = "not-a-url";
 
-    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
-      BootValidationError,
-    );
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(BootValidationError);
     expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
       /COORDINATOR_GITHUB_AUTH_BASE_URL is not a valid URL/,
     );
@@ -846,12 +799,8 @@ describe("bootPhase2 — Google IdP wiring (v0.9.0 T47)", () => {
     process.env.COORDINATOR_GOOGLE_CLIENT_ID = "google-cid.apps.googleusercontent.com";
     delete process.env.COORDINATOR_GOOGLE_CLIENT_SECRET;
 
-    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
-      BootValidationError,
-    );
-    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
-      /both be set, or both unset/,
-    );
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(BootValidationError);
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(/both be set, or both unset/);
   });
 
   it("only client_secret set: throws BootValidationError", () => {
@@ -859,9 +808,7 @@ describe("bootPhase2 — Google IdP wiring (v0.9.0 T47)", () => {
     delete process.env.COORDINATOR_GOOGLE_CLIENT_ID;
     process.env.COORDINATOR_GOOGLE_CLIENT_SECRET = "google-secret";
 
-    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
-      /both be set, or both unset/,
-    );
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(/both be set, or both unset/);
   });
 
   it("whitespace-only env vars: treated as unset", () => {
@@ -908,12 +855,8 @@ describe("bootPhase2 — generic OIDC wiring (v0.9.0 T48)", () => {
     delete process.env.COORDINATOR_OIDC_CLIENT_ID;
     delete process.env.COORDINATOR_OIDC_CLIENT_SECRET;
 
-    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
-      BootValidationError,
-    );
-    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
-      /must all be set together/,
-    );
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(BootValidationError);
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(/must all be set together/);
   });
 
   it("only client_id set: throws BootValidationError", () => {
@@ -922,9 +865,7 @@ describe("bootPhase2 — generic OIDC wiring (v0.9.0 T48)", () => {
     process.env.COORDINATOR_OIDC_CLIENT_ID = "oidc-cid";
     delete process.env.COORDINATOR_OIDC_CLIENT_SECRET;
 
-    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
-      /must all be set together/,
-    );
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(/must all be set together/);
   });
 
   it("malformed issuer URL: throws BootValidationError", () => {
@@ -933,9 +874,7 @@ describe("bootPhase2 — generic OIDC wiring (v0.9.0 T48)", () => {
     process.env.COORDINATOR_OIDC_CLIENT_ID = "oidc-cid";
     process.env.COORDINATOR_OIDC_CLIENT_SECRET = "oidc-secret";
 
-    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
-      /is not a valid URL/,
-    );
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(/is not a valid URL/);
   });
 
   it("ftp:// issuer URL: throws BootValidationError", () => {
@@ -994,12 +933,8 @@ describe("bootPhase2 — GitHub App wiring (v0.10.0 T54)", () => {
     process.env.COORDINATOR_GITHUB_APP_CLIENT_ID = "Iv1.xxxxxxxxxxxxxxxx";
     delete process.env.COORDINATOR_GITHUB_APP_CLIENT_SECRET;
 
-    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
-      BootValidationError,
-    );
-    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
-      /both be set, or both unset/,
-    );
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(BootValidationError);
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(/both be set, or both unset/);
   });
 
   it("only client_secret set: throws BootValidationError", () => {
@@ -1007,9 +942,7 @@ describe("bootPhase2 — GitHub App wiring (v0.10.0 T54)", () => {
     delete process.env.COORDINATOR_GITHUB_APP_CLIENT_ID;
     process.env.COORDINATOR_GITHUB_APP_CLIENT_SECRET = "secret";
 
-    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
-      /both be set, or both unset/,
-    );
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(/both be set, or both unset/);
   });
 
   it("custom NAME overrides registry key", () => {
@@ -1036,8 +969,7 @@ describe("bootPhase2 — GitHub App wiring (v0.10.0 T54)", () => {
     const authUrl = await result!.context.providers
       .get("github-app")!
       .buildAuthUrl("state-x", "https://coordinator.example.com/cb");
-    expect(authUrl.startsWith("https://ghe.example.com/login/oauth/authorize"))
-      .toBe(true);
+    expect(authUrl.startsWith("https://ghe.example.com/login/oauth/authorize")).toBe(true);
     void result!.shutdown();
   });
 
@@ -1102,9 +1034,7 @@ describe("bootPhase2 — GitHub App wiring (v0.10.0 T54)", () => {
 
     const result = bootPhase2({ enabled: true, db, clock });
     expect(result).not.toBeNull();
-    expect(result!.context.providers.names()).toEqual([
-      "github", "google", "github-app", "oidc",
-    ]);
+    expect(result!.context.providers.names()).toEqual(["github", "google", "github-app", "oidc"]);
     expect(result!.context.providers.getDefault()!.name).toBe("github");
     void result!.shutdown();
   });
