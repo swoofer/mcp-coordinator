@@ -1,0 +1,18 @@
+# Build/deps/generated — never format
+dist/
+node_modules/
+coverage/
+test-results/
+playwright-report/
+sdk/dist/
+
+# Out of scope for this formatting pass — high-risk / not TS source
+docs/
+dashboard/public/
+
+# Docs / lockfiles / data
+*.md
+pnpm-lock.yaml
+sdk/package-lock.json
+data/
+data-test-*/
