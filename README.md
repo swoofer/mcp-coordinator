@@ -69,7 +69,7 @@ mcp-coordinator server status
 mcp-coordinator dashboard      # opens http://localhost:3100/dashboard
 ```
 
-Requires Node.js 20+. Step 2 is idempotent — re-running `init` won't overwrite an existing config. The snippet it prints goes into your MCP client's config (e.g., `~/.claude/.mcp.json` for Claude Code). If you'd rather not copy-paste, run `mcp-coordinator init --write-mcp-config <project-path>` and the snippet is written to `<project-path>/.mcp.json` (merging if the file already exists).
+Requires Node.js 20+ (Node 22+ recommended — Node 20 reaches EOL on 2026-04-30). Step 2 is idempotent — re-running `init` won't overwrite an existing config. The snippet it prints goes into your MCP client's config (e.g., `~/.claude/.mcp.json` for Claude Code). If you'd rather not copy-paste, run `mcp-coordinator init --write-mcp-config <project-path>` and the snippet is written to `<project-path>/.mcp.json` (merging if the file already exists).
 
 After step 4, every Claude Code (or other MCP-compatible) session connected to this coordinator can call all 26 tools (`register_agent`, `announce_work`, `post_to_thread`, `coordinator_status`, ...). For the full multi-Claude or team setup, see the [usage guide](./docs/usage.md).
 
@@ -86,6 +86,10 @@ After step 4, every Claude Code (or other MCP-compatible) session connected to t
 | **Single-file binary** | No Node available, easiest deploy | [GitHub Release tarball](https://github.com/swoofer/mcp-coordinator/releases) | `./mcp-coordinator <cmd>` |
 
 <sub>† Local installs require a `package.json` in the working directory — if you're just trying it out, prefer `-g` or `npx`.</sub>
+
+### Installation légère (skip tree-sitter grammars)
+
+The tree-sitter code-extraction feature ships ~292 MB of grammar packages as `optionalDependencies`. If you don't need cross-repo code extraction, skip them: `npm install mcp-coordinator --omit=optional` (pnpm equivalent: `pnpm install --no-optional`). The rest of the coordinator — agent registry, consultation threads, MQTT, dashboard — works unaffected; only the tree-sitter-backed extraction gracefully degrades.
 
 ### Running via Docker
 
@@ -505,7 +509,9 @@ See [`sdk/README.md`](./sdk/README.md) for the full API.
 ## Development
 
 ```bash
-# This repo uses pnpm (>= 9). Run `corepack enable` once.
+# This repo uses pnpm 10 (pinned via "packageManager" in package.json).
+# Run `corepack enable` once — corepack then resolves the right pnpm
+# version automatically.
 
 pnpm install
 pnpm test
