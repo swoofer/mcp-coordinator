@@ -9,24 +9,53 @@ const REPO_ROOT = path.resolve(__dirname, "..", "..");
 const SCRIPTS_DIR = path.join(REPO_ROOT, "scripts");
 
 // Detect whether a working POSIX bash is available. The suite shells out to
-// `bash` to run /scripts/lint-*.sh. Cases that block this test:
+// `bash` to run /scripts/lint-*.sh via an absolute Windows-style path (see
+// runLint below). Cases that block this test:
 //   - Pure Windows host with no Git Bash AND no WSL → bash not on PATH.
 //   - Windows host with WSL but no distro installed → `bash.exe` is on PATH
 //     but invoking it tries to launch /bin/bash inside a non-existent WSL
 //     distro, producing `WSL (NN) ERROR: ... execvpe(/bin/bash) failed:
 //     No such file or directory`.
-// In both cases the lint suite cannot meaningfully run; skip the whole
+//   - Windows host where `bash` on PATH resolves to WSL's bash.exe (common:
+//     System32 precedes Git\bin on PATH) with a distro that DOES exist.
+//     `bash -c "echo ok"` passes fine (WSL can run inline -c strings), but
+//     invoking a script by its Windows absolute path — the exact shape
+//     runLint() uses — fails with exit 127, because WSL's bash does not
+//     resolve a `C:\...` path as a valid script location. A probe that only
+//     checks `echo ok` misses this and lets 20 tests go red on a Windows
+//     contributor whose PATH happens to expose WSL's bash first.
+// In all such cases the lint suite cannot meaningfully run; skip the whole
 // describe block so the suite does not red-flag the developer on Windows.
 const BASH_AVAILABLE: boolean = (() => {
+  let probeDir: string | undefined;
   try {
-    const out = execFileSync("bash", ["-c", "echo ok"], {
+    const echoOut = execFileSync("bash", ["-c", "echo ok"], {
       stdio: ["ignore", "pipe", "pipe"],
       encoding: "utf-8",
       timeout: 5000,
     });
-    return out.trim() === "ok";
+    if (echoOut.trim() !== "ok") return false;
+
+    // Reproduce the real invocation shape used by runLint(): a script
+    // invoked by its absolute path (not `bash -c "..."`). We can't rely on
+    // scripts/lint-run-all.sh accepting a no-op/probe flag (it doesn't), so
+    // write a disposable script under os.tmpdir() and run *that* by
+    // absolute path instead. BASH_AVAILABLE is true only if this exits 0.
+    probeDir = mkdtempSync(path.join(tmpdir(), "bash-probe-"));
+    const probeScript = path.join(probeDir, "probe.sh");
+    writeFileSync(probeScript, "#!/usr/bin/env bash\nexit 0\n", "utf-8");
+    execFileSync("bash", [probeScript], {
+      stdio: ["ignore", "pipe", "pipe"],
+      encoding: "utf-8",
+      timeout: 5000,
+    });
+    return true;
   } catch {
     return false;
+  } finally {
+    if (probeDir) {
+      rmSync(probeDir, { recursive: true, force: true });
+    }
   }
 })();
 
