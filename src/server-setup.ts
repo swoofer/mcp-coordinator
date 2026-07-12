@@ -26,7 +26,7 @@ import { TreeSitterExtractor } from "./tree-sitter-extractor.js";
 import { GitCochangeBuilder } from "./git-cochange-builder.js";
 import type { CoordinatorConfig, AgentContext } from "./types.js";
 import { createLogger, type Logger } from "./logger.js";
-import { getVersion } from "../cli/version.js";
+import { getVersion } from "./version.js";
 const VERSION = getVersion();
 
 export interface CoordinatorServices {

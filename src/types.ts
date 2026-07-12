@@ -173,9 +173,6 @@ export interface ConsultationAnnounce {
 // ── Coordinator Services ──────────────────────────────
 export interface CoordinatorConfig {
   dataDir: string;
-  authEnabled?: boolean;
-  jwtSecret?: string;
-  jwtExpiry?: string;
   /**
    * MCP stdio transport mode: stdout is reserved for JSON-RPC protocol
    * messages, so the logger routes ALL levels to stderr instead. Set by the
