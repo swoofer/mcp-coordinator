@@ -20,7 +20,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | | High (13) | Med (46) | Low (42) | Info (18) | **Total (119)** |
 |--|:--:|:--:|:--:|:--:|:--:|
-| **Fermés ✅** | 12 | 32 | 30 | 12 | **86 / 119** |
+| **Fermés ✅** | 12 | 33 | 31 | 12 | **88 / 119** |
 | **Rounds cochés** | — | — | — | — | **295 / 595 (approx)** |
 
 > Mettre à jour ce tableau à chaque tâche fermée. 595 = 119 × 5 rounds.
@@ -60,7 +60,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 3 | `protocole-mcp-01` | 🔴 High | S | Mode stdio : logs applicatifs écrits sur stdout, en violation du trans | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ a470112 |
 | 4 | `protocole-mcp-03` | 🔴 High | S | Endpoints documentés, testés et consommés par le SDK/doctor jamais câb | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 6236a10 |
 | 5 | `protocole-mcp-05` | 🟠 Med | S | set_dependency_map : paramètre JSON double-encodé, sans description de | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 0f97fc3 |
-| 6 | `protocole-mcp-06` | 🟠 Med | S | Mode stdio : les outils MQTT sont exposés mais mentent silencieusement | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 6 | `protocole-mcp-06` | 🟠 Med | S | Mode stdio : les outils MQTT sont exposés mais mentent silencieusement | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 23c5098 |
 | 7 | `protocole-mcp-07` | 🟠 Med | M | Sessions Streamable HTTP jamais expirées : fuite des Maps sessions/ses | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 846d6f1 |
 | 8 | `protocole-mcp-08` | 🟡 Low | S | get_thread (et lectures similaires) retourne le texte « null » pour un | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 0f97fc3 |
 | 9 | `protocole-mcp-09` | 🟡 Low | S | README documente un outil MCP « introspection » qui n'existe pas ; com | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ docs#162 |
@@ -141,7 +141,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 21 | `qualite-code-07` | 🟡 Low | S | JSON.parse non protégé sur des colonnes SQLite dans les chemins de lec | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 22ae9ef |
 | 22 | `tests-06` | 🟡 Low | M | Zones serveur les moins mesurées : serve-http.ts 47,5 %, handle-rest.t | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 23 | `tests-07` | 🟡 Low | S | Race assumée dans channel-smoke : sleep fixe de 1,5 s au lieu d'attend | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 1d414bb |
-| 24 | `tests-08` | 🟡 Low | S | CLI : commandes exclues de la mesure de couverture et « uninstall » (d | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 24 | `tests-08` | 🟡 Low | S | CLI : commandes exclues de la mesure de couverture et « uninstall » (d | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 23a4e40 |
 | 25 | `tests-09` | 🟡 Low | S | fast-check sous-exploité (2 propriétés) et propriété CSRF théoriquemen | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 26 | `architecture-12` | ⚪ Info | S | CoordinatorConfig porte des champs de configuration morts (authEnabled | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ DONE |
 | 27 | `architecture-14` | ⚪ Info | L | Dashboard principal : 63 Ko de HTML avec un unique script inline, cont | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
