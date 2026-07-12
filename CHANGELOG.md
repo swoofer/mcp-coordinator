@@ -1,5 +1,134 @@
 # Changelog
 
+## [1.0.0](https://github.com/swoofer/mcp-coordinator/compare/v0.13.0...v1.0.0) (2026-07-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* **ops:** JWTs now require a `typ` claim ("access"/"refresh"); sessions and refresh tokens issued before this release are rejected, forcing all active users to re-authenticate after upgrade.
+
+### Features
+
+* **boot:** fail-fast when OAuth is enabled on the Bun runtime (architecture-10) ([aabb272](https://github.com/swoofer/mcp-coordinator/commit/aabb2723a66acc596ea2482c56742a01dcdb595c))
+* **boot:** warn on cwd-relative data dir fallback; fix README data-dir docs (architecture-06) ([f36d887](https://github.com/swoofer/mcp-coordinator/commit/f36d887a380195f73d72ce5318a29f9c2870bbfa))
+* **rest:** validate request bodies with zod, return structured 400 (qualite-code-02, architecture-15) ([b39326b](https://github.com/swoofer/mcp-coordinator/commit/b39326bd0012895d29cea1f5f5ff2b2cf6290934))
+
+
+### Bug Fixes
+
+* **audit:** guard AuditQueue flush against a closed DB to stop CI teardown crashes ([2d5af73](https://github.com/swoofer/mcp-coordinator/commit/2d5af73f79ed6ff3e25929256ba261339f82de28))
+* **audit:** guard AuditQueue flush against closed DB (stabilise la CI) ([34eab57](https://github.com/swoofer/mcp-coordinator/commit/34eab576c602142761176ec939244a20c45dda87))
+* **ci:** make SDK tests self-contained so sdk-test job passes in clean CI (tests-02) ([1d8cd17](https://github.com/swoofer/mcp-coordinator/commit/1d8cd177895b6ac3f1bf9ac16bac59c9d1b3ffe5))
+* **ci:** trigger release-binaries via workflow_call from release, fix tag derivation (ci-cd-01, maintenabilite-02) ([72e19c5](https://github.com/swoofer/mcp-coordinator/commit/72e19c526ba68027c3a8ca1613eeb8635ef2adab))
+* **ci:** use npm ecosystem for Dependabot (pnpm is not a valid value) ([5d3bc8a](https://github.com/swoofer/mcp-coordinator/commit/5d3bc8a39ac4cef9b8913c925529ec3d5aeecfa5))
+* **cli:** forward Phase 2/OAuth/bind env vars to daemon (architecture-05) ([11d101a](https://github.com/swoofer/mcp-coordinator/commit/11d101a398ac7555c82cce616e184314f1ac7068))
+* **consultation:** parse SQLite created_at as UTC, not host-local ([809cc2f](https://github.com/swoofer/mcp-coordinator/commit/809cc2fd6f900ca3e03d792f0206aebb1e315acb))
+* **dashboard:** split Clear (UI-only) from Reset Server (destructive, gated) ([94cd92d](https://github.com/swoofer/mcp-coordinator/commit/94cd92d0f73801f4c24491c58108eb196b4bffbb))
+* **deps:** move overrides to pnpm format, refresh lockfile, add Dependabot (dependances-01/02/03) ([e0bace5](https://github.com/swoofer/mcp-coordinator/commit/e0bace59bebf854b2d2fdb6cfb4d56c11b727012))
+* **http:** generic 500 with request_id instead of raw err.message (qualite-code-08) ([6b73e92](https://github.com/swoofer/mcp-coordinator/commit/6b73e924e39f739ea7aeb6ca903e0a61e8a254d5))
+* **http:** mount /metrics/auth with optional bearer, wire COORDINATOR_METRICS_BEARER (documentation-02, securite-surface-02) ([c87ee56](https://github.com/swoofer/mcp-coordinator/commit/c87ee5675536f0ef54e86a8f3cdcf70d1a184c23))
+* **http:** mount discovery + healthz/health-ready endpoints (architecture-01, protocole-mcp-03) ([6236a10](https://github.com/swoofer/mcp-coordinator/commit/6236a107c40814723443ba6af98cf024e7dc205c))
+* **landing:** drop stale Channels-integration card + correct requestIdleCallback call ([#150](https://github.com/swoofer/mcp-coordinator/issues/150)) ([f5dc89b](https://github.com/swoofer/mcp-coordinator/commit/f5dc89b2fff30b482c95b119aeb2fdb1fef77a83))
+* **mcp:** expose mcp-session-id via CORS; align serverInfo.name to registry name (protocole-mcp-11/13) ([dec5123](https://github.com/swoofer/mcp-coordinator/commit/dec51238b4f8d20eba404e223ad6bb03021751fe))
+* **mcp:** improve tool ergonomics — annotations, descriptions, actionable errors, timeout caps (protocole-mcp-05/08/10/14) ([0f97fc3](https://github.com/swoofer/mcp-coordinator/commit/0f97fc3a3f73127f9e100511b2bd2b5d3a241a57))
+* **mcp:** return isError from MQTT tools when bridge is not connected (stdio) (protocole-mcp-06) ([23c5098](https://github.com/swoofer/mcp-coordinator/commit/23c50981dcbdbed5adb454857d53a433fadcba1f))
+* **mcp:** route stdio-mode logs to stderr, keep stdout for JSON-RPC (protocole-mcp-01) ([a470112](https://github.com/swoofer/mcp-coordinator/commit/a470112fb53bfa54245dd1e5a362c136a7507c1d))
+* **mcp:** tool ergonomics — annotations, descriptions, actionable errors, timeout caps (5 constats) ([d3f3877](https://github.com/swoofer/mcp-coordinator/commit/d3f38774b49efb45d6e352fae6570bbb219ba22d))
+* **mqtt:** reset connected on close/offline so isConnected() reflects outages ([3475b61](https://github.com/swoofer/mcp-coordinator/commit/3475b61658aa27ed5722e66a2ae4b36b0de4240b))
+* **mqtt:** set explicit Duplex highWaterMark so WS read-backpressure is deterministic (fixes CI flake) ([14a5223](https://github.com/swoofer/mcp-coordinator/commit/14a5223b59ae1a6c290761175e2e1204c0abf38f))
+* **perf:** add retention for 5 Phase 1 tables and run sweeper in Phase-1-only mode (performance-01) ([1ce158e](https://github.com/swoofer/mcp-coordinator/commit/1ce158ea6ab27f06925ac8bea916f72f5318a852))
+* **perf:** bound Prometheus route-label cardinality (performance-03) ([609126d](https://github.com/swoofer/mcp-coordinator/commit/609126d6958daae215ed718210767a9aedc0ed84))
+* **perf:** bound RateLimiter buckets and MqttBridge listener queues (performance-05, performance-06) ([1e4daf2](https://github.com/swoofer/mcp-coordinator/commit/1e4daf21fa3b6e36e34a7cc50a01ff229461c83e))
+* **perf:** expire idle MCP StreamableHTTP sessions (performance-07, protocole-mcp-07) ([846d6f1](https://github.com/swoofer/mcp-coordinator/commit/846d6f1edc9e54b02a444fec2b9862e538a21eb2))
+* **robustness:** guard JSON.parse on SQLite columns with safeJsonParse (qualite-code-07) ([22ae9ef](https://github.com/swoofer/mcp-coordinator/commit/22ae9ef250d40a3b9d175baffcc861b5da349a09))
+* **security:** add baseline security headers to legacy dashboard and API responses (securite-surface-07) ([dc4bb3a](https://github.com/swoofer/mcp-coordinator/commit/dc4bb3a9a50e35b2ab942ee84f8401876e408604))
+* **security:** add typ claim to distinguish access vs refresh tokens ([34a5ffa](https://github.com/swoofer/mcp-coordinator/commit/34a5ffa6ac1f737d45f129c4c54afed3763e1dad))
+* **security:** bind HTTP server to 127.0.0.1 by default via COORDINATOR_BIND ([3671d7b](https://github.com/swoofer/mcp-coordinator/commit/3671d7b99108e4f307a440a7645445a68f88566f))
+* **security:** rate-limit register, make insecure-cookies flag consistent, prevent ?token= log leak (securite-surface-05, securite-auth-05, securite-auth-03) ([177205b](https://github.com/swoofer/mcp-coordinator/commit/177205b8345db957ea2a0f68f6cfb640ceaeb87a))
+* **security:** re-derive role from DB on refresh rotation (securite-auth-04) ([8e6ec78](https://github.com/swoofer/mcp-coordinator/commit/8e6ec78d2168f7a14df594c89253049a66f246d5))
+* **security:** redact secrets in Phase 1 logger to match Phase 2 (securite-surface-04) ([6482528](https://github.com/swoofer/mcp-coordinator/commit/648252823f975e27de8a238555bee9cf8911869a))
+* **security:** validate Origin and restrict CORS on /mcp (MCP spec MUST) ([f8f6227](https://github.com/swoofer/mcp-coordinator/commit/f8f62278d730d27ee628aa3f6122dafe38159aba))
+* **security:** verify OIDC nonce in Google provider (securite-auth-02) ([eca4d2f](https://github.com/swoofer/mcp-coordinator/commit/eca4d2fedce6764961514b549f914d2a3714cef1))
+* **server:** fail-closed on concurrent startServer(); correct multi-instance docstring (architecture-02) ([2ba5fb7](https://github.com/swoofer/mcp-coordinator/commit/2ba5fb7d87b280e70c340cc1cb146726bec71d2e))
+
+
+### Performance Improvements
+
+* **db:** index sweep predicates and set WAL synchronous=NORMAL (performance-09, performance-10) ([ba6bd4c](https://github.com/swoofer/mcp-coordinator/commit/ba6bd4cce05382e979998a5b87fa2943be4fed50))
+* **mqtt:** add WS bridge backpressure and maxPayload (performance-04) ([5cb7296](https://github.com/swoofer/mcp-coordinator/commit/5cb72967b9a0771bae91c18f03b1400c8b2f87d3))
+* **scorer:** batch Layer 4 co-change queries; fix rusted audit-queue bench (performance-11, performance-08) ([e874cf3](https://github.com/swoofer/mcp-coordinator/commit/e874cf3d78b99125ab38e692e7cd290dcae68151))
+* **sse:** bound event history load at the SQL layer instead of loading all then slicing (performance-02) ([fc1d08b](https://github.com/swoofer/mcp-coordinator/commit/fc1d08bb58ba509ad7cbe11038dc2bc91c887cae))
+
+
+### Documentation
+
+* add ARCHITECTURE.md; document multi-org/logger-metrics status, perf-chaos & binary deferrals (architecture-13/08/09, qualite-code-06, tests-11, ci-cd-09) ([62fdf82](https://github.com/swoofer/mcp-coordinator/commit/62fdf82db98b3a964bf53aaf08dd03a0cbd19c8e))
+* **audit:** add full audit, remediation spec, plan and 119-finding tracking matrix ([1c4f736](https://github.com/swoofer/mcp-coordinator/commit/1c4f7365ac52335a3705d3827b90d0feab0384a9))
+* **audit:** close architecture-02/03 + tests-05 (107→110) ([55cf389](https://github.com/swoofer/mcp-coordinator/commit/55cf389e061568985dc7d59d588930fe2aaecbf9))
+* **audit:** close architecture-04/11/12 (66→69) ([4cda748](https://github.com/swoofer/mcp-coordinator/commit/4cda74883cff56fa582f5122f9ccb2504d1cf255))
+* **audit:** close architecture-08/09/10/13 + qualite-code-06 + tests-11 + ci-cd-09 (96→103) ([71b6fa9](https://github.com/swoofer/mcp-coordinator/commit/71b6fa93b78ae90ce32af67af71c52dde3a599da))
+* **audit:** close ci-cd-05/07/10/11 (CI supply-chain hardening) ([cbbb54d](https://github.com/swoofer/mcp-coordinator/commit/cbbb54d074ea11b644483cd07b119a7a81b3eb0d))
+* **audit:** close dependances-04..10 (pnpm 10 + deps docs); counter 73→80 ([981448f](https://github.com/swoofer/mcp-coordinator/commit/981448fc2ca8a562b603814b4812057aa6b01642))
+* **audit:** close maintenabilite-04/06/07/10/11/12; flag 01/03/08/09 as maintainer-action (80→86) ([51e1520](https://github.com/swoofer/mcp-coordinator/commit/51e1520a748c15217ce58de05075c27c3ed312e0))
+* **audit:** close protocole-mcp-06 + tests-08 (86→88) ([d951beb](https://github.com/swoofer/mcp-coordinator/commit/d951bebcb4278dfba675dba1ad16c695323bd11a))
+* **audit:** close protocole-mcp-11/12/13 + architecture-06 (92→96) ([23b4aa5](https://github.com/swoofer/mcp-coordinator/commit/23b4aa52258f3fd6978f264eac3f5421c643fa9e))
+* **audit:** close qualite-code-02/08 + architecture-07/15 (REST hardening; 88→92) ([dfac844](https://github.com/swoofer/mcp-coordinator/commit/dfac84418d44df360a22098f6308b37f4f4a426c))
+* **audit:** close tests-03/06/09 + disposition tests-10 (103→107) ([a43d4b5](https://github.com/swoofer/mcp-coordinator/commit/a43d4b5c35cd1cdda1a0a95dd092c04b3df16f3f))
+* **audit:** final reconciliation — 110/119 treated; 5 maintainer-action + 4 deferred refactors ([ea18a3f](https://github.com/swoofer/mcp-coordinator/commit/ea18a3f5a3c54f1162215fdcfabf1d16c53a6eea))
+* **audit:** repair corrupted TRACKING.md H1 (stray row fragments from a merge) ([b4908cc](https://github.com/swoofer/mcp-coordinator/commit/b4908ccfdf22fe97d16a43ef4529a41e7843feee))
+* **deps:** document tree-sitter coupling, light install, major-version backlog, Node 22+ (dependances-05/06/07/09) ([6eee2d4](https://github.com/swoofer/mcp-coordinator/commit/6eee2d4109916f1eb06cf92c4edf45f59e0ce0a2))
+* document backup/restore CLI and fix custom-idp example (documentation-10, documentation-11) ([1083f18](https://github.com/swoofer/mcp-coordinator/commit/1083f184e480b03979cc0192d160b51a774e1e47))
+* document single-instance-per-process DB/model; DB injection deferred (architecture-03) ([4ba93d4](https://github.com/swoofer/mcp-coordinator/commit/4ba93d4d42cb4a60b119faf08b3989e85f704969))
+* fix false/stale claims in README and SECURITY (documentation-05/06/07/13/15) ([5484ba7](https://github.com/swoofer/mcp-coordinator/commit/5484ba7598d62528ba92561e5a99e8f1df29eaf5))
+* fix usage/env/contributing accuracy (documentation-03/04/08/09/14) ([8fbb5e1](https://github.com/swoofer/mcp-coordinator/commit/8fbb5e132b68e9aaee3c72b7c62086af79821f6e))
+* freeze Phase 2, document coverage pins + landing i18n policy (maintenabilite-07/11/12) ([1125e1f](https://github.com/swoofer/mcp-coordinator/commit/1125e1fbd1608e296c338c3c960c18c5035b5631))
+* MCP auth discovery limitation, eventStore + registry deferral (protocole-mcp-12/11/13) ([6dc241d](https://github.com/swoofer/mcp-coordinator/commit/6dc241dba8286801290b2c891cf20c66b748a75c))
+* **ops:** note typ-enforcement breaking change (mass re-login on upgrade) ([5c6fa04](https://github.com/swoofer/mcp-coordinator/commit/5c6fa045d6e0d3c780df8f24cde2c10164203094))
+* **plan:** correct PR1 marquee tasks against real code ([45242cb](https://github.com/swoofer/mcp-coordinator/commit/45242cb48594630fa7845f80a26f8f28a5856e33))
+* post-v0.13.0 polish — landing version refs + v0.12 / v0.13 roadmap cards + examples ([#148](https://github.com/swoofer/mcp-coordinator/issues/148)) ([340ca14](https://github.com/swoofer/mcp-coordinator/commit/340ca14437f36023b8b3b7696a67a7d930b31791))
+* **security:** document intra-org agent trust model, defer per-agent authz ([bed5486](https://github.com/swoofer/mcp-coordinator/commit/bed5486ff90d7525998d9be46e8f58de52e91189))
+* stop publishing internal docs/superpowers to Pages, drop 2MB HTML backups (documentation-12) ([b0c3517](https://github.com/swoofer/mcp-coordinator/commit/b0c3517a5696eeecaaa95edd94813d1faa02ab6e))
+* **tracking:** close architecture-01 + protocole-mcp-03 (mount ghost endpoints, 6236a10) ([f864dd1](https://github.com/swoofer/mcp-coordinator/commit/f864dd1eb38849584b4d38fcd9b9ed6223ca9e46))
+* **tracking:** close architecture-05 (daemon env allowlist, 11d101a) ([e6dd25a](https://github.com/swoofer/mcp-coordinator/commit/e6dd25a7c588adf6896d92238795e893f2fae197))
+* **tracking:** close ci-cd-01 + maintenabilite-02 (release-binaries workflow_call, 72e19c5) ([45158ec](https://github.com/swoofer/mcp-coordinator/commit/45158ec5992f386e3a0e077e28e43a9670e0e4ab))
+* **tracking:** close ci-cd-02/04/06/08 + tests-02 (CI batch, f2767da) ([e1e94f3](https://github.com/swoofer/mcp-coordinator/commit/e1e94f35dfffbbb111c680328889b6d4ba8a3f45))
+* **tracking:** close dependances-01/02/03 (deps refresh + Dependabot, e0bace5) ([371416b](https://github.com/swoofer/mcp-coordinator/commit/371416bee150a0ab8b7e09df0a882c421b35011f))
+* **tracking:** close documentation-02 + securite-surface-02 (mount /metrics/auth, c87ee56) ([e2cee99](https://github.com/swoofer/mcp-coordinator/commit/e2cee998312654fc8d94151873455e7e1fc8a062))
+* **tracking:** close documentation-03/04/08/09/14 (usage/env/contributing, 8fbb5e1) ([645dbb1](https://github.com/swoofer/mcp-coordinator/commit/645dbb10e90b6727f940e687223f6a5363f0d0c5))
+* **tracking:** close documentation-05/06/07/13/15 (README/SECURITY truth, 5484ba7) ([d4dcfce](https://github.com/swoofer/mcp-coordinator/commit/d4dcfce6e498c7a27552042d6b40f28566bb17ef))
+* **tracking:** close documentation-10/11 (backup/restore docs + idp example, 1083f18) ([d78be7e](https://github.com/swoofer/mcp-coordinator/commit/d78be7e7ab4a796c9ebdace199e393d9cde0b51d))
+* **tracking:** close documentation-12 — Docs theme complete (13/13) ([e9879ac](https://github.com/swoofer/mcp-coordinator/commit/e9879ac14469cf7f56032164ed7e5e6d80537338))
+* **tracking:** close performance-01 (Phase 1 retention + sweeper wiring, 1ce158e) ([5f13ae5](https://github.com/swoofer/mcp-coordinator/commit/5f13ae53235866cbc8a5b410dd60eacfaeeb1286))
+* **tracking:** close performance-02 (bounded SSE load, fc1d08b) ([bb38d7c](https://github.com/swoofer/mcp-coordinator/commit/bb38d7c38b987fca40143d0bbc8a292d036aebb3))
+* **tracking:** close performance-03 (Prometheus cardinality, 609126d) ([5502694](https://github.com/swoofer/mcp-coordinator/commit/5502694a3499bae85bf0503076ed5fef75ba5f71))
+* **tracking:** close performance-04 (WS backpressure + maxPayload, 5cb7296) ([fbdf19f](https://github.com/swoofer/mcp-coordinator/commit/fbdf19fe11d7e8d499238d84d590eb118b9822b3))
+* **tracking:** close performance-05 + performance-06 (bounded structures, 1e4daf2) ([1c438ba](https://github.com/swoofer/mcp-coordinator/commit/1c438ba0cc4ea2bda1826aab2691ea694cedfa99))
+* **tracking:** close performance-07 + protocole-mcp-07 (idle MCP session expiry, 846d6f1) ([792c920](https://github.com/swoofer/mcp-coordinator/commit/792c92034414f2577d0b56da8554c260059fcce2))
+* **tracking:** close performance-09/10 (sweep indexes + synchronous NORMAL, ba6bd4c) ([815a3d9](https://github.com/swoofer/mcp-coordinator/commit/815a3d948376fcf2edb6d9b9fb7313bd1b6891e4))
+* **tracking:** close performance-11/08 (scorer batching + bench fix, e874cf3) ([c18fa20](https://github.com/swoofer/mcp-coordinator/commit/c18fa207377a68cf568134e68049261e7d60b0a8))
+* **tracking:** close protocole-mcp-01 (stdio logs to stderr, a470112) ([5781c32](https://github.com/swoofer/mcp-coordinator/commit/5781c32eb8d2b2f141e17e3e12a9b1377ee775f8))
+* **tracking:** close protocole-mcp-02 + securite-surface-06 (Task 1.2, f8f6227) ([dac5004](https://github.com/swoofer/mcp-coordinator/commit/dac500432c05b5c4869740348a28a5bfd9d6e722))
+* **tracking:** close protocole-mcp-05/08/09/10/14 (MCP ergonomics, 0f97fc3) ([e490f36](https://github.com/swoofer/mcp-coordinator/commit/e490f363fed9f4c7cc2be98d727ded430055bf66))
+* **tracking:** close qualite-code-04/05 (dedupe helpers, b58688d) ([5248a15](https://github.com/swoofer/mcp-coordinator/commit/5248a15215a70086393a3ebc23fc340093b03ac5))
+* **tracking:** close qualite-code-07 (safe JSON.parse, 22ae9ef) ([6ffb6fb](https://github.com/swoofer/mcp-coordinator/commit/6ffb6fbccc7f1ac0f19ce273a4decf7fffe4496f))
+* **tracking:** close securite-auth-01 (Task 1.3, 34a5ffa + breaking-change note 5c6fa04) ([2e4232d](https://github.com/swoofer/mcp-coordinator/commit/2e4232d5ba8c09c800b1ad963bb83257accc44ae))
+* **tracking:** close securite-auth-02 (Google OIDC nonce, eca4d2f) ([9db89fd](https://github.com/swoofer/mcp-coordinator/commit/9db89fdee593aa019ee33f3dd299cb2a471d8f0a))
+* **tracking:** close securite-auth-04 (8e6ec78); disposition protocole-mcp-04 + securite-surface-03 as documented-deferred (bed5486) ([6b9ad8f](https://github.com/swoofer/mcp-coordinator/commit/6b9ad8f3d2f0c62bb4b734a81a6d5f159492b991))
+* **tracking:** close securite-surface-01 + documentation-01 (Task 1.1, 3671d7b) ([203518d](https://github.com/swoofer/mcp-coordinator/commit/203518dddbc1ae453a84fd7092f8c5bcf4ca7d45))
+* **tracking:** close securite-surface-04 (Phase 1 log redaction, 6482528) ([0bac057](https://github.com/swoofer/mcp-coordinator/commit/0bac057bb0d59574d760ade328c21dbceb4510dd))
+* **tracking:** close securite-surface-05 + securite-auth-05 + securite-auth-03 (177205b) ([66f0bd6](https://github.com/swoofer/mcp-coordinator/commit/66f0bd6ba9a4b8a7aa54d9d999d549e5a7fa5c7e))
+* **tracking:** close securite-surface-07 (security headers, dc4bb3a) ([3f02a29](https://github.com/swoofer/mcp-coordinator/commit/3f02a29e108ac6effe70314d37804b1669fd5926))
+* **tracking:** close tests-01 — coverage gate wired + ratcheted green (fa96fca, c47aed6) ([87698a4](https://github.com/swoofer/mcp-coordinator/commit/87698a4b72e4d954c29965c942c60f32ca8d9d15))
+* **tracking:** close tests-07 + tests-04 (test reliability, 1d414bb) ([3a46655](https://github.com/swoofer/mcp-coordinator/commit/3a466558e92811597beacd3631ece487c87117f8))
+
+
+### Code Refactoring
+
+* **arch:** graceful CLI shutdown + fix layer inversion + drop dead config fields ([3099822](https://github.com/swoofer/mcp-coordinator/commit/30998229fe922d4a79f0a920ddefbb00c0ed3071))
+* **arch:** graceful CLI shutdown, remove src-&gt;cli layer inversion, drop dead config fields (architecture-04/11/12) ([33ab89b](https://github.com/swoofer/mcp-coordinator/commit/33ab89b4c3b9a895c0ab3edb681663446a9f72b1))
+* dedupe safeEqual/decodeJwtPayload and admin helpers (qualite-code-04, qualite-code-05) ([b58688d](https://github.com/swoofer/mcp-coordinator/commit/b58688dbe3ac779febd3b978e78b494b952c3ee7))
+* **register:** shared runRegisterFlow for REST/MCP parity incl. MQTT retained status (architecture-07) ([868406e](https://github.com/swoofer/mcp-coordinator/commit/868406ebd4933d7937afb5b74870b07e3dd0cd58))
+
 ## [0.13.0](https://github.com/swoofer/mcp-coordinator/compare/v0.12.0...v0.13.0) (2026-05-23)
 
 
