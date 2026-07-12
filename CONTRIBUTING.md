@@ -45,6 +45,14 @@ This repo uses [pnpm](https://pnpm.io/) (>=9). Corepack picks the right version 
 - `bash scripts/lint-run-all.sh` — runs the same custom lint scripts as CI's `Lint` job (`.github/workflows/lint.yml`): no-users-org-id, no-current-timestamp, no-audit-mutation, html-escape, no-direct-env-in-auth.
 - `pnpm exec tsc --noEmit` — the type-check step of the same `Lint` job.
 
+### Windows: Git Bash vs. WSL on PATH
+
+`tests/unit/lint-scripts.test.ts` shells out to `bash` to exercise the scripts above. On Windows, if `System32` precedes `Git\bin` in your PATH, `bash` may resolve to WSL's `bash.exe` instead of Git Bash. When that happens, the suite skips itself (`BASH_AVAILABLE` probe fails) rather than reporting 20 false failures — but you also won't get lint coverage locally. Put Git Bash's directory ahead of `System32` in your PATH (or invoke the suite with `bash.exe` pointed explicitly at Git Bash) so the suite actually runs.
+
+### Coverage thresholds on auth/security/encryption
+
+Files under `src/auth/**`, `src/security/**`, and `cli/encryption/**` are pinned to 100% coverage (branches/lines/functions/statements) — see the per-file `thresholds` block in `vitest.config.ts`. Any change to these files must keep coverage at 100%, or `pnpm test:ci` fails.
+
 ## Architecture
 
 See `README.md` for the high-level model. The server is in `src/`, the CLI in `cli/`, and the static dashboard in `dashboard/public/`. The MQTT broker is embedded (Aedes) and ships with the server.
