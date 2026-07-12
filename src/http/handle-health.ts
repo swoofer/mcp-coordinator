@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from "http";
 import type { CoordinatorServices } from "../server-setup.js";
 import { getDb } from "../database.js";
 import { json } from "./utils.js";
-import { getVersion } from "../../cli/version.js";
+import { getVersion } from "../version.js";
 
 /**
  * v0.4 Operability: Kubernetes-style health probes.

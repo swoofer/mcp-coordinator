@@ -26,7 +26,7 @@ import { parseBody as parseBodyShared, json as jsonShared, jsonAuthError as json
 import { isAllowedOrigin } from "./http/origin.js";
 import { assessPlanQuality } from "./plan-quality.js";
 import type { CoordinatorEvent } from "./types.js";
-import { getVersion } from "../cli/version.js";
+import { getVersion } from "./version.js";
 const VERSION = getVersion();
 import { startEmbeddedMqttBroker, type MqttAuthResult } from "./mqtt-broker.js";
 import { withRequestId, resolveRequestId } from "./auth/request-id.js";

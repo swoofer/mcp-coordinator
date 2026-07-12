@@ -105,6 +105,14 @@ export class AuditQueue {
       this.timer = null;
     }
     if (this.buffer.length === 0) return;
+    if (!this.db.open) {
+      // DB already closed (shutdown race / test teardown): drop the
+      // pending batch instead of writing. This is reachable from a
+      // scheduled timer firing after close, so it must never throw.
+      // Not counted as flushed — the rows genuinely never reached disk.
+      this.buffer = [];
+      return;
+    }
     const rows = this.buffer;
     this.buffer = [];
     this.writeBatchSync(rows);
@@ -179,7 +187,17 @@ export class AuditQueue {
   private scheduleFlush(): void {
     const t = setTimeout(() => {
       this.timer = null;
-      this.flush();
+      try {
+        this.flush();
+      } catch (err) {
+        // Defensive: a scheduled flush firing after the DB has been closed
+        // (test teardown race, process shutdown) must never surface as an
+        // unhandled timer-callback exception that crashes the run. The
+        // db.open guard in flush()/writeBatchSync() handles the common
+        // case; this catch is the last line of defense for anything else
+        // that goes wrong on this unattended path. Never rethrown.
+        void err;
+      }
     }, FLUSH_INTERVAL_MS);
     // Prevent the timer from holding the event loop open on Node — every
     // Node Timeout has .unref() (typings widen for browser shims).
@@ -188,6 +206,10 @@ export class AuditQueue {
   }
 
   private writeBatchSync(rows: AuditQueueRow[]): void {
+    // Defense in depth: flush() already guards on db.open before calling
+    // this, but writeBatchSync() is also reachable directly from enqueue()'s
+    // post-drain sync path. A closed db here must no-op, not throw.
+    if (!this.db.open) return;
     // Better-sqlite3 transaction for batched writes. The hash chain is
     // built inside the transaction: tip lookup runs once, then each row
     // is hashed against the previous row's hash and inserted with both
