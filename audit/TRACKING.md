@@ -1,4 +1,4 @@
-✅ | ✅ | ✅ | ✅ | ✅ | ✅ 3671d7b |✅ | ✅ | ✅ | ✅ | ✅ | ✅ 3671d7b |# Suivi de remédiation de l'audit v0.13.0 — TRACKING
+# Suivi de remédiation de l'audit v0.13.0 — TRACKING
 
 **Source :** `audit/` (119 constats) · **Spec :** `docs/superpowers/specs/2026-07-04-audit-remediation-design.md` · **Plan :** `docs/superpowers/plans/2026-07-04-audit-remediation.md`
 
