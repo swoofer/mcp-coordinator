@@ -20,7 +20,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | | High (13) | Med (46) | Low (42) | Info (18) | **Total (119)** |
 |--|:--:|:--:|:--:|:--:|:--:|
-| **Fermés ✅** | 12 | 33 | 31 | 12 | **88 / 119** |
+| **Fermés ✅** | 12 | 35 | 32 | 13 | **92 / 119** |
 | **Rounds cochés** | — | — | — | — | **295 / 595 (approx)** |
 
 > Mettre à jour ce tableau à chaque tâche fermée. 595 = 119 × 5 rounds.
@@ -122,10 +122,10 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 2 | `architecture-03` | 🟠 Med | L | Base de données en singleton global (service locator) — couple tout le | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 3 | `architecture-04` | 🟠 Med | S | Les handlers SIGINT/SIGTERM du CLI en mode foreground court-circuitent | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ DONE |
 | 4 | `architecture-06` | 🟠 Med | S | Défauts de répertoire de données divergents entre points d'entrée, et  | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 5 | `architecture-07` | 🟠 Med | S | Dérive comportementale entre les transports REST et MCP sur le flux d' | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 5 | `architecture-07` | 🟠 Med | S | Dérive comportementale entre les transports REST et MCP sur le flux d' | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 868406e |
 | 6 | `architecture-08` | 🟠 Med | M | Org 'default' codé en dur aux frontières MQTT et quota alors que le mu | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 7 | `qualite-code-01` | 🟠 Med | L | Trois fonctions géantes (390 à 505 lignes) concentrent la complexité d | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 8 | `qualite-code-02` | 🟠 Med | M | Couche REST : corps de requêtes castés sans validation (15 « body as { | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 8 | `qualite-code-02` | 🟠 Med | M | Couche REST : corps de requêtes castés sans validation (15 « body as { | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ b39326b |
 | 9 | `qualite-code-03` | 🟠 Med | M | Aucun linter réel : le job CI « Lint » = 5 scripts bash grep + tsc ; c | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 10 | `tests-03` | 🟠 Med | M | Couche handlers d'outils MCP faiblement couverte : consultation-tools  | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 11 | `tests-04` | 🟠 Med | S | Le hook d'authentification MQTT de production n'est jamais exercé : le | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 1d414bb |
@@ -134,7 +134,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 14 | `architecture-10` | 🟡 Low | M | La Phase 2 contourne l'abstraction DatabaseAdapter par un double cast  | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 15 | `architecture-11` | 🟡 Low | S | Inversion de couche : src/ importe cli/version.ts | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ DONE |
 | 16 | `architecture-13` | 🟡 Low | M | Pas de carte d'architecture pour les contributeurs externes malgré 108 | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 17 | `architecture-15` | 🟡 Low | M | Posture de validation d'entrée incohérente entre transports : zod côté | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 17 | `architecture-15` | 🟡 Low | M | Posture de validation d'entrée incohérente entre transports : zod côté | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ b39326b (= qc-02) |
 | 18 | `qualite-code-04` | 🟡 Low | S | Duplication verbatim des helpers admin (readJsonBody, writeJson, write | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ b58688d |
 | 19 | `qualite-code-05` | 🟡 Low | S | safeEqual et decodeJwtPayload dupliqués localement dans serve-http.ts  | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ b58688d |
 | 20 | `qualite-code-06` | 🟡 Low | S | Dualité Phase 1 / Phase 2 : deux modules metrics, deux loggers, auth.t | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
@@ -145,7 +145,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 25 | `tests-09` | 🟡 Low | S | fast-check sous-exploité (2 propriétés) et propriété CSRF théoriquemen | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 26 | `architecture-12` | ⚪ Info | S | CoordinatorConfig porte des champs de configuration morts (authEnabled | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ DONE |
 | 27 | `architecture-14` | ⚪ Info | L | Dashboard principal : 63 Ko de HTML avec un unique script inline, cont | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 28 | `qualite-code-08` | ⚪ Info | S | Le catch global HTTP renvoie err.message brut dans la réponse 500 | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 28 | `qualite-code-08` | ⚪ Info | S | Le catch global HTTP renvoie err.message brut dans la réponse 500 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 6b73e92 |
 | 29 | `tests-10` | ⚪ Info | L | Suite entièrement sérialisée à cause de singletons de module — discipl | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 30 | `tests-11` | ⚪ Info | S | Scripts perf/chaos hors CI par choix documenté — pas de suivi de régre | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 

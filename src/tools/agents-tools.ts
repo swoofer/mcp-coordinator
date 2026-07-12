@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { CoordinatorServices } from "../server-setup.js";
 import type { Logger } from "../logger.js";
 import type { AuthClaims } from "../auth.js";
+import { runRegisterFlow } from "../register-workflow.js";
 
 /**
  * S1: agent registry MCP tools (4 tools).
@@ -14,7 +15,7 @@ export function registerAgentTools(
   mcpLog: Logger,
   getSessionClaims: (sessionId: string) => AuthClaims | null,
 ): void {
-  const { registry, activityTracker, sseEmitter, mqttBridge } = services;
+  const { registry, activityTracker, sseEmitter } = services;
 
   server.tool("register_agent", "Register agent as online with module list", {
     agent_id: z.string().describe("Unique ID for this agent within the org."),
@@ -24,9 +25,9 @@ export function registerAgentTools(
     const claims = getSessionClaims(extra.sessionId ?? "");
     if (!claims) throw new Error("Session has no captured claims (auth bug)");
     mcpLog.info({ tool: "register_agent", agent_id, name, module_count: modules.length }, "Tool called");
-    const agent = registry.register(claims.org, agent_id, name, modules);
-    sseEmitter.emit("agent_online", { agent_id, name, modules }, { org_id: claims.org });
-    mqttBridge.registerAgent(agent_id, name);
+    // architecture-07: shared flow with REST /api/register (registry.register +
+    // sseEmitter "agent_online" + mqttBridge.registerAgent retained-status publish).
+    const agent = runRegisterFlow(services, claims.org, agent_id, name, modules);
     return { content: [{ type: "text", text: JSON.stringify(agent) }] };
   });
 

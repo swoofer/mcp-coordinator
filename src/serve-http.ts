@@ -23,6 +23,7 @@ import { handleDiscovery } from "./discovery.js";
 import { serveMetrics } from "./metrics.js";
 import { handleMetrics } from "./http/metrics.js";
 import { parseBody as parseBodyShared, json as jsonShared, jsonAuthError as jsonAuthErrorShared, metricRoute, decodeJwtPayload, safeEqual, redactTokenParam } from "./http/utils.js";
+import { appError } from "./http/response-contract.js";
 import { isAllowedOrigin } from "./http/origin.js";
 import { assessPlanQuality } from "./plan-quality.js";
 import type { CoordinatorEvent } from "./types.js";
@@ -595,8 +596,10 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
         if (handled) return;
       } catch (err) {
         httpLog.error({ err, url: redactTokenParam(req.url || "") }, "Phase 2 auth route error");
+        // qualite-code-08: never leak err.message (file paths, SQLite errors, ...)
+        // to the client — log the detail, return a generic body + request_id.
         if (!res.headersSent) {
-          json(res, { error: (err as Error).message }, 500);
+          json(res, appError("INTERNAL_ERROR", "Internal server error"), 500);
         }
         return;
       }
@@ -859,7 +862,11 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
       }
     } catch (err) {
       httpLog.error({ err }, "HTTP request error");
-      json(res, { error: (err as Error).message }, 500);
+      // qualite-code-08: never leak err.message (file paths, SQLite errors, ...)
+      // to the client — log the detail, return a generic body + request_id.
+      if (!res.headersSent) {
+        json(res, appError("INTERNAL_ERROR", "Internal server error"), 500);
+      }
     }
     });
   });
