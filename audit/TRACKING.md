@@ -20,11 +20,15 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | | High (13) | Med (46) | Low (42) | Info (18) | **Total (119)** |
 |--|:--:|:--:|:--:|:--:|:--:|
-| **Fermés ✅** | 12 | 41 | 40 | 17 | **110 / 119** |
-| **Rounds cochés** | — | — | — | — | **295 / 595 (approx)** |
+| **Fermés ✅ / 📄** | 12 | 41 | 40 | 17 | **110 / 119** |
+| **⏳ action mainteneur** | 1 | 2 | 2 | 0 | **5** |
+| **⏭️ différé (décision mainteneur)** | 0 | 3 | 0 | 1 | **4** |
 
-> Mettre à jour ce tableau à chaque tâche fermée. 595 = 119 × 5 rounds.
-> Note : sur les 10 fermés, 8 sont corrigés (5 rounds chacun = 40) ; 2 (protocole-mcp-04, securite-surface-03) sont **dispositionnés en risque-accepté + documenté** (threat-model, hors comptage 5-rounds).
+> **110/119 traités** (corrigés en 5 rounds, ou dispositionnés 📄 risque-accepté+documenté). 23 PR mergées.
+> **9 restants, tous non-code / hors mandat agent :**
+> - **⏳ 5 actions mainteneur** : `maintenabilite-01` (🔴 High — PR externe #151, dernier High), `maintenabilite-03` (release 0.13.1), `maintenabilite-08` (triage), `maintenabilite-09` (notes `docs/superpowers/working/`), `ci-cd-03` (protection de branche).
+> - **⏭️ 4 refactors différés (décision mainteneur)** : `qualite-code-01` (fonctions géantes — chemins auth/routage sensibles), `qualite-code-03` + `maintenabilite-05` (adoption ESLint/Prettier + reformat repo-wide), `architecture-14` (modularisation dashboard).
+> Bugs produit trouvés en cours de route (hors 119) : mqtt-bridge `isConnected()` mentait en coupure (**corrigé**, #184) ; `handleSse()` sans `flushHeaders()` (**suivi 1 ligne recommandé**).
 
 ---
 
@@ -77,7 +81,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 2 | `maintenabilite-02` | 🔴 High | M | Canal de distribution binaires silencieusement cassé depuis v0.11.0 | ✅ | ✅ | ✅ | ✅ | ⏳ | ✅ 72e19c5 (plausible) |
 | 3 | `tests-01` | 🔴 High | S | Les seuils de couverture 100 % ne sont pas appliqués en CI (pnpm test  | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ fa96fca+c47aed6 |
 | 4 | `ci-cd-02` | 🟠 Med | S | Provenance npm revendiquée mais jamais activée (id-token: write inutil | ✅ | ✅ | ✅ | ✅ | ⏳ | ✅ f2767da (plausible) |
-| 5 | `ci-cd-03` | 🟠 Med | S | Aucun status check requis sur main : les tests ne bloquent pas les mer | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 5 | `ci-cd-03` | 🟠 Med | S | Aucun status check requis sur main : les tests ne bloquent pas les mer | ☐ | ☐ | ☐ | ☐ | ☐ | ⏳ action mainteneur (protection de branche) |
 | 6 | `ci-cd-04` | 🟠 Med | S | Le garde-fou « :latest non promu sur workflow_dispatch/workflow_call » | ✅ | ✅ | ✅ | ✅ | ⏳ | ✅ f2767da (plausible) |
 | 7 | `ci-cd-05` | 🟠 Med | S | Actions GitHub épinglées par tags mutables (pas de SHA), sans Dependab | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 0fa4693 |
 | 8 | `dependances-01` | 🟠 Med | S | Le bloc « overrides » de package.json est silencieusement ignoré par p | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ e0bace5 |
@@ -124,9 +128,9 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 4 | `architecture-06` | 🟠 Med | S | Défauts de répertoire de données divergents entre points d'entrée, et  | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ f36d887 (doc+warning, défaut inchangé) |
 | 5 | `architecture-07` | 🟠 Med | S | Dérive comportementale entre les transports REST et MCP sur le flux d' | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 868406e |
 | 6 | `architecture-08` | 🟠 Med | M | Org 'default' codé en dur aux frontières MQTT et quota alors que le mu | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 62fdf82 (multi-org exp. documenté) |
-| 7 | `qualite-code-01` | 🟠 Med | L | Trois fonctions géantes (390 à 505 lignes) concentrent la complexité d | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 7 | `qualite-code-01` | 🟠 Med | L | Trois fonctions géantes (390 à 505 lignes) concentrent la complexité d | ☐ | ☐ | ☐ | ☐ | ☐ | ⏭️ différé — décision mainteneur (refactor 1 fichier/PR ; chemins sensibles auth/routage) |
 | 8 | `qualite-code-02` | 🟠 Med | M | Couche REST : corps de requêtes castés sans validation (15 « body as { | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ b39326b |
-| 9 | `qualite-code-03` | 🟠 Med | M | Aucun linter réel : le job CI « Lint » = 5 scripts bash grep + tsc ; c | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 9 | `qualite-code-03` | 🟠 Med | M | Aucun linter réel : le job CI « Lint » = 5 scripts bash grep + tsc ; c | ☐ | ☐ | ☐ | ☐ | ☐ | ⏭️ différé — décision mainteneur (adoption ESLint/Prettier, cf. maintenabilite-05) |
 | 10 | `tests-03` | 🟠 Med | M | Couche handlers d'outils MCP faiblement couverte : consultation-tools  | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 3fcabbf |
 | 11 | `tests-04` | 🟠 Med | S | Le hook d'authentification MQTT de production n'est jamais exercé : le | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 1d414bb |
 | 12 | `tests-05` | 🟠 Med | M | Le dashboard principal (index.html, ~77 fonctions JS inline) n'a aucun | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 1e1f9ee (smoke Playwright) |
@@ -144,7 +148,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 24 | `tests-08` | 🟡 Low | S | CLI : commandes exclues de la mesure de couverture et « uninstall » (d | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 23a4e40 |
 | 25 | `tests-09` | 🟡 Low | S | fast-check sous-exploité (2 propriétés) et propriété CSRF théoriquemen | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ a8ad184 |
 | 26 | `architecture-12` | ⚪ Info | S | CoordinatorConfig porte des champs de configuration morts (authEnabled | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ DONE |
-| 27 | `architecture-14` | ⚪ Info | L | Dashboard principal : 63 Ko de HTML avec un unique script inline, cont | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 27 | `architecture-14` | ⚪ Info | L | Dashboard principal : 63 Ko de HTML avec un unique script inline, cont | ☐ | ☐ | ☐ | ☐ | ☐ | ⏭️ différé — refactor dashboard (YAGNI ; filet tests-05 en place) |
 | 28 | `qualite-code-08` | ⚪ Info | S | Le catch global HTTP renvoie err.message brut dans la réponse 500 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 6b73e92 |
 | 29 | `tests-10` | ⚪ Info | L | Suite entièrement sérialisée à cause de singletons de module — discipl | ✅ | — | — | — | 📄 | 📄 accepté (YAGNI ; lié arch-02/03) |
 | 30 | `tests-11` | ⚪ Info | S | Scripts perf/chaos hors CI par choix documenté — pas de suivi de régre | ✅ | — | — | — | 📄 | 📄 choix accepté+documenté 62fdf82 |
@@ -174,7 +178,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 1 | `maintenabilite-01` | 🔴 High | S | PR d'un contributeur externe (#151) sans aucune réponse depuis 6,5 sem | ☐ | ☐ | ☐ | ☐ | ☐ | ⏳ action mainteneur (#151) |
 | 2 | `maintenabilite-03` | 🟠 Med | S | Release 0.13.1 bloquée depuis 7 semaines avec des correctifs utilisate | ☐ | ☐ | ☐ | ☐ | ☐ | ⏳ action mainteneur (release 0.13.1) |
 | 3 | `maintenabilite-04` | 🟠 Med | S | pnpm test échoue sur Windows (20 tests, exit 127) quand bash résout ve | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 27d43c3 |
-| 4 | `maintenabilite-05` | 🟠 Med | M | Aucun formatter ni linter généraliste — le style repose entièrement su | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 4 | `maintenabilite-05` | 🟠 Med | M | Aucun formatter ni linter généraliste — le style repose entièrement su | ☐ | ☐ | ☐ | ☐ | ☐ | ⏭️ différé — décision mainteneur (Prettier + reformat repo-wide) |
 | 5 | `maintenabilite-06` | 🟠 Med | M | sdk/ est un sous-paquet orphelin : jamais testé en CI, lockfile npm da | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ #154 (sdk-test en CI) |
 | 6 | `maintenabilite-07` | 🟠 Med | S | Surface Phase 2 (OAuth/multi-org/chiffrement) surdimensionnée par rapp | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 1125e1f (gelé+documenté) |
 | 7 | `maintenabilite-08` | 🟡 Low | S | Tracker figé depuis le 23 mai : 23 issues semées sans triage ni lien a | ☐ | ☐ | ☐ | ☐ | ☐ | ⏳ action mainteneur (triage) |
