@@ -43,3 +43,28 @@ risk (stale strings survive longer than the English source).
 This is a documented decision, not a change to `docs/index.html` itself —
 implement it opportunistically as content is touched, not as a one-off
 migration.
+
+## MCP Streamable HTTP: no eventStore / resumability
+
+`src/serve-http.ts`'s `StreamableHTTPServerTransport` instances are
+constructed without an `eventStore`, so the transport does not support
+SSE-stream resumability (`Last-Event-ID` replay after a dropped
+connection). This is intentional (YAGNI), not an oversight: server-pushed
+events already have a dedicated, reliable channel — the embedded MQTT
+broker / SSE emitter (`src/mqtt-broker.ts`, the SSE endpoints) — so MCP
+clients that need durable event delivery use that path rather than relying
+on Streamable HTTP replay.
+
+**Policy**: implement the SDK's `EventStore` interface (on SQLite, mirroring
+the rest of the persistence layer) only if a concrete client need emerges
+that MQTT/SSE can't already satisfy. Don't build it speculatively.
+
+## MCP registry publication: deferred
+
+`package.json`'s `mcpName` (`io.github.swoofer/mcp-coordinator`) is
+declared and `serverInfo.name` (`src/server-setup.ts`) is aligned to it,
+but publication to the official MCP registry is **not automated** — there
+is no `server.json` and no `mcp-publisher` workflow. Publishing to a public
+registry is a maintainer decision/action (registry ownership verification,
+ongoing upkeep commitments), not something to bootstrap speculatively from
+an audit finding. Deferred until the maintainer decides to publish.

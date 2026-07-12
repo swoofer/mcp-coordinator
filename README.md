@@ -358,6 +358,8 @@ The coordinator runs in one of three modes, selected by env-var configuration. *
 
 OAuth mode adds: 4 IdP providers (GitHub OAuth App, GitHub App, Google, generic OIDC) with picker UI, cookie sessions + Bearer JWT + service tokens, refresh-token rotation with stolen-token detection, SHA-256 audit chain (SOC 2 tamper-evidence), and an admin UI at `/dashboard/admin.html`.
 
+**MCP authorization spec discovery**: `/mcp` does not implement the MCP authorization spec's OAuth discovery flow — no `resource_metadata` (RFC 9728) on `WWW-Authenticate`, no `/.well-known/oauth-protected-resource`. This is a deliberate scope decision, not an oversight: today's clients are the maintainer's own agents under an intra-org trust model (see [`docs/security/threat-model.md`](./docs/security/threat-model.md)), and token provisioning is proprietary — shared-secret registration (`/api/auth/register`, Phase 1) or the device flow (Phase 2) — rather than spec-compliant discovery. Third-party spec-compliant MCP clients need manual configuration (they can't auto-discover the auth flow). The Phase 2 OAuth authorization server already exists, so wiring up spec-compliant discovery later is additive, not a rearchitecture.
+
 | Doc | Topic |
 |-----|-------|
 | [`docs/onboarding-self-host.md`](./docs/onboarding-self-host.md) | Zero-to-first-signin walkthrough |
