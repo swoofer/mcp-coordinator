@@ -87,6 +87,17 @@ let httpLog: Logger;
 let mcpLog: Logger;
 let authLog: Logger;
 let currentRunConfig: Record<string, unknown> | null = null;
+// architecture-02: services/httpLog/currentRunConfig above are module-level
+// state, reassigned on every startServer() call — the request handler closes
+// over these module bindings, not over per-call locals. That means this
+// process supports exactly ONE live coordinator at a time: a second
+// concurrent startServer() would silently repoint every in-flight request
+// handler at the new instance's services/config, corrupting the first one.
+// serverRunning is the fail-closed guard for that: set true on entry, reset
+// to false in stop() (or on startup failure — see the startServer() wrapper
+// below). Sequential restart (stop() then startServer() again) remains fully
+// supported; only *concurrent* in-process instances are rejected.
+let serverRunning = false;
 // securite-surface-05: set once per startServer() call — see registration
 // rate-limit wiring there. Reuses bootPhase2's RateLimiter (already swept)
 // when Phase 2 is active, mirroring the retentionSweeper reuse-or-own
@@ -366,7 +377,11 @@ export interface ServerOptions {
   /**
    * MQTT TCP listener port. Defaults to COORDINATOR_MQTT_TCP_PORT env or 1883.
    * Pass an OS-ephemeral free port (see net.createServer().listen(0)) to run
-   * multiple coordinators in the same process without collision.
+   * multiple coordinator PROCESSES side by side (e.g. parallel test workers)
+   * without port collision. Does NOT enable multiple concurrent coordinators
+   * within the same process — see architecture-02 note above serverRunning:
+   * this module holds mono-instance-per-process state, so only one
+   * startServer() may be live at a time in a given process.
    */
   mqttTcpPort?: number;
   /**
@@ -375,9 +390,12 @@ export interface ServerOptions {
   mqttWsPath?: string;
   /**
    * If false, do NOT register process-level SIGTERM/SIGINT handlers. Default
-   * true. Embedders that manage their own signals (essaim's orchestrator runs
-   * many in-process coordinators per session) should pass false and call
-   * `handle.stop()` from their own teardown.
+   * true. Embedders that manage their own signals should pass false and call
+   * `handle.stop()` from their own teardown. NOTE: this does not make the
+   * process safe for multiple *concurrent* in-process coordinators — this
+   * module is mono-instance-per-process (architecture-02). An embedder that
+   * wants several coordinators must run several processes (each with its own
+   * port/mqttTcpPort/dataDir), or start/stop them sequentially in-process.
    */
   registerSignalHandlers?: boolean;
 }
@@ -413,7 +431,31 @@ export interface ServerHandle {
   sweepMcpSessions: () => number;
 }
 
+/**
+ * architecture-02: fail-closed guard for the mono-instance-per-process model
+ * described above serverRunning. Rejects a 2nd concurrent startServer() call
+ * outright rather than silently corrupting the 1st instance's module-level
+ * state (services/httpLog/currentRunConfig). Sequential use — stop() then
+ * startServer() again — is unaffected: stop() resets serverRunning to false,
+ * and a failed startup (thrown/rejected before returning a handle) resets it
+ * too, so a caller can retry after an error without restarting the process.
+ */
 export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
+  if (serverRunning) {
+    throw new Error(
+      "startServer(): a coordinator is already running in this process; call handle.stop() before starting another. Multiple concurrent in-process coordinators are not supported.",
+    );
+  }
+  serverRunning = true;
+  try {
+    return await startServerInner(opts);
+  } catch (err) {
+    serverRunning = false;
+    throw err;
+  }
+}
+
+async function startServerInner(opts?: ServerOptions): Promise<ServerHandle> {
   const port = opts?.port ?? PORT;
   const dataDir = opts?.dataDir ?? DATA_DIR;
   // Resolve MQTT ports per-call so tests/embedders can override module-load env values.
@@ -958,6 +1000,10 @@ export async function startServer(opts?: ServerOptions): Promise<ServerHandle> {
   const stop = async (): Promise<void> => {
     if (stopped) return;
     stopped = true;
+    // architecture-02: release the mono-instance guard so a subsequent
+    // sequential startServer() (this process's supported restart pattern)
+    // is allowed. Must happen even if cleanup below throws — do it up front.
+    serverRunning = false;
     log.info("Coordinator shutting down...");
     // T29: Phase 2 shutdown — stop sweeper + drain audit queue BEFORE closing
     // the HTTP server, so any final Tier 2 audit emissions from in-flight

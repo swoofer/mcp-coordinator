@@ -20,7 +20,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | | High (13) | Med (46) | Low (42) | Info (18) | **Total (119)** |
 |--|:--:|:--:|:--:|:--:|:--:|
-| **Fermés ✅** | 12 | 38 | 40 | 17 | **107 / 119** |
+| **Fermés ✅** | 12 | 41 | 40 | 17 | **110 / 119** |
 | **Rounds cochés** | — | — | — | — | **295 / 595 (approx)** |
 
 > Mettre à jour ce tableau à chaque tâche fermée. 595 = 119 × 5 rounds.
@@ -118,8 +118,8 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | # | ID | Sév | Eff | Constat | R1 | R2 | R3 | R4 | R5 | Statut |
 |---|----|-----|-----|---------|----|----|----|----|----|--------|
-| 1 | `architecture-02` | 🟠 Med | L | État mutable au niveau module dans serve-http.ts contredit le contrat  | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
-| 2 | `architecture-03` | 🟠 Med | L | Base de données en singleton global (service locator) — couple tout le | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 1 | `architecture-02` | 🟠 Med | L | État mutable au niveau module dans serve-http.ts contredit le contrat  | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 2ba5fb7 (fail-closed mono-instance) |
+| 2 | `architecture-03` | 🟠 Med | L | Base de données en singleton global (service locator) — couple tout le | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 4ba93d4 (mono-instance assumé ; injection YAGNI documentée) |
 | 3 | `architecture-04` | 🟠 Med | S | Les handlers SIGINT/SIGTERM du CLI en mode foreground court-circuitent | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ DONE |
 | 4 | `architecture-06` | 🟠 Med | S | Défauts de répertoire de données divergents entre points d'entrée, et  | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ f36d887 (doc+warning, défaut inchangé) |
 | 5 | `architecture-07` | 🟠 Med | S | Dérive comportementale entre les transports REST et MCP sur le flux d' | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 868406e |
@@ -129,7 +129,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 9 | `qualite-code-03` | 🟠 Med | M | Aucun linter réel : le job CI « Lint » = 5 scripts bash grep + tsc ; c | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
 | 10 | `tests-03` | 🟠 Med | M | Couche handlers d'outils MCP faiblement couverte : consultation-tools  | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 3fcabbf |
 | 11 | `tests-04` | 🟠 Med | S | Le hook d'authentification MQTT de production n'est jamais exercé : le | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 1d414bb |
-| 12 | `tests-05` | 🟠 Med | M | Le dashboard principal (index.html, ~77 fonctions JS inline) n'a aucun | ☐ | ☐ | ☐ | ☐ | ☐ | ☐ TODO |
+| 12 | `tests-05` | 🟠 Med | M | Le dashboard principal (index.html, ~77 fonctions JS inline) n'a aucun | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 1e1f9ee (smoke Playwright) |
 | 13 | `architecture-09` | 🟡 Low | M | Double pile logger/metrics Phase 1 vs Phase 2 : la redaction Pino ne c | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 6482528+62fdf82 (redaction résolue, convergence doc) |
 | 14 | `architecture-10` | 🟡 Low | M | La Phase 2 contourne l'abstraction DatabaseAdapter par un double cast  | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ aabb272 (fail-fast Bun+OAuth) |
 | 15 | `architecture-11` | 🟡 Low | S | Inversion de couche : src/ importe cli/version.ts | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ DONE |
