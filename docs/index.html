@@ -38,7 +38,7 @@
     "applicationCategory": "DeveloperApplication",
     "applicationSubCategory": "AI Agent Coordination",
     "operatingSystem": "Linux, macOS, Windows",
-    "softwareVersion": "0.13.0",
+    "softwareVersion": "1.0.0",
     "license": "https://opensource.org/licenses/MIT",
     "codeRepository": "https://github.com/swoofer/mcp-coordinator",
     "programmingLanguage": ["JavaScript", "Node.js"],
@@ -2793,14 +2793,26 @@
       </div>
 
       <div class="timeline-item">
+        <div class="timeline-dot dot-done" aria-hidden="true"></div>
+        <div class="timeline-badge badge-done" data-i18n="roadmap.badge.done">Shipped</div>
+        <h4 data-i18n="roadmap.v1_0.title">v1.0 — First stable release: security &amp; supply-chain hardening</h4>
+        <p data-i18n="roadmap.v1_0.desc">The audit-remediation milestone and first major version. <strong>Breaking:</strong> JWTs now carry a <code>typ</code> claim (access/refresh) — tokens issued before v1.0 are rejected, so every user re-authenticates once after upgrade. Hardens the default install (127.0.0.1 bind via <code>COORDINATOR_BIND</code>, Origin/CORS enforcement, secret redaction on all log paths), closes the supply chain (pnpm 10 with <code>onlyBuiltDependencies</code>, SHA-pinned Actions, digest-pinned Docker base), and adds zod-validated REST endpoints with structured 400s. 110 audit findings remediated across 23 PRs; 0 known vulnerabilities.</p>
+        <p class="timeline-meta">
+          <span data-i18n="roadmap.v1_0.date">Shipped July 2026</span>
+          <span aria-hidden="true">·</span>
+          <a href="https://github.com/swoofer/mcp-coordinator/releases/tag/v1.0.0" target="_blank" rel="noopener noreferrer" data-i18n="roadmap.v1_0.link" aria-label="v1.0.0 release on GitHub">v1.0.0 release</a>
+        </p>
+      </div>
+
+      <div class="timeline-item">
         <div class="timeline-dot dot-future" aria-hidden="true"></div>
         <div class="timeline-badge badge-future" data-i18n="roadmap.badge.future">Future</div>
-        <h4 data-i18n="roadmap.v1_0.title">v1.0 — Stable API + cross-repo coordination</h4>
-        <p data-i18n="roadmap.v1_0.desc">Frozen public API, versioned REST endpoints, migration guides. Coordination across multiple repositories from a single MQTT broker. Phase 5 multi-instance via Redis pub/sub for membership cache invalidation + token_epoch reads + rate-limit + sweeper leader election.</p>
+        <h4 data-i18n="roadmap.beyond.title">Beyond v1.0 — cross-repo coordination &amp; multi-instance</h4>
+        <p data-i18n="roadmap.beyond.desc">Coordination across multiple repositories from a single MQTT broker. A frozen, versioned public REST API with migration guides. Phase 5 multi-instance via Redis pub/sub for membership cache invalidation, token_epoch reads, rate-limit, and sweeper leader election.</p>
         <p class="timeline-meta">
-          <span data-i18n="roadmap.v1_0.date">Date TBD</span>
+          <span data-i18n="roadmap.beyond.date">Date TBD</span>
           <span aria-hidden="true">·</span>
-          <a href="https://github.com/swoofer/mcp-coordinator/issues?q=is%3Aissue+label%3Av1.0" target="_blank" rel="noopener noreferrer" data-i18n="roadmap.v1_0.link" aria-label="v1.0 issues on GitHub">Follow on GitHub</a>
+          <a href="https://github.com/swoofer/mcp-coordinator/issues?q=is%3Aissue+label%3Av1.0" target="_blank" rel="noopener noreferrer" data-i18n="roadmap.beyond.link" aria-label="Roadmap issues on GitHub">Follow on GitHub</a>
         </p>
       </div>
 
@@ -2817,7 +2829,7 @@
     <a href="https://github.com/sponsors/swoofer" target="_blank" rel="noopener noreferrer">Sponsor</a>
     <a href="https://buymeacoffee.com/swoofer" target="_blank" rel="noopener noreferrer">Buy Me A Coffee</a>
   </div>
-  <p data-i18n="footer.text">MIT License &nbsp;·&nbsp; Built with <a href="https://claude.ai/code" target="_blank" rel="noopener noreferrer">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v0.13.0</p>
+  <p data-i18n="footer.text">MIT License &nbsp;·&nbsp; Built with <a href="https://claude.ai/code" target="_blank" rel="noopener noreferrer">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v1.0.0</p>
 </footer>
 
 <script>
@@ -3201,11 +3213,15 @@
       "roadmap.v13.desc": "Channels become bidirectional: a new <code>post_to_thread</code> tool lets a Claude Code session reply directly into a consultation thread over MQTT. CI: the chained <code>release.yml &rarr; docker-publish.yml</code> <code>workflow_call</code> now auto-publishes the multi-arch image to GHCR on every release tag without manual dispatch (root-cause was gating on the wrong event field). New operating-modes (polling vs push) guide spells out the choice; <code>list_threads</code> status enum corrected for external integrators.",
       "roadmap.v13.date": "Shipped May 2026",
       "roadmap.v13.link": "v0.13.0 release",
-      "roadmap.v1_0.title": "v1.0 — Stable API + cross-repo coordination",
-      "roadmap.v1_0.desc": "Frozen public API, versioned REST endpoints, migration guides. Coordination across multiple repositories from a single MQTT broker. Phase 5 multi-instance via Redis pub/sub for membership cache invalidation + token_epoch reads + rate-limit + sweeper leader election.",
-      "roadmap.v1_0.date": "Date TBD",
-      "roadmap.v1_0.link": "Follow on GitHub",
-      "footer.text": "MIT License &nbsp;·&nbsp; Built with <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v0.13.0",
+      "roadmap.v1_0.title": "v1.0 — First stable release: security &amp; supply-chain hardening",
+      "roadmap.v1_0.desc": "The audit-remediation milestone and first major version. <strong>Breaking:</strong> JWTs now carry a <code>typ</code> claim (access/refresh) — tokens issued before v1.0 are rejected, so every user re-authenticates once after upgrade. Hardens the default install (127.0.0.1 bind via <code>COORDINATOR_BIND</code>, Origin/CORS enforcement, secret redaction on all log paths), closes the supply chain (pnpm 10 with <code>onlyBuiltDependencies</code>, SHA-pinned Actions, digest-pinned Docker base), and adds zod-validated REST endpoints with structured 400s. 110 audit findings remediated across 23 PRs; 0 known vulnerabilities.",
+      "roadmap.v1_0.date": "Shipped July 2026",
+      "roadmap.v1_0.link": "v1.0.0 release",
+      "roadmap.beyond.title": "Beyond v1.0 — cross-repo coordination &amp; multi-instance",
+      "roadmap.beyond.desc": "Coordination across multiple repositories from a single MQTT broker. A frozen, versioned public REST API with migration guides. Phase 5 multi-instance via Redis pub/sub for membership cache invalidation, token_epoch reads, rate-limit, and sweeper leader election.",
+      "roadmap.beyond.date": "Date TBD",
+      "roadmap.beyond.link": "Follow on GitHub",
+      "footer.text": "MIT License &nbsp;·&nbsp; Built with <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v1.0.0",
       // === Deprecated keys preserved for backwards-compat (old taxonomy) ===
       "why.title": "Why MCP Coordinator?",
       "why.subtitle": "Run five agents on the same repo without merge conflicts, duplicated work, or silent regressions.",
@@ -3711,7 +3727,7 @@
       "compliance.row.retention.status": "Sweeper livré &middot; UI future",
       "compliance.row.retention.aligned": "SOC 2 &middot; Minimisation RGPD",
       "compliance.disclaimer": "mcp-coordinator n'est <strong>pas certifié SOC 2</strong> &mdash; la certification est un travail d'auditeur, pas de code. Nous livrons les crochets architecturaux (isolation multi-tenant, audit log, interface de chiffrement) pour que les équipes en quête d'audit aient une longueur d'avance, mais la certification elle-même reste le processus de votre équipe.",
-      "footer.text": "Licence MIT &nbsp;·&nbsp; Construit avec <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v0.13.0",
+      "footer.text": "Licence MIT &nbsp;·&nbsp; Construit avec <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v1.0.0",
       "why.title": "Pourquoi MCP Coordinator ?",
       "why.subtitle": "Faites tourner cinq agents sur le même repo, sans conflit de merge, sans travail dupliqué, sans régression silencieuse.",
       "why.block1.title": "Plusieurs agents, un seul processus aligné",
@@ -4083,11 +4099,7 @@
       "roadmap.v03.desc": "Análisis AST con tree-sitter en 15 lenguajes. Scoring consciente de símbolos: mismo archivo, funciones distintas = razón anotada, no un bloqueo silencioso.",
       "roadmap.v03.date": "Lanzado en mayo de 2026",
       "roadmap.v03.link": "Lanzamiento v0.3.0",
-      "roadmap.v1_0.title": "v1.0 — API estable + coordinación cross-repo",
-      "roadmap.v1_0.desc": "API pública congelada, endpoints REST versionados, guías de migración. Coordinación entre múltiples repositorios desde un solo broker. Multi-instancia Phase 5 vía Redis pub/sub para invalidación de caché de membresía + lecturas <code>token_epoch</code> + rate-limit + elección de líder del sweeper.",
-      "roadmap.v1_0.date": "Fecha por definir",
-      "roadmap.v1_0.link": "Seguir en GitHub",
-      "footer.text": "Licencia MIT &nbsp;·&nbsp; Construido con <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v0.13.0",
+      "footer.text": "Licencia MIT &nbsp;·&nbsp; Construido con <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v1.0.0",
       "why.title": "¿Por qué MCP Coordinator?",
       "why.subtitle": "Ejecute cinco agentes en el mismo repositorio sin conflictos de merge, trabajo duplicado ni regresiones silenciosas.",
       "why.block1.title": "Varios agentes, un solo proceso alineado",
@@ -4546,11 +4558,7 @@
       "roadmap.v03.desc": "AST-Analyse via tree-sitter über 15 Sprachen. Symbol-bewusstes Scoring: gleiche Datei, unterschiedliche Funktionen = annotierter Grund, keine stille Blockade.",
       "roadmap.v03.date": "Veröffentlicht im Mai 2026",
       "roadmap.v03.link": "v0.3.0 Release",
-      "roadmap.v1_0.title": "v1.0 — Stabile API + Cross-Repo-Koordination",
-      "roadmap.v1_0.desc": "Eingefrorene öffentliche API, versionierte REST-Endpoints, Migrationsleitfäden. Koordination über mehrere Repositories hinweg von einem einzigen Broker aus.",
-      "roadmap.v1_0.date": "Datum offen",
-      "roadmap.v1_0.link": "Auf GitHub folgen",
-      "footer.text": "MIT-Lizenz &nbsp;·&nbsp; Gebaut mit <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v0.13.0",
+      "footer.text": "MIT-Lizenz &nbsp;·&nbsp; Gebaut mit <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v1.0.0",
       "why.title": "Warum MCP Coordinator?",
       "why.subtitle": "Fünf Agenten auf demselben Repo betreiben — ohne Merge-Konflikte, doppelte Arbeit oder stille Regressionen.",
       "why.block1.title": "Mehrere Agenten, ein abgestimmter Prozess",
@@ -5009,11 +5017,7 @@
       "roadmap.v03.desc": "通过 tree-sitter 在 15 种语言上进行 AST 级分析。符号感知评分:同一文件、不同函数 = 标注原因,而非静默阻塞。",
       "roadmap.v03.date": "2026 年 5 月发布",
       "roadmap.v03.link": "v0.3.0 发布版本",
-      "roadmap.v1_0.title": "v1.0——稳定 API + 跨 repo 协调",
-      "roadmap.v1_0.desc": "冻结的公共 API、版本化的 REST 端点、迁移指南。从单一 MQTT broker 协调多个仓库。Phase 5 多实例通过 Redis pub/sub 实现成员缓存失效 + token_epoch 读取 + 限流 + 清理器领导者选举。",
-      "roadmap.v1_0.date": "日期待定",
-      "roadmap.v1_0.link": "在 GitHub 上关注",
-      "footer.text": "MIT 许可证 &nbsp;·&nbsp; 用 <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> 构建 &nbsp;·&nbsp; MCP Coordinator v0.13.0",
+      "footer.text": "MIT 许可证 &nbsp;·&nbsp; 用 <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> 构建 &nbsp;·&nbsp; MCP Coordinator v1.0.0",
       "why.title": "为什么选择 MCP Coordinator?",
       "why.subtitle": "在同一 repo 上跑五个 agent,不出现合并冲突、不重复劳动、不遗留隐性回归。",
       "why.block1.title": "多个 agent,一个对齐的流程",
@@ -5472,11 +5476,7 @@
       "roadmap.v03.desc": "tree-sitter による 15 言語の AST 解析。シンボル認識スコアリング:同一ファイル、異なる関数 = 注釈付き理由、サイレントブロックではない。",
       "roadmap.v03.date": "2026 年 5 月リリース",
       "roadmap.v03.link": "v0.3.0 リリース",
-      "roadmap.v1_0.title": "v1.0 —— 安定 API + クロスリポジトリ連携",
-      "roadmap.v1_0.desc": "公開 API の凍結、バージョン管理された REST エンドポイント、マイグレーションガイド。単一の MQTT ブローカーから複数リポジトリにまたがる連携を提供します。Phase 5 マルチインスタンスは Redis pub/sub によるメンバーシップキャッシュの無効化 + token_epoch 読み取り + レートリミット + sweeper のリーダー選出を実現します。",
-      "roadmap.v1_0.date": "日付未定",
-      "roadmap.v1_0.link": "GitHub でフォロー",
-      "footer.text": "MIT License &nbsp;·&nbsp; <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> で構築 &nbsp;·&nbsp; MCP Coordinator v0.13.0",
+      "footer.text": "MIT License &nbsp;·&nbsp; <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> で構築 &nbsp;·&nbsp; MCP Coordinator v1.0.0",
       "why.title": "なぜ MCP Coordinator か?",
       "why.subtitle": "5 体のエージェントを同じリポジトリで走らせても、マージ競合・重複作業・サイレントリグレッションは発生しません。",
       "why.block1.title": "複数のエージェント、ひとつの揃ったプロセス",
