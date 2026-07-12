@@ -12,15 +12,12 @@ import { EventEmitter } from "events";
  * topics and sets `connected = true` again. This suite verifies that
  * re-subscription actually happens on a simulated reconnect.
  *
- * It also documents a real, currently-unaddressed gap found while writing
- * this test (see the last describe block below): MqttBridge never listens
- * for the client's "close"/"offline" events, so `connected` is never reset
- * to `false` when the underlying connection drops — `isConnected()` can lie
- * (report true) during an outage window between disconnect and the next
- * successful "connect". This is a real behavior gap, not a test bug; it is
- * documented/asserted as CURRENT behavior here (not fixed — out of scope
- * for tests-06, which is a coverage-only task). See task report for the
- * writeup flagged to the maintainer.
+ * The last describe block covers the outage window: MqttBridge now listens
+ * for the client's "close"/"offline" events and resets `connected` to false,
+ * so `isConnected()` reports the real state during an outage (rather than
+ * lying "true" between disconnect and the next successful "connect"). This
+ * gap was found while writing this test and fixed here as a follow-up to
+ * protocole-mcp-06, whose mqtt-tools.ts guards depend on isConnected().
  *
  * Uses the same fake `mqtt` module pattern as p1-mqtt-correctness.test.ts /
  * mqtt-bridge-bounded.test.ts so the real MqttBridge reconnect/subscribe
@@ -112,30 +109,31 @@ describe("MqttBridge reconnection (tests-06)", () => {
   });
 });
 
-describe("MqttBridge reconnection — documented gap (found while writing tests-06, not fixed here)", () => {
-  it("isConnected() does NOT go false when the client drops the connection (no close/offline listener wired)", async () => {
+describe("MqttBridge reconnection — isConnected() tracks the outage window", () => {
+  it("isConnected() goes false when the client drops the connection (close/offline listeners wired)", async () => {
     const { bridge, client } = await makeConnectedBridge();
     expect(bridge.isConnected()).toBe(true);
 
     // mqtt.js emits "close" (and "offline") when the connection drops, before
-    // it starts attempting to reconnect. MqttBridge registers no listener for
-    // either event, so `connected` is never flipped back to false here.
+    // it starts attempting to reconnect. MqttBridge now resets `connected`
+    // on either event, so isConnected() reports the real state during an
+    // outage — the mqtt-tools.ts guards (protocole-mcp-06) fire correctly
+    // instead of silently attempting (and, with a real client, dropping) the op.
     client.emit("close");
-    client.emit("offline");
-
-    // This asserts CURRENT behavior (a real gap), not a desired contract:
-    // isConnected() keeps reporting `true` through the entire outage window
-    // between "close" and the next successful "connect". Consumers like
-    // mqtt-tools.ts gate publish/wait/queue reads on isConnected(), so during
-    // an outage they will NOT get the "MQTT broker not available" isError
-    // path added for protocole-mcp-06 — they'll instead silently attempt
-    // (and, with a real client, likely fail/queue) the operation.
-    expect(bridge.isConnected()).toBe(true);
+    expect(bridge.isConnected()).toBe(false);
   });
 
-  it("a subsequent successful reconnect ('connect' fires again) still reports connected — recovers on its own", async () => {
+  it("'offline' also flips isConnected() to false", async () => {
     const { bridge, client } = await makeConnectedBridge();
+    client.emit("offline");
+    expect(bridge.isConnected()).toBe(false);
+  });
+
+  it("recovers on its own: connected → close (false) → connect (true)", async () => {
+    const { bridge, client } = await makeConnectedBridge();
+    expect(bridge.isConnected()).toBe(true);
     client.emit("close");
+    expect(bridge.isConnected()).toBe(false);
     client.emit("connect"); // mqtt.js's own reconnect succeeds
     expect(bridge.isConnected()).toBe(true);
   });
