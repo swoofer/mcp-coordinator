@@ -195,7 +195,7 @@ describe("protocole-mcp-14: wait_for_* timeout caps", () => {
   it("wait_for_message caps an excessive timeout_seconds before calling the bridge", async () => {
     const waitForMessage = vi.fn(async (_agentId: string, _timeoutMs: number) => null);
     const server = new McpServer({ name: "test", version: "0" });
-    registerMqttTools(server, { mqttBridge: { waitForMessage } } as unknown as CoordinatorServices, silentLogger, GET_CLAIMS);
+    registerMqttTools(server, { mqttBridge: { isConnected: () => true, waitForMessage } } as unknown as CoordinatorServices, silentLogger, GET_CLAIMS);
 
     await callTool(server, "wait_for_message", { agent_id: "a1", timeout_seconds: 10_000_000 });
 
@@ -208,7 +208,7 @@ describe("protocole-mcp-14: wait_for_* timeout caps", () => {
   it("wait_for_message respects a timeout under the cap", async () => {
     const waitForMessage = vi.fn(async (_agentId: string, _timeoutMs: number) => null);
     const server = new McpServer({ name: "test", version: "0" });
-    registerMqttTools(server, { mqttBridge: { waitForMessage } } as unknown as CoordinatorServices, silentLogger, GET_CLAIMS);
+    registerMqttTools(server, { mqttBridge: { isConnected: () => true, waitForMessage } } as unknown as CoordinatorServices, silentLogger, GET_CLAIMS);
 
     await callTool(server, "wait_for_message", { agent_id: "a1", timeout_seconds: 5 });
 
