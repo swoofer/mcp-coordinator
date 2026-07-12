@@ -22,6 +22,26 @@ import type { AuthClaims } from "../auth.js";
  */
 export const MAX_WAIT_TIMEOUT_SECONDS = 300;
 
+/**
+ * protocole-mcp-06: in stdio transport no MQTT broker/bridge is ever started
+ * (see src/index.ts — "no MQTT broker in stdio mode"), so `mqttBridge.isConnected()`
+ * is false for the lifetime of the process. Without this guard the 3 MQTT tools
+ * below silently no-op (mqttPublish), block for the full timeout then report a
+ * bare `{ timeout: true }` (waitForMessage), or return an empty list
+ * (getQueuedMessages) — all of which read as success to the caller even though
+ * no broker is reachable. Return an explicit isError instead so an LLM/user
+ * debugging a coordination that "isn't going through" gets a real signal.
+ */
+const MQTT_NOT_CONNECTED_MESSAGE =
+  "MQTT broker not available — stdio mode runs without MQTT. Use the HTTP transport for push messaging (mqtt_publish / wait_for_message / get_queued_messages).";
+
+function mqttNotConnectedResult() {
+  return {
+    isError: true,
+    content: [{ type: "text" as const, text: MQTT_NOT_CONNECTED_MESSAGE }],
+  };
+}
+
 export function registerMqttTools(
   server: McpServer,
   services: CoordinatorServices,
@@ -37,6 +57,7 @@ export function registerMqttTools(
   }, { readOnlyHint: true, title: "Wait for MQTT message" }, async ({ agent_id, timeout_seconds }, extra) => {
     const claims = getSessionClaims(extra.sessionId ?? "");
     if (!claims) throw new Error("Session has no captured claims (auth bug)");
+    if (!mqttBridge.isConnected()) return mqttNotConnectedResult();
     const cappedSeconds = Math.min(timeout_seconds || 15, MAX_WAIT_TIMEOUT_SECONDS);
     const timeoutMs = cappedSeconds * 1000;
     const msg = await mqttBridge.waitForMessage(agent_id, timeoutMs);
@@ -51,6 +72,7 @@ export function registerMqttTools(
   }, { readOnlyHint: true, title: "Get queued MQTT messages" }, async ({ agent_id }, extra) => {
     const claims = getSessionClaims(extra.sessionId ?? "");
     if (!claims) throw new Error("Session has no captured claims (auth bug)");
+    if (!mqttBridge.isConnected()) return mqttNotConnectedResult();
     const messages = mqttBridge.getQueuedMessages(agent_id);
     return { content: [{ type: "text", text: JSON.stringify(messages) }] };
   });
@@ -61,6 +83,7 @@ export function registerMqttTools(
   }, { readOnlyHint: false, destructiveHint: false, openWorldHint: true, title: "Publish MQTT message" }, async ({ topic, payload }, extra) => {
     const claims = getSessionClaims(extra.sessionId ?? "");
     if (!claims) throw new Error("Session has no captured claims (auth bug)");
+    if (!mqttBridge.isConnected()) return mqttNotConnectedResult();
     mqttBridge.mqttPublish(topic, payload);
     return { content: [{ type: "text", text: "published" }] };
   });
