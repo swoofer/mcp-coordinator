@@ -1,7 +1,62 @@
 ﻿import { Command } from "commander";
-import { writeFileSync } from "fs";
+import { writeFileSync, unlinkSync } from "fs";
 import { join } from "path";
 import { loadConfig, ensureConfigDir } from "../config.js";
+
+/**
+ * architecture-04: builds the foreground SIGINT/SIGTERM handler.
+ *
+ * Previously the CLI registered its own `process.on("SIGINT"/"SIGTERM", ...)`
+ * handlers that only removed the PID file and called `process.exit(0)`
+ * immediately — bypassing `ServerHandle.stop()`'s ordered teardown (Phase 2
+ * shutdown / audit drain → HTTP server → MQTT bridge → broker → timers →
+ * DB). Since `process.exit()` inside a synchronous listener terminates the
+ * process before any other registered listener for the same signal runs,
+ * this raced against (and usually won over) `startServer`'s own graceful
+ * shutdown handler, risking in-flight audit/quota data loss.
+ *
+ * Fix: the CLI now owns signal handling exclusively — it starts the server
+ * with `registerSignalHandlers: false` so `startServer` does NOT install its
+ * own listeners (no double-handler race), and this single handler awaits
+ * `handle.stop()` (the real graceful teardown) before cleaning up the PID
+ * file and exiting. Idempotent via the `shuttingDown` flag so a second
+ * signal during shutdown is a no-op instead of double-running teardown.
+ *
+ * Mirrors serve-http.ts's own `onSignal`: a `stop()` error is reported and
+ * exits with code 1 (instead of rejecting/throwing, which would otherwise
+ * surface as an unhandled promise rejection since callers fire this via
+ * `void shutdown(signal)` from a process signal listener) — but PID cleanup
+ * still always runs.
+ */
+export function createForegroundShutdownHandler(
+  handle: { stop: () => Promise<void> },
+  pidFile: string,
+  deps: {
+    unlinkSync: (path: string) => void;
+    exit: (code?: number) => void;
+    onError?: (err: unknown) => void;
+  } = {
+    unlinkSync,
+    exit: (code?: number) => process.exit(code),
+    onError: (err) => console.error("Graceful shutdown error:", err),
+  },
+): (signal: NodeJS.Signals) => Promise<void> {
+  let shuttingDown = false;
+  return async (_signal: NodeJS.Signals): Promise<void> => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    let exitCode = 0;
+    try {
+      await handle.stop();
+    } catch (err) {
+      exitCode = 1;
+      deps.onError?.(err);
+    } finally {
+      try { deps.unlinkSync(pidFile); } catch { /* best-effort cleanup */ }
+      deps.exit(exitCode);
+    }
+  };
+}
 
 /**
  * Builds the env object passed to the detached daemon child process.
@@ -174,19 +229,20 @@ export function createServerStartCommand(): Command {
 
       // Foreground mode: start server in-process
       // Write PID file for server stop support
-      writeFileSync(join(configDir, "server.pid"), String(process.pid));
+      const pidFile = join(configDir, "server.pid");
+      writeFileSync(pidFile, String(process.pid));
 
-      // Graceful shutdown
-      const { unlinkSync } = await import("fs");
-      const cleanup = () => {
-        try { unlinkSync(join(configDir, "server.pid")); } catch {}
-      };
-      process.on("SIGINT", () => { cleanup(); process.exit(0); });
-      process.on("SIGTERM", () => { cleanup(); process.exit(0); });
-
-      // Import and start server in-process
+      // Import and start server in-process. registerSignalHandlers: false
+      // means startServer does NOT install its own SIGINT/SIGTERM listeners
+      // — this CLI owns signal handling exclusively (see
+      // createForegroundShutdownHandler) so the graceful teardown
+      // (handle.stop()) always runs, without a double-handler race.
       const { startServer } = await import("../../src/serve-http.js");
-      await startServer({ port, dataDir });
+      const handle = await startServer({ port, dataDir, registerSignalHandlers: false });
+
+      const shutdown = createForegroundShutdownHandler(handle, pidFile);
+      process.once("SIGINT", () => { void shutdown("SIGINT"); });
+      process.once("SIGTERM", () => { void shutdown("SIGTERM"); });
     });
 }
 
