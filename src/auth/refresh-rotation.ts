@@ -397,20 +397,40 @@ async function handleReuseBranch(
 }
 
 /**
- * POST /api/auth/oauth/token grant_type=refresh_token — refresh-token
- * rotation handler. See file header for full T19a+T19b flow.
+ * Discriminated result used by the numbered-step helpers below. `ok: false`
+ * means the helper already wrote the HTTP response (error, or in the
+ * IdP-membership step's early-return branches) — the caller must return
+ * immediately without touching `res` again. `ok: true` carries whatever
+ * data the next step needs.
  */
-export async function refreshTokenGrant(
+type StepResult<T> = { ok: true; data: T } | { ok: false };
+
+interface IdpUserRow {
+  idp_access_token: string | null;
+  idp_refresh_token: string | null;
+  idp_provider: string;
+  primary_org_id: string;
+  role?: string | null;
+}
+
+interface AllowlistCheckOutcome {
+  userRow: IdpUserRow | undefined;
+  allowlistMatch: AllowlistMatch | null;
+  allowlistRecheckPerformed: boolean;
+}
+
+/**
+ * Step 1. Parse form body. T18 dispatcher already consumed the request
+ * stream when dispatching on grant_type; it passes the parsed body via
+ * preParsedBody so we don't try to re-read a finished stream. Direct
+ * callers (tests, future internal flows) leave preParsedBody undefined
+ * and we read the body ourselves.
+ */
+async function extractRefreshToken(
   req: IncomingMessage,
   res: ServerResponse,
-  ctx: AuthHandlerContext,
-  preParsedBody?: Record<string, string>,
-): Promise<void> {
-  // 1. Parse form body. T18 dispatcher already consumed the request stream
-  //    when dispatching on grant_type; it passes the parsed body via
-  //    preParsedBody so we don't try to re-read a finished stream. Direct
-  //    callers (tests, future internal flows) leave preParsedBody undefined
-  //    and we read the body ourselves.
+  preParsedBody: Record<string, string> | undefined,
+): Promise<StepResult<string>> {
   let body: Record<string, string>;
   if (preParsedBody !== undefined) {
     body = preParsedBody;
@@ -419,16 +439,28 @@ export async function refreshTokenGrant(
       body = await parseFormBody(req);
     } catch {
       writeOAuthError(res, "invalid_request", "Could not parse body");
-      return;
+      return { ok: false };
     }
   }
   const refreshToken = body.refresh_token;
   if (!refreshToken) {
     writeOAuthError(res, "invalid_request", "Missing refresh_token");
-    return;
+    return { ok: false };
   }
+  return { ok: true, data: refreshToken };
+}
 
-  // 2. JWT verify
+/**
+ * Step 2. JWT verify, plus the securite-auth-01 token-type-confusion guard:
+ * an access token (or a legacy token minted before this fix, which carries
+ * no `typ` claim at all) must never be accepted at the refresh-rotation
+ * endpoint — fail-closed: only typ === "refresh" is accepted here.
+ */
+async function verifyAndValidateClaims(
+  refreshToken: string,
+  ctx: AuthHandlerContext,
+  res: ServerResponse,
+): Promise<StepResult<ParsedRefreshClaims>> {
   let claims: ParsedRefreshClaims;
   try {
     claims = await verifyRefreshJwt(refreshToken, ctx);
@@ -438,35 +470,47 @@ export async function refreshTokenGrant(
       metadata: { reason: (err as Error).message },
     });
     writeOAuthError(res, "invalid_grant", "Token verification failed");
-    return;
+    return { ok: false };
   }
 
-  // securite-auth-01: reject token-type confusion. An access token (or a
-  // legacy token minted before this fix, which carries no `typ` claim at
-  // all) must never be accepted at the refresh-rotation endpoint —
-  // fail-closed: only typ === "refresh" is accepted here.
   if (claims.typ !== "refresh") {
     audit("auth.invalid_token", {
       tier: 2,
       metadata: { reason: "wrong_token_type" },
     });
     writeOAuthError(res, "invalid_grant", "Token verification failed");
-    return;
+    return { ok: false };
   }
 
-  // 3. Service-account short-circuit. T19c will expand to verify the
-  //    service token against the service_tokens table; T19a rejects
-  //    flatly because service tokens never rotate.
+  return { ok: true, data: claims };
+}
+
+/**
+ * Step 3. Service-account short-circuit. T19c will expand to verify the
+ * service token against the service_tokens table; T19a rejects flatly
+ * because service tokens never rotate.
+ */
+function checkNotServiceAccount(
+  claims: ParsedRefreshClaims,
+  res: ServerResponse,
+): StepResult<void> {
   if (claims.service_account === true) {
     writeOAuthError(
       res,
       "invalid_grant",
       "Service tokens do not rotate. Mint a new one via admin CLI.",
     );
-    return;
+    return { ok: false };
   }
+  return { ok: true, data: undefined };
+}
 
-  // 4. token_epoch check (T03).
+/** Step 4. token_epoch check (T03). */
+function checkTokenEpoch(
+  ctx: AuthHandlerContext,
+  claims: ParsedRefreshClaims,
+  res: ServerResponse,
+): StepResult<void> {
   const epoch = readTokenEpoch(ctx.db, claims.sub);
   if (claims.iat < epoch) {
     audit("auth.invalid_token", {
@@ -474,10 +518,17 @@ export async function refreshTokenGrant(
       metadata: { reason: "token_epoch_exceeded" },
     });
     writeOAuthError(res, "invalid_grant", "Session invalidated by admin");
-    return;
+    return { ok: false };
   }
+  return { ok: true, data: undefined };
+}
 
-  // 5. SELECT refresh row (includes revoked_reason for T19b).
+/** Step 5. SELECT refresh row (includes revoked_reason for T19b). */
+function selectRefreshRow(
+  ctx: AuthHandlerContext,
+  claims: ParsedRefreshClaims,
+  res: ServerResponse,
+): StepResult<RefreshRow> {
   const row = ctx.db
     .prepare(
       `SELECT jti, user_id, org_id, family_id, parent_jti, revoked_at,
@@ -491,26 +542,29 @@ export async function refreshTokenGrant(
       metadata: { reason: "row_not_found" },
     });
     writeOAuthError(res, "invalid_grant", "Unknown refresh token");
-    return;
+    return { ok: false };
   }
+  return { ok: true, data: row };
+}
 
-  // Compute fingerprint BEFORE the revoked-row branch (handleReuseBranch
-  // needs it for the grace-window match check).
-  const ip = req.socket?.remoteAddress ?? null;
-  const ua = (req.headers["user-agent"] as string | undefined) ?? null;
-  const fingerprint = computeFingerprint(ip, ua);
-
-  const now = ctx.clock.now();
-
-  // 6. T19c idle-timeout check (V4 FIX 24). Configurable via org-settings
-  //    shim: orgs.session_idle_timeout column (Phase 5) or
-  //    COORDINATOR_SESSION_IDLE_TIMEOUT env (Phase 2). Empty / "0" / unset
-  //    disables the check. Format: "60s", "15m", "2h", "30d".
-  //
-  //    On expiry: revoke ONLY this row (not the whole family — other
-  //    sessions from the same family-ancestry could be legitimately
-  //    active from a different consumer). 400 invalid_grant + Tier 2
-  //    audit auth.refresh.idle_expired.
+/**
+ * Step 6. T19c idle-timeout check (V4 FIX 24). Configurable via
+ * org-settings shim: orgs.session_idle_timeout column (Phase 5) or
+ * COORDINATOR_SESSION_IDLE_TIMEOUT env (Phase 2). Empty / "0" / unset
+ * disables the check. Format: "60s", "15m", "2h", "30d".
+ *
+ * On expiry: revoke ONLY this row (not the whole family — other sessions
+ * from the same family-ancestry could be legitimately active from a
+ * different consumer). 400 invalid_grant + Tier 2 audit
+ * auth.refresh.idle_expired.
+ */
+function checkIdleTimeout(
+  ctx: AuthHandlerContext,
+  claims: ParsedRefreshClaims,
+  row: RefreshRow,
+  now: number,
+  res: ServerResponse,
+): StepResult<void> {
   const idleTimeoutRaw = getOrgSetting(
     ctx.db,
     row.org_id,
@@ -543,37 +597,40 @@ export async function refreshTokenGrant(
         },
       });
       writeOAuthError(res, "invalid_grant", "Session idle timeout");
-      return;
+      return { ok: false };
     }
   }
+  return { ok: true, data: undefined };
+}
 
-  // 7. T19c IdP membership refresh + allowlist re-check (V4 FIX 7).
-  //    Loads users.idp_access_token (T16b sets on login). If absent:
-  //    Phase 1 migration user — skip allowlist refresh, rely on token_epoch.
-  //    Otherwise: call membershipCache (60s positive TTL + stale-on-error).
-  //
-  //    IdPTokenRevoked  → 401 + WWW-Authenticate + Tier 1 audit.
-  //    IdPTransientError → 503 (stale-window already consumed in cache
-  //                       layer; reaching here means no fresh AND no stale).
-  //    Other errors      → propagate (unexpected).
-  //
-  //    resolveOrgFromMemberships null → user lost allowlisted-org access:
-  //    revoke this row + Tier 1 audit + 401. Other families' sessions are
-  //    untouched and will fail their own allowlist check on next refresh
-  //    (or simply expire after token_epoch bump if admin chooses).
+/**
+ * Step 7. T19c IdP membership refresh + allowlist re-check (V4 FIX 7).
+ * Loads users.idp_access_token (T16b sets on login). If absent: Phase 1
+ * migration user — skip allowlist refresh, rely on token_epoch.
+ * Otherwise: call membershipCache (60s positive TTL + stale-on-error).
+ *
+ *   IdPTokenRevoked  → 401 + WWW-Authenticate + Tier 1 audit.
+ *   IdPTransientError → 503 (stale-window already consumed in cache
+ *                      layer; reaching here means no fresh AND no stale).
+ *   Other errors      → propagate (unexpected).
+ *
+ *   resolveOrgFromMemberships null → user lost allowlisted-org access:
+ *   revoke this row + Tier 1 audit + 401. Other families' sessions are
+ *   untouched and will fail their own allowlist check on next refresh
+ *   (or simply expire after token_epoch bump if admin chooses).
+ */
+async function refreshIdpMembershipAndAllowlist(
+  ctx: AuthHandlerContext,
+  claims: ParsedRefreshClaims,
+  row: RefreshRow,
+  now: number,
+  res: ServerResponse,
+): Promise<StepResult<AllowlistCheckOutcome>> {
   const userRow = ctx.db
     .prepare(
       "SELECT idp_access_token, idp_refresh_token, idp_provider, primary_org_id, role FROM users WHERE id = ?",
     )
-    .get(row.user_id) as
-    | {
-        idp_access_token: string | null;
-        idp_refresh_token: string | null;
-        idp_provider: string;
-        primary_org_id: string;
-        role?: string | null;
-      }
-    | undefined;
+    .get(row.user_id) as IdpUserRow | undefined;
   // T09: AAD for envelope decryption requires the user's primary_org_id.
   const orgId = userRow?.primary_org_id ?? null;
   let idpAccessToken: string | null = null;
@@ -632,7 +689,7 @@ export async function refreshTokenGrant(
             oauthError("invalid_grant", "Identity provider rejected the token"),
           ),
         );
-        return;
+        return { ok: false };
       }
       throw err;
     }
@@ -753,7 +810,7 @@ export async function refreshTokenGrant(
             oauthError("invalid_grant", "Identity provider rejected the token"),
           ),
         );
-        return;
+        return { ok: false };
       }
       if (firstErr instanceof IdPTransientError) {
         res.writeHead(503, {
@@ -764,7 +821,7 @@ export async function refreshTokenGrant(
             oauthError("temporarily_unavailable", "Identity provider unavailable"),
           ),
         );
-        return;
+        return { ok: false };
       }
       throw firstErr;
     }
@@ -797,22 +854,27 @@ export async function refreshTokenGrant(
         "User is not in any allowlisted org",
         401,
       );
-      return;
+      return { ok: false };
     }
   }
 
-  // 8. T19b reuse-detection branch. Pass whether the IdP allowlist
-  //    re-check failed; the grace re-mint path (V4 FIX 7) uses this to
-  //    deny retries from users who lost allowlist access. Note: when
-  //    allowlistRecheckPerformed is false (no idp_access_token), the
-  //    grace branch trusts the prior session — same as Phase 1 behavior.
-  if (row.revoked_at !== null) {
-    const recheckFailed = allowlistRecheckPerformed && !allowlistMatch;
-    await handleReuseBranch(res, ctx, claims, row, fingerprint, recheckFailed);
-    return;
-  }
+  return { ok: true, data: { userRow, allowlistMatch, allowlistRecheckPerformed } };
+}
 
-  // 9. Atomic rotation (V4 FIX 5).
+/**
+ * Step 9. Atomic rotation (V4 FIX 5) + mint new pair sharing the
+ * family_id + successor bookkeeping + Tier 2 audit + RFC 6749 §5.1
+ * successful token response.
+ */
+async function rotateRefreshToken(
+  ctx: AuthHandlerContext,
+  claims: ParsedRefreshClaims,
+  row: RefreshRow,
+  userRow: IdpUserRow | undefined,
+  fingerprint: string | null,
+  now: number,
+  res: ServerResponse,
+): Promise<void> {
   const updateResult = ctx.db
     .prepare(
       `UPDATE refresh_tokens
@@ -825,12 +887,12 @@ export async function refreshTokenGrant(
     return;
   }
 
-  // 10. Mint new pair sharing the family_id. Re-derive role from `users`
-  //     (securite-auth-04): a hardcoded "member" here silently downgraded
-  //     admins on every refresh and never reflected DB-side role changes
-  //     (promotion or demotion). Fail-closed fallback to "member" for an
-  //     absent/invalid value (LEAST PRIVILEGE) mirrors verifyToken's
-  //     pattern in src/auth.ts — never elevate on missing/bad data.
+  // Re-derive role from `users` (securite-auth-04): a hardcoded "member"
+  // here silently downgraded admins on every refresh and never reflected
+  // DB-side role changes (promotion or demotion). Fail-closed fallback to
+  // "member" for an absent/invalid value (LEAST PRIVILEGE) mirrors
+  // verifyToken's pattern in src/auth.ts — never elevate on missing/bad
+  // data.
   const rawRole = userRow?.role;
   const role: "admin" | "member" | "service" =
     rawRole === "admin" || rawRole === "member" || rawRole === "service"
@@ -848,12 +910,11 @@ export async function refreshTokenGrant(
     fingerprint,
   });
 
-  // 11. Fix successor.parent_jti.
+  // Fix successor.parent_jti.
   ctx.db
     .prepare("UPDATE refresh_tokens SET parent_jti = ? WHERE jti = ?")
     .run(claims.jti, newPair.refreshJti);
 
-  // 12. Tier 2 audit.
   audit("auth.refresh.rotated", {
     tier: 2,
     metadata: {
@@ -863,7 +924,6 @@ export async function refreshTokenGrant(
     },
   });
 
-  // 13. RFC 6749 §5.1 successful token response.
   res.writeHead(200, {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
@@ -876,4 +936,80 @@ export async function refreshTokenGrant(
       expires_in: ACCESS_TTL_S,
     }),
   );
+}
+
+/**
+ * POST /api/auth/oauth/token grant_type=refresh_token — refresh-token
+ * rotation handler. See file header for full T19a+T19b flow. Each
+ * numbered step below is delegated to a same-named helper above; this
+ * function is pure orchestration — same checks, same order, same
+ * early-return-on-failure shape as before the extraction.
+ */
+export async function refreshTokenGrant(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: AuthHandlerContext,
+  preParsedBody?: Record<string, string>,
+): Promise<void> {
+  // 1. Parse form body, extract refresh_token.
+  const tokenResult = await extractRefreshToken(req, res, preParsedBody);
+  if (!tokenResult.ok) return;
+  const refreshToken = tokenResult.data;
+
+  // 2. JWT verify (+ securite-auth-01 token-type-confusion guard).
+  const claimsResult = await verifyAndValidateClaims(refreshToken, ctx, res);
+  if (!claimsResult.ok) return;
+  const claims = claimsResult.data;
+
+  // 3. Service-account short-circuit.
+  const serviceAccountResult = checkNotServiceAccount(claims, res);
+  if (!serviceAccountResult.ok) return;
+
+  // 4. token_epoch check (T03).
+  const epochResult = checkTokenEpoch(ctx, claims, res);
+  if (!epochResult.ok) return;
+
+  // 5. SELECT refresh row (includes revoked_reason for T19b).
+  const rowResult = selectRefreshRow(ctx, claims, res);
+  if (!rowResult.ok) return;
+  const row = rowResult.data;
+
+  // Compute fingerprint BEFORE the revoked-row branch (handleReuseBranch
+  // needs it for the grace-window match check).
+  const ip = req.socket?.remoteAddress ?? null;
+  const ua = (req.headers["user-agent"] as string | undefined) ?? null;
+  const fingerprint = computeFingerprint(ip, ua);
+
+  const now = ctx.clock.now();
+
+  // 6. T19c idle-timeout check (V4 FIX 24).
+  const idleResult = checkIdleTimeout(ctx, claims, row, now, res);
+  if (!idleResult.ok) return;
+
+  // 7. T19c IdP membership refresh + allowlist re-check (V4 FIX 7).
+  const allowlistResult = await refreshIdpMembershipAndAllowlist(
+    ctx,
+    claims,
+    row,
+    now,
+    res,
+  );
+  if (!allowlistResult.ok) return;
+  const { userRow, allowlistMatch, allowlistRecheckPerformed } =
+    allowlistResult.data;
+
+  // 8. T19b reuse-detection branch. Pass whether the IdP allowlist
+  //    re-check failed; the grace re-mint path (V4 FIX 7) uses this to
+  //    deny retries from users who lost allowlist access. Note: when
+  //    allowlistRecheckPerformed is false (no idp_access_token), the
+  //    grace branch trusts the prior session — same as Phase 1 behavior.
+  if (row.revoked_at !== null) {
+    const recheckFailed = allowlistRecheckPerformed && !allowlistMatch;
+    await handleReuseBranch(res, ctx, claims, row, fingerprint, recheckFailed);
+    return;
+  }
+
+  // 9. Atomic rotation + mint new pair + successor bookkeeping + audit +
+  //    RFC 6749 §5.1 successful token response.
+  await rotateRefreshToken(ctx, claims, row, userRow, fingerprint, now, res);
 }
