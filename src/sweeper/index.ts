@@ -155,18 +155,14 @@ export class Sweeper {
     const refreshRetentionDays = Number(
       getOrgSetting(this.db, null, "refresh_retention_days", "180"),
     );
-    const auditRetentionDays = Number(
-      getOrgSetting(this.db, null, "audit_retention_days", "365"),
-    );
+    const auditRetentionDays = Number(getOrgSetting(this.db, null, "audit_retention_days", "365"));
     const auditTier2RetentionDays = Number(
       getOrgSetting(this.db, null, "audit_tier2_retention_days", "90"),
     );
     const fileActivityRetentionDays = Number(
       getOrgSetting(this.db, null, "file_activity_retention_days", "7"),
     );
-    const eventsRetentionDays = Number(
-      getOrgSetting(this.db, null, "events_retention_days", "7"),
-    );
+    const eventsRetentionDays = Number(getOrgSetting(this.db, null, "events_retention_days", "7"));
     const threadMessagesRetentionDays = Number(
       getOrgSetting(this.db, null, "thread_messages_retention_days", "30"),
     );
@@ -189,9 +185,7 @@ export class Sweeper {
     // 2. device_auth_requests — expires_at is TEXT (Phase 1 schema, but
     //    T17 writes numeric epoch strings). CAST handles both forms safely.
     const deviceDeleted = this.db
-      .prepare(
-        `DELETE FROM device_auth_requests WHERE CAST(expires_at AS INTEGER) < ? LIMIT ?`,
-      )
+      .prepare(`DELETE FROM device_auth_requests WHERE CAST(expires_at AS INTEGER) < ? LIMIT ?`)
       .run(now - STALE_BUFFER_S, BATCH_SIZE).changes;
     this._rowsDeletedByTable.device_auth_requests += deviceDeleted;
     total += deviceDeleted;

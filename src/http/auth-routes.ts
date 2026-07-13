@@ -11,15 +11,8 @@ import {
   handleListServiceTokens,
   handleRevokeServiceToken,
 } from "../admin/handle-service-tokens.js";
-import {
-  handleListOrgs,
-  handleCreateOrg,
-  handleUpdateOrg,
-} from "../admin/handle-admin-orgs.js";
-import {
-  handleListUsers,
-  handleUpdateUser,
-} from "../admin/handle-admin-users.js";
+import { handleListOrgs, handleCreateOrg, handleUpdateOrg } from "../admin/handle-admin-orgs.js";
+import { handleListUsers, handleUpdateUser } from "../admin/handle-admin-users.js";
 import { handleDevicePage } from "../auth/pages/device.html.js";
 import { handleDeviceConfirmPage } from "../auth/pages/device-confirm.html.js";
 import { handleSuccessPage } from "../auth/pages/success.html.js";
@@ -180,9 +173,7 @@ export async function dispatchAuthRoutes(
   // before the KNOWN_AUTH_PATHS check; non-POST methods on this path fall
   // through to the dispatcher's return false (handleRest will 404). This
   // skips the 405 branch for parameterized paths -- acceptable trade-off.
-  const revokeMatch = url.match(
-    /^\/api\/admin\/service-tokens\/([^/]+)\/revoke$/,
-  );
+  const revokeMatch = url.match(/^\/api\/admin\/service-tokens\/([^/]+)\/revoke$/);
   if (revokeMatch && method === "POST") {
     const jti = decodeURIComponent(revokeMatch[1]!);
     await handleRevokeServiceToken(req, res, ctx, jti);
@@ -257,19 +248,12 @@ function checkAdminMutationRateLimit(
   ctx: AuthHandlerContext,
 ): boolean {
   const ip = req.socket?.remoteAddress ?? "unknown";
-  const result = ctx.rateLimiter.check(
-    `admin:mut:${ip}`,
-    ADMIN_MUT_RATE_LIMIT,
-  );
+  const result = ctx.rateLimiter.check(`admin:mut:${ip}`, ADMIN_MUT_RATE_LIMIT);
   if (result.allowed) return true;
   res.writeHead(429, {
     "Content-Type": "application/json; charset=utf-8",
     "Retry-After": String(result.retry_after_seconds),
   });
-  res.end(
-    JSON.stringify(
-      appError("RATE_LIMITED", "Too many admin mutation requests"),
-    ),
-  );
+  res.end(JSON.stringify(appError("RATE_LIMITED", "Too many admin mutation requests")));
   return false;
 }

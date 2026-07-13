@@ -22,17 +22,26 @@ async function getFreePort(): Promise<number> {
   });
 }
 
-function postJson(p: number, urlPath: string, body: unknown): Promise<{ status: number; body: any }> {
+function postJson(
+  p: number,
+  urlPath: string,
+  body: unknown,
+): Promise<{ status: number; body: any }> {
   return new Promise((resolve, reject) => {
     const data = JSON.stringify(body);
     const req = http.request(
-      { hostname: "localhost", port: p, path: urlPath, method: "POST",
-        headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(data) } },
+      {
+        hostname: "localhost",
+        port: p,
+        path: urlPath,
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(data) },
+      },
       (res) => {
         let buf = "";
         res.on("data", (c) => (buf += c));
         res.on("end", () => resolve({ status: res.statusCode!, body: buf ? JSON.parse(buf) : {} }));
-      }
+      },
     );
     req.on("error", reject);
     req.write(data);
@@ -47,18 +56,30 @@ describe("working-files HTTP", () => {
     const mqttTcpPort = await getFreePort();
     handle = await startServer({ port, dataDir, mqttTcpPort, registerSignalHandlers: false });
   });
-  afterAll(async () => { await handle?.stop(); rmSync(dataDir, { recursive: true, force: true }); });
+  afterAll(async () => {
+    await handle?.stop();
+    rmSync(dataDir, { recursive: true, force: true });
+  });
 
   it("POST /api/working-files/start → 200", async () => {
-    const r = await postJson(port, "/api/working-files/start", { agent_id: "alice", file_path: "src/foo.ts" });
+    const r = await postJson(port, "/api/working-files/start", {
+      agent_id: "alice",
+      file_path: "src/foo.ts",
+    });
     expect(r.status).toBe(200);
     expect(r.body.ok).toBe(true);
   });
 
   it("POST /api/working-files/stop is idempotent", async () => {
     await postJson(port, "/api/working-files/start", { agent_id: "bob", file_path: "src/bar.ts" });
-    const r1 = await postJson(port, "/api/working-files/stop", { agent_id: "bob", file_path: "src/bar.ts" });
-    const r2 = await postJson(port, "/api/working-files/stop", { agent_id: "bob", file_path: "src/bar.ts" });
+    const r1 = await postJson(port, "/api/working-files/stop", {
+      agent_id: "bob",
+      file_path: "src/bar.ts",
+    });
+    const r2 = await postJson(port, "/api/working-files/stop", {
+      agent_id: "bob",
+      file_path: "src/bar.ts",
+    });
     expect(r1.status).toBe(200);
     expect(r2.status).toBe(200);
   });

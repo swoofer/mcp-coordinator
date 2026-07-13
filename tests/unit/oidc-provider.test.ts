@@ -84,9 +84,7 @@ async function makeIdToken(overrides: IdTokenOverrides = {}): Promise<string> {
     .setIssuer(overrides.iss ?? ISSUER)
     .setAudience(overrides.aud ?? CLIENT_ID)
     .setIssuedAt()
-    .setExpirationTime(
-      Math.floor(Date.now() / 1000) + (overrides.expSeconds ?? 3600),
-    )
+    .setExpirationTime(Math.floor(Date.now() / 1000) + (overrides.expSeconds ?? 3600))
     .sign(privateKey);
 }
 
@@ -102,11 +100,7 @@ function makeProvider(extra?: Partial<{ name: string }>): OIDCProvider {
 describe("OIDCProvider.buildAuthUrl", () => {
   it("fetches discovery doc and points at authorization_endpoint", async () => {
     mountDiscoveryAndJwks();
-    const url = await makeProvider().buildAuthUrl(
-      "state-x",
-      REDIRECT_URI,
-      "challenge-y",
-    );
+    const url = await makeProvider().buildAuthUrl("state-x", REDIRECT_URI, "challenge-y");
     const u = new URL(url);
     expect(u.origin + u.pathname).toBe(AUTHORIZATION_ENDPOINT);
     expect(u.searchParams.get("client_id")).toBe(CLIENT_ID);
@@ -151,23 +145,21 @@ describe("OIDCProvider.buildAuthUrl", () => {
 describe("OIDCProvider discovery validation", () => {
   it("rejects discovery doc whose `issuer` does not match config", async () => {
     mountDiscoveryAndJwks({ issuer: "https://impostor.example.test" });
-    await expect(
-      makeProvider().buildAuthUrl("s1", REDIRECT_URI),
-    ).rejects.toThrow(/discovery issuer mismatch/);
+    await expect(makeProvider().buildAuthUrl("s1", REDIRECT_URI)).rejects.toThrow(
+      /discovery issuer mismatch/,
+    );
   });
 
   it("maps 503 discovery responses to IdPTransientError", async () => {
     server.use(http.get(DISCOVERY_URL, () => HttpResponse.json({}, { status: 503 })));
-    await expect(
-      makeProvider().buildAuthUrl("s1", REDIRECT_URI),
-    ).rejects.toBeInstanceOf(IdPTransientError);
+    await expect(makeProvider().buildAuthUrl("s1", REDIRECT_URI)).rejects.toBeInstanceOf(
+      IdPTransientError,
+    );
   });
 
   it("maps 4xx discovery responses to a generic Error (config issue)", async () => {
     server.use(http.get(DISCOVERY_URL, () => HttpResponse.json({}, { status: 404 })));
-    await expect(
-      makeProvider().buildAuthUrl("s1", REDIRECT_URI),
-    ).rejects.toThrow(/HTTP 404/);
+    await expect(makeProvider().buildAuthUrl("s1", REDIRECT_URI)).rejects.toThrow(/HTTP 404/);
   });
 });
 
@@ -246,9 +238,9 @@ describe("OIDCProvider.exchangeCode -- id_token verification", () => {
         }),
       ),
     );
-    await expect(
-      makeProvider().exchangeCode("c", REDIRECT_URI),
-    ).rejects.toBeInstanceOf(IdPTokenRevoked);
+    await expect(makeProvider().exchangeCode("c", REDIRECT_URI)).rejects.toBeInstanceOf(
+      IdPTokenRevoked,
+    );
   });
 
   it("rejects wrong audience", async () => {
@@ -263,9 +255,9 @@ describe("OIDCProvider.exchangeCode -- id_token verification", () => {
         }),
       ),
     );
-    await expect(
-      makeProvider().exchangeCode("c", REDIRECT_URI),
-    ).rejects.toBeInstanceOf(IdPTokenRevoked);
+    await expect(makeProvider().exchangeCode("c", REDIRECT_URI)).rejects.toBeInstanceOf(
+      IdPTokenRevoked,
+    );
   });
 
   it("rejects unknown signing kid (key rotation gap)", async () => {
@@ -280,9 +272,9 @@ describe("OIDCProvider.exchangeCode -- id_token verification", () => {
         }),
       ),
     );
-    await expect(
-      makeProvider().exchangeCode("c", REDIRECT_URI),
-    ).rejects.toBeInstanceOf(IdPTransientError);
+    await expect(makeProvider().exchangeCode("c", REDIRECT_URI)).rejects.toBeInstanceOf(
+      IdPTransientError,
+    );
   });
 
   it("rejects expired id_token", async () => {
@@ -297,9 +289,9 @@ describe("OIDCProvider.exchangeCode -- id_token verification", () => {
         }),
       ),
     );
-    await expect(
-      makeProvider().exchangeCode("c", REDIRECT_URI),
-    ).rejects.toBeInstanceOf(IdPTokenRevoked);
+    await expect(makeProvider().exchangeCode("c", REDIRECT_URI)).rejects.toBeInstanceOf(
+      IdPTokenRevoked,
+    );
   });
 });
 
@@ -307,17 +299,17 @@ describe("OIDCProvider.exchangeCode -- token endpoint failures", () => {
   it("maps 401 to IdPTokenRevoked", async () => {
     mountDiscoveryAndJwks();
     server.use(http.post(TOKEN_ENDPOINT, () => HttpResponse.json({}, { status: 401 })));
-    await expect(
-      makeProvider().exchangeCode("c", REDIRECT_URI),
-    ).rejects.toBeInstanceOf(IdPTokenRevoked);
+    await expect(makeProvider().exchangeCode("c", REDIRECT_URI)).rejects.toBeInstanceOf(
+      IdPTokenRevoked,
+    );
   });
 
   it("maps 502 to IdPTransientError", async () => {
     mountDiscoveryAndJwks();
     server.use(http.post(TOKEN_ENDPOINT, () => HttpResponse.json({}, { status: 502 })));
-    await expect(
-      makeProvider().exchangeCode("c", REDIRECT_URI),
-    ).rejects.toBeInstanceOf(IdPTransientError);
+    await expect(makeProvider().exchangeCode("c", REDIRECT_URI)).rejects.toBeInstanceOf(
+      IdPTransientError,
+    );
   });
 
   it("maps 400 invalid_grant to a generic Error", async () => {
@@ -327,17 +319,13 @@ describe("OIDCProvider.exchangeCode -- token endpoint failures", () => {
         HttpResponse.json({ error: "invalid_grant" }, { status: 400 }),
       ),
     );
-    await expect(
-      makeProvider().exchangeCode("c", REDIRECT_URI),
-    ).rejects.toThrow(/HTTP 400/);
+    await expect(makeProvider().exchangeCode("c", REDIRECT_URI)).rejects.toThrow(/HTTP 400/);
   });
 });
 
 describe("OIDCProvider.listMemberships", () => {
   it("throws -- generic OIDC has no portable group model", async () => {
-    await expect(makeProvider().listMemberships("token")).rejects.toThrow(
-      /vendor a subclass/,
-    );
+    await expect(makeProvider().listMemberships("token")).rejects.toThrow(/vendor a subclass/);
   });
 });
 
@@ -345,15 +333,18 @@ describe("OIDCProvider issuer URL normalization", () => {
   it("strips trailing slash from issuer before building discovery URL", async () => {
     let discoveryUrlSeen: string | null = null;
     server.use(
-      http.get("https://idp.example.test/realms/main/.well-known/openid-configuration", ({ request }) => {
-        discoveryUrlSeen = request.url;
-        return HttpResponse.json({
-          issuer: "https://idp.example.test/realms/main/",
-          authorization_endpoint: AUTHORIZATION_ENDPOINT,
-          token_endpoint: TOKEN_ENDPOINT,
-          jwks_uri: JWKS_URI,
-        });
-      }),
+      http.get(
+        "https://idp.example.test/realms/main/.well-known/openid-configuration",
+        ({ request }) => {
+          discoveryUrlSeen = request.url;
+          return HttpResponse.json({
+            issuer: "https://idp.example.test/realms/main/",
+            authorization_endpoint: AUTHORIZATION_ENDPOINT,
+            token_endpoint: TOKEN_ENDPOINT,
+            jwks_uri: JWKS_URI,
+          });
+        },
+      ),
     );
     const p = new OIDCProvider({
       clientId: CLIENT_ID,
@@ -398,9 +389,7 @@ describe("OIDCProvider nonce (T55)", () => {
         }),
       ),
     );
-    const result = await makeProvider().exchangeCode(
-      "code-x", REDIRECT_URI, undefined, nonceValue,
-    );
+    const result = await makeProvider().exchangeCode("code-x", REDIRECT_URI, undefined, nonceValue);
     expect(result.user.idp_user_id).toBe("user-7");
   });
 
@@ -450,9 +439,7 @@ describe("OIDCProvider nonce (T55)", () => {
         }),
       ),
     );
-    const result = await makeProvider().exchangeCode(
-      "code-x", REDIRECT_URI, undefined, null,
-    );
+    const result = await makeProvider().exchangeCode("code-x", REDIRECT_URI, undefined, null);
     expect(result.user.idp_user_id).toBe("user-7");
   });
 });
@@ -489,9 +476,7 @@ describe("OIDCProvider groups claim (T58)", () => {
         }),
       ),
     );
-    const result = await makeGroupsProvider("groups").exchangeCode(
-      "code-x", REDIRECT_URI,
-    );
+    const result = await makeGroupsProvider("groups").exchangeCode("code-x", REDIRECT_URI);
     expect(result.user.groups).toEqual(["engineering", "platform-admins"]);
   });
 
@@ -510,7 +495,8 @@ describe("OIDCProvider groups claim (T58)", () => {
       ),
     );
     const result = await makeGroupsProvider("realm_access.roles").exchangeCode(
-      "code-x", REDIRECT_URI,
+      "code-x",
+      REDIRECT_URI,
     );
     expect(result.user.groups).toEqual(["admin", "developer"]);
   });
@@ -527,9 +513,7 @@ describe("OIDCProvider groups claim (T58)", () => {
         }),
       ),
     );
-    const result = await makeGroupsProvider("groups").exchangeCode(
-      "code-x", REDIRECT_URI,
-    );
+    const result = await makeGroupsProvider("groups").exchangeCode("code-x", REDIRECT_URI);
     expect(result.user.groups).toBeUndefined();
   });
 
@@ -547,9 +531,7 @@ describe("OIDCProvider groups claim (T58)", () => {
         }),
       ),
     );
-    const result = await makeGroupsProvider("groups").exchangeCode(
-      "code-x", REDIRECT_URI,
-    );
+    const result = await makeGroupsProvider("groups").exchangeCode("code-x", REDIRECT_URI);
     expect(result.user.groups).toEqual(["valid-group", "another-group"]);
   });
 
@@ -567,9 +549,7 @@ describe("OIDCProvider groups claim (T58)", () => {
         }),
       ),
     );
-    const result = await makeGroupsProvider("groups").exchangeCode(
-      "code-x", REDIRECT_URI,
-    );
+    const result = await makeGroupsProvider("groups").exchangeCode("code-x", REDIRECT_URI);
     expect(result.user.groups).toBeUndefined();
   });
 });
@@ -581,20 +561,12 @@ describe("extractGroupsFromClaims (T58)", () => {
 
   it("nested path", () => {
     expect(
-      extractGroupsFromClaims(
-        { realm_access: { roles: ["admin"] } },
-        "realm_access.roles",
-      ),
+      extractGroupsFromClaims({ realm_access: { roles: ["admin"] } }, "realm_access.roles"),
     ).toEqual(["admin"]);
   });
 
   it("deeply nested path", () => {
-    expect(
-      extractGroupsFromClaims(
-        { a: { b: { c: ["x"] } } },
-        "a.b.c",
-      ),
-    ).toEqual(["x"]);
+    expect(extractGroupsFromClaims({ a: { b: { c: ["x"] } } }, "a.b.c")).toEqual(["x"]);
   });
 
   it("missing path returns empty array", () => {

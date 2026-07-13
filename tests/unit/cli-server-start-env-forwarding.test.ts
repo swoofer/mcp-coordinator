@@ -73,11 +73,7 @@ const ALL_FORWARDED_COORDINATOR_VARS = [
   ...PHASE2_VARS,
 ] as const;
 
-const UNRELATED_SECRET_VARS = [
-  "AWS_SECRET_ACCESS_KEY",
-  "GITHUB_TOKEN",
-  "OPENAI_API_KEY",
-] as const;
+const UNRELATED_SECRET_VARS = ["AWS_SECRET_ACCESS_KEY", "GITHUB_TOKEN", "OPENAI_API_KEY"] as const;
 
 const BASE_OPTS = { port: 4477, dataDir: "/tmp/coordinator-data" };
 
@@ -134,7 +130,9 @@ describe("cli/server/start.ts — grep-authoritative Phase 2 coverage (R3 parity
         combined.includes(`"${v}"`);
       // Every var in PHASE2_VARS must actually be read somewhere in src/
       // (sanity: the list itself must be grep-grounded, not invented).
-      expect(readSomewhere, `${v} expected to be read in one of ${SOURCE_FILES.join(", ")}`).toBe(true);
+      expect(readSomewhere, `${v} expected to be read in one of ${SOURCE_FILES.join(", ")}`).toBe(
+        true,
+      );
     }
   });
 });

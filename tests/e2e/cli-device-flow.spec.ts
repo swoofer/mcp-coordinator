@@ -50,7 +50,9 @@ test("device flow: init -> browser approve -> CLI poll -> tokens", async ({
   // and renders a form with the same value in a hidden _csrf field. Locator
   // grabs the value Playwright sees on the rendered page so the double-submit
   // pair matches exactly.
-  await page.goto(`${coordinatorUrl}/auth/device/confirm?user_code=${encodeURIComponent(init.user_code)}`);
+  await page.goto(
+    `${coordinatorUrl}/auth/device/confirm?user_code=${encodeURIComponent(init.user_code)}`,
+  );
   await expect(page.locator("h1")).toContainText("Confirm sign-in");
 
   // (4) Tick acknowledge then submit. The form's `action` button has

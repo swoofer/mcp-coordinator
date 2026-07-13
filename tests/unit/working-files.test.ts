@@ -15,7 +15,11 @@ describe("WorkingFilesTracker", () => {
     // Close any previous connection before re-init: initDatabase() reassigns the
     // module-level db without closing the old handle, which on Windows leaks
     // handles to the same .db file and causes EBUSY on rmSync in afterAll.
-    try { closeDb(); } catch { /* nothing to close yet */ }
+    try {
+      closeDb();
+    } catch {
+      /* nothing to close yet */
+    }
     initDatabase(TEST_DIR);
     getDb().exec("DELETE FROM working_files");
     // v0.9 (issue #79): FK on working_files.org_id → orgs(id).
@@ -24,7 +28,11 @@ describe("WorkingFilesTracker", () => {
   });
 
   afterAll(async () => {
-    try { closeDb(); } catch { /* already closed */ }
+    try {
+      closeDb();
+    } catch {
+      /* already closed */
+    }
     // Windows can hold .db handles for many seconds after better-sqlite3 close()
     // (Defender / indexer / WAL teardown). Retry generously so cleanup wins
     // once the OS releases the file.
@@ -33,7 +41,9 @@ describe("WorkingFilesTracker", () => {
 
   it("start inserts a row with claim_until ~30min in the future", () => {
     tracker.start("default", "agentA", "src/foo.ts", 30);
-    const row = getDb().prepare("SELECT * FROM working_files WHERE agent_id=?").get("agentA") as any;
+    const row = getDb()
+      .prepare("SELECT * FROM working_files WHERE agent_id=?")
+      .get("agentA") as any;
     expect(row.file_path).toBe("src/foo.ts");
     const until = new Date(row.claim_until).getTime();
     expect(until - Date.now()).toBeGreaterThan(29 * 60 * 1000);
@@ -59,10 +69,12 @@ describe("WorkingFilesTracker", () => {
   });
 
   it("sweepExpired deletes rows past claim_until", () => {
-    getDb().prepare(
-      `INSERT INTO working_files (org_id, agent_id, file_path, started_at, last_activity_at, claim_until)
-       VALUES ('default', ?, ?, datetime('now'), datetime('now'), datetime('now', '-1 minute'))`
-    ).run("agentA", "src/old.ts");
+    getDb()
+      .prepare(
+        `INSERT INTO working_files (org_id, agent_id, file_path, started_at, last_activity_at, claim_until)
+       VALUES ('default', ?, ?, datetime('now'), datetime('now'), datetime('now', '-1 minute'))`,
+      )
+      .run("agentA", "src/old.ts");
     const evicted = tracker.sweepExpired();
     expect(evicted).toBe(1);
     const count = (getDb().prepare("SELECT COUNT(*) AS c FROM working_files").get() as any).c;
@@ -83,18 +95,20 @@ describe("WorkingFilesTracker", () => {
   it("getIndex returns file→agents map, excluding caller and expired", () => {
     // alice and bob both work on src/foo.ts; carol on src/bar.ts
     tracker.start("default", "alice", "src/foo.ts", 30);
-    tracker.start("default", "bob",   "src/foo.ts", 30);
+    tracker.start("default", "bob", "src/foo.ts", 30);
     tracker.start("default", "carol", "src/bar.ts", 30);
     // expired row for dave on src/foo.ts
-    getDb().prepare(
-      `INSERT INTO working_files (org_id, agent_id, file_path, started_at, last_activity_at, claim_until)
-       VALUES ('default', ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-1 minute'))`
-    ).run("dave", "src/foo.ts");
+    getDb()
+      .prepare(
+        `INSERT INTO working_files (org_id, agent_id, file_path, started_at, last_activity_at, claim_until)
+       VALUES ('default', ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-1 minute'))`,
+      )
+      .run("dave", "src/foo.ts");
 
     const idx = tracker.getIndex("default", ["src/foo.ts", "src/bar.ts"], "alice");
     expect(idx.get("src/foo.ts")?.has("bob")).toBe(true);
-    expect(idx.get("src/foo.ts")?.has("alice")).toBe(false);  // caller excluded
-    expect(idx.get("src/foo.ts")?.has("dave")).toBe(false);   // expired excluded
+    expect(idx.get("src/foo.ts")?.has("alice")).toBe(false); // caller excluded
+    expect(idx.get("src/foo.ts")?.has("dave")).toBe(false); // expired excluded
     expect(idx.get("src/bar.ts")?.has("carol")).toBe(true);
 
     const empty = tracker.getIndex("default", [], "alice");
@@ -107,9 +121,11 @@ describe("WorkingFilesTracker", () => {
     // are not swept because lexicographic 'T' > ' '.
     tracker.start("default", "agentA", "src/recent.ts", 30);
     // Force expiry by manually advancing the row's claim_until to the past, in the same format start() uses
-    getDb().prepare(
-      "UPDATE working_files SET claim_until = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-1 minute') WHERE agent_id = 'agentA'"
-    ).run();
+    getDb()
+      .prepare(
+        "UPDATE working_files SET claim_until = strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-1 minute') WHERE agent_id = 'agentA'",
+      )
+      .run();
     const evicted = tracker.sweepExpired();
     expect(evicted).toBe(1);
   });
@@ -122,7 +138,11 @@ describe("working-files-tracker org_id scoping", () => {
     // Close any previous connection before re-init: initDatabase() reassigns the
     // module-level db without closing the old handle, which on Windows leaks
     // handles to the same .db file and causes EBUSY on rmSync in afterAll.
-    try { closeDb(); } catch { /* nothing to close yet */ }
+    try {
+      closeDb();
+    } catch {
+      /* nothing to close yet */
+    }
     initDatabase(TEST_DIR);
     getDb().exec("DELETE FROM working_files");
     // v0.9 (issue #79): FK on working_files.org_id → orgs(id).
@@ -132,7 +152,9 @@ describe("working-files-tracker org_id scoping", () => {
 
   it("start writes org_id into working_files", () => {
     tracker.start("org-a", "agentA", "src/foo.ts", 30);
-    const row = getDb().prepare("SELECT org_id FROM working_files WHERE agent_id = ?").get("agentA") as { org_id: string };
+    const row = getDb()
+      .prepare("SELECT org_id FROM working_files WHERE agent_id = ?")
+      .get("agentA") as { org_id: string };
     expect(row.org_id).toBe("org-a");
   });
 
@@ -140,21 +162,27 @@ describe("working-files-tracker org_id scoping", () => {
     tracker.start("org-a", "agentA", "src/foo.ts", 30);
     tracker.start("org-b", "agentA", "src/foo.ts", 30);
     tracker.stop("org-a", "agentA", "src/foo.ts");
-    const remaining = getDb().prepare("SELECT org_id FROM working_files WHERE agent_id = ?").all("agentA") as { org_id: string }[];
+    const remaining = getDb()
+      .prepare("SELECT org_id FROM working_files WHERE agent_id = ?")
+      .all("agentA") as { org_id: string }[];
     expect(remaining).toHaveLength(1);
     expect(remaining[0].org_id).toBe("org-b");
   });
 
   it("sweepExpired is cross-org (maintenance op — intentional)", () => {
     // Insert two expired rows from different orgs
-    getDb().prepare(
-      `INSERT INTO working_files (org_id, agent_id, file_path, started_at, last_activity_at, claim_until)
-       VALUES (?, ?, ?, datetime('now'), datetime('now'), datetime('now', '-1 minute'))`
-    ).run("org-a", "agentA", "src/old.ts");
-    getDb().prepare(
-      `INSERT INTO working_files (org_id, agent_id, file_path, started_at, last_activity_at, claim_until)
-       VALUES (?, ?, ?, datetime('now'), datetime('now'), datetime('now', '-1 minute'))`
-    ).run("org-b", "agentB", "src/old.ts");
+    getDb()
+      .prepare(
+        `INSERT INTO working_files (org_id, agent_id, file_path, started_at, last_activity_at, claim_until)
+       VALUES (?, ?, ?, datetime('now'), datetime('now'), datetime('now', '-1 minute'))`,
+      )
+      .run("org-a", "agentA", "src/old.ts");
+    getDb()
+      .prepare(
+        `INSERT INTO working_files (org_id, agent_id, file_path, started_at, last_activity_at, claim_until)
+       VALUES (?, ?, ?, datetime('now'), datetime('now'), datetime('now', '-1 minute'))`,
+      )
+      .run("org-b", "agentB", "src/old.ts");
     const evicted = tracker.sweepExpired();
     expect(evicted).toBe(2);
     const count = (getDb().prepare("SELECT COUNT(*) AS c FROM working_files").get() as any).c;

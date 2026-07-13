@@ -176,18 +176,22 @@ function insertState(
   } = {},
 ): void {
   const now = clock.now();
-  getDb().prepare(`
+  getDb()
+    .prepare(
+      `
     INSERT INTO oauth_state (state, code_verifier, redirect_uri, provider, created_at, expires_at, consumed_at)
     VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    state,
-    opts.code_verifier ?? "verifier-abc",
-    opts.redirect_uri ?? "http://localhost:3000/api/auth/oauth/callback",
-    opts.provider ?? "github",
-    now,
-    opts.expires_at ?? now + 600,
-    opts.consumed_at ?? null,
-  );
+  `,
+    )
+    .run(
+      state,
+      opts.code_verifier ?? "verifier-abc",
+      opts.redirect_uri ?? "http://localhost:3000/api/auth/oauth/callback",
+      opts.provider ?? "github",
+      now,
+      opts.expires_at ?? now + 600,
+      opts.consumed_at ?? null,
+    );
 }
 
 function cookieFor(state: string): string {
@@ -226,22 +230,14 @@ afterAll(() => {
 describe("handleOAuthCallback — query parsing", () => {
   it("missing state → 400 + INVALID_REQUEST", async () => {
     const res = mockResponse();
-    await handleOAuthCallback(
-      mockReq({ code: "c" }),
-      res as unknown as ServerResponse,
-      ctx,
-    );
+    await handleOAuthCallback(mockReq({ code: "c" }), res as unknown as ServerResponse, ctx);
     expect(res.statusCode).toBe(400);
     expect(JSON.parse(res.body!).code).toBe("INVALID_REQUEST");
   });
 
   it("missing code → 400 + INVALID_REQUEST", async () => {
     const res = mockResponse();
-    await handleOAuthCallback(
-      mockReq({ state: "s" }),
-      res as unknown as ServerResponse,
-      ctx,
-    );
+    await handleOAuthCallback(mockReq({ state: "s" }), res as unknown as ServerResponse, ctx);
     expect(res.statusCode).toBe(400);
     expect(JSON.parse(res.body!).code).toBe("INVALID_REQUEST");
   });
@@ -290,11 +286,7 @@ describe("handleOAuthCallback — state cookie", () => {
     const state = "s-no-cookie";
     insertState(state);
     const res = mockResponse();
-    await handleOAuthCallback(
-      mockReq({ state, code: "c" }),
-      res as unknown as ServerResponse,
-      ctx,
-    );
+    await handleOAuthCallback(mockReq({ state, code: "c" }), res as unknown as ServerResponse, ctx);
     expect(res.statusCode).toBe(400);
     expect(JSON.parse(res.body!).code).toBe("INVALID_STATE");
     expectAuditRow("auth.state.replay", {

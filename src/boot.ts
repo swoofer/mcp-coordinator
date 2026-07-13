@@ -74,10 +74,7 @@ const DRAIN_TIMEOUT_MS = 5000;
  * Throws on validation failure — boot must NOT silently activate with
  * weak/missing secrets.
  */
-export function bootPhase2(
-  opts: Phase2BootOptions,
-  deps?: BootPhase2Deps,
-): Phase2Bootstrap | null {
+export function bootPhase2(opts: Phase2BootOptions, deps?: BootPhase2Deps): Phase2Bootstrap | null {
   if (!opts.enabled) return null;
 
   const clock = opts.clock ?? realClock;
@@ -299,10 +296,7 @@ export function bootPhase2(
   //     provider with first-encrypt fingerprint persistence; T06c adds the
   //     plaintext-bypass reminder. For now we only attach the raw provider.
   const encKey = loadEncryptionKey(env, logger);
-  const encInit = runEncryptionGuards(
-    { db, env, logger, audit },
-    encKey,
-  );
+  const encInit = runEncryptionGuards({ db, env, logger, audit }, encKey);
   // T06b: wrap the raw provider so the first encrypt() persists the key
   // fingerprint to system_config (idempotent) + emits encryption.config.loaded.
   // In passthrough mode (keyFingerprint=null), buildWrappedProvider returns
@@ -352,8 +346,7 @@ export function bootPhase2(
   // only — the audit captures the operator-supplied timestamp for
   // correlation across deployments. "unset" sentinel when not provided.
   if (prevSecretBuf) {
-    const rotatedAt =
-      env.COORDINATOR_JWT_SECRET_PREV_ROTATED_AT ?? "unset";
+    const rotatedAt = env.COORDINATOR_JWT_SECRET_PREV_ROTATED_AT ?? "unset";
     audit("config.key_rotation", {
       tier: 1,
       metadata: {
@@ -387,9 +380,7 @@ export function bootPhase2(
 function readRequiredEnv(env: NodeJS.ProcessEnv, key: string): string {
   const value = env[key];
   if (!value || value.trim() === "") {
-    throw new BootValidationError(
-      `${key} is required when COORDINATOR_OAUTH_ENABLED=true`,
-    );
+    throw new BootValidationError(`${key} is required when COORDINATOR_OAUTH_ENABLED=true`);
   }
   return value;
 }
@@ -399,9 +390,7 @@ function validatePublicUrl(url: string, env: NodeJS.ProcessEnv): void {
   try {
     parsed = new URL(url);
   } catch {
-    throw new BootValidationError(
-      `COORDINATOR_PUBLIC_URL is not a valid URL: ${url}`,
-    );
+    throw new BootValidationError(`COORDINATOR_PUBLIC_URL is not a valid URL: ${url}`);
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw new BootValidationError(
@@ -464,9 +453,7 @@ function validateGithubBaseUrl(url: string, varName: string): void {
     throw new BootValidationError(`${varName} is not a valid URL: ${url}`);
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new BootValidationError(
-      `${varName} must be http:// or https://, got ${parsed.protocol}`,
-    );
+    throw new BootValidationError(`${varName} must be http:// or https://, got ${parsed.protocol}`);
   }
 }
 
@@ -479,9 +466,11 @@ function ensureBootstrapOrg(db: Database.Database, githubOrg: string): void {
     .get(githubOrg);
   if (!existing) {
     const suffix = Math.random().toString(36).slice(2, 10);
-    db.prepare(
-      `INSERT INTO orgs (id, name, allowlist_github_org) VALUES (?, ?, ?)`,
-    ).run(`org-${githubOrg}-${suffix}`, githubOrg, githubOrg);
+    db.prepare(`INSERT INTO orgs (id, name, allowlist_github_org) VALUES (?, ?, ?)`).run(
+      `org-${githubOrg}-${suffix}`,
+      githubOrg,
+      githubOrg,
+    );
   }
 }
 
@@ -489,11 +478,7 @@ interface MaxEpochRow {
   max_epoch: string | null;
 }
 
-function performRestoreCheck(
-  db: Database.Database,
-  clock: Clock,
-  env: NodeJS.ProcessEnv,
-): void {
+function performRestoreCheck(db: Database.Database, clock: Clock, env: NodeJS.ProcessEnv): void {
   // NR12: compare max audit_log.created_at (ISO string) to wall clock.
   // If > 5 min stale → refuse boot UNLESS COORDINATOR_ALLOW_RESTORE=true.
   const row = db
@@ -531,4 +516,3 @@ function performRestoreCheck(
     },
   });
 }
-

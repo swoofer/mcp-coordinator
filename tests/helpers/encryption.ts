@@ -51,9 +51,9 @@ export function selectIdpToken(
   column: "idp_access_token" | "idp_refresh_token",
   provider: EncryptionProvider,
 ): string | null {
-  const row = db.prepare(
-    `SELECT ${column} AS value, primary_org_id FROM users WHERE id = ?`,
-  ).get(userId) as { value: string | null; primary_org_id: string } | undefined;
+  const row = db
+    .prepare(`SELECT ${column} AS value, primary_org_id FROM users WHERE id = ?`)
+    .get(userId) as { value: string | null; primary_org_id: string } | undefined;
   if (!row || row.value === null) return null;
   return decryptNullable(provider, row.value, {
     org_id: row.primary_org_id,

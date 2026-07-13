@@ -24,7 +24,9 @@ beforeAll(async () => {
       try {
         const { claims } = await verifyTokenStrict(password.toString());
         return { ok: true as const, org: claims.org };
-      } catch { return { ok: false }; }
+      } catch {
+        return { ok: false };
+      }
     },
   });
   TCP_PORT = broker.tcpPort!;
@@ -42,7 +44,10 @@ afterAll(async () => {
 async function connectAs(orgToken: string, clientId: string): Promise<mqtt.MqttClient> {
   return new Promise((resolve, reject) => {
     const client = mqtt.connect(`mqtt://127.0.0.1:${TCP_PORT}`, {
-      clientId, username: "agent", password: orgToken, reconnectPeriod: 0,
+      clientId,
+      username: "agent",
+      password: orgToken,
+      reconnectPeriod: 0,
     });
     client.once("connect", () => resolve(client));
     client.once("error", reject);
@@ -51,7 +56,10 @@ async function connectAs(orgToken: string, clientId: string): Promise<mqtt.MqttC
 
 describe("MQTT org topic scoping", () => {
   it("client cannot subscribe outside its org prefix", async () => {
-    const tokenA = await createToken("agent-a", "agent", undefined, { user_id: "u-a", org: "org-a" });
+    const tokenA = await createToken("agent-a", "agent", undefined, {
+      user_id: "u-a",
+      org: "org-a",
+    });
     const client = await connectAs(tokenA, "client-a-1");
 
     // mqtt.js v5 calls callback(err, subs) when broker sends SUBACK with qos=128.
@@ -67,7 +75,10 @@ describe("MQTT org topic scoping", () => {
   });
 
   it("client can subscribe to its own org prefix", async () => {
-    const tokenA = await createToken("agent-a2", "agent", undefined, { user_id: "u-a", org: "org-a" });
+    const tokenA = await createToken("agent-a2", "agent", undefined, {
+      user_id: "u-a",
+      org: "org-a",
+    });
     const client = await connectAs(tokenA, "client-a-2");
 
     const result = await new Promise<{ granted: number }>((resolve) => {
@@ -81,14 +92,24 @@ describe("MQTT org topic scoping", () => {
   });
 
   it("client gets disconnected on cross-org publish (Aedes default behavior)", async () => {
-    const tokenA = await createToken("agent-a3", "agent", undefined, { user_id: "u-a", org: "org-a" });
+    const tokenA = await createToken("agent-a3", "agent", undefined, {
+      user_id: "u-a",
+      org: "org-a",
+    });
     const client = await connectAs(tokenA, "client-a-3");
 
     let closeHit = false;
-    client.once("close", () => { closeHit = true; });
+    client.once("close", () => {
+      closeHit = true;
+    });
     client.publish("coordinator/org-b/agents/x/status", "payload", { qos: 0 });
     // Aedes emits clientError and disconnects on authorizePublish error.
     // Poll instead of sleeping a fixed duration — robust under CI load.
-    await vi.waitFor(() => { expect(closeHit).toBe(true); }, { timeout: 2000, interval: 50 });
+    await vi.waitFor(
+      () => {
+        expect(closeHit).toBe(true);
+      },
+      { timeout: 2000, interval: 50 },
+    );
   });
 });

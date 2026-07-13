@@ -38,10 +38,18 @@ function mockRes(): { res: ServerResponse; getStatus: () => number; getBody: () 
   const chunks: string[] = [];
   const res = {
     setHeader: () => {},
-    writeHead(s: number) { status = s; },
-    end(buf?: string) { if (buf) chunks.push(buf); },
+    writeHead(s: number) {
+      status = s;
+    },
+    end(buf?: string) {
+      if (buf) chunks.push(buf);
+    },
   } as unknown as ServerResponse;
-  return { res, getStatus: () => status, getBody: () => chunks.length ? JSON.parse(chunks.join("")) : null };
+  return {
+    res,
+    getStatus: () => status,
+    getBody: () => (chunks.length ? JSON.parse(chunks.join("")) : null),
+  };
 }
 
 describe("RestContext claims threading", () => {
@@ -117,9 +125,7 @@ describe("RestContext claims threading", () => {
 
     const { res, getStatus } = mockRes();
     // Should not throw — the handler runs with claims in context.
-    await expect(
-      handleRest(mockReq({}, "/api/status", "GET"), res, ctx)
-    ).resolves.toBeUndefined();
+    await expect(handleRest(mockReq({}, "/api/status", "GET"), res, ctx)).resolves.toBeUndefined();
     // /api/status returns 200 with JSON
     expect(getStatus()).toBe(200);
   });

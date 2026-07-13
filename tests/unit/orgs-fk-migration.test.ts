@@ -49,19 +49,22 @@ describe("v0.9 org_id FK migration (fresh DB)", () => {
     expect(v.user_version).toBeGreaterThanOrEqual(9);
   });
 
-  it.each(TABLES)("table %s declares FOREIGN KEY (org_id) REFERENCES orgs(id) ON DELETE RESTRICT", (t) => {
-    const db = getDb();
-    const fks = db.prepare(`PRAGMA foreign_key_list(${t})`).all() as Array<{
-      table: string;
-      from: string;
-      to: string;
-      on_delete: string;
-    }>;
-    const orgFk = fks.find((f) => f.from === "org_id" && f.table === "orgs");
-    expect(orgFk, `${t} is missing FK on org_id`).toBeDefined();
-    expect(orgFk!.to).toBe("id");
-    expect(orgFk!.on_delete.toUpperCase()).toBe("RESTRICT");
-  });
+  it.each(TABLES)(
+    "table %s declares FOREIGN KEY (org_id) REFERENCES orgs(id) ON DELETE RESTRICT",
+    (t) => {
+      const db = getDb();
+      const fks = db.prepare(`PRAGMA foreign_key_list(${t})`).all() as Array<{
+        table: string;
+        from: string;
+        to: string;
+        on_delete: string;
+      }>;
+      const orgFk = fks.find((f) => f.from === "org_id" && f.table === "orgs");
+      expect(orgFk, `${t} is missing FK on org_id`).toBeDefined();
+      expect(orgFk!.to).toBe("id");
+      expect(orgFk!.on_delete.toUpperCase()).toBe("RESTRICT");
+    },
+  );
 
   it("INSERT with non-existent org_id is rejected (FK constraint enforced)", () => {
     const db = getDb();
@@ -75,21 +78,22 @@ describe("v0.9 org_id FK migration (fresh DB)", () => {
 
   it("DELETE of an org that has linked rows is blocked by ON DELETE RESTRICT", () => {
     const db = getDb();
-    db.prepare("INSERT OR IGNORE INTO orgs (id, name) VALUES (?, ?)").run("org-delete-test", "DeleteTest");
+    db.prepare("INSERT OR IGNORE INTO orgs (id, name) VALUES (?, ?)").run(
+      "org-delete-test",
+      "DeleteTest",
+    );
     db.prepare("INSERT INTO events (type, payload, org_id) VALUES (?, ?, ?)").run(
       "marker",
       "{}",
       "org-delete-test",
     );
-    expect(() =>
-      db.prepare("DELETE FROM orgs WHERE id = ?").run("org-delete-test"),
-    ).toThrow(/FOREIGN KEY/i);
+    expect(() => db.prepare("DELETE FROM orgs WHERE id = ?").run("org-delete-test")).toThrow(
+      /FOREIGN KEY/i,
+    );
     // After cleaning the linked rows the DELETE succeeds (proves it was the
     // RESTRICT and not some unrelated error).
     db.prepare("DELETE FROM events WHERE org_id = ?").run("org-delete-test");
-    expect(() =>
-      db.prepare("DELETE FROM orgs WHERE id = ?").run("org-delete-test"),
-    ).not.toThrow();
+    expect(() => db.prepare("DELETE FROM orgs WHERE id = ?").run("org-delete-test")).not.toThrow();
   });
 
   it("composite-PK invariants still hold (agents has UNIQUE idx_agents_id)", () => {
@@ -146,19 +150,22 @@ describe("v0.9 org_id FK migration (simulated v0.10.x → v0.9 upgrade)", () => 
 
     // Seed: an org + sample rows in events, threads (with initiator agent),
     // and dependency_map. These rows MUST survive the v8→v9 migration.
-    db.prepare("INSERT OR IGNORE INTO orgs (id, name) VALUES (?, ?)").run(
+    db.prepare("INSERT OR IGNORE INTO orgs (id, name) VALUES (?, ?)").run("tenant-a", "Tenant A");
+    db.prepare("INSERT INTO agents (id, org_id, name) VALUES (?, ?, ?)").run(
+      "agent-seed-1",
       "tenant-a",
-      "Tenant A",
+      "seed-agent",
     );
-    db.prepare(
-      "INSERT INTO agents (id, org_id, name) VALUES (?, ?, ?)",
-    ).run("agent-seed-1", "tenant-a", "seed-agent");
-    db.prepare(
-      "INSERT INTO events (type, payload, org_id) VALUES (?, ?, ?)",
-    ).run("seed.event", '{"k":"v"}', "tenant-a");
-    db.prepare(
-      "INSERT INTO dependency_map (org_id, module_id, depends_on) VALUES (?, ?, ?)",
-    ).run("tenant-a", "src/seed-module", '["a","b"]');
+    db.prepare("INSERT INTO events (type, payload, org_id) VALUES (?, ?, ?)").run(
+      "seed.event",
+      '{"k":"v"}',
+      "tenant-a",
+    );
+    db.prepare("INSERT INTO dependency_map (org_id, module_id, depends_on) VALUES (?, ?, ?)").run(
+      "tenant-a",
+      "src/seed-module",
+      '["a","b"]',
+    );
 
     // Phase 2: simulate v0.10.x state by dropping the FK on events
     // (representative — the migration code iterates over all 14 tables so
@@ -172,8 +179,10 @@ describe("v0.9 org_id FK migration (simulated v0.10.x → v0.9 upgrade)", () => 
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       org_id TEXT NOT NULL DEFAULT 'default'
     )`);
-    db.exec("INSERT INTO events_pre_v9 (id, type, payload, created_at, org_id) " +
-      "SELECT id, type, payload, created_at, org_id FROM events");
+    db.exec(
+      "INSERT INTO events_pre_v9 (id, type, payload, created_at, org_id) " +
+        "SELECT id, type, payload, created_at, org_id FROM events",
+    );
     db.exec("DROP TABLE events");
     db.exec("ALTER TABLE events_pre_v9 RENAME TO events");
     db.exec("CREATE INDEX IF NOT EXISTS idx_events_type ON events(type)");
@@ -269,10 +278,7 @@ describe("v0.9 org_id FK migration (orphan repair on v8 fixture)", () => {
 
     // Create an orphan row: insert an org, link a row, then delete the org
     // by-passing FK enforcement (we'll drop the FK first).
-    db.prepare("INSERT OR IGNORE INTO orgs (id, name) VALUES (?, ?)").run(
-      "doomed-org",
-      "Doomed",
-    );
+    db.prepare("INSERT OR IGNORE INTO orgs (id, name) VALUES (?, ?)").run("doomed-org", "Doomed");
 
     db.exec("PRAGMA foreign_keys = OFF");
     db.exec("BEGIN");
@@ -283,8 +289,10 @@ describe("v0.9 org_id FK migration (orphan repair on v8 fixture)", () => {
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       org_id TEXT NOT NULL DEFAULT 'default'
     )`);
-    db.exec("INSERT INTO events_pre_v9 (id, type, payload, created_at, org_id) " +
-      "SELECT id, type, payload, created_at, org_id FROM events");
+    db.exec(
+      "INSERT INTO events_pre_v9 (id, type, payload, created_at, org_id) " +
+        "SELECT id, type, payload, created_at, org_id FROM events",
+    );
     db.exec("DROP TABLE events");
     db.exec("ALTER TABLE events_pre_v9 RENAME TO events");
     db.exec("CREATE INDEX IF NOT EXISTS idx_events_type ON events(type)");
@@ -315,9 +323,8 @@ describe("v0.9 org_id FK migration (orphan repair on v8 fixture)", () => {
 
   it("orphan rows are re-parented to 'default' org during the migration", () => {
     const db = getDb();
-    const row = db
-      .prepare("SELECT org_id FROM events WHERE type = 'orphan.row'")
-      .get() as { org_id: string } | undefined;
+    const row = db.prepare("SELECT org_id FROM events WHERE type = 'orphan.row'").get() as
+      { org_id: string } | undefined;
     expect(row).toBeDefined();
     expect(row!.org_id).toBe("default");
   });

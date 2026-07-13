@@ -84,10 +84,14 @@ export async function handleOAuthCallback(
       metadata: { idp_error: idpError, idp_error_description: idpErrorDescription ?? null },
     });
     res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
-    res.end(JSON.stringify(appError(
-      "OAUTH_DENIED",
-      idpErrorDescription ?? `OAuth provider returned error: ${idpError}`,
-    )));
+    res.end(
+      JSON.stringify(
+        appError(
+          "OAUTH_DENIED",
+          idpErrorDescription ?? `OAuth provider returned error: ${idpError}`,
+        ),
+      ),
+    );
     return;
   }
 
@@ -128,7 +132,11 @@ export async function handleOAuthCallback(
       case "consumed":
         audit("auth.state.replay", { tier: 1, metadata: { reason: "state_consumed" } });
         res.writeHead(409, { "Content-Type": "application/json; charset=utf-8" });
-        res.end(JSON.stringify(appError("STATE_ALREADY_CONSUMED", "This authorization was already completed")));
+        res.end(
+          JSON.stringify(
+            appError("STATE_ALREADY_CONSUMED", "This authorization was already completed"),
+          ),
+        );
         return;
       case "expired":
         audit("auth.state.replay", { tier: 1, metadata: { reason: "state_expired" } });
@@ -153,7 +161,9 @@ export async function handleOAuthCallback(
       },
     });
     res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
-    res.end(JSON.stringify(appError("PROVIDER_MISMATCH", "State does not match a registered provider")));
+    res.end(
+      JSON.stringify(appError("PROVIDER_MISMATCH", "State does not match a registered provider")),
+    );
     return;
   }
 
@@ -173,12 +183,16 @@ export async function handleOAuthCallback(
         "Content-Type": "application/json; charset=utf-8",
         "WWW-Authenticate": bearerAuthHeader("invalid_token", "IdP rejected the token"),
       });
-      res.end(JSON.stringify(appError("IDP_TOKEN_REVOKED", "Identity provider rejected the token")));
+      res.end(
+        JSON.stringify(appError("IDP_TOKEN_REVOKED", "Identity provider rejected the token")),
+      );
       return;
     }
     if (err instanceof IdPTransientError) {
       res.writeHead(503, { "Content-Type": "application/json; charset=utf-8" });
-      res.end(JSON.stringify(appError("IDP_UNAVAILABLE", "Identity provider temporarily unavailable")));
+      res.end(
+        JSON.stringify(appError("IDP_UNAVAILABLE", "Identity provider temporarily unavailable")),
+      );
       return;
     }
     throw err; // unknown error → 500 via top-level handler
@@ -298,12 +312,16 @@ async function finalizeBrowserOAuth(
           "Content-Type": "application/json; charset=utf-8",
           "WWW-Authenticate": bearerAuthHeader("invalid_token", "IdP token revoked"),
         });
-        res.end(JSON.stringify(appError("IDP_TOKEN_REVOKED", "Identity provider rejected the token")));
+        res.end(
+          JSON.stringify(appError("IDP_TOKEN_REVOKED", "Identity provider rejected the token")),
+        );
         return;
       }
       if (err instanceof IdPTransientError) {
         res.writeHead(503, { "Content-Type": "application/json; charset=utf-8" });
-        res.end(JSON.stringify(appError("IDP_UNAVAILABLE", "Identity provider temporarily unavailable")));
+        res.end(
+          JSON.stringify(appError("IDP_UNAVAILABLE", "Identity provider temporarily unavailable")),
+        );
         return;
       }
       throw err;
@@ -343,9 +361,7 @@ async function finalizeBrowserOAuth(
   // 4. AUTO_PROVISION mode via T44 (orgId=null: pre-provisioning lookup, falls
   //    back to env then default "true"). Normalize to lowercase so operators
   //    setting COORDINATOR_AUTO_PROVISION=False/FALSE all route correctly.
-  const autoProvision = String(
-    getOrgSetting(ctx.db, null, "auto_provision", "true"),
-  ).toLowerCase();
+  const autoProvision = String(getOrgSetting(ctx.db, null, "auto_provision", "true")).toLowerCase();
 
   // 5-6. BEGIN IMMEDIATE TX. The user-existence check for AUTO_PROVISION=false
   //      lives INSIDE the TX so it's atomic with the INSERT — a concurrent
@@ -355,9 +371,7 @@ async function finalizeBrowserOAuth(
     const tx = ctx.db.transaction((): ProvisionResult => {
       if (autoProvision === "false") {
         const existing = ctx.db
-          .prepare(
-            "SELECT id FROM users WHERE idp_provider = ? AND idp_user_id = ?",
-          )
+          .prepare("SELECT id FROM users WHERE idp_provider = ? AND idp_user_id = ?")
           .get(provider.name, exchange.user.idp_user_id);
         if (!existing) {
           throw new ProvisioningDeniedError("USER_NOT_PROVISIONED");
@@ -390,10 +404,14 @@ async function finalizeBrowserOAuth(
         },
       });
       res.writeHead(403, { "Content-Type": "application/json; charset=utf-8" });
-      res.end(JSON.stringify(appError(
-        "USER_NOT_PROVISIONED",
-        "User must be provisioned by an admin before signing in",
-      )));
+      res.end(
+        JSON.stringify(
+          appError(
+            "USER_NOT_PROVISIONED",
+            "User must be provisioned by an admin before signing in",
+          ),
+        ),
+      );
       return;
     }
     throw err;

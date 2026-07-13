@@ -51,7 +51,7 @@ export type RestHandler = (
   req: IncomingMessage,
   res: ServerResponse,
   ctx: RestContext,
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
 ) => Promise<void> | void;
 
 /**
@@ -61,15 +61,27 @@ export type RestHandler = (
  * consistent error contract instead of ad hoc shapes per endpoint.
  */
 export function sendValidationError(res: ServerResponse, error: ZodError): void {
-  json(res, appError("INVALID_REQUEST", "Request body failed validation", {
-    issues: error.issues.map((i) => ({ path: i.path.join("."), message: i.message })),
-  }), 400);
+  json(
+    res,
+    appError("INVALID_REQUEST", "Request body failed validation", {
+      issues: error.issues.map((i) => ({ path: i.path.join("."), message: i.message })),
+    }),
+    400,
+  );
 }
 
-export function handleRegister(req: IncomingMessage, res: ServerResponse, ctx: RestContext, body: Record<string, unknown>): void {
+export function handleRegister(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RestContext,
+  body: Record<string, unknown>,
+): void {
   const { services } = ctx;
   const parsed = RegisterBodySchema.safeParse(body);
-  if (!parsed.success) { sendValidationError(res, parsed.error); return; }
+  if (!parsed.success) {
+    sendValidationError(res, parsed.error);
+    return;
+  }
   const { agent_id, name, modules } = parsed.data;
   // architecture-07: shared flow with MCP register_agent (registry.register +
   // sseEmitter "agent_online" + mqttBridge.registerAgent retained-status publish).
@@ -77,7 +89,12 @@ export function handleRegister(req: IncomingMessage, res: ServerResponse, ctx: R
   json(res, agent);
 }
 
-export function handleSessionStart(req: IncomingMessage, res: ServerResponse, ctx: RestContext, body: Record<string, unknown>): void {
+export function handleSessionStart(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RestContext,
+  body: Record<string, unknown>,
+): void {
   const { registry, consultation, fileTracker } = ctx.services;
   const online = registry.listOnline(ctx.claims.org);
   const openThreads = consultation.listThreads(ctx.claims.org, { status: "open" });
@@ -87,13 +104,28 @@ export function handleSessionStart(req: IncomingMessage, res: ServerResponse, ct
     `Consultations ouvertes: ${openThreads.length}`,
     `Hot files: ${hotFiles.map((f) => f.file_path).join(", ") || "aucun"}`,
   ].join("\n");
-  json(res, { briefing, summary: { online: online.length, open_threads: openThreads.length, hot_files: hotFiles.length } });
+  json(res, {
+    briefing,
+    summary: {
+      online: online.length,
+      open_threads: openThreads.length,
+      hot_files: hotFiles.length,
+    },
+  });
 }
 
-export function handleSessionStop(req: IncomingMessage, res: ServerResponse, ctx: RestContext, body: Record<string, unknown>): void {
+export function handleSessionStop(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RestContext,
+  body: Record<string, unknown>,
+): void {
   const { registry, activityTracker, consultation, sseEmitter } = ctx.services;
   const parsed = SessionStopBodySchema.safeParse(body);
-  if (!parsed.success) { sendValidationError(res, parsed.error); return; }
+  if (!parsed.success) {
+    sendValidationError(res, parsed.error);
+    return;
+  }
   const { agent_id } = parsed.data;
   registry.setOffline(ctx.claims.org, agent_id);
   activityTracker.reportOffline(ctx.claims.org, agent_id);
@@ -102,10 +134,18 @@ export function handleSessionStop(req: IncomingMessage, res: ServerResponse, ctx
   json(res, { ok: true });
 }
 
-export function handleCheckConflict(req: IncomingMessage, res: ServerResponse, ctx: RestContext, body: Record<string, unknown>): void {
+export function handleCheckConflict(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RestContext,
+  body: Record<string, unknown>,
+): void {
   const { fileTracker } = ctx.services;
   const parsed = CheckConflictBodySchema.safeParse(body);
-  if (!parsed.success) { sendValidationError(res, parsed.error); return; }
+  if (!parsed.success) {
+    sendValidationError(res, parsed.error);
+    return;
+  }
   const { file, agent_id } = parsed.data;
   const conflict = fileTracker.checkFileConflict(ctx.claims.org, file, agent_id, 30);
   const warnings: string[] = [];
@@ -115,53 +155,135 @@ export function handleCheckConflict(req: IncomingMessage, res: ServerResponse, c
   json(res, { conflict: conflict.conflict, warnings });
 }
 
-export function handleLogFile(req: IncomingMessage, res: ServerResponse, ctx: RestContext, body: Record<string, unknown>): void {
+export function handleLogFile(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RestContext,
+  body: Record<string, unknown>,
+): void {
   const { fileTracker, activityTracker, sseEmitter } = ctx.services;
   const parsed = LogFileBodySchema.safeParse(body);
-  if (!parsed.success) { sendValidationError(res, parsed.error); return; }
+  if (!parsed.success) {
+    sendValidationError(res, parsed.error);
+    return;
+  }
   const { session_id, agent_id, agent_name, tool_name, file } = parsed.data;
-  fileTracker.log({ org_id: ctx.claims.org, session_id, agent_id, agent_name, tool_name, file_path: file });
+  fileTracker.log({
+    org_id: ctx.claims.org,
+    session_id,
+    agent_id,
+    agent_name,
+    tool_name,
+    file_path: file,
+  });
   activityTracker.reportFileActivity(ctx.claims.org, agent_id, file);
-  sseEmitter.emit("file_edited", { agent_id, agent_name: agent_name || agent_id, file, tool_name }, { org_id: ctx.claims.org });
+  sseEmitter.emit(
+    "file_edited",
+    { agent_id, agent_name: agent_name || agent_id, file, tool_name },
+    { org_id: ctx.claims.org },
+  );
   json(res, { ok: true });
 }
 
-export function handleAnnounce(req: IncomingMessage, res: ServerResponse, ctx: RestContext, body: Record<string, unknown>): void {
+export function handleAnnounce(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RestContext,
+  body: Record<string, unknown>,
+): void {
   const { services, httpLog } = ctx;
   const { registry, consultation, sseEmitter } = services;
   const parsed = AnnounceBodySchema.safeParse(body);
-  if (!parsed.success) { sendValidationError(res, parsed.error); return; }
-  const { agent_id, subject, plan, target_modules, target_files, depends_on_files, exports_affected, keep_open, assigned_to, target_symbols } = parsed.data;
+  if (!parsed.success) {
+    sendValidationError(res, parsed.error);
+    return;
+  }
+  const {
+    agent_id,
+    subject,
+    plan,
+    target_modules,
+    target_files,
+    depends_on_files,
+    exports_affected,
+    keep_open,
+    assigned_to,
+    target_symbols,
+  } = parsed.data;
 
-  const thread = consultation.announceWork(ctx.claims.org, { agent_id, subject, plan, target_modules, target_files, depends_on_files, exports_affected, keep_open, assigned_to });
+  const thread = consultation.announceWork(ctx.claims.org, {
+    agent_id,
+    subject,
+    plan,
+    target_modules,
+    target_files,
+    depends_on_files,
+    exports_affected,
+    keep_open,
+    assigned_to,
+  });
   const agentInfo = registry.get(ctx.claims.org, agent_id);
 
   // S2 fix: shared workflow (impact scoring, override respondents, auto-resolve,
   // impact_scored + introspection SSE, plan-quality downgrade event). Same
   // function used by the MCP announce_work tool path.
-  const { updated, categorized, respondents, planQuality } = runCommonAnnounceFlow(services, thread.id, {
-    org_id: ctx.claims.org, agent_id, subject, plan, target_modules, target_files, depends_on_files, exports_affected, keep_open,
-    target_symbols,
-  });
+  const { updated, categorized, respondents, planQuality } = runCommonAnnounceFlow(
+    services,
+    thread.id,
+    {
+      org_id: ctx.claims.org,
+      agent_id,
+      subject,
+      plan,
+      target_modules,
+      target_files,
+      depends_on_files,
+      exports_affected,
+      keep_open,
+      target_symbols,
+    },
+  );
 
   // REST-specific thread_opened SSE shape (different field set than MCP — kept
   // divergent because consumers may depend on this exact contract).
-  sseEmitter.emit("thread_opened", {
-    thread_id: thread.id, subject, agent_id, agent_name: agentInfo?.name || agent_id,
-    target_modules, target_files, expected_respondents: respondents,
-    conflicts: safeJsonParse<unknown[]>(updated.conflicts, [], httpLog, "handle-rest./api/announce:updated.conflicts"),
-    created_at: updated.created_at,
-    mode: planQuality.mode,
-    plan: plan || null,
-    plan_quality: planQuality,
-  }, { org_id: ctx.claims.org });
+  sseEmitter.emit(
+    "thread_opened",
+    {
+      thread_id: thread.id,
+      subject,
+      agent_id,
+      agent_name: agentInfo?.name || agent_id,
+      target_modules,
+      target_files,
+      expected_respondents: respondents,
+      conflicts: safeJsonParse<unknown[]>(
+        updated.conflicts,
+        [],
+        httpLog,
+        "handle-rest./api/announce:updated.conflicts",
+      ),
+      created_at: updated.created_at,
+      mode: planQuality.mode,
+      plan: plan || null,
+      plan_quality: planQuality,
+    },
+    { org_id: ctx.claims.org },
+  );
   json(res, { thread_id: thread.id, status: updated.status, impact: categorized });
 }
 
-export function handlePostToThread(req: IncomingMessage, res: ServerResponse, ctx: RestContext, body: Record<string, unknown>): void {
+export function handlePostToThread(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RestContext,
+  body: Record<string, unknown>,
+): void {
   const { consultation, sseEmitter } = ctx.services;
   const parsed = PostToThreadBodySchema.safeParse(body);
-  if (!parsed.success) { sendValidationError(res, parsed.error); return; }
+  if (!parsed.success) {
+    sendValidationError(res, parsed.error);
+    return;
+  }
   const { thread_id, agent_id, agent_name, type, content } = parsed.data;
   // Pre-check the thread so we can return actionable status codes instead
   // of always-500 on any error. The client uses the status to decide
@@ -175,31 +297,61 @@ export function handlePostToThread(req: IncomingMessage, res: ServerResponse, ct
     json(res, { error: "thread_cancelled", thread_id }, 410);
     return;
   }
-  const msg = consultation.postToThread(ctx.claims.org, { thread_id, agent_id, agent_name, type, content });
+  const msg = consultation.postToThread(ctx.claims.org, {
+    thread_id,
+    agent_id,
+    agent_name,
+    type,
+    content,
+  });
   const thread = consultation.getThread(ctx.claims.org, thread_id);
-  sseEmitter.emit("message_posted", {
-    thread_id, agent_id, agent_name: agent_name || agent_id,
-    type, content, round: thread?.round || 1,
-    token_estimate: msg.token_estimate || 0,
-  }, { org_id: ctx.claims.org });
+  sseEmitter.emit(
+    "message_posted",
+    {
+      thread_id,
+      agent_id,
+      agent_name: agent_name || agent_id,
+      type,
+      content,
+      round: thread?.round || 1,
+      token_estimate: msg.token_estimate || 0,
+    },
+    { org_id: ctx.claims.org },
+  );
   json(res, msg);
 }
 
-export function handleTokenUsage(req: IncomingMessage, res: ServerResponse, ctx: RestContext, body: Record<string, unknown>): void {
+export function handleTokenUsage(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RestContext,
+  body: Record<string, unknown>,
+): void {
   const { sseEmitter } = ctx.services;
   // Agent → coordinator telemetry, emitted once per LLM turn so the dashboard
   // and reports can pinpoint where tokens are being burned. Free-form shape
   // by design — only validated as a JSON object (not array/primitive).
   const parsed = TokenUsageBodySchema.safeParse(body);
-  if (!parsed.success) { sendValidationError(res, parsed.error); return; }
+  if (!parsed.success) {
+    sendValidationError(res, parsed.error);
+    return;
+  }
   sseEmitter.emit("token_usage", parsed.data, { org_id: ctx.claims.org });
   json(res, { ok: true });
 }
 
-export function handleUnclaimTask(req: IncomingMessage, res: ServerResponse, ctx: RestContext, body: Record<string, unknown>): void {
+export function handleUnclaimTask(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RestContext,
+  body: Record<string, unknown>,
+): void {
   const { httpLog } = ctx;
   const parsed = UnclaimTaskBodySchema.safeParse(body);
-  if (!parsed.success) { sendValidationError(res, parsed.error); return; }
+  if (!parsed.success) {
+    sendValidationError(res, parsed.error);
+    return;
+  }
   const { thread_id, agent_id } = parsed.data;
   const db = getDb();
   // F4: increment unclaim counter. After POISON_THRESHOLD aborts, flip status
@@ -207,34 +359,53 @@ export function handleUnclaimTask(req: IncomingMessage, res: ServerResponse, ctx
   // claim → no DONE → unclaim → re-claim loop we observed on stuck tasks.
   // Only the claiming agent can unclaim to prevent cross-agent interference.
   const POISON_THRESHOLD = 2;
-  const result = db.prepare(
-    "UPDATE threads SET claimed_by = NULL, claimed_at = NULL, unclaim_count = COALESCE(unclaim_count, 0) + 1 WHERE id = ? AND org_id = ? AND claimed_by = ? AND status = 'open'"
-  ).run(thread_id, ctx.claims.org, agent_id);
+  const result = db
+    .prepare(
+      "UPDATE threads SET claimed_by = NULL, claimed_at = NULL, unclaim_count = COALESCE(unclaim_count, 0) + 1 WHERE id = ? AND org_id = ? AND claimed_by = ? AND status = 'open'",
+    )
+    .run(thread_id, ctx.claims.org, agent_id);
   let poisoned = false;
   if (result.changes === 1) {
-    const row = db.prepare("SELECT unclaim_count FROM threads WHERE id = ? AND org_id = ?").get(thread_id, ctx.claims.org) as { unclaim_count?: number } | undefined;
+    const row = db
+      .prepare("SELECT unclaim_count FROM threads WHERE id = ? AND org_id = ?")
+      .get(thread_id, ctx.claims.org) as { unclaim_count?: number } | undefined;
     if (row && (row.unclaim_count ?? 0) >= POISON_THRESHOLD) {
-      db.prepare("UPDATE threads SET status = 'poisoned' WHERE id = ? AND org_id = ? AND status = 'open'").run(thread_id, ctx.claims.org);
+      db.prepare(
+        "UPDATE threads SET status = 'poisoned' WHERE id = ? AND org_id = ? AND status = 'open'",
+      ).run(thread_id, ctx.claims.org);
       poisoned = true;
-      httpLog.warn({ thread_id, unclaim_count: row.unclaim_count }, "thread poisoned after repeated unclaims");
+      httpLog.warn(
+        { thread_id, unclaim_count: row.unclaim_count },
+        "thread poisoned after repeated unclaims",
+      );
     }
   }
   json(res, { success: result.changes === 1, poisoned });
 }
 
-export function handleClaimTask(req: IncomingMessage, res: ServerResponse, ctx: RestContext, body: Record<string, unknown>): void {
+export function handleClaimTask(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RestContext,
+  body: Record<string, unknown>,
+): void {
   const { consultation, mqttBridge, sseEmitter } = ctx.services;
   const parsed = ClaimTaskBodySchema.safeParse(body);
-  if (!parsed.success) { sendValidationError(res, parsed.error); return; }
+  if (!parsed.success) {
+    sendValidationError(res, parsed.error);
+    return;
+  }
   const { thread_id, agent_id } = parsed.data;
   const db = getDb();
   // Only claim threads with status='open' — poisoned threads are filtered out
   // automatically because the status filter excludes them.
   // Directed-dispatch constraint: if assigned_to is set, only that specific
   // agent can claim; NULL keeps the original open-pool semantics.
-  const result = db.prepare(
-    "UPDATE threads SET claimed_by = ?, claimed_at = ? WHERE id = ? AND org_id = ? AND claimed_by IS NULL AND status = 'open' AND (assigned_to IS NULL OR assigned_to = ?)"
-  ).run(agent_id, new Date().toISOString(), thread_id, ctx.claims.org, agent_id);
+  const result = db
+    .prepare(
+      "UPDATE threads SET claimed_by = ?, claimed_at = ? WHERE id = ? AND org_id = ? AND claimed_by IS NULL AND status = 'open' AND (assigned_to IS NULL OR assigned_to = ?)",
+    )
+    .run(agent_id, new Date().toISOString(), thread_id, ctx.claims.org, agent_id);
 
   if (result.changes === 1) {
     mqttBridge.publishTaskClaimed(thread_id, agent_id);
@@ -253,24 +424,47 @@ export function handleClaimTask(req: IncomingMessage, res: ServerResponse, ctx: 
   }
 }
 
-export function handleProposeResolution(req: IncomingMessage, res: ServerResponse, ctx: RestContext, body: Record<string, unknown>): void {
+export function handleProposeResolution(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RestContext,
+  body: Record<string, unknown>,
+): void {
   const { registry, consultation, sseEmitter, mqttBridge } = ctx.services;
   const parsed = ProposeResolutionBodySchema.safeParse(body);
-  if (!parsed.success) { sendValidationError(res, parsed.error); return; }
+  if (!parsed.success) {
+    sendValidationError(res, parsed.error);
+    return;
+  }
   const { thread_id, agent_id, summary } = parsed.data;
   const agentInfo = registry.get(ctx.claims.org, agent_id);
   consultation.proposeResolution(ctx.claims.org, thread_id, agent_id, summary);
-  sseEmitter.emit("resolution_proposed", {
-    thread_id, agent_id, agent_name: agentInfo?.name || agent_id, summary,
-  }, { org_id: ctx.claims.org });
+  sseEmitter.emit(
+    "resolution_proposed",
+    {
+      thread_id,
+      agent_id,
+      agent_name: agentInfo?.name || agent_id,
+      summary,
+    },
+    { org_id: ctx.claims.org },
+  );
   json(res, consultation.getThread(ctx.claims.org, thread_id));
   mqttBridge.publishTaskCompleted(thread_id, agent_id, summary);
 }
 
-export function handleApproveResolution(req: IncomingMessage, res: ServerResponse, ctx: RestContext, body: Record<string, unknown>): void {
+export function handleApproveResolution(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RestContext,
+  body: Record<string, unknown>,
+): void {
   const { registry, consultation } = ctx.services;
   const parsed = ApproveResolutionBodySchema.safeParse(body);
-  if (!parsed.success) { sendValidationError(res, parsed.error); return; }
+  if (!parsed.success) {
+    sendValidationError(res, parsed.error);
+    return;
+  }
   const { thread_id, agent_id } = parsed.data;
   const agentInfo = registry.get(ctx.claims.org, agent_id);
   consultation.approveResolution(ctx.claims.org, thread_id, agent_id, agentInfo?.name ?? undefined);
@@ -278,7 +472,12 @@ export function handleApproveResolution(req: IncomingMessage, res: ServerRespons
   json(res, t);
 }
 
-export function handleConsultationStatus(req: IncomingMessage, res: ServerResponse, ctx: RestContext, body: Record<string, unknown>): void {
+export function handleConsultationStatus(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RestContext,
+  body: Record<string, unknown>,
+): void {
   const { httpLog } = ctx;
   const { consultation } = ctx.services;
   const url = req.url || "";
@@ -291,27 +490,50 @@ export function handleConsultationStatus(req: IncomingMessage, res: ServerRespon
       status: thread.thread.status,
       messages: thread.messages,
       resolution_summary: thread.thread.resolution_summary,
-      expected_respondents: safeJsonParse<string[]>(thread.thread.expected_respondents, [], httpLog, "handle-rest./api/consultation/status:expected_respondents"),
+      expected_respondents: safeJsonParse<string[]>(
+        thread.thread.expected_respondents,
+        [],
+        httpLog,
+        "handle-rest./api/consultation/status:expected_respondents",
+      ),
     });
   }
 }
 
-export function handleThreadsActive(req: IncomingMessage, res: ServerResponse, ctx: RestContext, body: Record<string, unknown>): void {
+export function handleThreadsActive(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RestContext,
+  body: Record<string, unknown>,
+): void {
   const { consultation } = ctx.services;
   const open = consultation.listThreads(ctx.claims.org, { status: "open" });
   const resolving = consultation.listThreads(ctx.claims.org, { status: "resolving" });
   json(res, [...open, ...resolving]);
 }
 
-export function handleHotFiles(req: IncomingMessage, res: ServerResponse, ctx: RestContext, body: Record<string, unknown>): void {
+export function handleHotFiles(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RestContext,
+  body: Record<string, unknown>,
+): void {
   const { fileTracker } = ctx.services;
   const parsed = HotFilesBodySchema.safeParse(body);
-  if (!parsed.success) { sendValidationError(res, parsed.error); return; }
+  if (!parsed.success) {
+    sendValidationError(res, parsed.error);
+    return;
+  }
   const { since_minutes } = parsed.data;
   json(res, fileTracker.getHotFiles(ctx.claims.org, since_minutes || 30));
 }
 
-export async function handleQuota(req: IncomingMessage, res: ServerResponse, ctx: RestContext, body: Record<string, unknown>): Promise<void> {
+export async function handleQuota(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RestContext,
+  body: Record<string, unknown>,
+): Promise<void> {
   const { quotaCache } = ctx.services;
   // Pre-flight + live widget endpoint. 200 with fresh QuotaInfo when the
   // Keychain + Anthropic API are reachable, 503 otherwise. Consumers treat
@@ -319,11 +541,15 @@ export async function handleQuota(req: IncomingMessage, res: ServerResponse, ctx
   const info = await quotaCache.get();
   if (!info) {
     const status = quotaCache.snapshot();
-    json(res, {
-      error: "quota unavailable",
-      reason: status.lastError,
-      cooldown_until: status.cooldownUntil,
-    }, 503);
+    json(
+      res,
+      {
+        error: "quota unavailable",
+        reason: status.lastError,
+        cooldown_until: status.cooldownUntil,
+      },
+      503,
+    );
   } else {
     json(res, {
       five_hour: info.fiveHour,
@@ -334,7 +560,12 @@ export async function handleQuota(req: IncomingMessage, res: ServerResponse, ctx
   }
 }
 
-export async function handleQuotaRefresh(req: IncomingMessage, res: ServerResponse, ctx: RestContext, body: Record<string, unknown>): Promise<void> {
+export async function handleQuotaRefresh(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RestContext,
+  body: Record<string, unknown>,
+): Promise<void> {
   const { quotaCache } = ctx.services;
   // Force-refresh the cache, bypassing the TTL. Used by the dashboard's
   // manual refresh button. The underlying quotaCache.refresh() is single-
@@ -345,11 +576,15 @@ export async function handleQuotaRefresh(req: IncomingMessage, res: ServerRespon
   const info = await quotaCache.refresh();
   if (!info) {
     const status = quotaCache.snapshot();
-    json(res, {
-      error: "quota unavailable",
-      reason: status.lastError,
-      cooldown_until: status.cooldownUntil,
-    }, 503);
+    json(
+      res,
+      {
+        error: "quota unavailable",
+        reason: status.lastError,
+        cooldown_until: status.cooldownUntil,
+      },
+      503,
+    );
   } else {
     json(res, {
       five_hour: info.fiveHour,
@@ -360,11 +595,19 @@ export async function handleQuotaRefresh(req: IncomingMessage, res: ServerRespon
   }
 }
 
-export function handleIntrospectionResponse(req: IncomingMessage, res: ServerResponse, ctx: RestContext, body: Record<string, unknown>): void {
+export function handleIntrospectionResponse(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RestContext,
+  body: Record<string, unknown>,
+): void {
   const { httpLog } = ctx;
   const { registry, consultation, introspection, sseEmitter } = ctx.services;
   const parsed = IntrospectionResponseBodySchema.safeParse(body);
-  if (!parsed.success) { sendValidationError(res, parsed.error); return; }
+  if (!parsed.success) {
+    sendValidationError(res, parsed.error);
+    return;
+  }
   const { introspection_id, concerned, reason } = parsed.data;
   const intro = introspection.respond(ctx.claims.org, introspection_id, reason);
 
@@ -373,25 +616,45 @@ export function handleIntrospectionResponse(req: IncomingMessage, res: ServerRes
     const db = getDb();
     const thread = consultation.getThread(ctx.claims.org, intro.thread_id);
     if (thread && (thread.status === "open" || thread.status === "resolving")) {
-      const respondents: string[] = safeJsonParse<string[]>(thread.expected_respondents, [], httpLog, "handle-rest./api/introspection-response:expected_respondents");
+      const respondents: string[] = safeJsonParse<string[]>(
+        thread.expected_respondents,
+        [],
+        httpLog,
+        "handle-rest./api/introspection-response:expected_respondents",
+      );
       if (!respondents.includes(intro.agent_id)) {
         respondents.push(intro.agent_id);
-        db.prepare("UPDATE threads SET expected_respondents = ? WHERE id = ? AND org_id = ?")
-          .run(JSON.stringify(respondents), thread.id, ctx.claims.org);
+        db.prepare("UPDATE threads SET expected_respondents = ? WHERE id = ? AND org_id = ?").run(
+          JSON.stringify(respondents),
+          thread.id,
+          ctx.claims.org,
+        );
       }
     }
   }
 
   const agentInfo = registry.get(ctx.claims.org, intro?.agent_id || "");
-  sseEmitter.emit("introspection_completed", {
-    introspection_id, thread_id: intro?.thread_id,
-    agent_id: intro?.agent_id, agent_name: agentInfo?.name || intro?.agent_id,
-    concerned, reason,
-  }, { org_id: ctx.claims.org });
+  sseEmitter.emit(
+    "introspection_completed",
+    {
+      introspection_id,
+      thread_id: intro?.thread_id,
+      agent_id: intro?.agent_id,
+      agent_name: agentInfo?.name || intro?.agent_id,
+      concerned,
+      reason,
+    },
+    { org_id: ctx.claims.org },
+  );
   json(res, intro);
 }
 
-export function handlePendingIntrospections(req: IncomingMessage, res: ServerResponse, ctx: RestContext, body: Record<string, unknown>): void {
+export function handlePendingIntrospections(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RestContext,
+  body: Record<string, unknown>,
+): void {
   const { introspection } = ctx.services;
   const url = req.url || "";
   const urlObj = new URL(url, "http://localhost");
@@ -400,29 +663,51 @@ export function handlePendingIntrospections(req: IncomingMessage, res: ServerRes
   json(res, pending);
 }
 
-export function handleRunConfig(req: IncomingMessage, res: ServerResponse, ctx: RestContext, body: Record<string, unknown>): void {
+export function handleRunConfig(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RestContext,
+  body: Record<string, unknown>,
+): void {
   const { getRunConfig, setRunConfig } = ctx;
   const { sseEmitter } = ctx.services;
   if (req.method === "POST") {
     const parsed = RunConfigBodySchema.safeParse(body);
-    if (!parsed.success) { sendValidationError(res, parsed.error); return; }
+    if (!parsed.success) {
+      sendValidationError(res, parsed.error);
+      return;
+    }
     setRunConfig(parsed.data);
-    sseEmitter.emit("run_config" as Parameters<typeof sseEmitter.emit>[0], getRunConfig() as Record<string, unknown>, { org_id: ctx.claims.org });
+    sseEmitter.emit(
+      "run_config" as Parameters<typeof sseEmitter.emit>[0],
+      getRunConfig() as Record<string, unknown>,
+      { org_id: ctx.claims.org },
+    );
     json(res, { ok: true });
   } else {
     json(res, getRunConfig() || { active: false });
   }
 }
 
-export function handleReset(req: IncomingMessage, res: ServerResponse, ctx: RestContext, body: Record<string, unknown>): void {
+export function handleReset(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RestContext,
+  body: Record<string, unknown>,
+): void {
   const { authEnabled, setRunConfig } = ctx;
   // B4 fix: gate destructive reset when AUTH is disabled.
   // When AUTH_ENABLED=true, ADMIN_ONLY_ROUTES already enforced upstream
   // by authenticateRequest (see auth.ts). This guard covers the AUTH off case.
   if (!canResetDb(process.env, authEnabled)) {
-    json(res, {
-      error: "Forbidden: /api/reset requires NODE_ENV=test, COORDINATOR_ALLOW_RESET=true, or COORDINATOR_AUTH_ENABLED with admin token",
-    }, 403);
+    json(
+      res,
+      {
+        error:
+          "Forbidden: /api/reset requires NODE_ENV=test, COORDINATOR_ALLOW_RESET=true, or COORDINATOR_AUTH_ENABLED with admin token",
+      },
+      403,
+    );
     return;
   }
   // Reset all tables for clean test run (disable FK checks to avoid ordering issues)
@@ -443,11 +728,19 @@ export function handleReset(req: IncomingMessage, res: ServerResponse, ctx: Rest
   json(res, { ok: true });
 }
 
-export function handleCheckInterrupt(req: IncomingMessage, res: ServerResponse, ctx: RestContext, body: Record<string, unknown>): void {
+export function handleCheckInterrupt(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RestContext,
+  body: Record<string, unknown>,
+): void {
   const { httpLog } = ctx;
   const { consultation } = ctx.services;
   const parsed = CheckInterruptBodySchema.safeParse(body);
-  if (!parsed.success) { sendValidationError(res, parsed.error); return; }
+  if (!parsed.success) {
+    sendValidationError(res, parsed.error);
+    return;
+  }
   const { agent_id } = parsed.data;
   // Check for threads where this agent is an expected respondent and hasn't posted yet.
   // Covers both open threads (waiting for initial response) and resolving threads
@@ -456,7 +749,12 @@ export function handleCheckInterrupt(req: IncomingMessage, res: ServerResponse, 
     ...consultation.listThreads(ctx.claims.org, { status: "open" }),
     ...consultation.listThreads(ctx.claims.org, { status: "resolving" }),
   ].filter((t) => {
-    const respondents: string[] = safeJsonParse<string[]>(t.expected_respondents, [], httpLog, "handle-rest./api/check-interrupt:expected_respondents");
+    const respondents: string[] = safeJsonParse<string[]>(
+      t.expected_respondents,
+      [],
+      httpLog,
+      "handle-rest./api/check-interrupt:expected_respondents",
+    );
     return respondents.includes(agent_id);
   });
   if (pendingThreads.length > 0) {
@@ -465,7 +763,12 @@ export function handleCheckInterrupt(req: IncomingMessage, res: ServerResponse, 
       subject: t.subject,
       initiator_id: t.initiator_id,
       status: t.status,
-      target_files: safeJsonParse<string[]>(t.target_files, [], httpLog, "handle-rest./api/check-interrupt:target_files"),
+      target_files: safeJsonParse<string[]>(
+        t.target_files,
+        [],
+        httpLog,
+        "handle-rest./api/check-interrupt:target_files",
+      ),
     }));
     json(res, { interrupt: true, threads: details });
   } else {
@@ -473,7 +776,12 @@ export function handleCheckInterrupt(req: IncomingMessage, res: ServerResponse, 
   }
 }
 
-export function handleAgentStatus(req: IncomingMessage, res: ServerResponse, ctx: RestContext, body: Record<string, unknown>): void {
+export function handleAgentStatus(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RestContext,
+  body: Record<string, unknown>,
+): void {
   const { registry, activityTracker } = ctx.services;
   const url = req.url || "";
   const aid = url.split("/")[3];
@@ -486,9 +794,18 @@ export function handleAgentStatus(req: IncomingMessage, res: ServerResponse, ctx
   }
 }
 
-export function handleFileActivity(req: IncomingMessage, res: ServerResponse, ctx: RestContext, body: Record<string, unknown>): void {
-  if (typeof body.session_id !== "string" || typeof body.agent_id !== "string"
-      || typeof body.tool_name !== "string" || typeof body.file_path !== "string") {
+export function handleFileActivity(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RestContext,
+  body: Record<string, unknown>,
+): void {
+  if (
+    typeof body.session_id !== "string" ||
+    typeof body.agent_id !== "string" ||
+    typeof body.tool_name !== "string" ||
+    typeof body.file_path !== "string"
+  ) {
     json(res, { error: "missing required fields" }, 400);
     return;
   }
@@ -528,7 +845,12 @@ export function handleFileActivity(req: IncomingMessage, res: ServerResponse, ct
   json(res, { ok: true });
 }
 
-export function handleWorkingFilesStart(req: IncomingMessage, res: ServerResponse, ctx: RestContext, body: Record<string, unknown>): void {
+export function handleWorkingFilesStart(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RestContext,
+  body: Record<string, unknown>,
+): void {
   const { services } = ctx;
   if (typeof body.agent_id !== "string" || typeof body.file_path !== "string") {
     json(res, { error: "agent_id and file_path required" }, 400);
@@ -547,7 +869,12 @@ export function handleWorkingFilesStart(req: IncomingMessage, res: ServerRespons
   json(res, { ok: true });
 }
 
-export function handleWorkingFilesStop(req: IncomingMessage, res: ServerResponse, ctx: RestContext, body: Record<string, unknown>): void {
+export function handleWorkingFilesStop(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RestContext,
+  body: Record<string, unknown>,
+): void {
   const { services } = ctx;
   if (typeof body.agent_id !== "string" || typeof body.file_path !== "string") {
     json(res, { error: "agent_id and file_path required" }, 400);
@@ -565,16 +892,24 @@ export function handleWorkingFilesStop(req: IncomingMessage, res: ServerResponse
   json(res, { ok: true });
 }
 
-export function handleScoringStats(req: IncomingMessage, res: ServerResponse, ctx: RestContext, body: Record<string, unknown>): void {
+export function handleScoringStats(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RestContext,
+  body: Record<string, unknown>,
+): void {
   const url = req.url || "";
   const u = new URL(url, "http://localhost");
   const sinceParam = u.searchParams.get("since") || "24h";
-  const sinceMin = sinceParam.endsWith("h") ? parseInt(sinceParam) * 60
-                  : sinceParam.endsWith("d") ? parseInt(sinceParam) * 60 * 24
-                  : 60 * 24;
+  const sinceMin = sinceParam.endsWith("h")
+    ? parseInt(sinceParam) * 60
+    : sinceParam.endsWith("d")
+      ? parseInt(sinceParam) * 60 * 24
+      : 60 * 24;
   const db = getDb();
-  const rows = db.prepare(
-    `SELECT
+  const rows = db
+    .prepare(
+      `SELECT
        lf.layer,
        COUNT(*) AS fire_count,
        AVG(lf.score) AS avg_score,
@@ -588,14 +923,20 @@ export function handleScoringStats(req: IncomingMessage, res: ServerResponse, ct
        AND json_extract(e.payload, '$.thread_id') = lf.thread_id
      WHERE lf.fired_at > datetime('now', '-' || ? || ' minutes')
      GROUP BY lf.layer
-     ORDER BY fire_count DESC`
-  ).all(sinceMin) as Array<{
-    layer: string; fire_count: number; avg_score: number;
-    auto_resolved: number; consensus: number; timeout_count: number; cancelled: number;
+     ORDER BY fire_count DESC`,
+    )
+    .all(sinceMin) as Array<{
+    layer: string;
+    fire_count: number;
+    avg_score: number;
+    auto_resolved: number;
+    consensus: number;
+    timeout_count: number;
+    cancelled: number;
   }>;
   json(res, {
     window: { since: sinceParam, now: new Date().toISOString() },
-    layers: rows.map(r => ({
+    layers: rows.map((r) => ({
       layer: r.layer,
       fire_count: r.fire_count,
       avg_score: r.avg_score,
@@ -609,7 +950,12 @@ export function handleScoringStats(req: IncomingMessage, res: ServerResponse, ct
   });
 }
 
-export function handleStatus(req: IncomingMessage, res: ServerResponse, ctx: RestContext, body: Record<string, unknown>): void {
+export function handleStatus(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RestContext,
+  body: Record<string, unknown>,
+): void {
   const { registry, consultation, fileTracker } = ctx.services;
   const online = registry.listOnline(ctx.claims.org);
   const openThreads = consultation.listThreads(ctx.claims.org, { status: "open" });

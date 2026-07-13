@@ -9,7 +9,7 @@ import http from "http";
 let handle: ServerHandle, dataDir: string, port: number;
 
 async function getFreePort(): Promise<number> {
-  return new Promise(r => {
+  return new Promise((r) => {
     const s = http.createServer().listen(0, () => {
       const p = (s.address() as any).port;
       s.close(() => r(p));
@@ -21,21 +21,35 @@ describe("/api/scoring-stats", () => {
   beforeAll(async () => {
     dataDir = mkdtempSync(path.join(tmpdir(), "ss-"));
     port = await getFreePort();
-    handle = await startServer({ port, dataDir, mqttTcpPort: await getFreePort(), registerSignalHandlers: false });
+    handle = await startServer({
+      port,
+      dataDir,
+      mqttTcpPort: await getFreePort(),
+      registerSignalHandlers: false,
+    });
     // Seed a few firings
     const db = getDb();
-    db.prepare("INSERT INTO layer_firings (thread_id, layer, score, agent_id) VALUES (?,?,?,?)").run("t1", "L1", 100, "alice");
-    db.prepare("INSERT INTO layer_firings (thread_id, layer, score, agent_id) VALUES (?,?,?,?)").run("t1", "L4", 60, "bob");
+    db.prepare(
+      "INSERT INTO layer_firings (thread_id, layer, score, agent_id) VALUES (?,?,?,?)",
+    ).run("t1", "L1", 100, "alice");
+    db.prepare(
+      "INSERT INTO layer_firings (thread_id, layer, score, agent_id) VALUES (?,?,?,?)",
+    ).run("t1", "L4", 60, "bob");
   });
-  afterAll(async () => { await handle?.stop(); rmSync(dataDir, { recursive: true, force: true }); });
+  afterAll(async () => {
+    await handle?.stop();
+    rmSync(dataDir, { recursive: true, force: true });
+  });
 
   it("returns aggregated layer counts", async () => {
     const r = await new Promise<any>((resolve, reject) => {
-      http.get(`http://localhost:${port}/api/scoring-stats?since=24h`, (res) => {
-        let buf = "";
-        res.on("data", c => buf += c);
-        res.on("end", () => resolve({ status: res.statusCode, body: JSON.parse(buf) }));
-      }).on("error", reject);
+      http
+        .get(`http://localhost:${port}/api/scoring-stats?since=24h`, (res) => {
+          let buf = "";
+          res.on("data", (c) => (buf += c));
+          res.on("end", () => resolve({ status: res.statusCode, body: JSON.parse(buf) }));
+        })
+        .on("error", reject);
     });
     expect(r.status).toBe(200);
     expect(r.body.layers).toBeDefined();
@@ -48,25 +62,29 @@ describe("/api/scoring-stats", () => {
     // Add two auto_resolved events for thread t1 (already has an L1 firing)
     db.prepare("INSERT INTO events (type, payload) VALUES (?, ?)").run(
       "thread_resolved",
-      JSON.stringify({ thread_id: "t1", resolution_type: "auto_resolved" })
+      JSON.stringify({ thread_id: "t1", resolution_type: "auto_resolved" }),
     );
     db.prepare("INSERT INTO events (type, payload) VALUES (?, ?)").run(
       "thread_resolved",
-      JSON.stringify({ thread_id: "t1", resolution_type: "auto_resolved" })
+      JSON.stringify({ thread_id: "t1", resolution_type: "auto_resolved" }),
     );
     // Add a consensus event for a new thread + firing
-    db.prepare("INSERT INTO layer_firings (thread_id, layer, score, agent_id) VALUES (?,?,?,?)").run("t2", "L1", 80, "carol");
+    db.prepare(
+      "INSERT INTO layer_firings (thread_id, layer, score, agent_id) VALUES (?,?,?,?)",
+    ).run("t2", "L1", 80, "carol");
     db.prepare("INSERT INTO events (type, payload) VALUES (?, ?)").run(
       "thread_resolved",
-      JSON.stringify({ thread_id: "t2", resolution_type: "consensus" })
+      JSON.stringify({ thread_id: "t2", resolution_type: "consensus" }),
     );
 
     const r = await new Promise<any>((resolve, reject) => {
-      http.get(`http://localhost:${port}/api/scoring-stats?since=24h`, (res) => {
-        let buf = "";
-        res.on("data", c => buf += c);
-        res.on("end", () => resolve({ status: res.statusCode, body: JSON.parse(buf) }));
-      }).on("error", reject);
+      http
+        .get(`http://localhost:${port}/api/scoring-stats?since=24h`, (res) => {
+          let buf = "";
+          res.on("data", (c) => (buf += c));
+          res.on("end", () => resolve({ status: res.statusCode, body: JSON.parse(buf) }));
+        })
+        .on("error", reject);
     });
     expect(r.status).toBe(200);
     const l1 = r.body.layers.find((l: any) => l.layer === "L1");

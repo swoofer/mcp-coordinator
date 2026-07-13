@@ -50,41 +50,68 @@ export function registerMqttTools(
 ): void {
   const { mqttBridge } = services;
 
-  server.tool("wait_for_message", "Block until an MQTT consultation message arrives or timeout", {
-    agent_id: z.string().describe("ID of the agent waiting for a message."),
-    timeout_seconds: z.number().optional()
-      .describe(`How long to block, in seconds. Defaults to 15, capped at ${MAX_WAIT_TIMEOUT_SECONDS}.`),
-  }, { readOnlyHint: true, title: "Wait for MQTT message" }, async ({ agent_id, timeout_seconds }, extra) => {
-    const claims = getSessionClaims(extra.sessionId ?? "");
-    if (!claims) throw new Error("Session has no captured claims (auth bug)");
-    if (!mqttBridge.isConnected()) return mqttNotConnectedResult();
-    const cappedSeconds = Math.min(timeout_seconds || 15, MAX_WAIT_TIMEOUT_SECONDS);
-    const timeoutMs = cappedSeconds * 1000;
-    const msg = await mqttBridge.waitForMessage(agent_id, timeoutMs);
-    if (msg) {
-      return { content: [{ type: "text", text: JSON.stringify(msg) }] };
-    }
-    return { content: [{ type: "text", text: JSON.stringify({ timeout: true }) }] };
-  });
+  server.tool(
+    "wait_for_message",
+    "Block until an MQTT consultation message arrives or timeout",
+    {
+      agent_id: z.string().describe("ID of the agent waiting for a message."),
+      timeout_seconds: z
+        .number()
+        .optional()
+        .describe(
+          `How long to block, in seconds. Defaults to 15, capped at ${MAX_WAIT_TIMEOUT_SECONDS}.`,
+        ),
+    },
+    { readOnlyHint: true, title: "Wait for MQTT message" },
+    async ({ agent_id, timeout_seconds }, extra) => {
+      const claims = getSessionClaims(extra.sessionId ?? "");
+      if (!claims) throw new Error("Session has no captured claims (auth bug)");
+      if (!mqttBridge.isConnected()) return mqttNotConnectedResult();
+      const cappedSeconds = Math.min(timeout_seconds || 15, MAX_WAIT_TIMEOUT_SECONDS);
+      const timeoutMs = cappedSeconds * 1000;
+      const msg = await mqttBridge.waitForMessage(agent_id, timeoutMs);
+      if (msg) {
+        return { content: [{ type: "text", text: JSON.stringify(msg) }] };
+      }
+      return { content: [{ type: "text", text: JSON.stringify({ timeout: true }) }] };
+    },
+  );
 
-  server.tool("get_queued_messages", "Get all queued MQTT messages without blocking", {
-    agent_id: z.string().describe("ID of the agent whose queued messages to fetch."),
-  }, { readOnlyHint: true, title: "Get queued MQTT messages" }, async ({ agent_id }, extra) => {
-    const claims = getSessionClaims(extra.sessionId ?? "");
-    if (!claims) throw new Error("Session has no captured claims (auth bug)");
-    if (!mqttBridge.isConnected()) return mqttNotConnectedResult();
-    const messages = mqttBridge.getQueuedMessages(agent_id);
-    return { content: [{ type: "text", text: JSON.stringify(messages) }] };
-  });
+  server.tool(
+    "get_queued_messages",
+    "Get all queued MQTT messages without blocking",
+    {
+      agent_id: z.string().describe("ID of the agent whose queued messages to fetch."),
+    },
+    { readOnlyHint: true, title: "Get queued MQTT messages" },
+    async ({ agent_id }, extra) => {
+      const claims = getSessionClaims(extra.sessionId ?? "");
+      if (!claims) throw new Error("Session has no captured claims (auth bug)");
+      if (!mqttBridge.isConnected()) return mqttNotConnectedResult();
+      const messages = mqttBridge.getQueuedMessages(agent_id);
+      return { content: [{ type: "text", text: JSON.stringify(messages) }] };
+    },
+  );
 
-  server.tool("mqtt_publish", "Publish a message to an MQTT topic", {
-    topic: z.string().describe("MQTT topic to publish to."),
-    payload: z.string().describe("Message payload to publish."),
-  }, { readOnlyHint: false, destructiveHint: false, openWorldHint: true, title: "Publish MQTT message" }, async ({ topic, payload }, extra) => {
-    const claims = getSessionClaims(extra.sessionId ?? "");
-    if (!claims) throw new Error("Session has no captured claims (auth bug)");
-    if (!mqttBridge.isConnected()) return mqttNotConnectedResult();
-    mqttBridge.mqttPublish(topic, payload);
-    return { content: [{ type: "text", text: "published" }] };
-  });
+  server.tool(
+    "mqtt_publish",
+    "Publish a message to an MQTT topic",
+    {
+      topic: z.string().describe("MQTT topic to publish to."),
+      payload: z.string().describe("Message payload to publish."),
+    },
+    {
+      readOnlyHint: false,
+      destructiveHint: false,
+      openWorldHint: true,
+      title: "Publish MQTT message",
+    },
+    async ({ topic, payload }, extra) => {
+      const claims = getSessionClaims(extra.sessionId ?? "");
+      if (!claims) throw new Error("Session has no captured claims (auth bug)");
+      if (!mqttBridge.isConnected()) return mqttNotConnectedResult();
+      mqttBridge.mqttPublish(topic, payload);
+      return { content: [{ type: "text", text: "published" }] };
+    },
+  );
 }

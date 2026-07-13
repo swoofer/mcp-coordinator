@@ -5,15 +5,10 @@ import { tmpdir } from "os";
 import path from "node:path";
 import { createRequire } from "node:module";
 import type Database from "better-sqlite3";
-import {
-  GENESIS_HASH,
-  computeRowHash,
-} from "../../src/security/audit-chain.js";
+import { GENESIS_HASH, computeRowHash } from "../../src/security/audit-chain.js";
 
 const require = createRequire(import.meta.url);
-const DatabaseCtor = require("better-sqlite3") as new (
-  path: string,
-) => Database.Database;
+const DatabaseCtor = require("better-sqlite3") as new (path: string) => Database.Database;
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 const SCRIPT_PATH = path.join(REPO_ROOT, "scripts", "verify-audit-chain.ts");
@@ -99,8 +94,7 @@ function insertRow(
       });
   const finalAction = options.tamperContent ? `${action}.tampered` : action;
   db.prepare(
-    "INSERT INTO audit_log (action, outcome, prev_hash, row_hash) " +
-      "VALUES (?, ?, ?, ?)",
+    "INSERT INTO audit_log (action, outcome, prev_hash, row_hash) " + "VALUES (?, ?, ?, ?)",
   ).run(finalAction, "success", options.nullHash ? null : prevHash, rowHash);
   return rowHash ?? "";
 }
@@ -153,9 +147,7 @@ describe("verify-audit-chain script", () => {
     const h1 = insertRow("event.a", GENESIS_HASH);
     insertRow("event.b", h1);
     // Tamper row 2's prev_hash to claim it followed a non-existent row.
-    db.prepare("UPDATE audit_log SET prev_hash = ? WHERE id = 2").run(
-      "a".repeat(64),
-    );
+    db.prepare("UPDATE audit_log SET prev_hash = ? WHERE id = 2").run("a".repeat(64));
 
     const result = runVerifier(["--db", dbPath, "--json"]);
     expect(result.status).toBe(1);
@@ -171,9 +163,7 @@ describe("verify-audit-chain script", () => {
     const result = runVerifier(["--db", dbPath, "--json"]);
     expect(result.status).toBe(1);
     const report = JSON.parse(result.stdout);
-    expect(report.findings.some((f: { reason: string }) => f.reason === "missing_hash")).toBe(
-      true,
-    );
+    expect(report.findings.some((f: { reason: string }) => f.reason === "missing_hash")).toBe(true);
   });
 
   it("front-deletion (sweeper retention) -> exit 0, no findings", () => {
@@ -206,8 +196,12 @@ describe("verify-audit-chain script", () => {
     expect(result.status).toBe(1);
     const report = JSON.parse(result.stdout);
     expect(report.ok).toBe(false);
-    expect(report.findings.some((f: { reason: string }) => f.reason === "id_gap_before")).toBe(true);
-    expect(report.findings.some((f: { reason: string }) => f.reason === "wrong_prev_hash")).toBe(true);
+    expect(report.findings.some((f: { reason: string }) => f.reason === "id_gap_before")).toBe(
+      true,
+    );
+    expect(report.findings.some((f: { reason: string }) => f.reason === "wrong_prev_hash")).toBe(
+      true,
+    );
   });
 
   it("nonexistent DB path -> exit 2", () => {

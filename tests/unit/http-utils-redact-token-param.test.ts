@@ -30,9 +30,7 @@ describe("redactTokenParam", () => {
   });
 
   it("stops masking at a fragment (#) boundary", () => {
-    expect(redactTokenParam("/x?token=abc123#section")).toBe(
-      "/x?token=[REDACTED]#section",
-    );
+    expect(redactTokenParam("/x?token=abc123#section")).toBe("/x?token=[REDACTED]#section");
   });
 
   it("is case-insensitive on the param name", () => {
@@ -40,9 +38,7 @@ describe("redactTokenParam", () => {
   });
 
   it("leaves a URL with no token param unchanged", () => {
-    expect(redactTokenParam("/api/hot-files?agent_id=a1")).toBe(
-      "/api/hot-files?agent_id=a1",
-    );
+    expect(redactTokenParam("/api/hot-files?agent_id=a1")).toBe("/api/hot-files?agent_id=a1");
     expect(redactTokenParam("/api/status")).toBe("/api/status");
   });
 

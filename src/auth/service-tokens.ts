@@ -68,10 +68,7 @@ export async function issueServiceToken(
   opts: IssueServiceTokenOptions,
 ): Promise<IssuedServiceToken> {
   if (opts.ttlSeconds <= 0) {
-    throw new ServiceTokenValidationError(
-      "INVALID_TTL",
-      "TTL must be positive",
-    );
+    throw new ServiceTokenValidationError("INVALID_TTL", "TTL must be positive");
   }
   if (opts.ttlSeconds > SERVICE_TOKEN_MAX_TTL_S) {
     throw new ServiceTokenValidationError(
@@ -85,15 +82,8 @@ export async function issueServiceToken(
       `Reason must be at least ${SERVICE_TOKEN_MIN_REASON_LEN} chars`,
     );
   }
-  if (
-    opts.scope !== "read" &&
-    opts.scope !== "write" &&
-    opts.scope !== "admin"
-  ) {
-    throw new ServiceTokenValidationError(
-      "INVALID_SCOPE",
-      "Scope must be read|write|admin",
-    );
+  if (opts.scope !== "read" && opts.scope !== "write" && opts.scope !== "admin") {
+    throw new ServiceTokenValidationError("INVALID_SCOPE", "Scope must be read|write|admin");
   }
 
   // Verify target user exists + is a member of the target org. Allow the
@@ -101,14 +91,9 @@ export async function issueServiceToken(
   // — both make this a legitimate "this user belongs in this org" assertion.
   const userRow = opts.db
     .prepare("SELECT id, primary_org_id FROM users WHERE id = ?")
-    .get(opts.targetUserId) as
-    | { id: string; primary_org_id: string }
-    | undefined;
+    .get(opts.targetUserId) as { id: string; primary_org_id: string } | undefined;
   if (!userRow) {
-    throw new ServiceTokenValidationError(
-      "USER_NOT_FOUND",
-      "Target user does not exist",
-    );
+    throw new ServiceTokenValidationError("USER_NOT_FOUND", "Target user does not exist");
   }
   if (userRow.primary_org_id !== opts.targetOrgId) {
     const membership = opts.db
@@ -128,10 +113,7 @@ export async function issueServiceToken(
   const familyId = `service:${crypto.randomUUID()}`;
   /* c8 ignore next 3 */
   if (!FAMILY_ID_REGEX.test(familyId)) {
-    throw new ServiceTokenValidationError(
-      "INTERNAL",
-      "family_id format invariant violated",
-    );
+    throw new ServiceTokenValidationError("INTERNAL", "family_id format invariant violated");
   }
 
   const now = opts.clock.now();
@@ -264,14 +246,9 @@ export function revokeServiceToken(
  * every service-token request hits the DB so admin force-revoke wins
  * immediately.
  */
-export function verifyServiceTokenJti(
-  db: Database.Database,
-  jti: string,
-): boolean {
+export function verifyServiceTokenJti(db: Database.Database, jti: string): boolean {
   const row = db
-    .prepare(
-      "SELECT revoked_at FROM refresh_tokens WHERE jti = ? AND family_id LIKE 'service:%'",
-    )
+    .prepare("SELECT revoked_at FROM refresh_tokens WHERE jti = ? AND family_id LIKE 'service:%'")
     .get(jti) as { revoked_at: string | number | null } | undefined;
   if (!row) return false;
   return row.revoked_at === null;

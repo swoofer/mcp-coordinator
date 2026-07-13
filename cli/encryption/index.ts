@@ -13,9 +13,7 @@ import { createFingerprintCommand } from "./fingerprint.js";
  *   current `COORDINATOR_ENCRYPTION_KEY`.
  */
 export function createEncryptionCommand(): Command {
-  const cmd = new Command("encryption").description(
-    "Manage at-rest encryption of IdP tokens",
-  );
+  const cmd = new Command("encryption").description("Manage at-rest encryption of IdP tokens");
   cmd.addCommand(createMigrateCommand());
   cmd.addCommand(createVerifyCommand());
   cmd.addCommand(createFingerprintCommand());

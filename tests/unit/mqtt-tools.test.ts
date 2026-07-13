@@ -20,19 +20,33 @@ import type { AuthClaims } from "../../src/auth.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type { ServerRequest, ServerNotification } from "@modelcontextprotocol/sdk/types.js";
 
-const CLAIMS: AuthClaims = { sub: "agent-1", user_id: "u-1", org: "org-1", role: "agent", jti: "j-1" };
+const CLAIMS: AuthClaims = {
+  sub: "agent-1",
+  user_id: "u-1",
+  org: "org-1",
+  role: "agent",
+  jti: "j-1",
+};
 const GET_CLAIMS = (_sid: string): AuthClaims | null => CLAIMS;
 
 function fakeExtra(sessionId = "sess-1"): RequestHandlerExtra<ServerRequest, ServerNotification> {
-  return { signal: new AbortController().signal, sessionId } as RequestHandlerExtra<ServerRequest, ServerNotification>;
+  return { signal: new AbortController().signal, sessionId } as RequestHandlerExtra<
+    ServerRequest,
+    ServerNotification
+  >;
 }
 
 interface RegisteredToolInternals {
-  handler: (args: unknown, extra: RequestHandlerExtra<ServerRequest, ServerNotification>) => Promise<unknown>;
+  handler: (
+    args: unknown,
+    extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
+  ) => Promise<unknown>;
 }
 
 function getTool(server: McpServer, toolName: string): RegisteredToolInternals {
-  const _server = server as unknown as { _registeredTools: Record<string, RegisteredToolInternals> };
+  const _server = server as unknown as {
+    _registeredTools: Record<string, RegisteredToolInternals>;
+  };
   const registered = _server._registeredTools[toolName];
   if (!registered) throw new Error(`Tool not registered: ${toolName}`);
   return registered;
@@ -40,12 +54,20 @@ function getTool(server: McpServer, toolName: string): RegisteredToolInternals {
 
 async function callTool(server: McpServer, toolName: string, args: unknown) {
   const tool = getTool(server, toolName);
-  return tool.handler(args, fakeExtra()) as Promise<{ isError?: boolean; content: [{ type: string; text: string }] }>;
+  return tool.handler(args, fakeExtra()) as Promise<{
+    isError?: boolean;
+    content: [{ type: string; text: string }];
+  }>;
 }
 
 function makeServer(mqttBridge: Record<string, unknown>): McpServer {
   const server = new McpServer({ name: "test", version: "0" });
-  registerMqttTools(server, { mqttBridge } as unknown as CoordinatorServices, silentLogger, GET_CLAIMS);
+  registerMqttTools(
+    server,
+    { mqttBridge } as unknown as CoordinatorServices,
+    silentLogger,
+    GET_CLAIMS,
+  );
   return server;
 }
 
@@ -72,7 +94,10 @@ describe("protocole-mcp-06: MQTT tools when the bridge is not connected (e.g. st
     const bridge = makeDisconnectedBridge();
     const server = makeServer(bridge);
     const start = Date.now();
-    const result = await callTool(server, "wait_for_message", { agent_id: "a1", timeout_seconds: 15 });
+    const result = await callTool(server, "wait_for_message", {
+      agent_id: "a1",
+      timeout_seconds: 15,
+    });
     const elapsedMs = Date.now() - start;
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toMatch(/MQTT broker not available/);
@@ -96,7 +121,11 @@ describe("protocole-mcp-06: MQTT tools when the bridge IS connected — nominal 
     return {
       isConnected: () => true,
       mqttPublish: vi.fn(),
-      waitForMessage: vi.fn(async () => ({ topic: "coordinator/default/broadcast", payload: { hi: true }, timestamp: 123 })),
+      waitForMessage: vi.fn(async () => ({
+        topic: "coordinator/default/broadcast",
+        payload: { hi: true },
+        timestamp: 123,
+      })),
       getQueuedMessages: vi.fn(() => [{ topic: "t", payload: { a: 1 }, timestamp: 1 }]),
     };
   }
@@ -115,7 +144,11 @@ describe("protocole-mcp-06: MQTT tools when the bridge IS connected — nominal 
     const server = makeServer(bridge);
     const result = await callTool(server, "wait_for_message", { agent_id: "a1" });
     expect(result.isError).toBeFalsy();
-    expect(JSON.parse(result.content[0].text)).toEqual({ topic: "coordinator/default/broadcast", payload: { hi: true }, timestamp: 123 });
+    expect(JSON.parse(result.content[0].text)).toEqual({
+      topic: "coordinator/default/broadcast",
+      payload: { hi: true },
+      timestamp: 123,
+    });
     expect(bridge.waitForMessage).toHaveBeenCalledTimes(1);
   });
 
@@ -137,7 +170,9 @@ describe("protocole-mcp-06: MQTT tools when the bridge IS connected — nominal 
     const server = makeServer(bridge);
     const result = await callTool(server, "get_queued_messages", { agent_id: "a1" });
     expect(result.isError).toBeFalsy();
-    expect(JSON.parse(result.content[0].text)).toEqual([{ topic: "t", payload: { a: 1 }, timestamp: 1 }]);
+    expect(JSON.parse(result.content[0].text)).toEqual([
+      { topic: "t", payload: { a: 1 }, timestamp: 1 },
+    ]);
     expect(bridge.getQueuedMessages).toHaveBeenCalledWith("a1");
   });
 });

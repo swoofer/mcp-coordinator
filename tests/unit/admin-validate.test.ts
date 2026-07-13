@@ -46,9 +46,7 @@ describe("validateNameField", () => {
   });
 
   it("rejects undefined with MISSING_FIELD", () => {
-    expect(() => validateNameField(undefined, "name")).toThrow(
-      AdminValidationError,
-    );
+    expect(() => validateNameField(undefined, "name")).toThrow(AdminValidationError);
     try {
       validateNameField(undefined, "name");
     } catch (e) {
@@ -249,9 +247,7 @@ describe("validateRoleField", () => {
       expect.fail("expected throw");
     } catch (e) {
       expect((e as AdminValidationError).field).toBe("user_role");
-      expect((e as AdminValidationError).message).toBe(
-        "INVALID_ROLE:user_role",
-      );
+      expect((e as AdminValidationError).message).toBe("INVALID_ROLE:user_role");
     }
   });
 });
@@ -331,16 +327,12 @@ describe("validatePathParam", () => {
 describe("validateUpdateBody", () => {
   it("accepts a body with a subset of allowed fields", () => {
     const body: Record<string, unknown> = { name: "x" };
-    expect(() =>
-      validateUpdateBody(body, ["name", "display_name"] as const),
-    ).not.toThrow();
+    expect(() => validateUpdateBody(body, ["name", "display_name"] as const)).not.toThrow();
   });
 
   it("accepts a body with all allowed fields", () => {
     const body: Record<string, unknown> = { name: "x", display_name: "y" };
-    expect(() =>
-      validateUpdateBody(body, ["name", "display_name"] as const),
-    ).not.toThrow();
+    expect(() => validateUpdateBody(body, ["name", "display_name"] as const)).not.toThrow();
   });
 
   it("rejects an empty body with EMPTY_BODY", () => {

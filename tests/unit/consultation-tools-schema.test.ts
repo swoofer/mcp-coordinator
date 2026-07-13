@@ -6,7 +6,10 @@ import type { CoordinatorServices } from "../../src/server-setup.js";
 
 function getInputSchema(server: McpServer, toolName: string) {
   const _server = server as unknown as {
-    _registeredTools: Record<string, { inputSchema: { safeParse: (value: unknown) => { success: boolean } } }>;
+    _registeredTools: Record<
+      string,
+      { inputSchema: { safeParse: (value: unknown) => { success: boolean } } }
+    >;
   };
   const registered = _server._registeredTools[toolName];
   if (!registered) throw new Error(`Tool not registered: ${toolName}`);
@@ -21,7 +24,7 @@ describe("consultation-tools: list_threads schema", () => {
       server,
       { consultation: { listThreads: () => [] } } as unknown as CoordinatorServices,
       silentLogger,
-      () => ({ sub: "agent-1", user_id: "u-1", org: "org-1", role: "agent", jti: "j-1" })
+      () => ({ sub: "agent-1", user_id: "u-1", org: "org-1", role: "agent", jti: "j-1" }),
     );
 
     const schema = getInputSchema(server, "list_threads");

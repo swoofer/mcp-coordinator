@@ -12,7 +12,9 @@ export function createServerLogsCommand(): Command {
       const logPath = join(getConfigDir(), "logs", "server.log");
       if (!existsSync(logPath)) {
         console.error(`No log file at ${logPath}.`);
-        console.error("The server has never been started in daemon mode (foreground runs print to stdout).");
+        console.error(
+          "The server has never been started in daemon mode (foreground runs print to stdout).",
+        );
         console.error("Start a daemon: mcp-coordinator server start --daemon");
         process.exit(1);
       }

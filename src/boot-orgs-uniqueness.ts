@@ -1,10 +1,6 @@
 import type { DatabaseAdapter } from "./db-adapter.js";
 import { BootValidationError } from "./boot-encryption.js";
-import {
-  GENESIS_HASH,
-  computeRowHash,
-  type AuditChainFields,
-} from "./security/audit-chain.js";
+import { GENESIS_HASH, computeRowHash, type AuditChainFields } from "./security/audit-chain.js";
 
 /**
  * v0.10.6 T03 — pre-flight boot guard for the `orgs.name` UNIQUE INDEX.
@@ -58,12 +54,10 @@ export interface OrgsUniquenessGuardResult {
    * circuited (index already exists / orgs table absent), or the guard
    * threw (no-override-with-duplicates path).
    */
-  pendingDuplicatesAcceptedAudit:
-    | {
-        duplicates: OrgDuplicateRow[];
-        totalDuplicateRows: number;
-      }
-    | null;
+  pendingDuplicatesAcceptedAudit: {
+    duplicates: OrgDuplicateRow[];
+    totalDuplicateRows: number;
+  } | null;
 }
 
 export interface OrgsUniquenessGuardDeps {
@@ -102,16 +96,12 @@ interface NameRow {
  *                                                  → logger.warn, returns
  *                                                    pending audit payload.
  */
-export function runOrgsUniquenessGuard(
-  deps: OrgsUniquenessGuardDeps,
-): OrgsUniquenessGuardResult {
+export function runOrgsUniquenessGuard(deps: OrgsUniquenessGuardDeps): OrgsUniquenessGuardResult {
   const { db, env, logger } = deps;
 
   // Branch 1: `orgs` table absent → fresh DB, nothing to check.
   const orgsTable = db
-    .prepare(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name='orgs'",
-    )
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='orgs'")
     .get() as NameRow | undefined;
   if (!orgsTable) {
     return { pendingDuplicatesAcceptedAudit: null };
@@ -120,9 +110,7 @@ export function runOrgsUniquenessGuard(
   // Branch 2 (PATCH 17): index already exists → constraint already enforced,
   // skip the GROUP BY scan to avoid a full-table scan on every boot.
   const indexRow = db
-    .prepare(
-      "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_orgs_name'",
-    )
+    .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_orgs_name'")
     .get() as NameRow | undefined;
   if (indexRow) {
     return { pendingDuplicatesAcceptedAudit: null };
@@ -143,9 +131,7 @@ export function runOrgsUniquenessGuard(
     return { pendingDuplicatesAcceptedAudit: null };
   }
 
-  const detail = dupes
-    .map((d) => `  name="${d.name}" (${d.n} rows, ids: ${d.ids})`)
-    .join("\n");
+  const detail = dupes.map((d) => `  name="${d.name}" (${d.n} rows, ids: ${d.ids})`).join("\n");
   const totalDuplicateRows = dupes.reduce((sum, d) => sum + d.n, 0);
 
   // Branch 4: no override → fail closed with actionable error.
@@ -203,9 +189,7 @@ export function emitDuplicatesAcceptedAudit(
   payload: { duplicates: OrgDuplicateRow[]; totalDuplicateRows: number },
 ): void {
   const tip = db
-    .prepare(
-      "SELECT row_hash FROM audit_log WHERE row_hash IS NOT NULL ORDER BY id DESC LIMIT 1",
-    )
+    .prepare("SELECT row_hash FROM audit_log WHERE row_hash IS NOT NULL ORDER BY id DESC LIMIT 1")
     .get() as { row_hash: string } | undefined;
   const prevHash = tip?.row_hash ?? GENESIS_HASH;
 

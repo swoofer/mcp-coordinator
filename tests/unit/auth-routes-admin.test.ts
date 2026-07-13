@@ -63,10 +63,7 @@ import {
   handleCreateOrg,
   handleUpdateOrg,
 } from "../../src/admin/handle-admin-orgs.js";
-import {
-  handleListUsers,
-  handleUpdateUser,
-} from "../../src/admin/handle-admin-users.js";
+import { handleListUsers, handleUpdateUser } from "../../src/admin/handle-admin-users.js";
 
 interface MockResponse {
   statusCode: number | null;
@@ -114,11 +111,7 @@ interface MockReqOpts {
   ip?: string;
 }
 
-function mockReq(
-  method: string,
-  url: string,
-  opts: MockReqOpts = {},
-): IncomingMessage {
+function mockReq(method: string, url: string, opts: MockReqOpts = {}): IncomingMessage {
   return {
     method,
     url,
@@ -163,11 +156,7 @@ describe("dispatchAuthRoutes — admin orgs routes (T05)", () => {
   it("GET /api/admin/orgs routes to handleListOrgs with (req, res, ctx)", async () => {
     const res = mockResponse();
     const req = mockReq("GET", "/api/admin/orgs");
-    const handled = await dispatchAuthRoutes(
-      req,
-      res as unknown as ServerResponse,
-      ctx,
-    );
+    const handled = await dispatchAuthRoutes(req, res as unknown as ServerResponse, ctx);
     expect(handled).toBe(true);
     expect(handleListOrgs).toHaveBeenCalledTimes(1);
     expect(handleListOrgs).toHaveBeenCalledWith(req, res, ctx);
@@ -178,11 +167,7 @@ describe("dispatchAuthRoutes — admin orgs routes (T05)", () => {
   it("POST /api/admin/orgs routes to handleCreateOrg", async () => {
     const res = mockResponse();
     const req = mockReq("POST", "/api/admin/orgs");
-    const handled = await dispatchAuthRoutes(
-      req,
-      res as unknown as ServerResponse,
-      ctx,
-    );
+    const handled = await dispatchAuthRoutes(req, res as unknown as ServerResponse, ctx);
     expect(handled).toBe(true);
     expect(handleCreateOrg).toHaveBeenCalledTimes(1);
     expect(handleCreateOrg).toHaveBeenCalledWith(req, res, ctx);
@@ -192,11 +177,7 @@ describe("dispatchAuthRoutes — admin orgs routes (T05)", () => {
   it("PATCH /api/admin/orgs/:id routes to handleUpdateOrg (id parsed by handler)", async () => {
     const res = mockResponse();
     const req = mockReq("PATCH", "/api/admin/orgs/abc-123");
-    const handled = await dispatchAuthRoutes(
-      req,
-      res as unknown as ServerResponse,
-      ctx,
-    );
+    const handled = await dispatchAuthRoutes(req, res as unknown as ServerResponse, ctx);
     expect(handled).toBe(true);
     expect(handleUpdateOrg).toHaveBeenCalledTimes(1);
     expect(handleUpdateOrg).toHaveBeenCalledWith(req, res, ctx);
@@ -227,9 +208,7 @@ describe("dispatchAuthRoutes — admin orgs routes (T05)", () => {
     expect(handled).toBe(true);
     expect(res.statusCode).toBe(405);
     expect(res.headers.Allow).toBe("GET, POST");
-    expect((res.body as Record<string, unknown>).code).toBe(
-      "METHOD_NOT_ALLOWED",
-    );
+    expect((res.body as Record<string, unknown>).code).toBe("METHOD_NOT_ALLOWED");
   });
 
   it("GET /api/admin/orgs/:id falls through (parameterized non-PATCH not gated)", async () => {
@@ -249,11 +228,7 @@ describe("dispatchAuthRoutes — admin orgs routes (T05)", () => {
   it("URL with query string still dispatches: PATCH /api/admin/orgs/abc?x=1", async () => {
     const res = mockResponse();
     const req = mockReq("PATCH", "/api/admin/orgs/abc?x=1");
-    const handled = await dispatchAuthRoutes(
-      req,
-      res as unknown as ServerResponse,
-      ctx,
-    );
+    const handled = await dispatchAuthRoutes(req, res as unknown as ServerResponse, ctx);
     expect(handled).toBe(true);
     expect(handleUpdateOrg).toHaveBeenCalledTimes(1);
   });
@@ -263,11 +238,7 @@ describe("dispatchAuthRoutes — admin users routes (T06)", () => {
   it("GET /api/admin/users routes to handleListUsers", async () => {
     const res = mockResponse();
     const req = mockReq("GET", "/api/admin/users");
-    const handled = await dispatchAuthRoutes(
-      req,
-      res as unknown as ServerResponse,
-      ctx,
-    );
+    const handled = await dispatchAuthRoutes(req, res as unknown as ServerResponse, ctx);
     expect(handled).toBe(true);
     expect(handleListUsers).toHaveBeenCalledTimes(1);
     expect(handleListUsers).toHaveBeenCalledWith(req, res, ctx);
@@ -276,11 +247,7 @@ describe("dispatchAuthRoutes — admin users routes (T06)", () => {
   it("PATCH /api/admin/users/:id routes to handleUpdateUser", async () => {
     const res = mockResponse();
     const req = mockReq("PATCH", "/api/admin/users/user-abc");
-    const handled = await dispatchAuthRoutes(
-      req,
-      res as unknown as ServerResponse,
-      ctx,
-    );
+    const handled = await dispatchAuthRoutes(req, res as unknown as ServerResponse, ctx);
     expect(handled).toBe(true);
     expect(handleUpdateUser).toHaveBeenCalledTimes(1);
     expect(handleUpdateUser).toHaveBeenCalledWith(req, res, ctx);
@@ -319,11 +286,7 @@ describe("dispatchAuthRoutes — admin users routes (T06)", () => {
     // since the dispatcher doesn't decode, the route still matches.
     const res = mockResponse();
     const req = mockReq("PATCH", "/api/admin/users/%C3%28");
-    const handled = await dispatchAuthRoutes(
-      req,
-      res as unknown as ServerResponse,
-      ctx,
-    );
+    const handled = await dispatchAuthRoutes(req, res as unknown as ServerResponse, ctx);
     expect(handled).toBe(true);
     expect(handleUpdateUser).toHaveBeenCalledTimes(1);
   });
@@ -501,11 +464,7 @@ describe("dispatchAuthRoutes — per-IP admin mutation rate limit (V3 PATCH 4)",
       socket: {}, // no remoteAddress
     } as unknown as IncomingMessage;
     const res = mockResponse();
-    const handled = await dispatchAuthRoutes(
-      req,
-      res as unknown as ServerResponse,
-      ctx,
-    );
+    const handled = await dispatchAuthRoutes(req, res as unknown as ServerResponse, ctx);
     expect(handled).toBe(true);
     expect(res.statusCode).toBe(201);
     expect(handleCreateOrg).toHaveBeenCalledTimes(1);

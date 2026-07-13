@@ -1,7 +1,10 @@
 import * as fs from "node:fs";
 
 export class LockHeldError extends Error {
-  constructor(public readonly path: string, public readonly heldByPid: number) {
+  constructor(
+    public readonly path: string,
+    public readonly heldByPid: number,
+  ) {
     super(`Lock held by alive PID ${heldByPid} at ${path}`);
     this.name = "LockHeldError";
   }

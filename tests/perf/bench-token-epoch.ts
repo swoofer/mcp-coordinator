@@ -84,7 +84,7 @@ async function main(): Promise<void> {
   const totalMs = performance.now() - totalStart;
 
   const sorted = Array.from(lat).sort((a, b) => a - b);
-  const p50 = sorted[Math.floor(N * 0.50)]!;
+  const p50 = sorted[Math.floor(N * 0.5)]!;
   const p95 = sorted[Math.floor(N * 0.95)]!;
   const p99 = sorted[Math.floor(N * 0.99)]!;
   const throughput = (N / totalMs) * 1000;

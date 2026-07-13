@@ -35,7 +35,7 @@ export class IntrospectionManager {
           : params.reasons;
     db.prepare(
       `INSERT INTO introspections (id, org_id, thread_id, agent_id, score, reasons)
-       VALUES (?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?)`,
     ).run(id, orgId, params.thread_id, params.agent_id, params.score, reasons);
     return this.get(id)!;
   }
@@ -43,7 +43,7 @@ export class IntrospectionManager {
   respond(orgId: string, id: string, response: string): IntrospectionRecord | null {
     const db = getDb();
     db.prepare(
-      `UPDATE introspections SET response = ?, status = 'responded', responded_at = ? WHERE org_id = ? AND id = ?`
+      `UPDATE introspections SET response = ?, status = 'responded', responded_at = ? WHERE org_id = ? AND id = ?`,
     ).run(response, new Date().toISOString(), orgId, id);
     return this.getScoped(orgId, id);
   }
@@ -52,9 +52,8 @@ export class IntrospectionManager {
   private get(id: string): IntrospectionRecord | null {
     const db = getDb();
     return (
-      (db
-        .prepare("SELECT * FROM introspections WHERE id = ?")
-        .get(id) as IntrospectionRecord) || null
+      (db.prepare("SELECT * FROM introspections WHERE id = ?").get(id) as IntrospectionRecord) ||
+      null
     );
   }
 
@@ -72,7 +71,7 @@ export class IntrospectionManager {
     const db = getDb();
     return db
       .prepare(
-        "SELECT * FROM introspections WHERE org_id = ? AND agent_id = ? AND status = 'pending' ORDER BY created_at"
+        "SELECT * FROM introspections WHERE org_id = ? AND agent_id = ? AND status = 'pending' ORDER BY created_at",
       )
       .all(orgId, agentId) as IntrospectionRecord[];
   }
@@ -81,7 +80,7 @@ export class IntrospectionManager {
     const db = getDb();
     return db
       .prepare(
-        "SELECT * FROM introspections WHERE org_id = ? AND thread_id = ? ORDER BY created_at"
+        "SELECT * FROM introspections WHERE org_id = ? AND thread_id = ? ORDER BY created_at",
       )
       .all(orgId, threadId) as IntrospectionRecord[];
   }

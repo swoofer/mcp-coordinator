@@ -80,11 +80,7 @@ function mockReq(opts: MockReqOptions = {}): IncomingMessage {
   const ip = "ip" in opts ? opts.ip : "127.0.0.1";
   const stream = Readable.from([Buffer.from(body, "utf8")]) as unknown as IncomingMessage;
   // Attach the minimal IncomingMessage surface the handler reads.
-  const socket = opts.noSocket
-    ? undefined
-    : ip === undefined
-      ? {}
-      : { remoteAddress: ip };
+  const socket = opts.noSocket ? undefined : ip === undefined ? {} : { remoteAddress: ip };
   const headers: Record<string, string> = {};
   if (opts.userAgent !== undefined) headers["user-agent"] = opts.userAgent;
   (stream as unknown as { method: string }).method = "POST";
@@ -242,7 +238,7 @@ describe("handleDeviceAuthorization — DB persistence", () => {
   it("missing User-Agent header stores requester_user_agent = NULL", async () => {
     const res = mockResponse();
     await handleDeviceAuthorization(
-      mockReq({ /* no userAgent */ }),
+      mockReq({/* no userAgent */}),
       res as unknown as ServerResponse,
       ctx,
     );
@@ -439,21 +435,13 @@ describe("handleDeviceAuthorization — audit emission", () => {
 describe("handleDeviceAuthorization — RFC 8628 client_id tolerance (Phase 2)", () => {
   it("missing client_id form field is accepted (Phase 2 single-client)", async () => {
     const res = mockResponse();
-    await handleDeviceAuthorization(
-      mockReq({ body: "" }),
-      res as unknown as ServerResponse,
-      ctx,
-    );
+    await handleDeviceAuthorization(mockReq({ body: "" }), res as unknown as ServerResponse, ctx);
     expect(res.statusCode).toBe(200);
   });
 
   it("empty form body is accepted (no required fields validated)", async () => {
     const res = mockResponse();
-    await handleDeviceAuthorization(
-      mockReq({ body: "" }),
-      res as unknown as ServerResponse,
-      ctx,
-    );
+    await handleDeviceAuthorization(mockReq({ body: "" }), res as unknown as ServerResponse, ctx);
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body!) as { device_code: string; user_code: string };
     expect(body.device_code).toBeDefined();
@@ -499,19 +487,21 @@ describe("handleDeviceAuthorization — collision retry", () => {
     // randomInt(0,20) → alphabet[0] = 'B'), then 'CCCC-CCCC' (8 ones → 'C').
     // Pre-insert a row with user_code='BBBB-BBBB' so attempt #1 collides,
     // attempt #2 succeeds.
-    getDb().prepare(
-      `INSERT INTO device_auth_requests
+    getDb()
+      .prepare(
+        `INSERT INTO device_auth_requests
         (device_code, user_code, nonce, expires_at, requester_ip, requester_user_agent, requester_country)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    ).run(
-      "preexisting-device-code-collision",
-      "BBBB-BBBB",
-      crypto.randomBytes(16).toString("base64url"),
-      String(clock.now() + 600),
-      null,
-      null,
-      null,
-    );
+      )
+      .run(
+        "preexisting-device-code-collision",
+        "BBBB-BBBB",
+        crypto.randomBytes(16).toString("base64url"),
+        String(clock.now() + 600),
+        null,
+        null,
+        null,
+      );
 
     const spy = vi.spyOn(crypto, "randomInt") as unknown as ReturnType<typeof vi.fn>;
     let call = 0;
@@ -534,22 +524,26 @@ describe("handleDeviceAuthorization — collision retry", () => {
   it("returns 500 INTERNAL_ERROR after 3 consecutive UNIQUE collisions", async () => {
     // Pre-insert 'BBBB-BBBB' and force every randomInt() call to return 0 so
     // all 3 retries regenerate the same colliding code → exhaustion path.
-    getDb().prepare(
-      `INSERT INTO device_auth_requests
+    getDb()
+      .prepare(
+        `INSERT INTO device_auth_requests
         (device_code, user_code, nonce, expires_at, requester_ip, requester_user_agent, requester_country)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    ).run(
-      "preexisting-device-code-3coll",
-      "BBBB-BBBB",
-      crypto.randomBytes(16).toString("base64url"),
-      String(clock.now() + 600),
-      null,
-      null,
-      null,
-    );
+      )
+      .run(
+        "preexisting-device-code-3coll",
+        "BBBB-BBBB",
+        crypto.randomBytes(16).toString("base64url"),
+        String(clock.now() + 600),
+        null,
+        null,
+        null,
+      );
 
     const spy = vi.spyOn(crypto, "randomInt") as unknown as ReturnType<typeof vi.fn>;
-    spy.mockImplementation(((..._args: unknown[]) => 0) as unknown as (...args: unknown[]) => number);
+    spy.mockImplementation(
+      ((..._args: unknown[]) => 0) as unknown as (...args: unknown[]) => number,
+    );
 
     const res = mockResponse();
     await handleDeviceAuthorization(mockReq(), res as unknown as ServerResponse, ctx);

@@ -62,17 +62,29 @@ export function createServices(config: CoordinatorConfig): CoordinatorServices {
   const consultation = new Consultation(logger.child({ component: "consultation" }));
   const depMap = new DependencyMapper();
   const fileTracker = new FileTracker();
-  const workingFiles = new WorkingFilesTracker(logger.child({ component: "working-files" }), metrics);
-  workingFiles.startSweeper(parseInt(process.env.COORDINATOR_WORKING_FILES_SWEEP_INTERVAL_MS || "60000", 10));
+  const workingFiles = new WorkingFilesTracker(
+    logger.child({ component: "working-files" }),
+    metrics,
+  );
+  workingFiles.startSweeper(
+    parseInt(process.env.COORDINATOR_WORKING_FILES_SWEEP_INTERVAL_MS || "60000", 10),
+  );
   const impactScorer = new ImpactScorer(registry, fileTracker, consultation, workingFiles);
   const introspection = new IntrospectionManager();
-  const conflictDetector = new ConflictDetector(consultation, depMap, fileTracker, logger.child({ component: "conflict" }));
+  const conflictDetector = new ConflictDetector(
+    consultation,
+    depMap,
+    fileTracker,
+    logger.child({ component: "conflict" }),
+  );
   const contextProvider = new SummaryContextProvider(registry, consultation, fileTracker);
   const sseEmitter = new SseEmitter();
   const mqttBridge = new MqttBridge("default", logger.child({ component: "mqtt" }));
 
   const treeSitter = new TreeSitterExtractor(metrics);
-  treeSitter.load().catch(() => { /* errors are logged inside; status() reflects state */ });
+  treeSitter.load().catch(() => {
+    /* errors are logged inside; status() reflects state */
+  });
 
   const repoRoot = process.env.COORDINATOR_REPO_ROOT;
   const gitCochange = repoRoot
@@ -98,12 +110,16 @@ export function createServices(config: CoordinatorConfig): CoordinatorServices {
     onRefresh: (info) => {
       // TODO(Task 22): quota_update has no org context at the quota-cache callback level;
       // using "default" (single-tenant Phase 1). Multi-org Phase 5 will require per-org quota.
-      sseEmitter.emit("quota_update", {
-        five_hour: info.fiveHour,
-        seven_day: info.sevenDay,
-        seven_day_sonnet: info.sevenDaySonnet,
-        fetched_at: info.fetchedAt,
-      }, { org_id: "default" });
+      sseEmitter.emit(
+        "quota_update",
+        {
+          five_hour: info.fiveHour,
+          seven_day: info.sevenDay,
+          seven_day_sonnet: info.sevenDaySonnet,
+          fetched_at: info.fetchedAt,
+        },
+        { org_id: "default" },
+      );
       mqttBridge.publishQuotaUpdate(info);
     },
   });
@@ -123,16 +139,20 @@ export function createServices(config: CoordinatorConfig): CoordinatorServices {
     metrics.recordThreadResolved(event.resolution_type);
     // Approach (a): event.org_id is threaded from emitResolution via getThreadCrossOrg,
     // so the correct org is always available here without an extra DB lookup.
-    sseEmitter.emit("thread_resolved", {
-      thread_id: event.thread_id,
-      resolution_type: event.resolution_type,
-      resolution: event.resolution_summary,
-      approved_by: event.approved_by,
-      approved_by_name: event.approved_by_name,
-      created_at: event.created_at,
-      resolved_at: event.resolved_at,
-      had_messages: event.had_messages,
-    }, { org_id: event.org_id });
+    sseEmitter.emit(
+      "thread_resolved",
+      {
+        thread_id: event.thread_id,
+        resolution_type: event.resolution_type,
+        resolution: event.resolution_summary,
+        approved_by: event.approved_by,
+        approved_by_name: event.approved_by_name,
+        created_at: event.created_at,
+        resolved_at: event.resolved_at,
+        had_messages: event.had_messages,
+      },
+      { org_id: event.org_id },
+    );
     if (event.resolution_type !== "auto_resolved") {
       mqttBridge.publishResolution(event.thread_id, "resolved", event.resolution_summary || "");
     }
@@ -144,8 +164,23 @@ export function createServices(config: CoordinatorConfig): CoordinatorServices {
   });
 
   return {
-    logger, registry, activityTracker, consultation, conflictDetector,
-    depMap, fileTracker, impactScorer, workingFiles, introspection, contextProvider, sseEmitter, mqttBridge, quotaCache, metrics, treeSitter, gitCochange,
+    logger,
+    registry,
+    activityTracker,
+    consultation,
+    conflictDetector,
+    depMap,
+    fileTracker,
+    impactScorer,
+    workingFiles,
+    introspection,
+    contextProvider,
+    sseEmitter,
+    mqttBridge,
+    quotaCache,
+    metrics,
+    treeSitter,
+    gitCochange,
   };
 }
 
@@ -168,7 +203,19 @@ export function createMcpServer(
   services: CoordinatorServices,
   getSessionClaims: (sessionId: string) => AuthClaims | null = () => null,
 ): McpServer {
-  const { registry, activityTracker, consultation, conflictDetector, depMap, fileTracker, impactScorer, introspection, contextProvider, sseEmitter, mqttBridge } = services;
+  const {
+    registry,
+    activityTracker,
+    consultation,
+    conflictDetector,
+    depMap,
+    fileTracker,
+    impactScorer,
+    introspection,
+    contextProvider,
+    sseEmitter,
+    mqttBridge,
+  } = services;
   const mcpLog = services.logger.child({ component: "mcp" });
 
   const server = new McpServer({
@@ -196,4 +243,3 @@ export function createMcpServer(
 
   return server;
 }
-

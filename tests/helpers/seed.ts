@@ -24,10 +24,30 @@ export interface SeededOrg {
  */
 export function seedFourOrgs(db: Database.Database): SeededOrg[] {
   const orgs: SeededOrg[] = [
-    { orgId: "org-acme-001", adminUserId: "u-admin-acme", memberUserId: "u-member-acme", serviceTokenJti: "jti-svc-acme" },
-    { orgId: "org-beta-002", adminUserId: "u-admin-beta", memberUserId: "u-member-beta", serviceTokenJti: "jti-svc-beta" },
-    { orgId: "org-gamma-003", adminUserId: "u-admin-gamma", memberUserId: "u-member-gamma", serviceTokenJti: "jti-svc-gamma" },
-    { orgId: "org-delta-004", adminUserId: "u-admin-delta", memberUserId: "u-member-delta", serviceTokenJti: "jti-svc-delta" },
+    {
+      orgId: "org-acme-001",
+      adminUserId: "u-admin-acme",
+      memberUserId: "u-member-acme",
+      serviceTokenJti: "jti-svc-acme",
+    },
+    {
+      orgId: "org-beta-002",
+      adminUserId: "u-admin-beta",
+      memberUserId: "u-member-beta",
+      serviceTokenJti: "jti-svc-beta",
+    },
+    {
+      orgId: "org-gamma-003",
+      adminUserId: "u-admin-gamma",
+      memberUserId: "u-member-gamma",
+      serviceTokenJti: "jti-svc-gamma",
+    },
+    {
+      orgId: "org-delta-004",
+      adminUserId: "u-admin-delta",
+      memberUserId: "u-member-delta",
+      serviceTokenJti: "jti-svc-delta",
+    },
   ];
 
   const orgInsert = db.prepare(`
@@ -45,8 +65,22 @@ export function seedFourOrgs(db: Database.Database): SeededOrg[] {
       // org-acme-001 → "acme"
       const name = o.orgId.split("-")[1];
       orgInsert.run(o.orgId, name, name, name);
-      userInsert.run(o.adminUserId, o.orgId, `${name}-admin@test`, `${name}-admin`, `${name}-admin`, "admin");
-      userInsert.run(o.memberUserId, o.orgId, `${name}-member@test`, `${name}-member`, `${name}-member`, "member");
+      userInsert.run(
+        o.adminUserId,
+        o.orgId,
+        `${name}-admin@test`,
+        `${name}-admin`,
+        `${name}-admin`,
+        "admin",
+      );
+      userInsert.run(
+        o.memberUserId,
+        o.orgId,
+        `${name}-member@test`,
+        `${name}-member`,
+        `${name}-member`,
+        "member",
+      );
       // Service-token rows added by T25; seed leaves serviceTokenJti as a
       // documented placeholder for now.
       void o.serviceTokenJti;

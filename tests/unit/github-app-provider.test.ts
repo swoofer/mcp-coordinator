@@ -38,9 +38,7 @@ describe("GitHubAppProvider.buildAuthUrl", () => {
     const p = makeProvider();
     const url = p.buildAuthUrl("state-xyz", "https://app/cb", "CHALLENGE");
     const parsed = new URL(url);
-    expect(parsed.origin + parsed.pathname).toBe(
-      "https://github.com/login/oauth/authorize",
-    );
+    expect(parsed.origin + parsed.pathname).toBe("https://github.com/login/oauth/authorize");
     expect(parsed.searchParams.get("client_id")).toBe(CLIENT_ID);
     expect(parsed.searchParams.get("state")).toBe("state-xyz");
     expect(parsed.searchParams.get("redirect_uri")).toBe("https://app/cb");
@@ -82,9 +80,7 @@ describe("GitHubAppProvider.exchangeCode", () => {
         HttpResponse.json({ id: 42, login: "alice", email: null, name: "Alice" }),
       ),
       http.get("https://api.github.com/user/emails", () =>
-        HttpResponse.json([
-          { email: "alice@example.com", primary: true, verified: true },
-        ]),
+        HttpResponse.json([{ email: "alice@example.com", primary: true, verified: true }]),
       ),
     );
 
@@ -109,9 +105,7 @@ describe("GitHubAppProvider.exchangeCode", () => {
         HttpResponse.json({ id: 7, login: "bob", email: null, name: null }),
       ),
       http.get("https://api.github.com/user/emails", () =>
-        HttpResponse.json([
-          { email: "bob@example.com", primary: true, verified: true },
-        ]),
+        HttpResponse.json([{ email: "bob@example.com", primary: true, verified: true }]),
       ),
     );
 
@@ -142,9 +136,9 @@ describe("GitHubAppProvider.exchangeCode", () => {
         HttpResponse.json({}, { status: 503 }),
       ),
     );
-    await expect(
-      makeProvider().exchangeCode("code", "https://app/cb"),
-    ).rejects.toBeInstanceOf(IdPTransientError);
+    await expect(makeProvider().exchangeCode("code", "https://app/cb")).rejects.toBeInstanceOf(
+      IdPTransientError,
+    );
   });
 
   it("error label discriminates 'GitHub App' vs 'GitHub'", async () => {
@@ -178,13 +172,9 @@ describe("GitHubAppProvider.listMemberships", () => {
 
   it("401 from /user/orgs -> IdPTokenRevoked", async () => {
     server.use(
-      http.get("https://api.github.com/user/orgs", () =>
-        HttpResponse.json({}, { status: 401 }),
-      ),
+      http.get("https://api.github.com/user/orgs", () => HttpResponse.json({}, { status: 401 })),
     );
-    await expect(makeProvider().listMemberships("bad")).rejects.toBeInstanceOf(
-      IdPTokenRevoked,
-    );
+    await expect(makeProvider().listMemberships("bad")).rejects.toBeInstanceOf(IdPTokenRevoked);
   });
 });
 
@@ -228,9 +218,7 @@ describe("GitHubAppProvider.listMemberships -- T57 user_installations", () => {
       http.get("https://api.github.com/user/installations", () =>
         HttpResponse.json({
           total_count: 1,
-          installations: [
-            { id: 99, account: { login: "alice", type: "User" } },
-          ],
+          installations: [{ id: 99, account: { login: "alice", type: "User" } }],
         }),
       ),
     );
@@ -244,9 +232,9 @@ describe("GitHubAppProvider.listMemberships -- T57 user_installations", () => {
         HttpResponse.json({}, { status: 401 }),
       ),
     );
-    await expect(
-      makeAppFootprintProvider().listMemberships("bad"),
-    ).rejects.toBeInstanceOf(IdPTokenRevoked);
+    await expect(makeAppFootprintProvider().listMemberships("bad")).rejects.toBeInstanceOf(
+      IdPTokenRevoked,
+    );
   });
 
   it("user_installations: 503 -> IdPTransientError", async () => {
@@ -258,16 +246,14 @@ describe("GitHubAppProvider.listMemberships -- T57 user_installations", () => {
         HttpResponse.json({}, { status: 503 }),
       ),
     );
-    await expect(
-      makeAppFootprintProvider().listMemberships("tok"),
-    ).rejects.toBeInstanceOf(IdPTransientError);
+    await expect(makeAppFootprintProvider().listMemberships("tok")).rejects.toBeInstanceOf(
+      IdPTransientError,
+    );
   });
 
   it("default allowlistSource (omitted) still hits /user/orgs (backward compat)", async () => {
     server.use(
-      http.get("https://api.github.com/user/orgs", () =>
-        HttpResponse.json([{ login: "acme" }]),
-      ),
+      http.get("https://api.github.com/user/orgs", () => HttpResponse.json([{ login: "acme" }])),
     );
     // Explicit "no /user/installations handler" -- the request would
     // fail MSW's onUnhandledRequest:"error" check if the provider
@@ -323,9 +309,7 @@ describe("GitHubAppProvider.refreshIdpToken", () => {
         HttpResponse.json({}, { status: 401 }),
       ),
     );
-    await expect(makeProvider().refreshIdpToken("ghr_bad")).rejects.toBeInstanceOf(
-      IdPTokenRevoked,
-    );
+    await expect(makeProvider().refreshIdpToken("ghr_bad")).rejects.toBeInstanceOf(IdPTokenRevoked);
   });
 
   it("503 -> IdPTransientError", async () => {
@@ -351,9 +335,7 @@ describe("GitHubAppProvider.refreshIdpToken", () => {
         HttpResponse.json({ error: "bad_refresh_token" }),
       ),
     );
-    await expect(makeProvider().refreshIdpToken("ghr_old")).rejects.toBeInstanceOf(
-      IdPTokenRevoked,
-    );
+    await expect(makeProvider().refreshIdpToken("ghr_old")).rejects.toBeInstanceOf(IdPTokenRevoked);
   });
 
   it("200 body missing access_token -> IdPTokenRevoked", async () => {
@@ -362,9 +344,7 @@ describe("GitHubAppProvider.refreshIdpToken", () => {
         HttpResponse.json({ token_type: "bearer" }),
       ),
     );
-    await expect(makeProvider().refreshIdpToken("ghr_old")).rejects.toBeInstanceOf(
-      IdPTokenRevoked,
-    );
+    await expect(makeProvider().refreshIdpToken("ghr_old")).rejects.toBeInstanceOf(IdPTokenRevoked);
   });
 });
 

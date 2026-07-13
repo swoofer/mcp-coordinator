@@ -31,10 +31,7 @@ export interface LockoutCheckResult {
  * rows via auth.login.locked metadata.
  */
 export function hashIdentifier(identifier: string): string {
-  return crypto
-    .createHash("sha256")
-    .update(`login-lockout-v1\x00${identifier}`)
-    .digest("hex");
+  return crypto.createHash("sha256").update(`login-lockout-v1\x00${identifier}`).digest("hex");
 }
 
 /**
@@ -94,10 +91,7 @@ export function isLocked(
  * limiter — production paths must NOT call this. Tests inject fresh
  * limiters, so blast radius is one test.
  */
-export function resetLockoutForTest(
-  limiter: RateLimiter,
-  identifierHash: string,
-): void {
+export function resetLockoutForTest(limiter: RateLimiter, identifierHash: string): void {
   const key = LOCKOUT_KEY_PREFIX + identifierHash;
   limiter.reset();
   void key;

@@ -3,10 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import { jwtVerify } from "jose";
-import {
-  handleOAuthCallback,
-  __finalizeBrowserOAuthMint,
-} from "../../src/auth/oauth-callback.js";
+import { handleOAuthCallback, __finalizeBrowserOAuthMint } from "../../src/auth/oauth-callback.js";
 import type { AuthHandlerContext } from "../../src/auth/context.js";
 import { computeFingerprint } from "../../src/auth/oauth-finalize.js";
 import { FakeClock } from "../helpers/clock.js";
@@ -15,10 +12,7 @@ import { RateLimiter } from "../../src/auth/rate-limit.js";
 import { buildJwtKeyRegistry } from "../../src/auth/jwt-keys.js";
 import { MembershipCache } from "../../src/auth/membership-cache.js";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
-import type {
-  IdPProvider,
-  ExchangeCodeResult,
-} from "../../src/auth/providers/types.js";
+import type { IdPProvider, ExchangeCodeResult } from "../../src/auth/providers/types.js";
 import { findAuditRows } from "../helpers/audit.js";
 import { PassthroughEncryption } from "../../src/security/encryption.js";
 
@@ -234,11 +228,9 @@ describe("finalizeBrowserOAuthMint — direct entry point", () => {
     const arr = res.headers["Set-Cookie"] as string[];
     const session = indexCookies(arr)["__Host-coordinator_session"];
     expect(session.value.split(".")).toHaveLength(3); // JWS compact form
-    const { payload } = await jwtVerify(
-      session.value,
-      new Uint8Array(SIGNING_SECRET),
-      { issuer: "http://localhost:3000" },
-    );
+    const { payload } = await jwtVerify(session.value, new Uint8Array(SIGNING_SECRET), {
+      issuer: "http://localhost:3000",
+    });
     expect(payload.sub).toBe(user.user_id);
   });
 
@@ -255,16 +247,14 @@ describe("finalizeBrowserOAuthMint — direct entry point", () => {
     );
     const arr = res.headers["Set-Cookie"] as string[];
     const session = indexCookies(arr)["__Host-coordinator_session"];
-    const { payload } = await jwtVerify(
-      session.value,
-      new Uint8Array(SIGNING_SECRET),
-      { issuer: "http://localhost:3000" },
-    );
+    const { payload } = await jwtVerify(session.value, new Uint8Array(SIGNING_SECRET), {
+      issuer: "http://localhost:3000",
+    });
     expect(payload.sub).toBe("u-admin");
     expect(payload.active_org_id).toBe("org-acme");
     expect(payload.role).toBe("admin");
     expect(typeof payload.family_id).toBe("string");
-    expect((payload.family_id as string)).toMatch(/^[0-9a-f-]{36}$/);
+    expect(payload.family_id as string).toMatch(/^[0-9a-f-]{36}$/);
   });
 
   it("refresh_tokens row inserted with matching jti, family_id, parent_jti=NULL, consumer_fingerprint", async () => {
@@ -290,9 +280,7 @@ describe("finalizeBrowserOAuthMint — direct entry point", () => {
     expect(rows[0].jti).toMatch(/^[0-9a-f-]{36}$/);
     expect(rows[0].family_id).toMatch(/^[0-9a-f-]{36}$/);
     expect(rows[0].parent_jti).toBeNull();
-    expect(rows[0].consumer_fingerprint).toBe(
-      computeFingerprint("10.0.0.1", "ua/1.0"),
-    );
+    expect(rows[0].consumer_fingerprint).toBe(computeFingerprint("10.0.0.1", "ua/1.0"));
   });
 
   it("Tier 2 audit auth.login.success emitted with user_id, org_id, role, family_id metadata", async () => {
@@ -344,13 +332,7 @@ describe("finalizeBrowserOAuthMint — direct entry point", () => {
     const res = mockResponse();
     const ip = "192.0.2.42";
     const ua = "Mozilla/5.0 (test)";
-    await __finalizeBrowserOAuthMint(
-      res as unknown as ServerResponse,
-      makeCtx(),
-      user,
-      ip,
-      ua,
-    );
+    await __finalizeBrowserOAuthMint(res as unknown as ServerResponse, makeCtx(), user, ip, ua);
     const expected = computeFingerprint(ip, ua);
     expect(expected).not.toBeNull();
     const row = getDb()
@@ -365,13 +347,7 @@ describe("finalizeBrowserOAuthMint — direct entry point", () => {
     seedOrg();
     const user = seedUser();
     const res = mockResponse();
-    await __finalizeBrowserOAuthMint(
-      res as unknown as ServerResponse,
-      makeCtx(),
-      user,
-      null,
-      null,
-    );
+    await __finalizeBrowserOAuthMint(res as unknown as ServerResponse, makeCtx(), user, null, null);
     const row = getDb()
       .prepare("SELECT consumer_fingerprint FROM refresh_tokens WHERE user_id = ?")
       .get(user.user_id) as { consumer_fingerprint: string | null };
@@ -393,11 +369,9 @@ describe("finalizeBrowserOAuthMint — direct entry point", () => {
     // Verify the JWT issuer also gets the trailing-slash strip applied.
     const arr = res.headers["Set-Cookie"] as string[];
     const session = indexCookies(arr)["__Host-coordinator_session"];
-    const { payload } = await jwtVerify(
-      session.value,
-      new Uint8Array(SIGNING_SECRET),
-      { issuer: "http://localhost:3000" },
-    );
+    const { payload } = await jwtVerify(session.value, new Uint8Array(SIGNING_SECRET), {
+      issuer: "http://localhost:3000",
+    });
     expect(payload.iss).toBe("http://localhost:3000");
   });
 });
@@ -423,14 +397,7 @@ describe("finalizeBrowserOAuthMint — end-to-end via handleOAuthCallback", () =
            (state, code_verifier, redirect_uri, provider, created_at, expires_at, consumed_at)
          VALUES (?, ?, ?, ?, ?, ?, NULL)`,
       )
-      .run(
-        state,
-        "v",
-        "http://localhost:3000/api/auth/oauth/callback",
-        "github",
-        now,
-        now + 600,
-      );
+      .run(state, "v", "http://localhost:3000/api/auth/oauth/callback", "github", now, now + 600);
   }
 
   it("full callback (state + cookie HMAC + exchangeCode + provisioning + mint) → 302 + 3 cookies + refresh row + audit", async () => {
@@ -481,18 +448,16 @@ describe("finalizeBrowserOAuthMint — end-to-end via handleOAuthCallback", () =
     expect(cookies["__Host-coordinator_oauth_state"].attrs["max-age"]).toBe("0");
 
     // 3. Refresh row inserted with the expected fingerprint.
-    const userRow = getDb()
-      .prepare("SELECT id FROM users WHERE idp_user_id = ?")
-      .get("gh-100") as { id: string };
+    const userRow = getDb().prepare("SELECT id FROM users WHERE idp_user_id = ?").get("gh-100") as {
+      id: string;
+    };
     expect(userRow).toBeDefined();
     const refresh = getDb()
       .prepare("SELECT * FROM refresh_tokens WHERE user_id = ?")
       .all(userRow.id) as Array<{ consumer_fingerprint: string | null; parent_jti: string | null }>;
     expect(refresh).toHaveLength(1);
     expect(refresh[0].parent_jti).toBeNull();
-    expect(refresh[0].consumer_fingerprint).toBe(
-      computeFingerprint("10.0.0.7", "e2e-agent/1.0"),
-    );
+    expect(refresh[0].consumer_fingerprint).toBe(computeFingerprint("10.0.0.7", "e2e-agent/1.0"));
 
     // 4. auth.login.success audit emitted (Tier 2).
     const audits = findAuditRows("auth.login.success");

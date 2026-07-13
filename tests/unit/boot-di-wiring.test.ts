@@ -77,8 +77,16 @@ afterEach(() => {
   }
   resetAuditQueue();
   resetPhase2Auth();
-  try { closeGlobalDb(); } catch { /* idempotent */ }
-  try { fs.rmSync(DATA_DIR, { recursive: true, force: true }); } catch { /* Windows EBUSY */ }
+  try {
+    closeGlobalDb();
+  } catch {
+    /* idempotent */
+  }
+  try {
+    fs.rmSync(DATA_DIR, { recursive: true, force: true });
+  } catch {
+    /* Windows EBUSY */
+  }
 });
 
 const CTX: EncryptionContext = {

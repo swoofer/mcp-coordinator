@@ -16,14 +16,7 @@
  * tests/unit/cli-doctor-init-loadconfig-wrap.test.ts) to a temp dir instead.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import {
-  mkdtempSync,
-  mkdirSync,
-  writeFileSync,
-  readFileSync,
-  existsSync,
-  rmSync,
-} from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createUninstallCommand } from "../../cli/uninstall.js";
@@ -74,7 +67,10 @@ describe("cli uninstall — --mcp-config (rmSync path 1: empty .mcp.json)", () =
     const json = readJson(target) as { mcpServers?: Record<string, unknown> };
     expect(json.mcpServers).toBeDefined();
     expect(json.mcpServers!.coordinator).toBeUndefined();
-    expect(json.mcpServers!["other-server"]).toEqual({ command: "some-other-mcp", args: ["--flag"] });
+    expect(json.mcpServers!["other-server"]).toEqual({
+      command: "some-other-mcp",
+      args: ["--flag"],
+    });
   });
 
   it("removes the file when coordinator was the only server (file becomes empty)", async () => {
@@ -209,9 +205,8 @@ describe("cli uninstall — --purge (rmSync path 3: whole config dir)", () => {
     // tests/unit/cli-doctor-init-loadconfig-wrap.test.ts. This MUST stay in
     // place for the whole test: never let --purge touch the real homedir.
     vi.doMock("../../cli/config.js", async () => {
-      const real = await vi.importActual<typeof import("../../cli/config.js")>(
-        "../../cli/config.js",
-      );
+      const real =
+        await vi.importActual<typeof import("../../cli/config.js")>("../../cli/config.js");
       return { ...real, getConfigDir: () => configDir };
     });
   });

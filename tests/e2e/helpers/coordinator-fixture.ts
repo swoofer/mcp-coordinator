@@ -99,34 +99,30 @@ export const coordinatorFixture = base.extend<CoordinatorFixtures>({
     // enforced by src/auth/entropy.ts (boot will reject anything weaker).
     const jwtSecret = randomBytes(32).toString("base64url");
 
-    const child: ChildProcess = spawn(
-      "npx",
-      ["tsx", "src/serve-http.ts"],
-      {
-        cwd: REPO_ROOT,
-        // shell:true so `npx` resolves on Windows (where it's npx.cmd, not npx).
-        // Without shell, Node would ENOENT on Windows even though npx is on PATH.
-        shell: true,
-        env: {
-          ...process.env,
-          PORT: String(port),
-          COORDINATOR_OAUTH_ENABLED: "true",
-          COORDINATOR_JWT_SECRET: jwtSecret,
-          COORDINATOR_GITHUB_CLIENT_ID: "test-client",
-          COORDINATOR_GITHUB_CLIENT_SECRET: "test-secret",
-          COORDINATOR_GITHUB_ORG: "acme",
-          COORDINATOR_PUBLIC_URL: coordinatorUrl,
-          COORDINATOR_INSECURE_COOKIES: "true",
-          COORDINATOR_GITHUB_AUTH_BASE_URL: mockGithub.authBaseUrl,
-          COORDINATOR_GITHUB_API_BASE_URL: mockGithub.apiBaseUrl,
-          COORDINATOR_DATA_DIR: dataDir,
-          COORDINATOR_MQTT_TCP_PORT: String(mqttPort),
-          // Phase-1 secrets — required only when AUTH_ENABLED=true, but we
-          // don't enable that; left here as documentation.
-        },
-        stdio: ["ignore", "pipe", "pipe"],
+    const child: ChildProcess = spawn("npx", ["tsx", "src/serve-http.ts"], {
+      cwd: REPO_ROOT,
+      // shell:true so `npx` resolves on Windows (where it's npx.cmd, not npx).
+      // Without shell, Node would ENOENT on Windows even though npx is on PATH.
+      shell: true,
+      env: {
+        ...process.env,
+        PORT: String(port),
+        COORDINATOR_OAUTH_ENABLED: "true",
+        COORDINATOR_JWT_SECRET: jwtSecret,
+        COORDINATOR_GITHUB_CLIENT_ID: "test-client",
+        COORDINATOR_GITHUB_CLIENT_SECRET: "test-secret",
+        COORDINATOR_GITHUB_ORG: "acme",
+        COORDINATOR_PUBLIC_URL: coordinatorUrl,
+        COORDINATOR_INSECURE_COOKIES: "true",
+        COORDINATOR_GITHUB_AUTH_BASE_URL: mockGithub.authBaseUrl,
+        COORDINATOR_GITHUB_API_BASE_URL: mockGithub.apiBaseUrl,
+        COORDINATOR_DATA_DIR: dataDir,
+        COORDINATOR_MQTT_TCP_PORT: String(mqttPort),
+        // Phase-1 secrets — required only when AUTH_ENABLED=true, but we
+        // don't enable that; left here as documentation.
       },
-    );
+      stdio: ["ignore", "pipe", "pipe"],
+    });
 
     // Buffer child output so a startup failure produces actionable logs.
     const stdoutChunks: string[] = [];
@@ -158,9 +154,7 @@ export const coordinatorFixture = base.extend<CoordinatorFixtures>({
       }
       const stdoutText = stdoutChunks.join("");
       const stderrText = stderrChunks.join("");
-      throw new Error(
-        `${(err as Error).message}\nSTDOUT:\n${stdoutText}\nSTDERR:\n${stderrText}`,
-      );
+      throw new Error(`${(err as Error).message}\nSTDOUT:\n${stdoutText}\nSTDERR:\n${stderrText}`);
     }
 
     await use(coordinatorUrl);
@@ -172,9 +166,7 @@ export const coordinatorFixture = base.extend<CoordinatorFixtures>({
       const exitPromise = new Promise<void>((resolve) => {
         child.once("exit", () => resolve());
       });
-      const timeoutPromise = new Promise<void>((resolve) =>
-        setTimeout(resolve, 5_000),
-      );
+      const timeoutPromise = new Promise<void>((resolve) => setTimeout(resolve, 5_000));
       await Promise.race([exitPromise, timeoutPromise]);
       if (!child.killed) {
         child.kill("SIGKILL");

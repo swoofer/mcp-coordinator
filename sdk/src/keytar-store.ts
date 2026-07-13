@@ -103,8 +103,7 @@ export class KeytarTokenStore implements TokenStore {
       // Bundlers (esbuild, etc.) also won't try to resolve a static import this way.
       const moduleName = "keytar";
       const mod = (await import(/* @vite-ignore */ moduleName)) as
-        | KeytarAPI
-        | { default?: KeytarAPI };
+        KeytarAPI | { default?: KeytarAPI };
       // Some packagers wrap CJS exports under .default
       const api = (mod as { default?: KeytarAPI }).default ?? (mod as KeytarAPI);
       return api;

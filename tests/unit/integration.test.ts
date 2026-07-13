@@ -81,7 +81,12 @@ describe("Integration: Full Consultation Lifecycle", () => {
     expect(msg.round).toBe(1);
 
     // Agent A proposes resolution
-    consultation.proposeResolution("default", thread.id, "agent-a", "Keep interface backward compatible");
+    consultation.proposeResolution(
+      "default",
+      thread.id,
+      "agent-a",
+      "Keep interface backward compatible",
+    );
     const resolving = consultation.getThread("default", thread.id)!;
     expect(resolving.status).toBe("resolving");
 
@@ -108,7 +113,10 @@ describe("Integration: Full Consultation Lifecycle", () => {
     });
 
     consultation.postToThread("default", {
-      thread_id: thread.id, agent_id: "agent-b", type: "context", content: "noted",
+      thread_id: thread.id,
+      agent_id: "agent-b",
+      type: "context",
+      content: "noted",
     });
 
     // Propose
@@ -122,7 +130,10 @@ describe("Integration: Full Consultation Lifecycle", () => {
 
     // Re-propose with adjusted plan
     consultation.postToThread("default", {
-      thread_id: thread.id, agent_id: "agent-a", type: "suggestion", content: "How about this instead",
+      thread_id: thread.id,
+      agent_id: "agent-a",
+      type: "suggestion",
+      content: "How about this instead",
     });
     consultation.proposeResolution("default", thread.id, "agent-a", "Adjusted approach");
     consultation.approveResolution("default", thread.id, "agent-b");
@@ -158,7 +169,10 @@ describe("Integration: Full Consultation Lifecycle", () => {
 
     // B responds, C departs
     consultation.postToThread("default", {
-      thread_id: thread.id, agent_id: "agent-b", type: "context", content: "ok",
+      thread_id: thread.id,
+      agent_id: "agent-b",
+      type: "context",
+      content: "ok",
     });
     consultation.handleAgentDeparture("agent-c");
 
@@ -174,11 +188,17 @@ describe("Integration: Full Consultation Lifecycle", () => {
 describe("Integration: Impact Scoring + Introspection", () => {
   it("scores agents correctly: file hit > module overlap > no link", () => {
     registry.register("default", "agent-a", "Agent A", ["src/auth"]);
-    registry.register("default", "agent-b", "Agent B", ["src/shared"]);       // module overlap = 30
-    registry.register("default", "agent-c", "Agent C", ["src/api"]);          // no overlap = 0
+    registry.register("default", "agent-b", "Agent B", ["src/shared"]); // module overlap = 30
+    registry.register("default", "agent-c", "Agent C", ["src/api"]); // no overlap = 0
 
     // Agent B also recently edited the target file
-    fileTracker.log({ org_id: "default", session_id: "s1", agent_id: "agent-b", tool_name: "Edit", file_path: "src/shared/types.ts" });
+    fileTracker.log({
+      org_id: "default",
+      session_id: "s1",
+      agent_id: "agent-b",
+      tool_name: "Edit",
+      file_path: "src/shared/types.ts",
+    });
 
     const categorized = impactScorer.categorize({
       org_id: "default",
@@ -264,8 +284,10 @@ describe("Integration: Impact Scoring + Introspection", () => {
     const respondents: string[] = JSON.parse(t.expected_respondents || "[]");
     if (!respondents.includes("agent-b")) {
       respondents.push("agent-b");
-      db.prepare("UPDATE threads SET expected_respondents = ? WHERE id = ?")
-        .run(JSON.stringify(respondents), thread.id);
+      db.prepare("UPDATE threads SET expected_respondents = ? WHERE id = ?").run(
+        JSON.stringify(respondents),
+        thread.id,
+      );
     }
 
     const updated = consultation.getThread("default", thread.id)!;
@@ -294,7 +316,7 @@ describe("Integration: Conflict Detection + Dependencies", () => {
       target_files: [],
     });
 
-    expect(conflicts.some(c => c.type === "module_overlap")).toBe(true);
+    expect(conflicts.some((c) => c.type === "module_overlap")).toBe(true);
   });
 
   it("detects dependency chain via blast radius", () => {
@@ -320,7 +342,7 @@ describe("Integration: Conflict Detection + Dependencies", () => {
       target_files: [],
     });
 
-    expect(conflicts.some(c => c.type === "dependency_chain")).toBe(true);
+    expect(conflicts.some((c) => c.type === "dependency_chain")).toBe(true);
   });
 });
 
@@ -336,18 +358,46 @@ describe("Integration: SSE Events", () => {
     });
 
     // Emit events as the flow would
-    sseEmitter.emit("agent_online", { agent_id: "a1", name: "Agent A", modules: ["src/auth"] }, { org_id: "default" });
-    sseEmitter.emit("thread_opened", { thread_id: "t1", subject: "test", agent_id: "a1" }, { org_id: "default" });
-    sseEmitter.emit("impact_scored", { thread_id: "t1", agent_id: "a2", score: 100, category: "concerned" }, { org_id: "default" });
-    sseEmitter.emit("message_posted", { thread_id: "t1", agent_id: "a2", type: "context", content: "info" }, { org_id: "default" });
-    sseEmitter.emit("resolution_proposed", { thread_id: "t1", agent_id: "a1", summary: "plan" }, { org_id: "default" });
-    sseEmitter.emit("thread_resolved", { thread_id: "t1", resolution: "plan" }, { org_id: "default" });
+    sseEmitter.emit(
+      "agent_online",
+      { agent_id: "a1", name: "Agent A", modules: ["src/auth"] },
+      { org_id: "default" },
+    );
+    sseEmitter.emit(
+      "thread_opened",
+      { thread_id: "t1", subject: "test", agent_id: "a1" },
+      { org_id: "default" },
+    );
+    sseEmitter.emit(
+      "impact_scored",
+      { thread_id: "t1", agent_id: "a2", score: 100, category: "concerned" },
+      { org_id: "default" },
+    );
+    sseEmitter.emit(
+      "message_posted",
+      { thread_id: "t1", agent_id: "a2", type: "context", content: "info" },
+      { org_id: "default" },
+    );
+    sseEmitter.emit(
+      "resolution_proposed",
+      { thread_id: "t1", agent_id: "a1", summary: "plan" },
+      { org_id: "default" },
+    );
+    sseEmitter.emit(
+      "thread_resolved",
+      { thread_id: "t1", resolution: "plan" },
+      { org_id: "default" },
+    );
 
     await flushSse();
     expect(emitted).toHaveLength(6);
-    expect(emitted.map(e => e.type)).toEqual([
-      "agent_online", "thread_opened", "impact_scored",
-      "message_posted", "resolution_proposed", "thread_resolved"
+    expect(emitted.map((e) => e.type)).toEqual([
+      "agent_online",
+      "thread_opened",
+      "impact_scored",
+      "message_posted",
+      "resolution_proposed",
+      "thread_resolved",
     ]);
 
     // Verify events are persisted
@@ -371,17 +421,23 @@ describe("Integration: Context Provider", () => {
   it("provides relevant context for overlapping agent", () => {
     registry.register("default", "agent-a", "Agent A", ["src/shared"]);
     consultation.logActionSummary("default", {
-      session_id: "s1", agent_id: "agent-a",
-      file_path: "src/shared/types.ts", summary: "Added User.role_permissions field",
+      session_id: "s1",
+      agent_id: "agent-a",
+      file_path: "src/shared/types.ts",
+      summary: "Added User.role_permissions field",
     });
     consultation.logActionSummary("default", {
-      session_id: "s1", agent_id: "agent-a",
-      file_path: "src/shared/utils.ts", summary: "Added permission helper",
+      session_id: "s1",
+      agent_id: "agent-a",
+      file_path: "src/shared/utils.ts",
+      summary: "Added permission helper",
     });
 
     const ctx = contextProvider.getRelevantContext("default", "agent-a", {
-      thread_id: "t1", subject: "Refactor shared",
-      target_modules: ["src/shared"], target_files: [],
+      thread_id: "t1",
+      subject: "Refactor shared",
+      target_modules: ["src/shared"],
+      target_files: [],
     });
 
     expect(ctx.modules).toContain("src/shared");
@@ -393,8 +449,10 @@ describe("Integration: Context Provider", () => {
     registry.register("default", "agent-a", "Agent A", ["src/users"]);
 
     const ctx = contextProvider.getRelevantContext("default", "agent-a", {
-      thread_id: "t1", subject: "Refactor auth",
-      target_modules: ["src/auth"], target_files: [],
+      thread_id: "t1",
+      subject: "Refactor auth",
+      target_modules: ["src/auth"],
+      target_files: [],
     });
 
     expect(ctx.modules).toHaveLength(0);
@@ -409,7 +467,7 @@ describe("Integration: /api/reset parity (Chasseur Bravo)", () => {
     // Insert activity status
     db.prepare(
       `INSERT INTO agent_activity_status (agent_id, activity_status, current_file, last_activity_at)
-       VALUES (?, ?, ?, CURRENT_TIMESTAMP)`
+       VALUES (?, ?, ?, CURRENT_TIMESTAMP)`,
     ).run("agent-a", "working", "src/auth/login.ts");
 
     // Simulate /api/reset â€” same DELETE statements as serve-http.ts
@@ -427,14 +485,21 @@ describe("Integration: /api/reset parity (Chasseur Bravo)", () => {
     db.exec("PRAGMA foreign_keys = ON");
 
     // BUG: agent_activity_status is NOT cleared by /api/reset
-    const rows = db.prepare("SELECT COUNT(*) as count FROM agent_activity_status").get() as { count: number };
+    const rows = db.prepare("SELECT COUNT(*) as count FROM agent_activity_status").get() as {
+      count: number;
+    };
     expect(rows.count).toBe(0);
   });
 
   it("reset should clear dependency_map table", () => {
     const db = getDb();
     depMap.setMap("default", {
-      "src/auth": { module_id: "src/auth", depends_on: ["src/shared"], exports: ["AuthMiddleware"], owners: [] },
+      "src/auth": {
+        module_id: "src/auth",
+        depends_on: ["src/shared"],
+        exports: ["AuthMiddleware"],
+        owners: [],
+      },
     });
 
     // Simulate /api/reset â€” same DELETE statements as serve-http.ts
@@ -452,10 +517,9 @@ describe("Integration: /api/reset parity (Chasseur Bravo)", () => {
     db.exec("PRAGMA foreign_keys = ON");
 
     // BUG: dependency_map is NOT cleared by /api/reset
-    const rows = db.prepare("SELECT COUNT(*) as count FROM dependency_map").get() as { count: number };
+    const rows = db.prepare("SELECT COUNT(*) as count FROM dependency_map").get() as {
+      count: number;
+    };
     expect(rows.count).toBe(0);
   });
 });
-
-
-

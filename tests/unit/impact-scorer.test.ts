@@ -40,14 +40,20 @@ describe("ImpactScorer", () => {
   it("scores 100 for same file recently modified", () => {
     registry.register("default", "a1", "Agent A", ["src/auth"]);
     registry.register("default", "a2", "Agent B", ["src/users"]);
-    tracker.log({ org_id: "default", session_id: "s1", agent_id: "a2", tool_name: "Edit", file_path: "src/shared/types.ts" });
+    tracker.log({
+      org_id: "default",
+      session_id: "s1",
+      agent_id: "a2",
+      tool_name: "Edit",
+      file_path: "src/shared/types.ts",
+    });
     const scores = scorer.score({
       org_id: "default",
       agent_id: "a1",
       target_modules: ["src/shared"],
       target_files: ["src/shared/types.ts"],
     });
-    const a2Score = scores.find(s => s.agent_id === "a2");
+    const a2Score = scores.find((s) => s.agent_id === "a2");
     expect(a2Score).toBeDefined();
     expect(a2Score!.score).toBe(100);
     expect(a2Score!.reason).toContain("same file");
@@ -56,7 +62,13 @@ describe("ImpactScorer", () => {
   it("scores 80 for depends_on file modified by other agent", () => {
     registry.register("default", "a1", "Agent A", ["src/auth"]);
     registry.register("default", "a2", "Agent B", ["src/api"]);
-    tracker.log({ org_id: "default", session_id: "s1", agent_id: "a2", tool_name: "Edit", file_path: "config/jwt.yml" });
+    tracker.log({
+      org_id: "default",
+      session_id: "s1",
+      agent_id: "a2",
+      tool_name: "Edit",
+      file_path: "config/jwt.yml",
+    });
     const scores = scorer.score({
       org_id: "default",
       agent_id: "a1",
@@ -64,7 +76,7 @@ describe("ImpactScorer", () => {
       target_files: ["src/auth/middleware.ts"],
       depends_on_files: ["config/jwt.yml"],
     });
-    const a2Score = scores.find(s => s.agent_id === "a2");
+    const a2Score = scores.find((s) => s.agent_id === "a2");
     expect(a2Score).toBeDefined();
     expect(a2Score!.score).toBe(80);
     expect(a2Score!.reason).toContain("depends on");
@@ -79,7 +91,7 @@ describe("ImpactScorer", () => {
       target_modules: ["src/shared"],
       target_files: ["src/shared/types.ts"],
     });
-    const a2Score = scores.find(s => s.agent_id === "a2");
+    const a2Score = scores.find((s) => s.agent_id === "a2");
     expect(a2Score).toBeDefined();
     expect(a2Score!.score).toBe(30);
   });
@@ -93,7 +105,7 @@ describe("ImpactScorer", () => {
       target_modules: ["src/auth"],
       target_files: ["src/auth/middleware.ts"],
     });
-    const a2Score = scores.find(s => s.agent_id === "a2");
+    const a2Score = scores.find((s) => s.agent_id === "a2");
     expect(a2Score).toBeDefined();
     expect(a2Score!.score).toBe(0);
   });
@@ -102,30 +114,42 @@ describe("ImpactScorer", () => {
     registry.register("default", "a1", "Agent A", ["src/shared"]);
     registry.register("default", "a2", "Agent B", ["src/shared"]);
     registry.register("default", "a3", "Agent C", ["src/users"]);
-    tracker.log({ org_id: "default", session_id: "s1", agent_id: "a2", tool_name: "Edit", file_path: "src/shared/types.ts" });
+    tracker.log({
+      org_id: "default",
+      session_id: "s1",
+      agent_id: "a2",
+      tool_name: "Edit",
+      file_path: "src/shared/types.ts",
+    });
     const result = scorer.categorize({
       org_id: "default",
       agent_id: "a1",
       target_modules: ["src/shared"],
       target_files: ["src/shared/types.ts"],
     });
-    expect(result.concerned.map(s => s.agent_id)).toContain("a2");  // score 100
-    expect(result.pass.map(s => s.agent_id)).toContain("a3");       // score 0
+    expect(result.concerned.map((s) => s.agent_id)).toContain("a2"); // score 100
+    expect(result.pass.map((s) => s.agent_id)).toContain("a3"); // score 0
   });
 
   it("takes highest score when multiple layers match", () => {
     registry.register("default", "a1", "Agent A", ["src/auth"]);
-    registry.register("default", "a2", "Agent B", ["src/shared"]);  // module overlap = 30
-    tracker.log({ org_id: "default", session_id: "s1", agent_id: "a2", tool_name: "Edit", file_path: "src/shared/types.ts" }); // same file = 100
+    registry.register("default", "a2", "Agent B", ["src/shared"]); // module overlap = 30
+    tracker.log({
+      org_id: "default",
+      session_id: "s1",
+      agent_id: "a2",
+      tool_name: "Edit",
+      file_path: "src/shared/types.ts",
+    }); // same file = 100
     const scores = scorer.score({
       org_id: "default",
       agent_id: "a1",
       target_modules: ["src/shared"],
       target_files: ["src/shared/types.ts"],
     });
-    const a2Score = scores.find(s => s.agent_id === "a2");
-    expect(a2Score!.score).toBe(100);  // highest wins
-    expect(a2Score!.reasons.length).toBeGreaterThanOrEqual(2);  // both reasons present
+    const a2Score = scores.find((s) => s.agent_id === "a2");
+    expect(a2Score!.score).toBe(100); // highest wins
+    expect(a2Score!.reasons.length).toBeGreaterThanOrEqual(2); // both reasons present
   });
 
   // â"€â"€ Layer 0 tests (Consultation-based announced intent) â"€â"€
@@ -153,7 +177,7 @@ describe("ImpactScorer", () => {
       target_files: ["src/shared/types.ts"],
     });
 
-    const a2Score = scores.find(s => s.agent_id === "a2");
+    const a2Score = scores.find((s) => s.agent_id === "a2");
     expect(a2Score).toBeDefined();
     expect(a2Score!.score).toBe(100);
     expect(a2Score!.reason).toContain("announced same file");
@@ -183,7 +207,7 @@ describe("ImpactScorer", () => {
       depends_on_files: ["src/shared/types.ts"],
     });
 
-    const a2Score = scores.find(s => s.agent_id === "a2");
+    const a2Score = scores.find((s) => s.agent_id === "a2");
     expect(a2Score).toBeDefined();
     expect(a2Score!.score).toBe(80);
     expect(a2Score!.reason).toContain("modifies my dependency");
@@ -213,7 +237,7 @@ describe("ImpactScorer", () => {
       target_files: ["src/shared/types.ts"],
     });
 
-    const a2Score = scores.find(s => s.agent_id === "a2");
+    const a2Score = scores.find((s) => s.agent_id === "a2");
     expect(a2Score).toBeDefined();
     expect(a2Score!.score).toBe(80);
     expect(a2Score!.reason).toContain("they depend on my target");
@@ -234,7 +258,7 @@ describe("ImpactScorer", () => {
       target_files: ["src/auth/login.ts"],
     });
 
-    const a2Score = scores.find(s => s.agent_id === "a2");
+    const a2Score = scores.find((s) => s.agent_id === "a2");
     expect(a2Score).toBeDefined();
     expect(a2Score!.score).toBe(30);
     expect(a2Score!.reason).toContain("module overlap");
@@ -253,7 +277,7 @@ describe("ImpactScorer", () => {
       target_files: ["src/auth/middleware/jwt.ts"],
     });
 
-    const a2Score = scores.find(s => s.agent_id === "a2");
+    const a2Score = scores.find((s) => s.agent_id === "a2");
     expect(a2Score).toBeDefined();
     expect(a2Score!.score).toBe(30);
     expect(a2Score!.reason).toContain("module overlap");
@@ -286,7 +310,7 @@ describe("ImpactScorer", () => {
       target_files: ["src/auth/middleware.ts"],
     });
 
-    const a2Score = scores.find(s => s.agent_id === "a2");
+    const a2Score = scores.find((s) => s.agent_id === "a2");
     expect(a2Score).toBeDefined();
     expect(a2Score!.score).toBe(0);
     expect(a2Score!.reasons).toHaveLength(0);
@@ -297,7 +321,13 @@ describe("ImpactScorer", () => {
     // scorer (no consultation) â€" should not throw and should still compute layers 1-3
     registry.register("default", "a1", "Agent A", ["src/shared"]);
     registry.register("default", "a2", "Agent B", ["src/shared"]);
-    tracker.log({ org_id: "default", session_id: "s1", agent_id: "a2", tool_name: "Edit", file_path: "src/shared/types.ts" });
+    tracker.log({
+      org_id: "default",
+      session_id: "s1",
+      agent_id: "a2",
+      tool_name: "Edit",
+      file_path: "src/shared/types.ts",
+    });
 
     let scores: ReturnType<typeof scorer.score>;
     expect(() => {
@@ -309,7 +339,7 @@ describe("ImpactScorer", () => {
       });
     }).not.toThrow();
 
-    const a2Score = scores!.find(s => s.agent_id === "a2");
+    const a2Score = scores!.find((s) => s.agent_id === "a2");
     expect(a2Score).toBeDefined();
     expect(a2Score!.score).toBe(100); // Layer 1 still fires
   });
@@ -393,10 +423,10 @@ describe("ImpactScorer", () => {
       // depends_on_files intentionally omitted
     });
 
-    const a2Score = scores.find(s => s.agent_id === "a2");
+    const a2Score = scores.find((s) => s.agent_id === "a2");
     expect(a2Score).toBeDefined();
     // No depends_on overlap possible, so no 80 score from Layer 0b
-    expect(a2Score!.reasons.every(r => !r.includes("modifies my dependency"))).toBe(true);
+    expect(a2Score!.reasons.every((r) => !r.includes("modifies my dependency"))).toBe(true);
   });
 
   it("Layer 0b: no score when depends_on does not overlap thread target_files", () => {
@@ -406,18 +436,23 @@ describe("ImpactScorer", () => {
     registry.register("default", "a2", "Agent B", ["src/shared"]);
     // a2 announces work on a specific file
     c.announceWork("default", {
-      agent_id: "a2", subject: "Work on shared", target_modules: ["src/shared"], target_files: ["src/shared/utils.ts"],
+      agent_id: "a2",
+      subject: "Work on shared",
+      target_modules: ["src/shared"],
+      target_files: ["src/shared/utils.ts"],
     });
     // a1 depends on a DIFFERENT file than what a2 targets
     const scores = scorerWithConsult.score({
       org_id: "default",
-      agent_id: "a1", target_modules: ["src/auth"], target_files: ["src/auth/login.ts"],
+      agent_id: "a1",
+      target_modules: ["src/auth"],
+      target_files: ["src/auth/login.ts"],
       depends_on_files: ["src/config/env.ts"],
     });
-    const a2Score = scores.find(s => s.agent_id === "a2");
+    const a2Score = scores.find((s) => s.agent_id === "a2");
     // Should NOT have score 80 from Layer 0b â€" the dependency doesn't overlap
     expect(a2Score).toBeDefined();
-    expect(a2Score!.reasons.some(r => r.includes("modifies my dependency"))).toBe(false);
+    expect(a2Score!.reasons.some((r) => r.includes("modifies my dependency"))).toBe(false);
   });
 
   // â"€â"€ Bug: stale resolved threads cause false positives (Chasseur Bravo) â"€â"€
@@ -440,8 +475,9 @@ describe("ImpactScorer", () => {
 
     // Simulate the thread being from hours ago
     const db = getDb();
-    db.prepare("UPDATE threads SET created_at = datetime('now', '-2 hours'), resolved_at = datetime('now', '-2 hours') WHERE id = ?")
-      .run(thread.id);
+    db.prepare(
+      "UPDATE threads SET created_at = datetime('now', '-2 hours'), resolved_at = datetime('now', '-2 hours') WHERE id = ?",
+    ).run(thread.id);
 
     // a1 now announces work on the same file â€" old resolved thread should NOT trigger score 100
     // BUG: scorer includes ALL resolved threads without time boundary
@@ -452,10 +488,10 @@ describe("ImpactScorer", () => {
       target_files: ["src/shared/types.ts"],
     });
 
-    const a2Score = scores.find(s => s.agent_id === "a2");
+    const a2Score = scores.find((s) => s.agent_id === "a2");
     expect(a2Score).toBeDefined();
     // Old resolved thread should not cause false positive scoring
-    const hasStaleReason = a2Score!.reasons.some(r => r.includes("announced same file"));
+    const hasStaleReason = a2Score!.reasons.some((r) => r.includes("announced same file"));
     expect(hasStaleReason).toBe(false);
   });
 });
@@ -492,11 +528,11 @@ describe("impact-scorer org_id propagation + direct SQL scoping", () => {
     const db = getDb();
     // org-a agent with symbols "foo"
     db.prepare(
-      "INSERT INTO file_activity (org_id, session_id, agent_id, tool_name, file_path, symbols_touched) VALUES (?, ?, ?, ?, ?, ?)"
+      "INSERT INTO file_activity (org_id, session_id, agent_id, tool_name, file_path, symbols_touched) VALUES (?, ?, ?, ?, ?, ?)",
     ).run("org-a", "s1", "a1-peer", "Edit", "x.ts", '["foo"]');
     // org-b agent with symbols "bar"
     db.prepare(
-      "INSERT INTO file_activity (org_id, session_id, agent_id, tool_name, file_path, symbols_touched) VALUES (?, ?, ?, ?, ?, ?)"
+      "INSERT INTO file_activity (org_id, session_id, agent_id, tool_name, file_path, symbols_touched) VALUES (?, ?, ?, ?, ?, ?)",
     ).run("org-b", "s2", "b1", "Edit", "x.ts", '["bar"]');
 
     // Register a peer in org-a so scoring has someone to score
@@ -518,17 +554,17 @@ describe("impact-scorer org_id propagation + direct SQL scoping", () => {
     const db = getDb();
     // org-a: x.ts ↔ y.ts co-change ratio 10/100 = 0.1 (below 0.2 threshold → score 0, should not contribute)
     db.prepare(
-      "INSERT INTO git_cochange (org_id, file_a, file_b, count, total_commits, computed_at) VALUES (?, ?, ?, ?, ?, ?)"
+      "INSERT INTO git_cochange (org_id, file_a, file_b, count, total_commits, computed_at) VALUES (?, ?, ?, ?, ?, ?)",
     ).run("org-a", "x.ts", "y.ts", 10, 100, "2026-01-01");
     // org-b: x.ts ↔ y.ts co-change ratio 99/100 = 0.99 (above 0.5 → score 60)
     db.prepare(
-      "INSERT INTO git_cochange (org_id, file_a, file_b, count, total_commits, computed_at) VALUES (?, ?, ?, ?, ?, ?)"
+      "INSERT INTO git_cochange (org_id, file_a, file_b, count, total_commits, computed_at) VALUES (?, ?, ?, ?, ?, ?)",
     ).run("org-b", "x.ts", "y.ts", 99, 100, "2026-01-01");
 
     // Register a peer in org-a and log partner file activity for them in org-a
     registry.register("org-a", "peer-a", "Peer A", ["src/x"]);
     db.prepare(
-      "INSERT INTO file_activity (org_id, session_id, agent_id, tool_name, file_path) VALUES (?, ?, ?, ?, ?)"
+      "INSERT INTO file_activity (org_id, session_id, agent_id, tool_name, file_path) VALUES (?, ?, ?, ?, ?)",
     ).run("org-a", "s1", "peer-a", "Edit", "y.ts");
 
     const scores = scorer.score({
@@ -539,17 +575,19 @@ describe("impact-scorer org_id propagation + direct SQL scoping", () => {
     });
     // org-b's ratio 99/100 should NOT cause a layer-4 score of 60 on org-a's scorer
     // org-a's ratio 10/100=0.1 is below threshold (< 0.2), so layer4 score = 0 for this pair
-    const peerScore = scores.find(s => s.agent_id === "peer-a");
+    const peerScore = scores.find((s) => s.agent_id === "peer-a");
     // Layer 4 from org-b's data must not inflate the score — org-a data gives 0 layer-4
     // The peer may get a score from Layer 1 (file_activity) but NOT a layer-4 reason from org-b
-    const layer4Reasons = peerScore?.reasons.filter(r => r.includes("co-change")) ?? [];
+    const layer4Reasons = peerScore?.reasons.filter((r) => r.includes("co-change")) ?? [];
     expect(layer4Reasons).toHaveLength(0);
   });
 
   it("qualite-code-07: does not throw when agent.modules column is corrupted JSON", () => {
     registry.register("default", "a1", "Agent A", ["src/auth"]);
     registry.register("default", "a2", "Agent B", ["src/users"]);
-    getDb().prepare("UPDATE agents SET modules = ? WHERE org_id = 'default' AND id = 'a2'").run("{not valid json");
+    getDb()
+      .prepare("UPDATE agents SET modules = ? WHERE org_id = 'default' AND id = 'a2'")
+      .run("{not valid json");
 
     expect(() => {
       const scores = scorer.score({
@@ -558,7 +596,7 @@ describe("impact-scorer org_id propagation + direct SQL scoping", () => {
         target_modules: ["src/auth"],
         target_files: [],
       });
-      expect(scores.find(s => s.agent_id === "a2")).toBeDefined();
+      expect(scores.find((s) => s.agent_id === "a2")).toBeDefined();
     }).not.toThrow();
   });
 
@@ -575,11 +613,9 @@ describe("impact-scorer org_id propagation + direct SQL scoping", () => {
       target_modules: ["src/shared"],
       target_files: ["src/shared/types.ts"],
     });
-    getDb().prepare("UPDATE threads SET target_files = ?, depends_on_files = ? WHERE id = ?").run(
-      "TRUNCATED[",
-      "not-json",
-      thread.id,
-    );
+    getDb()
+      .prepare("UPDATE threads SET target_files = ?, depends_on_files = ? WHERE id = ?")
+      .run("TRUNCATED[", "not-json", thread.id);
 
     expect(() => {
       const scores = scorerWithConsultation.score({
@@ -589,7 +625,7 @@ describe("impact-scorer org_id propagation + direct SQL scoping", () => {
         target_files: ["src/shared/types.ts"],
       });
       // Corrupted columns parse to [] — no Layer 0 overlap, graceful degradation.
-      const a2Score = scores.find(s => s.agent_id === "a2");
+      const a2Score = scores.find((s) => s.agent_id === "a2");
       expect(a2Score?.reason).not.toContain("announced same file");
     }).not.toThrow();
   });

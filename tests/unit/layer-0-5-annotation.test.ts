@@ -15,7 +15,11 @@ describe("Layer 0.5 annotation", () => {
     // Close any previous connection before re-init: initDatabase() reassigns the
     // module-level db without closing the old handle, which on Windows leaks
     // handles to the same .db file and causes EBUSY on rmSync in afterAll.
-    try { closeDb(); } catch { /* nothing to close yet */ }
+    try {
+      closeDb();
+    } catch {
+      /* nothing to close yet */
+    }
     initDatabase(TEST_DIR);
     getDb().exec("DELETE FROM agents; DELETE FROM file_activity;");
     registry = new AgentRegistry();
@@ -24,16 +28,24 @@ describe("Layer 0.5 annotation", () => {
     // Use the actual register signature (positional). If different in your codebase, adapt.
     registry.register("default", "alice", "A", []);
     registry.register("default", "bob", "B", []);
-    registry.setOnline("default", "alice"); registry.setOnline("default", "bob");
+    registry.setOnline("default", "alice");
+    registry.setOnline("default", "bob");
     // Bob recently edited foo.ts touching getById only
     fileTracker.log({
       org_id: "default",
-      session_id: "s", agent_id: "bob", tool_name: "Edit", file_path: "src/foo.ts",
+      session_id: "s",
+      agent_id: "bob",
+      tool_name: "Edit",
+      file_path: "src/foo.ts",
       symbols_touched: ["getById"],
     });
   });
   afterAll(async () => {
-    try { closeDb(); } catch { /* already closed */ }
+    try {
+      closeDb();
+    } catch {
+      /* already closed */
+    }
     // Windows can hold .db handles for many seconds after better-sqlite3 close()
     // (Defender / indexer / WAL teardown). Retry generously so cleanup wins
     // once the OS releases the file.
@@ -43,10 +55,12 @@ describe("Layer 0.5 annotation", () => {
   it("score stays 100 with annotated reason when symbols disjoint", () => {
     const scores = scorer.score({
       org_id: "default",
-      agent_id: "alice", target_modules: [], target_files: ["src/foo.ts"],
+      agent_id: "alice",
+      target_modules: [],
+      target_files: ["src/foo.ts"],
       target_symbols: ["update"],
     });
-    const bob = scores.find(s => s.agent_id === "bob")!;
+    const bob = scores.find((s) => s.agent_id === "bob")!;
     expect(bob.score).toBe(100);
     expect(bob.reasons.join(" ")).toMatch(/disjoint symbols/);
   });
@@ -54,12 +68,12 @@ describe("Layer 0.5 annotation", () => {
   it("score 100 plain reason when target_symbols absent", () => {
     const scores = scorer.score({
       org_id: "default",
-      agent_id: "alice", target_modules: [], target_files: ["src/foo.ts"],
+      agent_id: "alice",
+      target_modules: [],
+      target_files: ["src/foo.ts"],
     });
-    const bob = scores.find(s => s.agent_id === "bob")!;
+    const bob = scores.find((s) => s.agent_id === "bob")!;
     expect(bob.score).toBe(100);
     expect(bob.reasons.join(" ")).not.toMatch(/disjoint/);
   });
 });
-
-

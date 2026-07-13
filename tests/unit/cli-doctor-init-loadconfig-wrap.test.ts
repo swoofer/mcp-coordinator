@@ -47,9 +47,8 @@ describe("cli/doctor — malformed config.json is a diagnostic, not a crash (iss
     // loadConfig with an explicit configDir so the throw path is exercised
     // for real (no mocking of the throw itself).
     vi.doMock("../../cli/config.js", async () => {
-      const real = await vi.importActual<typeof import("../../cli/config.js")>(
-        "../../cli/config.js",
-      );
+      const real =
+        await vi.importActual<typeof import("../../cli/config.js")>("../../cli/config.js");
       return {
         ...real,
         getConfigDir: () => tmpConfigDir,
@@ -155,9 +154,8 @@ describe("cli/init — malformed config.json is overwritten with a warning (issu
     // We delegate to the real implementations with an explicit configDir,
     // so the parse-throw path and the on-disk write are both genuine.
     vi.doMock("../../cli/config.js", async () => {
-      const real = await vi.importActual<typeof import("../../cli/config.js")>(
-        "../../cli/config.js",
-      );
+      const real =
+        await vi.importActual<typeof import("../../cli/config.js")>("../../cli/config.js");
       return {
         ...real,
         getConfigDir: () => tmpConfigDir,

@@ -12,10 +12,7 @@ import {
 } from "../../cli/encryption/verify.js";
 import { createEncryptionCommand } from "../../cli/encryption/index.js";
 import { EnvelopeEncryption } from "../../src/security/envelope-encryption.js";
-import {
-  decodeMasterKey,
-  computeKeyFingerprint,
-} from "../../src/security/master-key.js";
+import { decodeMasterKey, computeKeyFingerprint } from "../../src/security/master-key.js";
 
 const KEY_A_HEX = randomBytes(32).toString("hex");
 const KEY_B_HEX = randomBytes(32).toString("hex");
@@ -59,9 +56,9 @@ function seedUsers(db: Database.Database, rows: SeedRow[]): void {
 }
 
 function setStoredFingerprint(db: Database.Database, fp: string): void {
-  db.prepare(
-    "INSERT INTO system_config (key, value) VALUES ('encryption.key_fingerprint', ?)",
-  ).run(fp);
+  db.prepare("INSERT INTO system_config (key, value) VALUES ('encryption.key_fingerprint', ?)").run(
+    fp,
+  );
 }
 
 describe("cli encryption verify — happy paths", () => {
@@ -378,9 +375,7 @@ describe("cli encryption verify — guards", () => {
   });
 
   it("malformed master key throws (decodeMasterKey)", () => {
-    expect(() =>
-      runVerify({ encryptionKey: "not-a-real-key", configDir, dataDir }),
-    ).toThrow();
+    expect(() => runVerify({ encryptionKey: "not-a-real-key", configDir, dataDir })).toThrow();
   });
 
   it("unrecognized decrypt errors are re-thrown (catch-all else branch)", () => {
@@ -401,15 +396,13 @@ describe("cli encryption verify — guards", () => {
     ]);
     db.close();
 
-    const spy = vi
-      .spyOn(EnvelopeEncryption.prototype, "decrypt")
-      .mockImplementation(() => {
-        throw new Error("unexpected non-decryption error");
-      });
+    const spy = vi.spyOn(EnvelopeEncryption.prototype, "decrypt").mockImplementation(() => {
+      throw new Error("unexpected non-decryption error");
+    });
     try {
-      expect(() =>
-        runVerify({ encryptionKey: KEY_A_HEX, configDir, dataDir }),
-      ).toThrow(/unexpected non-decryption error/);
+      expect(() => runVerify({ encryptionKey: KEY_A_HEX, configDir, dataDir })).toThrow(
+        /unexpected non-decryption error/,
+      );
     } finally {
       spy.mockRestore();
     }
@@ -521,9 +514,7 @@ describe("cli encryption verify — command + wiring", () => {
       .mockImplementation((code?: string | number | null) => {
         throw new Error(`__exit:${code}`);
       });
-    const stdoutSpy = vi
-      .spyOn(process.stdout, "write")
-      .mockReturnValue(true);
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockReturnValue(true);
     try {
       const cmd = createVerifyCommand();
       expect(() => cmd.parse([], { from: "user" })).toThrow(/__exit:0/);
@@ -565,9 +556,7 @@ describe("cli encryption verify — command + wiring", () => {
       .mockImplementation((code?: string | number | null) => {
         throw new Error(`__exit:${code}`);
       });
-    const stderrSpy = vi
-      .spyOn(process.stderr, "write")
-      .mockReturnValue(true);
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockReturnValue(true);
     try {
       const cmd = createVerifyCommand();
       expect(() => cmd.parse([], { from: "user" })).toThrow(/__exit:2/);
@@ -608,9 +597,7 @@ describe("cli encryption verify — command + wiring", () => {
       .mockImplementation((code?: string | number | null) => {
         throw new Error(`__exit:${code}`);
       });
-    const stderrSpy = vi
-      .spyOn(process.stderr, "write")
-      .mockReturnValue(true);
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockReturnValue(true);
     try {
       const cmd = createVerifyCommand();
       expect(() => cmd.parse([], { from: "user" })).toThrow(/__exit:2/);
@@ -652,14 +639,10 @@ describe("cli encryption verify — command + wiring", () => {
       .mockImplementation((code?: string | number | null) => {
         throw new Error(`__exit:${code}`);
       });
-    const stdoutSpy = vi
-      .spyOn(process.stdout, "write")
-      .mockReturnValue(true);
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockReturnValue(true);
     try {
       const cmd = createVerifyCommand();
-      expect(() =>
-        cmd.parse(["--samples", "0"], { from: "user" }),
-      ).toThrow(/__exit:0/);
+      expect(() => cmd.parse(["--samples", "0"], { from: "user" })).toThrow(/__exit:0/);
       expect(stdoutSpy).toHaveBeenCalled();
     } finally {
       exitSpy.mockRestore();

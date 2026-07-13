@@ -35,7 +35,13 @@ import fs from "fs";
 
 const DIR = "data-test-handle-rest-errors";
 const SECRET = "test-secret-at-least-32-characters-long!";
-const CLAIMS: AuthClaims = { sub: "agent-a", user_id: "user-a", org: "org-hr", role: "agent", jti: "j-hr" };
+const CLAIMS: AuthClaims = {
+  sub: "agent-a",
+  user_id: "user-a",
+  org: "org-hr",
+  role: "agent",
+  jti: "j-hr",
+};
 
 let services: CoordinatorServices;
 
@@ -90,10 +96,18 @@ function mockRes(): { res: ServerResponse; getStatus: () => number; getBody: () 
   const chunks: string[] = [];
   const res = {
     setHeader: () => {},
-    writeHead(s: number) { status = s; },
-    end(buf?: string) { if (buf) chunks.push(buf); },
+    writeHead(s: number) {
+      status = s;
+    },
+    end(buf?: string) {
+      if (buf) chunks.push(buf);
+    },
   } as unknown as ServerResponse;
-  return { res, getStatus: () => status, getBody: () => (chunks.length ? JSON.parse(chunks.join("")) : null) };
+  return {
+    res,
+    getStatus: () => status,
+    getBody: () => (chunks.length ? JSON.parse(chunks.join("")) : null),
+  };
 }
 
 function makeCtx(overrides?: Partial<RestContext>): RestContext {
@@ -135,7 +149,10 @@ describe("POST /api/post-to-thread — 404/410 branches", () => {
   it("404 thread_not_found for an unknown thread_id", async () => {
     const { res, getStatus, getBody } = mockRes();
     await handleRest(
-      mockReq({ thread_id: "nope", agent_id: "agent-a", type: "context", content: "hi" }, "/api/post-to-thread"),
+      mockReq(
+        { thread_id: "nope", agent_id: "agent-a", type: "context", content: "hi" },
+        "/api/post-to-thread",
+      ),
       res,
       makeCtx(),
     );
@@ -145,13 +162,20 @@ describe("POST /api/post-to-thread — 404/410 branches", () => {
 
   it("410 thread_cancelled for a cancelled thread", async () => {
     const thread = services.consultation.announceWork("org-hr", {
-      agent_id: "agent-a", subject: "s", target_modules: [], target_files: [], keep_open: true,
+      agent_id: "agent-a",
+      subject: "s",
+      target_modules: [],
+      target_files: [],
+      keep_open: true,
     });
     services.consultation.cancelThread("org-hr", thread.id, "agent-a");
 
     const { res, getStatus, getBody } = mockRes();
     await handleRest(
-      mockReq({ thread_id: thread.id, agent_id: "agent-a", type: "context", content: "too late" }, "/api/post-to-thread"),
+      mockReq(
+        { thread_id: thread.id, agent_id: "agent-a", type: "context", content: "too late" },
+        "/api/post-to-thread",
+      ),
       res,
       makeCtx(),
     );
@@ -172,18 +196,35 @@ describe("GET /api/consultation/:id/status — 404 branch", () => {
 describe("POST /api/claim-task — already-claimed / assigned_to detail branches", () => {
   it("success:false with claimed_by populated when the thread is already claimed", async () => {
     const thread = services.consultation.announceWork("org-hr", {
-      agent_id: "agent-a", subject: "s", target_modules: [], target_files: [], keep_open: true,
+      agent_id: "agent-a",
+      subject: "s",
+      target_modules: [],
+      target_files: [],
+      keep_open: true,
     });
     services.registry.register("org-hr", "agent-b", "Agent B", []);
     // First claim succeeds.
     const first = mockRes();
-    await handleRest(mockReq({ thread_id: thread.id, agent_id: "agent-a" }, "/api/claim-task"), first.res, makeCtx());
+    await handleRest(
+      mockReq({ thread_id: thread.id, agent_id: "agent-a" }, "/api/claim-task"),
+      first.res,
+      makeCtx(),
+    );
     expect((first.getBody() as { success: boolean }).success).toBe(true);
 
     // Second claim by a different agent must report WHY it failed.
     const second = mockRes();
-    await handleRest(mockReq({ thread_id: thread.id, agent_id: "agent-b" }, "/api/claim-task"), second.res, makeCtx());
-    const body = second.getBody() as { success: boolean; claimed_by: string | null; assigned_to: string | null; status: string };
+    await handleRest(
+      mockReq({ thread_id: thread.id, agent_id: "agent-b" }, "/api/claim-task"),
+      second.res,
+      makeCtx(),
+    );
+    const body = second.getBody() as {
+      success: boolean;
+      claimed_by: string | null;
+      assigned_to: string | null;
+      status: string;
+    };
     expect(body.success).toBe(false);
     expect(body.claimed_by).toBe("agent-a");
     expect(body.status).toBe("open");
@@ -192,11 +233,19 @@ describe("POST /api/claim-task — already-claimed / assigned_to detail branches
   it("success:false with assigned_to populated when the thread is directed to a different agent", async () => {
     services.registry.register("org-hr", "agent-target", "Target", []);
     const thread = services.consultation.announceWork("org-hr", {
-      agent_id: "agent-a", subject: "directed", target_modules: [], target_files: [],
-      keep_open: true, assigned_to: "agent-target",
+      agent_id: "agent-a",
+      subject: "directed",
+      target_modules: [],
+      target_files: [],
+      keep_open: true,
+      assigned_to: "agent-target",
     });
     const { res, getBody } = mockRes();
-    await handleRest(mockReq({ thread_id: thread.id, agent_id: "agent-a" }, "/api/claim-task"), res, makeCtx());
+    await handleRest(
+      mockReq({ thread_id: thread.id, agent_id: "agent-a" }, "/api/claim-task"),
+      res,
+      makeCtx(),
+    );
     const body = getBody() as { success: boolean; assigned_to: string | null };
     expect(body.success).toBe(false);
     expect(body.assigned_to).toBe("agent-target");
@@ -206,13 +255,25 @@ describe("POST /api/claim-task — already-claimed / assigned_to detail branches
 describe("POST /api/unclaim-task — poison-after-threshold branch", () => {
   it("flips the thread to poisoned after repeated unclaims (POISON_THRESHOLD=2)", async () => {
     const thread = services.consultation.announceWork("org-hr", {
-      agent_id: "agent-a", subject: "s", target_modules: [], target_files: [], keep_open: true,
+      agent_id: "agent-a",
+      subject: "s",
+      target_modules: [],
+      target_files: [],
+      keep_open: true,
     });
 
     async function claimThenUnclaim(): Promise<{ success: boolean; poisoned: boolean }> {
-      await handleRest(mockReq({ thread_id: thread.id, agent_id: "agent-a" }, "/api/claim-task"), mockRes().res, makeCtx());
+      await handleRest(
+        mockReq({ thread_id: thread.id, agent_id: "agent-a" }, "/api/claim-task"),
+        mockRes().res,
+        makeCtx(),
+      );
       const { res, getBody } = mockRes();
-      await handleRest(mockReq({ thread_id: thread.id, agent_id: "agent-a" }, "/api/unclaim-task"), res, makeCtx());
+      await handleRest(
+        mockReq({ thread_id: thread.id, agent_id: "agent-a" }, "/api/unclaim-task"),
+        res,
+        makeCtx(),
+      );
       return getBody() as { success: boolean; poisoned: boolean };
     }
 
@@ -225,7 +286,11 @@ describe("POST /api/unclaim-task — poison-after-threshold branch", () => {
 
     // A poisoned thread can no longer be claimed (status != 'open').
     const { res, getBody } = mockRes();
-    await handleRest(mockReq({ thread_id: thread.id, agent_id: "agent-a" }, "/api/claim-task"), res, makeCtx());
+    await handleRest(
+      mockReq({ thread_id: thread.id, agent_id: "agent-a" }, "/api/claim-task"),
+      res,
+      makeCtx(),
+    );
     const claimAttempt = getBody() as { success: boolean; status: string };
     expect(claimAttempt.success).toBe(false);
     expect(claimAttempt.status).toBe("poisoned");
@@ -237,23 +302,40 @@ describe("GET/POST /api/quota, /api/quota/refresh — 503 fail-open branch", () 
     return {
       get: async () => null,
       refresh: async () => null,
-      snapshot: () => ({ lastError: "Claude OAuth credential reader not implemented", cooldownUntil: null }),
+      snapshot: () => ({
+        lastError: "Claude OAuth credential reader not implemented",
+        cooldownUntil: null,
+      }),
     };
   }
   function fakeAvailableQuotaCache() {
     return {
-      get: async () => ({ fiveHour: 12, sevenDay: 34, sevenDaySonnet: 56, fetchedAt: "2026-01-01T00:00:00.000Z" }),
-      refresh: async () => ({ fiveHour: 12, sevenDay: 34, sevenDaySonnet: 56, fetchedAt: "2026-01-01T00:00:00.000Z" }),
+      get: async () => ({
+        fiveHour: 12,
+        sevenDay: 34,
+        sevenDaySonnet: 56,
+        fetchedAt: "2026-01-01T00:00:00.000Z",
+      }),
+      refresh: async () => ({
+        fiveHour: 12,
+        sevenDay: 34,
+        sevenDaySonnet: 56,
+        fetchedAt: "2026-01-01T00:00:00.000Z",
+      }),
       snapshot: () => ({ lastError: null, cooldownUntil: null }),
     };
   }
 
   it("GET /api/quota returns 503 with the cached error reason when unavailable", async () => {
-    services.quotaCache = fakeUnavailableQuotaCache() as unknown as CoordinatorServices["quotaCache"];
+    services.quotaCache =
+      fakeUnavailableQuotaCache() as unknown as CoordinatorServices["quotaCache"];
     const { res, getStatus, getBody } = mockRes();
     await handleRest(mockReq({}, "/api/quota", "GET"), res, makeCtx());
     expect(getStatus()).toBe(503);
-    expect(getBody()).toMatchObject({ error: "quota unavailable", reason: "Claude OAuth credential reader not implemented" });
+    expect(getBody()).toMatchObject({
+      error: "quota unavailable",
+      reason: "Claude OAuth credential reader not implemented",
+    });
   });
 
   it("GET /api/quota returns 200 with quota fields when available", async () => {
@@ -261,11 +343,17 @@ describe("GET/POST /api/quota, /api/quota/refresh — 503 fail-open branch", () 
     const { res, getStatus, getBody } = mockRes();
     await handleRest(mockReq({}, "/api/quota", "GET"), res, makeCtx());
     expect(getStatus()).toBe(200);
-    expect(getBody()).toEqual({ five_hour: 12, seven_day: 34, seven_day_sonnet: 56, fetched_at: "2026-01-01T00:00:00.000Z" });
+    expect(getBody()).toEqual({
+      five_hour: 12,
+      seven_day: 34,
+      seven_day_sonnet: 56,
+      fetched_at: "2026-01-01T00:00:00.000Z",
+    });
   });
 
   it("POST /api/quota/refresh returns 503 when the forced refresh still fails", async () => {
-    services.quotaCache = fakeUnavailableQuotaCache() as unknown as CoordinatorServices["quotaCache"];
+    services.quotaCache =
+      fakeUnavailableQuotaCache() as unknown as CoordinatorServices["quotaCache"];
     const { res, getStatus, getBody } = mockRes();
     await handleRest(mockReq({}, "/api/quota/refresh"), res, makeCtx());
     expect(getStatus()).toBe(503);
@@ -306,7 +394,11 @@ describe("POST /api/reset — guard branches", () => {
   it("200 and wipes coordination tables when allowed (NODE_ENV=test)", async () => {
     process.env.NODE_ENV = "test";
     const thread = services.consultation.announceWork("org-hr", {
-      agent_id: "agent-a", subject: "will be wiped", target_modules: [], target_files: [], keep_open: true,
+      agent_id: "agent-a",
+      subject: "will be wiped",
+      target_modules: [],
+      target_files: [],
+      keep_open: true,
     });
     expect(services.consultation.getThread("org-hr", thread.id)).not.toBeNull();
 

@@ -160,9 +160,9 @@ describe("T41 init phase2 wizard — happy path", () => {
     const io = makeIO({
       promptAnswers: [
         "http://localhost:3100", // PUBLIC_URL
-        "Iv1.deadbeef",          // CLIENT_ID
-        "shhhhh",                // CLIENT_SECRET
-        "acme",                  // GITHUB_ORG
+        "Iv1.deadbeef", // CLIENT_ID
+        "shhhhh", // CLIENT_SECRET
+        "acme", // GITHUB_ORG
       ],
       jwtSecret: FAKE_JWT_43,
       isPosix: true,
@@ -178,9 +178,7 @@ describe("T41 init phase2 wizard — happy path", () => {
     expect(env.COORDINATOR_GITHUB_ORG).toBe("acme");
     expect(env.COORDINATOR_JWT_SECRET).toBe(FAKE_JWT_43);
     expect(env.COORDINATOR_JWT_SECRET.length).toBe(43);
-    expect(io.chmods).toEqual([
-      { path: io.writes[0].path, mode: 0o600 },
-    ]);
+    expect(io.chmods).toEqual([{ path: io.writes[0].path, mode: 0o600 }]);
     writtenPath = io.writes[0].path;
     expect(writtenPath).toContain(".env.test");
   });
@@ -213,9 +211,9 @@ describe("T41 init phase2 wizard — PUBLIC_URL validation", () => {
   it("case 3: http:// non-localhost requires confirm — declining proceeds to next attempts then aborts", async () => {
     const io = makeIO({
       promptAnswers: [
-        "http://example.com",   // attempt 1 — declined
-        "http://example.com",   // attempt 2 — declined
-        "http://example.com",   // attempt 3 — declined → wizard exits
+        "http://example.com", // attempt 1 — declined
+        "http://example.com", // attempt 2 — declined
+        "http://example.com", // attempt 3 — declined → wizard exits
       ],
       confirmAnswers: [false, false, false],
     });
@@ -223,19 +221,12 @@ describe("T41 init phase2 wizard — PUBLIC_URL validation", () => {
     expect(result.exitCode).toBe(1);
     expect(io.writes).toHaveLength(0);
     // Each attempt should have warned about INSECURE_COOKIES
-    expect(
-      io.prints.some((p) => p.includes("COORDINATOR_INSECURE_COOKIES")),
-    ).toBe(true);
+    expect(io.prints.some((p) => p.includes("COORDINATOR_INSECURE_COOKIES"))).toBe(true);
   });
 
   it("case 4: http://localhost is accepted without insecure-cookies confirmation", async () => {
     const io = makeIO({
-      promptAnswers: [
-        "http://localhost:3100",
-        "id",
-        "secret",
-        "acme",
-      ],
+      promptAnswers: ["http://localhost:3100", "id", "secret", "acme"],
       // No confirm should fire for the URL step
     });
     await runCapturingExit(io, {});

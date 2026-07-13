@@ -1,11 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import Database from "better-sqlite3";
 import type { DatabaseAdapter } from "../../src/db-adapter.js";
-import {
-  makeTestEncryption,
-  withEncryptionEnv,
-  selectIdpToken,
-} from "../helpers/encryption.js";
+import { makeTestEncryption, withEncryptionEnv, selectIdpToken } from "../helpers/encryption.js";
 
 describe("makeTestEncryption", () => {
   it("returns a provider that round-trips with a valid context", () => {
@@ -108,9 +104,11 @@ describe("selectIdpToken", () => {
       column: "idp_access_token",
       user_id: userId,
     });
-    db.prepare(
-      `INSERT INTO users (id, primary_org_id, idp_access_token) VALUES (?, ?, ?)`,
-    ).run(userId, orgId, ct);
+    db.prepare(`INSERT INTO users (id, primary_org_id, idp_access_token) VALUES (?, ?, ?)`).run(
+      userId,
+      orgId,
+      ct,
+    );
 
     const got = selectIdpToken(
       db as unknown as DatabaseAdapter,
@@ -123,9 +121,10 @@ describe("selectIdpToken", () => {
 
   it("returns null when the column is NULL", () => {
     const { provider } = makeTestEncryption();
-    db.prepare(
-      `INSERT INTO users (id, primary_org_id, idp_access_token) VALUES (?, ?, NULL)`,
-    ).run("user-null", "org-null");
+    db.prepare(`INSERT INTO users (id, primary_org_id, idp_access_token) VALUES (?, ?, NULL)`).run(
+      "user-null",
+      "org-null",
+    );
 
     const got = selectIdpToken(
       db as unknown as DatabaseAdapter,

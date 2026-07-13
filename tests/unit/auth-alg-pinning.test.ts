@@ -12,7 +12,10 @@ beforeAll(() => {
   initDatabase(DIR);
   initAuth(SECRET);
 });
-afterAll(() => { closeDb(); fs.rmSync(DIR, { recursive: true, force: true }); });
+afterAll(() => {
+  closeDb();
+  fs.rmSync(DIR, { recursive: true, force: true });
+});
 
 describe("JWS algorithm pinning", () => {
   // IMPORTANT: BOTH cases below MUST stay in the suite. Without the `{ algorithms: ['HS256'] }`
@@ -21,9 +24,13 @@ describe("JWS algorithm pinning", () => {
   // not redundant — it guards against future jose versions that might relax defaults.
   it("rejects alg=none tokens", async () => {
     const header = Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString("base64url");
-    const payload = Buffer.from(JSON.stringify({
-      sub: "attacker", role: "admin", exp: Math.floor(Date.now() / 1000) + 3600,
-    })).toString("base64url");
+    const payload = Buffer.from(
+      JSON.stringify({
+        sub: "attacker",
+        role: "admin",
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      }),
+    ).toString("base64url");
     const token = `${header}.${payload}.`;
     await expect(verifyToken(token)).rejects.toThrow(/algorithm|alg|signature|none/i);
   });

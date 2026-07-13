@@ -35,10 +35,7 @@
 import { Command } from "commander";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js";
+import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import mqtt, { type MqttClient } from "mqtt";
 import { z } from "zod";
 import { loadConfig } from "./config.js";
@@ -240,7 +237,7 @@ export const PostToThreadArgsSchema = z.object({
 export type PostToThreadArgs = z.infer<typeof PostToThreadArgsSchema>;
 
 const POST_TO_THREAD_TOOL_DESCRIPTION =
-  'Reply into a consultation thread when the channel surfaces a ' +
+  "Reply into a consultation thread when the channel surfaces a " +
   '<channel event_type="consultation_opened" thread_id="...">. Use to add ' +
   "context, propose a resolution, or just acknowledge the thread.";
 
@@ -380,7 +377,11 @@ export function buildChannelServer(opts: {
     }
 
     const { thread_id, content, agent_id } = parsed.data;
-    const { topic, payload, opts: publishOpts } = buildReplyPublish({
+    const {
+      topic,
+      payload,
+      opts: publishOpts,
+    } = buildReplyPublish({
       org,
       thread_id,
       agent_id: agent_id ?? CHANNEL_REPLY_AGENT_ID,
@@ -508,54 +509,59 @@ export function createChannelCommand(): Command {
       "--org <slug>",
       "Org slug used when publishing replies via post_to_thread (defaults to env COORDINATOR_ORG or 'default')",
     )
-    .action(async (rawOpts: { brokerUrl?: string; mqttUsername?: string; mqttPassword?: string; org?: string }) => {
-      // Resolve broker URL: flag > env > config-derived default.
-      // The daemon exposes MQTT on a separate TCP port from HTTP. Until the
-      // daemon publishes the MQTT port via config.json explicitly, we default
-      // to mqtt://127.0.0.1:1883 (the conventional broker port). loadConfig()
-      // is still consulted for forward compat — if a future schema adds an
-      // explicit `server.mqtt_port`, this branch will be widened to use it.
-      void loadConfig(); // touched intentionally — surfaces config errors early
-      const brokerUrl =
-        rawOpts.brokerUrl ??
-        process.env.COORDINATOR_MQTT_URL ??
-        "mqtt://127.0.0.1:1883";
+    .action(
+      async (rawOpts: {
+        brokerUrl?: string;
+        mqttUsername?: string;
+        mqttPassword?: string;
+        org?: string;
+      }) => {
+        // Resolve broker URL: flag > env > config-derived default.
+        // The daemon exposes MQTT on a separate TCP port from HTTP. Until the
+        // daemon publishes the MQTT port via config.json explicitly, we default
+        // to mqtt://127.0.0.1:1883 (the conventional broker port). loadConfig()
+        // is still consulted for forward compat — if a future schema adds an
+        // explicit `server.mqtt_port`, this branch will be widened to use it.
+        void loadConfig(); // touched intentionally — surfaces config errors early
+        const brokerUrl =
+          rawOpts.brokerUrl ?? process.env.COORDINATOR_MQTT_URL ?? "mqtt://127.0.0.1:1883";
 
-      const handle = buildChannelServer({
-        brokerUrl,
-        username: rawOpts.mqttUsername ?? process.env.COORDINATOR_MQTT_USER,
-        password: rawOpts.mqttPassword ?? process.env.COORDINATOR_MQTT_PASSWORD,
-        org: rawOpts.org ?? process.env.COORDINATOR_ORG,
-      });
+        const handle = buildChannelServer({
+          brokerUrl,
+          username: rawOpts.mqttUsername ?? process.env.COORDINATOR_MQTT_USER,
+          password: rawOpts.mqttPassword ?? process.env.COORDINATOR_MQTT_PASSWORD,
+          org: rawOpts.org ?? process.env.COORDINATOR_ORG,
+        });
 
-      const transport = new StdioServerTransport();
-      await handle.server.connect(transport);
+        const transport = new StdioServerTransport();
+        await handle.server.connect(transport);
 
-      // Surface SIGINT/SIGTERM cleanly — Claude Code may send these to shut
-      // down the channel host. We ALSO listen for stdin EOF: when the parent
-      // process closes our stdin (the official MCP SDK close path), we exit
-      // gracefully without waiting for a signal. This matters on Windows
-      // where signal forwarding through `npx`/`tsx` shims is unreliable.
-      let shuttingDown = false;
-      const shutdown = async (): Promise<void> => {
-        if (shuttingDown) return;
-        shuttingDown = true;
-        await handle.stop();
-        process.exit(0);
-      };
-      process.on("SIGINT", () => void shutdown());
-      process.on("SIGTERM", () => void shutdown());
-      process.stdin.on("end", () => void shutdown());
-      process.stdin.on("close", () => void shutdown());
+        // Surface SIGINT/SIGTERM cleanly — Claude Code may send these to shut
+        // down the channel host. We ALSO listen for stdin EOF: when the parent
+        // process closes our stdin (the official MCP SDK close path), we exit
+        // gracefully without waiting for a signal. This matters on Windows
+        // where signal forwarding through `npx`/`tsx` shims is unreliable.
+        let shuttingDown = false;
+        const shutdown = async (): Promise<void> => {
+          if (shuttingDown) return;
+          shuttingDown = true;
+          await handle.stop();
+          process.exit(0);
+        };
+        process.on("SIGINT", () => void shutdown());
+        process.on("SIGTERM", () => void shutdown());
+        process.stdin.on("end", () => void shutdown());
+        process.stdin.on("close", () => void shutdown());
 
-      // Don't await ready — the stdio handshake should complete even if MQTT
-      // is still connecting. Surface readiness on stderr for operators.
-      handle.ready.then(
-        () => console.error("[channel] subscriptions active"),
-        (err: unknown) => {
-          const msg = err instanceof Error ? err.message : String(err);
-          console.error("[channel] subscribe failed:", msg);
-        },
-      );
-    });
+        // Don't await ready — the stdio handshake should complete even if MQTT
+        // is still connecting. Surface readiness on stderr for operators.
+        handle.ready.then(
+          () => console.error("[channel] subscriptions active"),
+          (err: unknown) => {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error("[channel] subscribe failed:", msg);
+          },
+        );
+      },
+    );
 }

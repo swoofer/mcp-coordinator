@@ -139,4 +139,3 @@ describe("Logger — stdio mode routes ALL levels to stderr, never stdout (proto
     });
   });
 });
-

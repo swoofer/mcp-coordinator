@@ -40,7 +40,11 @@ describe("DatabaseAdapter interface", () => {
 describe("withTransaction", () => {
   function makeAdapter(): DatabaseAdapter {
     return {
-      prepare: () => ({ run: () => ({ changes: 0, lastInsertRowid: 0 }), get: () => undefined, all: () => [] }),
+      prepare: () => ({
+        run: () => ({ changes: 0, lastInsertRowid: 0 }),
+        get: () => undefined,
+        all: () => [],
+      }),
       exec: () => {},
       close: () => {},
       // The fake transaction simply runs the function — better-sqlite3 / bun:sqlite
@@ -57,7 +61,11 @@ describe("withTransaction", () => {
 
   it("propagates errors from the inner function", () => {
     const db = makeAdapter();
-    expect(() => withTransaction(db, () => { throw new Error("boom"); })).toThrow("boom");
+    expect(() =>
+      withTransaction(db, () => {
+        throw new Error("boom");
+      }),
+    ).toThrow("boom");
   });
 
   it("invokes the underlying db.transaction wrapper", () => {

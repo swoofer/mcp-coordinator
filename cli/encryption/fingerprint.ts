@@ -1,8 +1,5 @@
 import { Command } from "commander";
-import {
-  decodeMasterKey,
-  computeKeyFingerprint,
-} from "../../src/security/master-key.js";
+import { decodeMasterKey, computeKeyFingerprint } from "../../src/security/master-key.js";
 
 export interface FingerprintOpts {
   /** Test injection seam. */
@@ -22,9 +19,7 @@ export interface FingerprintResult {
  *   0 — key decoded successfully; `message` is the 16-hex-char fingerprint.
  *   2 — missing or malformed `COORDINATOR_ENCRYPTION_KEY`.
  */
-export function runFingerprint(
-  opts: FingerprintOpts = {},
-): FingerprintResult {
+export function runFingerprint(opts: FingerprintOpts = {}): FingerprintResult {
   const rawKey = opts.encryptionKey ?? process.env.COORDINATOR_ENCRYPTION_KEY;
   if (!rawKey) {
     return {
@@ -48,9 +43,7 @@ export function runFingerprint(
 
 export function createFingerprintCommand(): Command {
   return new Command("fingerprint")
-    .description(
-      "Print the 16-hex-char fingerprint of COORDINATOR_ENCRYPTION_KEY",
-    )
+    .description("Print the 16-hex-char fingerprint of COORDINATOR_ENCRYPTION_KEY")
     .action(() => {
       const result = runFingerprint();
       const stream = result.exitCode === 0 ? process.stdout : process.stderr;

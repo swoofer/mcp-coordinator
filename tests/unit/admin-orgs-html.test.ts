@@ -34,15 +34,11 @@ const html = readFileSync(HTML_PATH, "utf-8");
 describe("admin-orgs.html — T11 smoke", () => {
   describe("external asset wiring", () => {
     it("links the shared admin.css stylesheet", () => {
-      expect(html).toMatch(
-        /<link\s+rel="stylesheet"\s+href="admin\.css"\s*>/,
-      );
+      expect(html).toMatch(/<link\s+rel="stylesheet"\s+href="admin\.css"\s*>/);
     });
 
     it("loads admin-orgs.js as an external ES module", () => {
-      expect(html).toMatch(
-        /<script\s+type="module"\s+src="admin-orgs\.js"\s*><\/script>/,
-      );
+      expect(html).toMatch(/<script\s+type="module"\s+src="admin-orgs\.js"\s*><\/script>/);
     });
   });
 

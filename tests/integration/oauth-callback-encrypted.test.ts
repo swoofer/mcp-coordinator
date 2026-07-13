@@ -1,11 +1,4 @@
-import {
-  describe,
-  it,
-  expect,
-  beforeAll,
-  afterAll,
-  beforeEach,
-} from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -17,10 +10,7 @@ import { RateLimiter } from "../../src/auth/rate-limit.js";
 import { buildJwtKeyRegistry } from "../../src/auth/jwt-keys.js";
 import { MembershipCache } from "../../src/auth/membership-cache.js";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
-import type {
-  IdPProvider,
-  ExchangeCodeResult,
-} from "../../src/auth/providers/types.js";
+import type { IdPProvider, ExchangeCodeResult } from "../../src/auth/providers/types.js";
 import { makeTestEncryption, selectIdpToken } from "../helpers/encryption.js";
 import type { DatabaseAdapter } from "../../src/db-adapter.js";
 
@@ -120,14 +110,7 @@ function insertState(state: string): void {
          (state, code_verifier, redirect_uri, provider, created_at, expires_at, consumed_at)
        VALUES (?, ?, ?, ?, ?, ?, NULL)`,
     )
-    .run(
-      state,
-      "v",
-      "http://localhost:3000/api/auth/oauth/callback",
-      "github",
-      now,
-      now + 600,
-    );
+    .run(state, "v", "http://localhost:3000/api/auth/oauth/callback", "github", now, now + 600);
 }
 
 describe("handleOAuthCallback — encryption at provisioning", () => {
@@ -181,14 +164,12 @@ describe("handleOAuthCallback — encryption at provisioning", () => {
 
     // Raw row → encrypted columns.
     const userRow = getDb()
-      .prepare(
-        "SELECT id, idp_access_token, idp_refresh_token FROM users WHERE idp_user_id = ?",
-      )
+      .prepare("SELECT id, idp_access_token, idp_refresh_token FROM users WHERE idp_user_id = ?")
       .get("gh-100") as {
-        id: string;
-        idp_access_token: string;
-        idp_refresh_token: string | null;
-      };
+      id: string;
+      idp_access_token: string;
+      idp_refresh_token: string | null;
+    };
     expect(userRow).toBeDefined();
     expect(userRow.idp_access_token.startsWith("enc:v1:")).toBe(true);
     // Provider returned a refreshToken too — should also be encrypted.

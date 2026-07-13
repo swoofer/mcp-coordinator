@@ -127,12 +127,16 @@ export class QuotaCache {
    */
   async refresh(): Promise<QuotaInfo | null> {
     if (Date.now() < this.cooldownUntil) {
-      this.logger?.debug({ cooldown_ms_remaining: this.cooldownUntil - Date.now() }, "quota refresh skipped — 429 cool-down active");
+      this.logger?.debug(
+        { cooldown_ms_remaining: this.cooldownUntil - Date.now() },
+        "quota refresh skipped — 429 cool-down active",
+      );
       return this.info;
     }
     if (this.refreshInFlight) return this.refreshInFlight;
-    this.refreshInFlight = this.doRefresh()
-      .finally(() => { this.refreshInFlight = null; });
+    this.refreshInFlight = this.doRefresh().finally(() => {
+      this.refreshInFlight = null;
+    });
     return this.refreshInFlight;
   }
 
@@ -142,7 +146,10 @@ export class QuotaCache {
       this.info = info;
       this.lastError = null;
       this.cooldownUntil = 0;
-      this.logger?.debug({ five_hour: info.fiveHour.utilization, seven_day: info.sevenDay.utilization }, "quota refreshed");
+      this.logger?.debug(
+        { five_hour: info.fiveHour.utilization, seven_day: info.sevenDay.utilization },
+        "quota refreshed",
+      );
       this.onRefresh?.(info);
       return info;
     } catch (err) {
@@ -154,9 +161,10 @@ export class QuotaCache {
       // otherwise apply a 5-minute cool-down. MIN_429_COOLDOWN_MS prevents
       // Retry-After spoofing / zero values from letting us spam.
       if (err instanceof QuotaUnavailableError && err.httpStatus === 429) {
-        const suggestedMs = err.retryAfterSeconds !== undefined
-          ? err.retryAfterSeconds * 1000
-          : DEFAULT_429_COOLDOWN_MS;
+        const suggestedMs =
+          err.retryAfterSeconds !== undefined
+            ? err.retryAfterSeconds * 1000
+            : DEFAULT_429_COOLDOWN_MS;
         const cooldownMs = Math.max(suggestedMs, MIN_429_COOLDOWN_MS);
         this.cooldownUntil = Date.now() + cooldownMs;
         this.logger?.warn({ cooldown_ms: cooldownMs }, "quota 429 — backing off");

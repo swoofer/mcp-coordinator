@@ -30,9 +30,7 @@ describe("GENESIS_HASH", () => {
 
 describe("canonicalRowFields", () => {
   it("emits keys in alphabetical order", () => {
-    const json = canonicalRowFields(
-      makeFields({ action: "x", actor_user_id: "u1", target: "t" }),
-    );
+    const json = canonicalRowFields(makeFields({ action: "x", actor_user_id: "u1", target: "t" }));
     const parsed = JSON.parse(json);
     const keys = Object.keys(parsed);
     expect(keys).toEqual([

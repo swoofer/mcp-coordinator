@@ -147,10 +147,9 @@ describe("Scenario 5 — cookie auth happy path", () => {
     seedOrg();
     seedUser();
     const token = await mintSessionJWT();
-    const result = await authenticateRequest(
-      mockReq({ cookie: sessionCookie(token) }),
-      { authEnabled: true },
-    );
+    const result = await authenticateRequest(mockReq({ cookie: sessionCookie(token) }), {
+      authEnabled: true,
+    });
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.claims.sub).toBe("u-alice");
@@ -166,10 +165,9 @@ describe("Scenario 5 — cookie auth happy path", () => {
   it("cookie absent + Authorization header (Phase 1) → Bearer path used", async () => {
     // Phase 1 Bearer token still works alongside Phase 2 wiring.
     const phase1Token = await createToken("agent-bearer", "agent");
-    const result = await authenticateRequest(
-      mockReq({ authorization: `Bearer ${phase1Token}` }),
-      { authEnabled: true },
-    );
+    const result = await authenticateRequest(mockReq({ authorization: `Bearer ${phase1Token}` }), {
+      authEnabled: true,
+    });
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.claims.sub).toBe("agent-bearer");
@@ -207,10 +205,9 @@ describe("Scenario 5 — cookie auth happy path", () => {
 // ---------------------------------------------------------------------------
 describe("Scenario 5 — cookie validation", () => {
   it("malformed JWT → 401 + WWW-Authenticate + Tier 2 audit auth.invalid_token", async () => {
-    const result = await authenticateRequest(
-      mockReq({ cookie: sessionCookie("not.a.jwt") }),
-      { authEnabled: true },
-    );
+    const result = await authenticateRequest(mockReq({ cookie: sessionCookie("not.a.jwt") }), {
+      authEnabled: true,
+    });
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.status).toBe(401);
@@ -223,10 +220,9 @@ describe("Scenario 5 — cookie validation", () => {
 
   it("JWT signed with wrong key → 401 + Tier 2 audit", async () => {
     const token = await mintSessionJWT({ secret: WRONG_SECRET });
-    const result = await authenticateRequest(
-      mockReq({ cookie: sessionCookie(token) }),
-      { authEnabled: true },
-    );
+    const result = await authenticateRequest(mockReq({ cookie: sessionCookie(token) }), {
+      authEnabled: true,
+    });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.status).toBe(401);
     expect(findAuditRows("auth.invalid_token").length).toBeGreaterThanOrEqual(1);
@@ -235,10 +231,9 @@ describe("Scenario 5 — cookie validation", () => {
   it("expired JWT (beyond ±30s clock tolerance) → 401 + Tier 2 audit", async () => {
     const past = Math.floor(Date.now() / 1000) - 200;
     const token = await mintSessionJWT({ iat: past, ttlSeconds: 60 });
-    const result = await authenticateRequest(
-      mockReq({ cookie: sessionCookie(token) }),
-      { authEnabled: true },
-    );
+    const result = await authenticateRequest(mockReq({ cookie: sessionCookie(token) }), {
+      authEnabled: true,
+    });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.status).toBe(401);
     expect(findAuditRows("auth.invalid_token").length).toBeGreaterThanOrEqual(1);
@@ -246,10 +241,9 @@ describe("Scenario 5 — cookie validation", () => {
 
   it("unknown kid → 401 + Tier 2 audit (reason mentions kid)", async () => {
     const token = await mintSessionJWT({ kid: "hs256-v999" });
-    const result = await authenticateRequest(
-      mockReq({ cookie: sessionCookie(token) }),
-      { authEnabled: true },
-    );
+    const result = await authenticateRequest(mockReq({ cookie: sessionCookie(token) }), {
+      authEnabled: true,
+    });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.status).toBe(401);
     const audits = findAuditRows("auth.invalid_token");
@@ -260,10 +254,9 @@ describe("Scenario 5 — cookie validation", () => {
 
   it("issuer mismatch → 401 + Tier 2 audit", async () => {
     const token = await mintSessionJWT({ issuer: "http://evil.example.com" });
-    const result = await authenticateRequest(
-      mockReq({ cookie: sessionCookie(token) }),
-      { authEnabled: true },
-    );
+    const result = await authenticateRequest(mockReq({ cookie: sessionCookie(token) }), {
+      authEnabled: true,
+    });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.status).toBe(401);
     expect(findAuditRows("auth.invalid_token").length).toBeGreaterThanOrEqual(1);
@@ -271,10 +264,9 @@ describe("Scenario 5 — cookie validation", () => {
 
   it("missing sub claim → 401 + Tier 2 audit (reason=missing_sub)", async () => {
     const token = await mintSessionJWT({ omitSub: true });
-    const result = await authenticateRequest(
-      mockReq({ cookie: sessionCookie(token) }),
-      { authEnabled: true },
-    );
+    const result = await authenticateRequest(mockReq({ cookie: sessionCookie(token) }), {
+      authEnabled: true,
+    });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.status).toBe(401);
     const audits = findAuditRows("auth.invalid_token");
@@ -297,10 +289,9 @@ describe("Scenario 5 — token_epoch", () => {
     // iat at "now - 5s" is still within exp window but < epoch.
     const iat = Math.floor(Date.now() / 1000) - 5;
     const token = await mintSessionJWT({ iat });
-    const result = await authenticateRequest(
-      mockReq({ cookie: sessionCookie(token) }),
-      { authEnabled: true },
-    );
+    const result = await authenticateRequest(mockReq({ cookie: sessionCookie(token) }), {
+      authEnabled: true,
+    });
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.status).toBe(401);
@@ -317,10 +308,9 @@ describe("Scenario 5 — token_epoch", () => {
     // Epoch = "now - 100" so a fresh iat=now is >= epoch.
     seedUser("u-alice", Math.floor(Date.now() / 1000) - 100);
     const token = await mintSessionJWT();
-    const result = await authenticateRequest(
-      mockReq({ cookie: sessionCookie(token) }),
-      { authEnabled: true },
-    );
+    const result = await authenticateRequest(mockReq({ cookie: sessionCookie(token) }), {
+      authEnabled: true,
+    });
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.claims.sub).toBe("u-alice");
   });
@@ -334,10 +324,9 @@ describe("Scenario 5 — Phase 2 not wired", () => {
     // Override the beforeEach's wiring.
     resetPhase2Auth();
     const token = await mintSessionJWT();
-    const result = await authenticateRequest(
-      mockReq({ cookie: sessionCookie(token) }),
-      { authEnabled: true },
-    );
+    const result = await authenticateRequest(mockReq({ cookie: sessionCookie(token) }), {
+      authEnabled: true,
+    });
     expect(result.ok).toBe(false);
     if (!result.ok) {
       // Falls through to Scenario (b) — missing Authorization header.
@@ -351,10 +340,9 @@ describe("Scenario 5 — Phase 2 not wired", () => {
   it("cookie present but Phase 2 not wired + authEnabled=false → Scenario (a) synthetic admin", async () => {
     resetPhase2Auth();
     const token = await mintSessionJWT();
-    const result = await authenticateRequest(
-      mockReq({ cookie: sessionCookie(token) }),
-      { authEnabled: false },
-    );
+    const result = await authenticateRequest(mockReq({ cookie: sessionCookie(token) }), {
+      authEnabled: false,
+    });
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.claims.sub).toBe("legacy");
@@ -389,10 +377,9 @@ describe("Scenario 5 — claim shape variations", () => {
         String(Math.floor(Date.now() / 1000)),
       );
     const token = await mintSessionJWT({ role: "service", serviceAccount: true });
-    const result = await authenticateRequest(
-      mockReq({ cookie: sessionCookie(token) }),
-      { authEnabled: true },
-    );
+    const result = await authenticateRequest(mockReq({ cookie: sessionCookie(token) }), {
+      authEnabled: true,
+    });
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.claims.role).toBe("service");
@@ -438,10 +425,9 @@ describe("Scenario 5 — backward compatibility", () => {
   });
 
   it("invalid Bearer token + no cookie → Phase 1 Scenario (d) 401 invalid_token", async () => {
-    const result = await authenticateRequest(
-      mockReq({ authorization: "Bearer not.a.jwt" }),
-      { authEnabled: true },
-    );
+    const result = await authenticateRequest(mockReq({ authorization: "Bearer not.a.jwt" }), {
+      authEnabled: true,
+    });
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.status).toBe(401);

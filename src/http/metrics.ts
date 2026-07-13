@@ -37,10 +37,7 @@ function isLoopback(remoteAddress: string | undefined): boolean {
   return remoteAddress.startsWith("127.");
 }
 
-function timingSafeBearerMatch(
-  header: string | undefined,
-  expected: string,
-): boolean {
+function timingSafeBearerMatch(header: string | undefined, expected: string): boolean {
   if (!header) return false;
   const prefix = "Bearer ";
   if (!header.startsWith(prefix)) return false;
@@ -66,10 +63,7 @@ export async function handleMetrics(
   const localhostOnly = opts.localhostOnly ?? true;
   const fromLoopback = isLoopback(req.socket?.remoteAddress);
   const bearerOk = opts.bearerToken
-    ? timingSafeBearerMatch(
-        req.headers["authorization"] as string | undefined,
-        opts.bearerToken,
-      )
+    ? timingSafeBearerMatch(req.headers["authorization"] as string | undefined, opts.bearerToken)
     : false;
 
   const allowed = (localhostOnly && fromLoopback) || bearerOk;

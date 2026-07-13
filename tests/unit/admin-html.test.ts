@@ -67,7 +67,7 @@ describe("admin.html (T10 landing page)", () => {
       expect(html).not.toMatch(/<style\b[^>]*>[\s\S]*?<\/style>/i);
     });
 
-    it("contains no inline style=\"...\" attributes", () => {
+    it('contains no inline style="..." attributes', () => {
       // CSP `style-src 'self'` (no `'unsafe-inline'`, no `style-src-attr`)
       // also rejects style attributes. Asserting their absence is the
       // simplest way to guarantee the page renders under the admin-asset

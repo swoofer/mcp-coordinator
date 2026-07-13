@@ -1,10 +1,7 @@
 import { Command } from "commander";
 import * as path from "node:path";
 import Database from "better-sqlite3";
-import {
-  decodeMasterKey,
-  computeKeyFingerprint,
-} from "../../src/security/master-key.js";
+import { decodeMasterKey, computeKeyFingerprint } from "../../src/security/master-key.js";
 import { EnvelopeEncryption } from "../../src/security/envelope-encryption.js";
 import { decryptNullable } from "../../src/security/encrypt-nullable.js";
 import {
@@ -80,9 +77,7 @@ export function runVerify(opts: VerifyOpts = {}): VerifyResult {
   const db = new Database(path.join(dataDir, "coordinator.db"));
   try {
     const stored = db
-      .prepare(
-        "SELECT value FROM system_config WHERE key = 'encryption.key_fingerprint'",
-      )
+      .prepare("SELECT value FROM system_config WHERE key = 'encryption.key_fingerprint'")
       .get() as { value: string } | undefined;
     const storedFingerprint = stored?.value ?? null;
 
@@ -127,8 +122,7 @@ export function runVerify(opts: VerifyOpts = {}): VerifyResult {
         unknown_version: 0,
         plaintext: 0,
         nullCount: 0,
-        message:
-          "No encrypted rows present yet (this is OK for fresh installs)",
+        message: "No encrypted rows present yet (this is OK for fresh installs)",
       };
     }
 
@@ -191,10 +185,8 @@ export function runVerify(opts: VerifyOpts = {}): VerifyResult {
 
 export function formatVerifyResult(r: VerifyResult): string {
   const lines = [r.message];
-  if (r.currentFingerprint)
-    lines.push(`current fingerprint:  ${r.currentFingerprint}`);
-  if (r.storedFingerprint)
-    lines.push(`stored fingerprint:   ${r.storedFingerprint}`);
+  if (r.currentFingerprint) lines.push(`current fingerprint:  ${r.currentFingerprint}`);
+  if (r.storedFingerprint) lines.push(`stored fingerprint:   ${r.storedFingerprint}`);
   if (
     r.decryptable +
       r.undecryptable_dek +
@@ -215,11 +207,7 @@ export function formatVerifyResult(r: VerifyResult): string {
 export function createVerifyCommand(): Command {
   return new Command("verify")
     .description("Verify the current encryption key can decrypt sampled rows")
-    .option(
-      "--samples <n>",
-      "number of random rows to sample",
-      String(DEFAULT_SAMPLES),
-    )
+    .option("--samples <n>", "number of random rows to sample", String(DEFAULT_SAMPLES))
     .action((opts: { samples: string }) => {
       const samples = Math.max(1, parseInt(String(opts.samples), 10));
       let result: VerifyResult;

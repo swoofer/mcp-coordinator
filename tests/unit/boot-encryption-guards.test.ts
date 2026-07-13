@@ -75,14 +75,18 @@ function seedEncryptedUsers(db: Database.Database, n = 2): void {
     "INSERT INTO users (id, idp_access_token, idp_refresh_token) VALUES (?, ?, ?)",
   );
   for (let i = 0; i < n; i++) {
-    ins.run(`user-${i.toString().padStart(8, "0")}-aaaa`, `enc:v1:fakeAccess${i}`, `enc:v1:fakeRefresh${i}`);
+    ins.run(
+      `user-${i.toString().padStart(8, "0")}-aaaa`,
+      `enc:v1:fakeAccess${i}`,
+      `enc:v1:fakeRefresh${i}`,
+    );
   }
 }
 
 function seedFingerprint(db: Database.Database, fp: string): void {
-  db.prepare(
-    "INSERT INTO system_config (key, value) VALUES ('encryption.key_fingerprint', ?)",
-  ).run(fp);
+  db.prepare("INSERT INTO system_config (key, value) VALUES ('encryption.key_fingerprint', ?)").run(
+    fp,
+  );
 }
 
 let db: Database.Database;
@@ -96,7 +100,11 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  try { db.close(); } catch { /* idempotent */ }
+  try {
+    db.close();
+  } catch {
+    /* idempotent */
+  }
 });
 
 function depsFor(env: NodeJS.ProcessEnv = {}): InitEncryptionDeps {
@@ -153,8 +161,7 @@ describe("runEncryptionGuards — branch matrix", () => {
   // Row 5
   it("hasEnc=true, key=absent, ALLOW_TL=unset → throws BootValidationError mentioning env var", () => {
     seedEncryptedUsers(db, 3);
-    expect(() => runEncryptionGuards(depsFor({}), null))
-      .toThrow(BootValidationError);
+    expect(() => runEncryptionGuards(depsFor({}), null)).toThrow(BootValidationError);
     try {
       runEncryptionGuards(depsFor({}), null);
     } catch (e) {
@@ -172,8 +179,7 @@ describe("runEncryptionGuards — branch matrix", () => {
       COORDINATOR_ALLOW_TOKEN_LOSS: "1",
       COORDINATOR_TOKEN_LOSS_CONFIRM: "WRONG_TOKEN",
     };
-    expect(() => runEncryptionGuards(depsFor(env), null))
-      .toThrow(BootValidationError);
+    expect(() => runEncryptionGuards(depsFor(env), null)).toThrow(BootValidationError);
     try {
       runEncryptionGuards(depsFor(env), null);
     } catch (e) {
@@ -230,8 +236,7 @@ describe("runEncryptionGuards — branch matrix", () => {
     const oldFp = "deadbeefdeadbeef";
     seedEncryptedUsers(db);
     seedFingerprint(db, oldFp);
-    expect(() => runEncryptionGuards(depsFor({}), key))
-      .toThrow(BootValidationError);
+    expect(() => runEncryptionGuards(depsFor({}), key)).toThrow(BootValidationError);
     try {
       runEncryptionGuards(depsFor({}), key);
     } catch (e) {
@@ -249,10 +254,7 @@ describe("runEncryptionGuards — branch matrix", () => {
     const oldFp = "deadbeefdeadbeef";
     seedEncryptedUsers(db);
     seedFingerprint(db, oldFp);
-    const r = runEncryptionGuards(
-      depsFor({ COORDINATOR_ALLOW_KEY_ROTATION: "1" }),
-      key,
-    );
+    const r = runEncryptionGuards(depsFor({ COORDINATOR_ALLOW_KEY_ROTATION: "1" }), key);
     expect(r.rawProvider).toBeInstanceOf(EnvelopeEncryption);
     expect(r.keyFingerprint).toBe(newFp);
     expect(r.fingerprintAlreadyPersisted).toBe(false);
@@ -266,9 +268,7 @@ describe("runEncryptionGuards — branch matrix", () => {
     );
 
     const cleared = db
-      .prepare(
-        "SELECT value FROM system_config WHERE key = 'encryption.key_fingerprint'",
-      )
+      .prepare("SELECT value FROM system_config WHERE key = 'encryption.key_fingerprint'")
       .get();
     expect(cleared).toBeUndefined();
   });
@@ -276,9 +276,9 @@ describe("runEncryptionGuards — branch matrix", () => {
   // Row 10 — low-entropy key (all 0xaa bytes → entropy = 0)
   it("low-entropy key → throws via decodeMasterKey entropy check", () => {
     const lowEntropyB64 = Buffer.alloc(32, 0xaa).toString("base64");
-    expect(() =>
-      loadEncryptionKey({ COORDINATOR_ENCRYPTION_KEY: lowEntropyB64 }, logger),
-    ).toThrow(/catastrophically low entropy/);
+    expect(() => loadEncryptionKey({ COORDINATOR_ENCRYPTION_KEY: lowEntropyB64 }, logger)).toThrow(
+      /catastrophically low entropy/,
+    );
   });
 
   // Row 11 — medium-entropy key (passphrase-ish) → OK + warn
@@ -339,10 +339,7 @@ describe("loadEncryptionKey — env handling", () => {
 
   it("returns 32-byte buffer for a valid base64 key", () => {
     const key = randomBytes(32);
-    const k = loadEncryptionKey(
-      { COORDINATOR_ENCRYPTION_KEY: key.toString("base64") },
-      logger,
-    );
+    const k = loadEncryptionKey({ COORDINATOR_ENCRYPTION_KEY: key.toString("base64") }, logger);
     expect(k).not.toBeNull();
     expect(k!.length).toBe(32);
     expect(k!.equals(key)).toBe(true);

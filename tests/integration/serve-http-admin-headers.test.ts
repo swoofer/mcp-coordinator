@@ -108,9 +108,7 @@ beforeAll(async () => {
   for (const [name, body] of FIXTURES) {
     const fp = path.join(DASHBOARD_DIR, name);
     if (existsSync(fp)) {
-      throw new Error(
-        `T08 test fixture would overwrite existing file ${fp}; aborting`,
-      );
+      throw new Error(`T08 test fixture would overwrite existing file ${fp}; aborting`);
     }
     writeFileSync(fp, body, "utf-8");
     createdPaths.push(fp);
@@ -125,9 +123,7 @@ beforeAll(async () => {
   }
   const subFile = path.join(adminSubdir, "orgs.html");
   if (existsSync(subFile)) {
-    throw new Error(
-      `T08 test fixture would overwrite existing file ${subFile}; aborting`,
-    );
+    throw new Error(`T08 test fixture would overwrite existing file ${subFile}; aborting`);
   }
   writeFileSync(subFile, "<!doctype html><html><body>sub</body></html>", "utf-8");
   createdPaths.push(subFile);
@@ -175,57 +171,28 @@ const CSP_EXPECTED =
 
 function assertAdminHeaders(r: Resp, urlPath: string): void {
   expect(r.status, `${urlPath} status`).toBe(200);
-  expect(r.headers["content-security-policy"], `${urlPath} CSP`).toBe(
-    CSP_EXPECTED,
-  );
+  expect(r.headers["content-security-policy"], `${urlPath} CSP`).toBe(CSP_EXPECTED);
   expect(r.headers["x-frame-options"], `${urlPath} XFO`).toBe("DENY");
-  expect(r.headers["x-content-type-options"], `${urlPath} XCTO`).toBe(
-    "nosniff",
-  );
-  expect(r.headers["referrer-policy"], `${urlPath} Referrer-Policy`).toBe(
-    "same-origin",
-  );
-  expect(r.headers["cache-control"], `${urlPath} Cache-Control`).toBe(
-    "no-store",
-  );
+  expect(r.headers["x-content-type-options"], `${urlPath} XCTO`).toBe("nosniff");
+  expect(r.headers["referrer-policy"], `${urlPath} Referrer-Policy`).toBe("same-origin");
+  expect(r.headers["cache-control"], `${urlPath} Cache-Control`).toBe("no-store");
   // CRITICAL: Round 1 finding — admin assets must NOT carry ACAO: *.
-  expect(
-    r.headers["access-control-allow-origin"],
-    `${urlPath} must not have ACAO`,
-  ).toBeUndefined();
+  expect(r.headers["access-control-allow-origin"], `${urlPath} must not have ACAO`).toBeUndefined();
 }
 
 function assertLegacyHeaders(r: Resp, urlPath: string): void {
   expect(r.status, `${urlPath} status`).toBe(200);
   // Legacy dashboard assets keep the wildcard CORS for backward compat.
-  expect(
-    r.headers["access-control-allow-origin"],
-    `${urlPath} ACAO preserved`,
-  ).toBe("*");
+  expect(r.headers["access-control-allow-origin"], `${urlPath} ACAO preserved`).toBe("*");
   // securite-surface-07: legacy assets now get the SAFE subset of the admin
   // baseline (nosniff, frame-options, referrer-policy) — see src/serve-http.ts
   // for why a strict CSP is deliberately NOT included (inline-script monolith).
-  expect(
-    r.headers["x-content-type-options"],
-    `${urlPath} must have nosniff`,
-  ).toBe("nosniff");
-  expect(
-    r.headers["x-frame-options"],
-    `${urlPath} must have XFO`,
-  ).toBe("DENY");
-  expect(
-    r.headers["referrer-policy"],
-    `${urlPath} must have Referrer-Policy`,
-  ).toBe("same-origin");
+  expect(r.headers["x-content-type-options"], `${urlPath} must have nosniff`).toBe("nosniff");
+  expect(r.headers["x-frame-options"], `${urlPath} must have XFO`).toBe("DENY");
+  expect(r.headers["referrer-policy"], `${urlPath} must have Referrer-Policy`).toBe("same-origin");
   // They must still NOT have the admin-only strict CSP / no-store caching.
-  expect(
-    r.headers["content-security-policy"],
-    `${urlPath} must not have CSP`,
-  ).toBeUndefined();
-  expect(
-    r.headers["cache-control"],
-    `${urlPath} must not have Cache-Control`,
-  ).toBeUndefined();
+  expect(r.headers["content-security-policy"], `${urlPath} must not have CSP`).toBeUndefined();
+  expect(r.headers["cache-control"], `${urlPath} must not have Cache-Control`).toBeUndefined();
 }
 
 // ----- Positive tests: admin scope ----------------------------------------

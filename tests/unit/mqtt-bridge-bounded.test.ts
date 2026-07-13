@@ -27,12 +27,20 @@ let lastClient: FakeMqttClient | null = null;
 const publishCalls: PublishCall[] = [];
 
 class FakeMqttClient extends EventEmitter {
-  publish(topic: string, payload: string | Buffer, options?: { qos?: number; retain?: boolean }): this {
+  publish(
+    topic: string,
+    payload: string | Buffer,
+    options?: { qos?: number; retain?: boolean },
+  ): this {
     publishCalls.push({ topic, payload, options });
     return this;
   }
-  subscribe(_topic: string | string[]): this { return this; }
-  endAsync(): Promise<void> { return Promise.resolve(); }
+  subscribe(_topic: string | string[]): this {
+    return this;
+  }
+  endAsync(): Promise<void> {
+    return Promise.resolve();
+  }
 }
 
 vi.mock("mqtt", () => ({
@@ -88,9 +96,7 @@ describe("MqttBridge listener queue cap (performance-05)", () => {
     bridge.registerListener("agent-1");
     for (let i = 0; i < 1500; i++) emitBroadcast(client, i);
 
-    const seqs = bridge
-      .getQueuedMessages("agent-1")
-      .map((m) => (m.payload as { seq: number }).seq);
+    const seqs = bridge.getQueuedMessages("agent-1").map((m) => (m.payload as { seq: number }).seq);
     expect(seqs.includes(1499)).toBe(true); // newest survives
     expect(seqs.includes(0)).toBe(false); // oldest dropped
   });

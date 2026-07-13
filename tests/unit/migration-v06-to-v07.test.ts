@@ -34,10 +34,24 @@ beforeAll(async () => {
     PRAGMA user_version = 6;
   `);
   raw.prepare("INSERT INTO agents (id, name) VALUES ('legacy-a', 'Legacy A')").run();
-  raw.prepare("INSERT INTO threads (id, initiator_id, subject) VALUES ('legacy-t', 'legacy-a', 'subj')").run();
-  raw.prepare("INSERT INTO file_activity (session_id, agent_id, tool_name, file_path) VALUES ('s1', 'legacy-a', 'Edit', 'x.ts')").run();
-  raw.prepare("INSERT INTO layer_firings (thread_id, layer, score) VALUES ('legacy-t', 'l4', 5)").run();
-  raw.prepare("INSERT INTO action_summaries (id, session_id, agent_id, summary) VALUES ('as1', 's1', 'legacy-a', 'did stuff')").run();
+  raw
+    .prepare(
+      "INSERT INTO threads (id, initiator_id, subject) VALUES ('legacy-t', 'legacy-a', 'subj')",
+    )
+    .run();
+  raw
+    .prepare(
+      "INSERT INTO file_activity (session_id, agent_id, tool_name, file_path) VALUES ('s1', 'legacy-a', 'Edit', 'x.ts')",
+    )
+    .run();
+  raw
+    .prepare("INSERT INTO layer_firings (thread_id, layer, score) VALUES ('legacy-t', 'l4', 5)")
+    .run();
+  raw
+    .prepare(
+      "INSERT INTO action_summaries (id, session_id, agent_id, summary) VALUES ('as1', 's1', 'legacy-a', 'did stuff')",
+    )
+    .run();
   raw.close();
   // Now run the v0.7 migration via the real initDatabase. Doing this in beforeAll
   // (not inside an `it` block) ensures the DB is initialized before any test runs,
@@ -45,7 +59,10 @@ beforeAll(async () => {
   initDatabase(DIR);
 });
 
-afterAll(() => { closeDb(); fs.rmSync(DIR, { recursive: true, force: true }); });
+afterAll(() => {
+  closeDb();
+  fs.rmSync(DIR, { recursive: true, force: true });
+});
 
 describe("v0.6 → v0.7 migration", () => {
   // No "boots without error" `it` — initDatabase already ran in beforeAll.
@@ -64,20 +81,27 @@ describe("v0.6 → v0.7 migration", () => {
 
   it("existing agents row preserved", () => {
     const db = getDb();
-    const row = db.prepare("SELECT * FROM agents WHERE id = 'legacy-a'").get() as { name: string; org_id: string };
+    const row = db.prepare("SELECT * FROM agents WHERE id = 'legacy-a'").get() as {
+      name: string;
+      org_id: string;
+    };
     expect(row.name).toBe("Legacy A");
     expect(row.org_id).toBe("default");
   });
 
   it("existing threads row preserved and gets org_id='default'", () => {
     const db = getDb();
-    const row = db.prepare("SELECT org_id FROM threads WHERE id = 'legacy-t'").get() as { org_id: string };
+    const row = db.prepare("SELECT org_id FROM threads WHERE id = 'legacy-t'").get() as {
+      org_id: string;
+    };
     expect(row.org_id).toBe("default");
   });
 
   it("existing file_activity row preserved and gets org_id='default'", () => {
     const db = getDb();
-    const row = db.prepare("SELECT org_id FROM file_activity WHERE session_id = 's1'").get() as { org_id: string };
+    const row = db.prepare("SELECT org_id FROM file_activity WHERE session_id = 's1'").get() as {
+      org_id: string;
+    };
     expect(row.org_id).toBe("default");
   });
 
@@ -98,10 +122,20 @@ describe("v0.6 → v0.7 migration", () => {
   it("all 14 ALTERed tables gained org_id", () => {
     const db = getDb();
     for (const table of [
-      "agents", "threads", "thread_messages", "action_summaries",
-      "file_activity", "events", "dependency_map", "introspections",
-      "agent_activity_status", "revoked_agents", "working_files",
-      "git_cochange", "git_cochange_meta", "layer_firings",
+      "agents",
+      "threads",
+      "thread_messages",
+      "action_summaries",
+      "file_activity",
+      "events",
+      "dependency_map",
+      "introspections",
+      "agent_activity_status",
+      "revoked_agents",
+      "working_files",
+      "git_cochange",
+      "git_cochange_meta",
+      "layer_firings",
     ]) {
       const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
       expect(cols.map((c) => c.name)).toContain(`org_id`);

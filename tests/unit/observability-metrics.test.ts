@@ -63,10 +63,7 @@ function mockResponse(): MockResponse {
   return res;
 }
 
-function mockReq(opts: {
-  remoteAddress?: string;
-  authorization?: string;
-}): IncomingMessage {
+function mockReq(opts: { remoteAddress?: string; authorization?: string }): IncomingMessage {
   const headers: Record<string, string> = {};
   if (opts.authorization !== undefined) {
     headers["authorization"] = opts.authorization;
@@ -120,23 +117,17 @@ describe("observability/metrics: registry", () => {
     // After reset, the label series may no longer be emitted at all
     // (reset clears child label sets). Either no line OR a line with
     // value 0 is acceptable.
-    expect(out).not.toMatch(
-      /coordinator_auth_login_attempts_total\{[^}]*\}\s+[1-9]/,
-    );
+    expect(out).not.toMatch(/coordinator_auth_login_attempts_total\{[^}]*\}\s+[1-9]/);
     expect(out).not.toMatch(/coordinator_audit_drops_total\s+[1-9]/);
   });
 
   it("declared metrics emit their HELP/TYPE lines even when never incremented", async () => {
     const out = await registry.metrics();
-    expect(out).toContain(
-      "# HELP coordinator_auth_login_attempts_total",
-    );
+    expect(out).toContain("# HELP coordinator_auth_login_attempts_total");
     expect(out).toContain("# TYPE coordinator_auth_login_attempts_total counter");
     expect(out).toContain("# HELP coordinator_audit_queue_depth");
     expect(out).toContain("# TYPE coordinator_audit_queue_depth gauge");
-    expect(out).toContain(
-      "# TYPE coordinator_auth_request_duration_seconds histogram",
-    );
+    expect(out).toContain("# TYPE coordinator_auth_request_duration_seconds histogram");
   });
 });
 
@@ -186,9 +177,7 @@ describe("observability/metrics: metric shape", () => {
     expect(m.type).toBe("histogram");
     const bounds = m.upperBounds ?? m.buckets ?? [];
     // 11 explicit buckets: [.001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5]
-    expect(bounds).toEqual([
-      0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5,
-    ]);
+    expect(bounds).toEqual([0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5]);
   });
 
   it("all declared metric handles are non-null and registered", () => {
@@ -240,10 +229,7 @@ describe("observability/metrics: metric shape", () => {
 describe("http/metrics: handleMetrics access control", () => {
   it("returns 200 + Prometheus text for IPv4 loopback (default localhostOnly)", async () => {
     const res = mockResponse();
-    await handleMetrics(
-      mockReq({ remoteAddress: "127.0.0.1" }),
-      res as unknown as ServerResponse,
-    );
+    await handleMetrics(mockReq({ remoteAddress: "127.0.0.1" }), res as unknown as ServerResponse);
     expect(res.statusCode).toBe(200);
     expect(res.headers["Content-Type"]).toContain("text/plain");
     expect(res.body).toContain("# HELP coordinator_auth_login_attempts_total");
@@ -251,10 +237,7 @@ describe("http/metrics: handleMetrics access control", () => {
 
   it("returns 200 for IPv6 loopback ::1", async () => {
     const res = mockResponse();
-    await handleMetrics(
-      mockReq({ remoteAddress: "::1" }),
-      res as unknown as ServerResponse,
-    );
+    await handleMetrics(mockReq({ remoteAddress: "::1" }), res as unknown as ServerResponse);
     expect(res.statusCode).toBe(200);
   });
 
@@ -269,10 +252,7 @@ describe("http/metrics: handleMetrics access control", () => {
 
   it("returns 403 for non-loopback with no Bearer", async () => {
     const res = mockResponse();
-    await handleMetrics(
-      mockReq({ remoteAddress: "10.0.0.5" }),
-      res as unknown as ServerResponse,
-    );
+    await handleMetrics(mockReq({ remoteAddress: "10.0.0.5" }), res as unknown as ServerResponse);
     expect(res.statusCode).toBe(403);
     expect(JSON.parse(res.body)).toEqual({
       code: "FORBIDDEN",
@@ -339,39 +319,29 @@ describe("http/metrics: handleMetrics access control", () => {
 
   it("returns 403 for non-loopback with no Authorization header but bearerToken configured", async () => {
     const res = mockResponse();
-    await handleMetrics(
-      mockReq({ remoteAddress: "10.0.0.5" }),
-      res as unknown as ServerResponse,
-      { bearerToken: "my-secret-token" },
-    );
+    await handleMetrics(mockReq({ remoteAddress: "10.0.0.5" }), res as unknown as ServerResponse, {
+      bearerToken: "my-secret-token",
+    });
     expect(res.statusCode).toBe(403);
   });
 
   it("returns 403 when localhostOnly=false and no bearerToken (no rule grants access)", async () => {
     const res = mockResponse();
-    await handleMetrics(
-      mockReq({ remoteAddress: "127.0.0.1" }),
-      res as unknown as ServerResponse,
-      { localhostOnly: false },
-    );
+    await handleMetrics(mockReq({ remoteAddress: "127.0.0.1" }), res as unknown as ServerResponse, {
+      localhostOnly: false,
+    });
     expect(res.statusCode).toBe(403);
   });
 
   it("returns 403 when remoteAddress is undefined (no socket info)", async () => {
     const res = mockResponse();
-    await handleMetrics(
-      mockReq({ remoteAddress: undefined }),
-      res as unknown as ServerResponse,
-    );
+    await handleMetrics(mockReq({ remoteAddress: undefined }), res as unknown as ServerResponse);
     expect(res.statusCode).toBe(403);
   });
 
   it("Content-Type matches registry.contentType on 200", async () => {
     const res = mockResponse();
-    await handleMetrics(
-      mockReq({ remoteAddress: "127.0.0.1" }),
-      res as unknown as ServerResponse,
-    );
+    await handleMetrics(mockReq({ remoteAddress: "127.0.0.1" }), res as unknown as ServerResponse);
     expect(res.headers["Content-Type"]).toBe(registry.contentType);
     expect(registry.contentType).toContain("text/plain");
     expect(registry.contentType).toContain("version=0.0.4");
@@ -379,10 +349,7 @@ describe("http/metrics: handleMetrics access control", () => {
 
   it("body is non-empty even when no metrics have been incremented", async () => {
     const res = mockResponse();
-    await handleMetrics(
-      mockReq({ remoteAddress: "127.0.0.1" }),
-      res as unknown as ServerResponse,
-    );
+    await handleMetrics(mockReq({ remoteAddress: "127.0.0.1" }), res as unknown as ServerResponse);
     expect(res.body.length).toBeGreaterThan(0);
     // HELP lines are always emitted for declared metrics.
     expect(res.body).toContain("# HELP");
@@ -393,11 +360,9 @@ describe("http/metrics: handleMetrics access control", () => {
     // (localhostOnly && fromLoopback) || bearerOk — loopback path
     // succeeds independently of the bearer being set.
     const res = mockResponse();
-    await handleMetrics(
-      mockReq({ remoteAddress: "127.0.0.1" }),
-      res as unknown as ServerResponse,
-      { bearerToken: "my-secret-token" },
-    );
+    await handleMetrics(mockReq({ remoteAddress: "127.0.0.1" }), res as unknown as ServerResponse, {
+      bearerToken: "my-secret-token",
+    });
     expect(res.statusCode).toBe(200);
   });
 });

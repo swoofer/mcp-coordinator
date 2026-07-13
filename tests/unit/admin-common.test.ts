@@ -151,9 +151,18 @@ const {
       cellBuilder?: (td: FakeNode, row: unknown) => void;
     }>,
   ) => void;
-  showToast: (text: string, kind?: "success" | "error", opts?: { request_id?: string | null }) => void;
+  showToast: (
+    text: string,
+    kind?: "success" | "error",
+    opts?: { request_id?: string | null },
+  ) => void;
   formatTimestamp: (iso: string) => string;
-  FetchError: new (status: number, code: string | null, msg: string, reqId: string | null) => Error & {
+  FetchError: new (
+    status: number,
+    code: string | null,
+    msg: string,
+    reqId: string | null,
+  ) => Error & {
     status: number;
     code: string | null;
     request_id: string | null;
@@ -205,8 +214,7 @@ describe("admin-common.js — redirectToLogin", () => {
     (globalThis as any).window.location.search = "?org=42";
     redirectToLogin();
     expect(locationHref).toBe(
-      "/auth/login?return_to=" +
-        encodeURIComponent("/dashboard/admin-orgs.html?org=42"),
+      "/auth/login?return_to=" + encodeURIComponent("/dashboard/admin-orgs.html?org=42"),
     );
   });
 });
@@ -240,7 +248,10 @@ describe("admin-common.js — fetchJSON", () => {
     const fakeFetch = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
-      headers: new Map([["Content-Type", "application/json"], ["X-Request-Id", "rid-1"]]),
+      headers: new Map([
+        ["Content-Type", "application/json"],
+        ["X-Request-Id", "rid-1"],
+      ]),
       json: async () => ({ hello: "world" }),
     });
     vi.stubGlobal("fetch", fakeFetch);
@@ -286,7 +297,8 @@ describe("admin-common.js — fetchJSON", () => {
   it("does not overwrite a caller-supplied Content-Type", async () => {
     cookieStore = "__Host-coordinator_csrf=t";
     const fakeFetch = vi.fn().mockResolvedValue({
-      ok: true, status: 200,
+      ok: true,
+      status: 200,
       headers: new Map([["Content-Type", "application/json"]]),
       json: async () => null,
     });
@@ -303,7 +315,8 @@ describe("admin-common.js — fetchJSON", () => {
 
   it("redirects on 401 and throws FetchError(401)", async () => {
     const fakeFetch = vi.fn().mockResolvedValue({
-      ok: false, status: 401,
+      ok: false,
+      status: 401,
       headers: new Map([["X-Request-Id", "rid-401"]]),
     });
     vi.stubGlobal("fetch", fakeFetch);
@@ -318,7 +331,8 @@ describe("admin-common.js — fetchJSON", () => {
 
   it("throws FetchError with body.code + body.message on 4xx JSON error", async () => {
     const fakeFetch = vi.fn().mockResolvedValue({
-      ok: false, status: 409,
+      ok: false,
+      status: 409,
       headers: new Map([
         ["Content-Type", "application/json"],
         ["X-Request-Id", "rid-409"],
@@ -337,7 +351,8 @@ describe("admin-common.js — fetchJSON", () => {
 
   it("falls back to mapStatusToString when the error body is not JSON", async () => {
     const fakeFetch = vi.fn().mockResolvedValue({
-      ok: false, status: 500,
+      ok: false,
+      status: 500,
       headers: new Map([["Content-Type", "text/html"]]),
     });
     vi.stubGlobal("fetch", fakeFetch);
@@ -350,9 +365,12 @@ describe("admin-common.js — fetchJSON", () => {
 
   it("tolerates JSON parse failure on an error response", async () => {
     const fakeFetch = vi.fn().mockResolvedValue({
-      ok: false, status: 502,
+      ok: false,
+      status: 502,
       headers: new Map([["Content-Type", "application/json"]]),
-      json: async () => { throw new Error("bad json"); },
+      json: async () => {
+        throw new Error("bad json");
+      },
     });
     vi.stubGlobal("fetch", fakeFetch);
     await expect(fetchJSON("/api/x")).rejects.toMatchObject({ status: 502 });
@@ -360,7 +378,8 @@ describe("admin-common.js — fetchJSON", () => {
 
   it("returns null body when the success response is not JSON", async () => {
     const fakeFetch = vi.fn().mockResolvedValue({
-      ok: true, status: 204,
+      ok: true,
+      status: 204,
       headers: new Map([["Content-Type", "text/plain"]]),
     });
     vi.stubGlobal("fetch", fakeFetch);
@@ -372,11 +391,7 @@ describe("admin-common.js — fetchJSON", () => {
 describe("admin-common.js — renderTable (V3 PATCH 15)", () => {
   it("renders one tr per row with textContent only", () => {
     const tbody = makeNode("tbody");
-    renderTable(
-      tbody,
-      [{ name: "alpha" }, { name: "beta" }],
-      [{ render: (r: any) => r.name }],
-    );
+    renderTable(tbody, [{ name: "alpha" }, { name: "beta" }], [{ render: (r: any) => r.name }]);
     expect(tbody.children).toHaveLength(2);
     expect(tbody.children[0].children[0].textContent).toBe("alpha");
     expect(tbody.children[1].children[0].textContent).toBe("beta");
@@ -461,7 +476,9 @@ describe("admin-common.js — showToast (V3 PATCH 16)", () => {
   it("handles a click when clipboard API is unavailable", () => {
     const originalNav = (globalThis as any).navigator;
     Object.defineProperty(globalThis, "navigator", {
-      value: {}, configurable: true, writable: true,
+      value: {},
+      configurable: true,
+      writable: true,
     });
     try {
       showToast("Boom", "error", { request_id: "rid-noclip" });
@@ -471,7 +488,9 @@ describe("admin-common.js — showToast (V3 PATCH 16)", () => {
       expect(copyBtn.textContent).toBe("Copied");
     } finally {
       Object.defineProperty(globalThis, "navigator", {
-        value: originalNav, configurable: true, writable: true,
+        value: originalNav,
+        configurable: true,
+        writable: true,
       });
     }
   });

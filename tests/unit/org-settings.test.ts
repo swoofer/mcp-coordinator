@@ -1,9 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import Database from "better-sqlite3";
-import {
-  getOrgSetting,
-  invalidateOrgsColumnCache,
-} from "../../src/auth/org-settings.js";
+import { getOrgSetting, invalidateOrgsColumnCache } from "../../src/auth/org-settings.js";
 
 // Full Phase 2 orgs schema (T01a baseline + B-NEW-4 allowlist column).
 const ORGS_SCHEMA = `
@@ -23,9 +20,11 @@ const ENV_BACKUP = { ...process.env };
 beforeEach(() => {
   db = new Database(":memory:");
   db.exec(ORGS_SCHEMA);
-  db.prepare(
-    "INSERT INTO orgs (id, name, allowlist_github_org) VALUES (?, ?, ?)",
-  ).run("o1", "Acme", "acme");
+  db.prepare("INSERT INTO orgs (id, name, allowlist_github_org) VALUES (?, ?, ?)").run(
+    "o1",
+    "Acme",
+    "acme",
+  );
 });
 
 afterEach(() => {
@@ -41,35 +40,25 @@ afterEach(() => {
 
 describe("getOrgSetting", () => {
   it("throws on invalid key containing a semicolon", () => {
-    expect(() => getOrgSetting(db, "o1", "foo;DROP TABLE orgs", "x")).toThrow(
-      /invalid key/,
-    );
+    expect(() => getOrgSetting(db, "o1", "foo;DROP TABLE orgs", "x")).toThrow(/invalid key/);
   });
 
   it("throws on invalid key containing a dash-dash sequence", () => {
-    expect(() => getOrgSetting(db, "o1", "foo--bar", "x")).toThrow(
-      /invalid key/,
-    );
+    expect(() => getOrgSetting(db, "o1", "foo--bar", "x")).toThrow(/invalid key/);
   });
 
   it("throws on invalid key containing a space", () => {
-    expect(() => getOrgSetting(db, "o1", "foo bar", "x")).toThrow(
-      /invalid key/,
-    );
+    expect(() => getOrgSetting(db, "o1", "foo bar", "x")).toThrow(/invalid key/);
   });
 
   it("skips DB path when orgId is null and returns env value", () => {
     process.env.COORDINATOR_ALLOWLIST_GITHUB_ORG = "from-env";
-    expect(
-      getOrgSetting(db, null, "allowlist_github_org", "default"),
-    ).toBe("from-env");
+    expect(getOrgSetting(db, null, "allowlist_github_org", "default")).toBe("from-env");
   });
 
   it("skips DB path when orgId is undefined and returns env value", () => {
     process.env.COORDINATOR_ALLOWLIST_GITHUB_ORG = "from-env";
-    expect(
-      getOrgSetting(db, undefined, "allowlist_github_org", "default"),
-    ).toBe("from-env");
+    expect(getOrgSetting(db, undefined, "allowlist_github_org", "default")).toBe("from-env");
   });
 
   it("falls back to env when the column does not exist on orgs", () => {
@@ -80,26 +69,22 @@ describe("getOrgSetting", () => {
 
   it("returns the DB column value when row exists and value is non-null", () => {
     process.env.COORDINATOR_ALLOWLIST_GITHUB_ORG = "from-env";
-    expect(
-      getOrgSetting(db, "o1", "allowlist_github_org", "default"),
-    ).toBe("acme");
+    expect(getOrgSetting(db, "o1", "allowlist_github_org", "default")).toBe("acme");
   });
 
   it("falls back to env when the column exists but the org row is missing", () => {
     process.env.COORDINATOR_ALLOWLIST_GITHUB_ORG = "from-env";
-    expect(
-      getOrgSetting(db, "missing-org-id", "allowlist_github_org", "default"),
-    ).toBe("from-env");
+    expect(getOrgSetting(db, "missing-org-id", "allowlist_github_org", "default")).toBe("from-env");
   });
 
   it("falls back to env when the column value is SQL NULL", () => {
-    db.prepare(
-      "INSERT INTO orgs (id, name, allowlist_github_org) VALUES (?, ?, ?)",
-    ).run("o2", "NullCo", null);
+    db.prepare("INSERT INTO orgs (id, name, allowlist_github_org) VALUES (?, ?, ?)").run(
+      "o2",
+      "NullCo",
+      null,
+    );
     process.env.COORDINATOR_ALLOWLIST_GITHUB_ORG = "from-env";
-    expect(
-      getOrgSetting(db, "o2", "allowlist_github_org", "default"),
-    ).toBe("from-env");
+    expect(getOrgSetting(db, "o2", "allowlist_github_org", "default")).toBe("from-env");
   });
 
   it("returns envDefault when neither DB column nor env is set", () => {
@@ -118,10 +103,7 @@ describe("getOrgSetting", () => {
     expect(getOrgSetting(db, "o1", "jwt_access_ttl", "default")).toBe("default");
 
     db.exec("ALTER TABLE orgs ADD COLUMN jwt_access_ttl TEXT");
-    db.prepare("UPDATE orgs SET jwt_access_ttl = ? WHERE id = ?").run(
-      "1800",
-      "o1",
-    );
+    db.prepare("UPDATE orgs SET jwt_access_ttl = ? WHERE id = ?").run("1800", "o1");
 
     // Stale cache: column not yet visible.
     expect(getOrgSetting(db, "o1", "jwt_access_ttl", "default")).toBe("default");
@@ -132,10 +114,7 @@ describe("getOrgSetting", () => {
 
   it("coerces numeric DB values to string", () => {
     db.exec("ALTER TABLE orgs ADD COLUMN jwt_access_ttl INTEGER");
-    db.prepare("UPDATE orgs SET jwt_access_ttl = ? WHERE id = ?").run(
-      3600,
-      "o1",
-    );
+    db.prepare("UPDATE orgs SET jwt_access_ttl = ? WHERE id = ?").run(3600, "o1");
     invalidateOrgsColumnCache(db);
     const v = getOrgSetting(db, "o1", "jwt_access_ttl", "0");
     expect(v).toBe("3600");

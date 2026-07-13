@@ -41,9 +41,7 @@ afterAll(() => {
  */
 function seedEvents(count: number): void {
   const db = getDb();
-  const insert = db.prepare(
-    "INSERT INTO events (org_id, type, payload) VALUES (?, ?, ?)",
-  );
+  const insert = db.prepare("INSERT INTO events (org_id, type, payload) VALUES (?, ?, ?)");
   const tx = db.transaction(() => {
     for (let i = 0; i < count; i++) {
       insert.run("default", "agent_online", JSON.stringify({ seq: i }));

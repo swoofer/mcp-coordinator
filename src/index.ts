@@ -11,7 +11,8 @@ export { createServices, createMcpServer } from "./server-setup.js";
 // Uses pathToFileURL for cross-platform correctness (handles Windows drive letters
 // + the file:///C:/... vs file://C:/... slash-count mismatch). Guards against
 // process.argv[1] being undefined (REPL, some bundlers).
-const isMainModule = process.argv[1] != null && import.meta.url === pathToFileURL(process.argv[1]).href;
+const isMainModule =
+  process.argv[1] != null && import.meta.url === pathToFileURL(process.argv[1]).href;
 
 if (isMainModule) {
   const DATA_DIR = process.env.COORDINATOR_DATA_DIR || "./data";

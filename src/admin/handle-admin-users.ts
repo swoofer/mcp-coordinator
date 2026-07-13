@@ -66,9 +66,7 @@ async function requireAdmin(
   if (!authResult.ok) {
     res.writeHead(authResult.status, {
       "Content-Type": "application/json; charset=utf-8",
-      ...(authResult.wwwAuthenticate
-        ? { "WWW-Authenticate": authResult.wwwAuthenticate }
-        : {}),
+      ...(authResult.wwwAuthenticate ? { "WWW-Authenticate": authResult.wwwAuthenticate } : {}),
     });
     res.end(JSON.stringify(appError("UNAUTHORIZED", authResult.error)));
     return null;
@@ -138,26 +136,27 @@ export async function handleListUsers(
 
   // Filter to ('admin','member') only — exclude 'agent' and 'service'
   // roles (V3 PATCH 12). Optional primary_org_id scoping comes from ?org.
-  const rows = orgFilter !== null
-    ? (ctx.db
-        .prepare(
-          `SELECT id, email, name, role, primary_org_id, created_at, last_login_at
+  const rows =
+    orgFilter !== null
+      ? (ctx.db
+          .prepare(
+            `SELECT id, email, name, role, primary_org_id, created_at, last_login_at
              FROM users
             WHERE role IN ('admin', 'member')
               AND primary_org_id = ?
             ORDER BY created_at ASC, id ASC
             LIMIT 5000`,
-        )
-        .all(orgFilter) as UserRow[])
-    : (ctx.db
-        .prepare(
-          `SELECT id, email, name, role, primary_org_id, created_at, last_login_at
+          )
+          .all(orgFilter) as UserRow[])
+      : (ctx.db
+          .prepare(
+            `SELECT id, email, name, role, primary_org_id, created_at, last_login_at
              FROM users
             WHERE role IN ('admin', 'member')
             ORDER BY created_at ASC, id ASC
             LIMIT 5000`,
-        )
-        .all() as UserRow[]);
+          )
+          .all() as UserRow[]);
 
   // admin_count is GLOBAL across the deployment — independent of ?org filter
   // (V3 PATCH 14). The proactive-disable banner needs a count that can't be
@@ -269,9 +268,8 @@ export async function handleUpdateUser(
 
   const tx = ctx.db.transaction((): TxOk | TxFail => {
     // Phase 1: read the target row.
-    const target = ctx.db
-      .prepare("SELECT id, role FROM users WHERE id = ?")
-      .get(userId) as { id: string; role: UserRow["role"] } | undefined;
+    const target = ctx.db.prepare("SELECT id, role FROM users WHERE id = ?").get(userId) as
+      { id: string; role: UserRow["role"] } | undefined;
 
     if (!target) {
       return {
@@ -316,16 +314,13 @@ export async function handleUpdateUser(
           ok: false,
           status: 409,
           code: "LAST_ADMIN",
-          message:
-            "Cannot demote last admin. Promote another user first.",
+          message: "Cannot demote last admin. Promote another user first.",
         };
       }
     }
 
     // Phase 3: UPDATE + audit (atomic — same tx).
-    ctx.db
-      .prepare("UPDATE users SET role = ? WHERE id = ?")
-      .run(newRole, userId);
+    ctx.db.prepare("UPDATE users SET role = ? WHERE id = ?").run(newRole, userId);
 
     audit("admin.user.role_changed", {
       tier: 1,

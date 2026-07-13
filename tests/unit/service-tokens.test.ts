@@ -23,17 +23,9 @@ import { RateLimiter } from "../../src/auth/rate-limit.js";
 import { buildJwtKeyRegistry } from "../../src/auth/jwt-keys.js";
 import { MembershipCache } from "../../src/auth/membership-cache.js";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
-import {
-  initAuth,
-  initPhase2Auth,
-  resetPhase2Auth,
-  createToken,
-} from "../../src/auth.js";
+import { initAuth, initPhase2Auth, resetPhase2Auth, createToken } from "../../src/auth.js";
 import type Database from "better-sqlite3";
-import type {
-  IdPProvider,
-  ExchangeCodeResult,
-} from "../../src/auth/providers/types.js";
+import type { IdPProvider, ExchangeCodeResult } from "../../src/auth/providers/types.js";
 import { findAuditRows } from "../helpers/audit.js";
 
 /**
@@ -107,8 +99,7 @@ function mockRequest(opts: MockReqOpts = {}): IncomingMessage {
   if (opts.authorization) headers.authorization = opts.authorization;
   (stream as unknown as { headers: Record<string, string> }).headers = headers;
   (stream as unknown as { method: string }).method = opts.method ?? "POST";
-  (stream as unknown as { url: string }).url =
-    opts.url ?? "/api/admin/service-tokens";
+  (stream as unknown as { url: string }).url = opts.url ?? "/api/admin/service-tokens";
   return stream as unknown as IncomingMessage;
 }
 
@@ -124,9 +115,7 @@ const stubProvider: IdPProvider = {
   },
 };
 
-function makeCtx(
-  overrides: Partial<AuthHandlerContext> = {},
-): AuthHandlerContext {
+function makeCtx(overrides: Partial<AuthHandlerContext> = {}): AuthHandlerContext {
   return {
     db: getDb() as unknown as AuthHandlerContext["db"],
     clock,
@@ -158,18 +147,7 @@ function seedUser(
           idp_access_token, role, last_login_at, token_epoch)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
-    .run(
-      id,
-      orgId,
-      `${id}@example.com`,
-      id,
-      "github",
-      `gh-${id}`,
-      "tok",
-      role,
-      "0",
-      0,
-    );
+    .run(id, orgId, `${id}@example.com`, id, "github", `gh-${id}`, "tok", role, "0", 0);
 }
 
 function seedUserOrgMembership(
@@ -199,7 +177,9 @@ beforeEach(() => {
   // v0.9 (issue #79): revoked_agents now has FK on org_id → orgs(id); preserve
   // 'default' so the test below's INSERT INTO revoked_agents satisfies the FK.
   getDb().exec("DELETE FROM orgs WHERE id <> 'default'");
-  getDb().prepare("INSERT OR IGNORE INTO orgs (id, name) VALUES ('default', 'Default Organization')").run();
+  getDb()
+    .prepare("INSERT OR IGNORE INTO orgs (id, name) VALUES ('default', 'Default Organization')")
+    .run();
   getDb().exec("DELETE FROM revoked_agents");
   resetPhase2Auth();
   clock = new FakeClock(1_700_000_000);
@@ -497,9 +477,7 @@ describe("issueServiceToken", () => {
 // ===========================================================================
 describe("listServiceTokens", () => {
   it("returns empty array when no service tokens exist", () => {
-    expect(listServiceTokens(getDb() as unknown as Database.Database)).toEqual(
-      [],
-    );
+    expect(listServiceTokens(getDb() as unknown as Database.Database)).toEqual([]);
   });
 
   it("lists all service tokens ordered by created_at DESC", async () => {
@@ -567,18 +545,12 @@ describe("listServiceTokens", () => {
       reason: "revoked token row",
       issuedByAdminId: "u-admin",
     });
-    revokeServiceToken(
-      getDb() as unknown as Database.Database,
-      clock,
-      toRevoke.jti,
-      "u-admin",
-    );
+    revokeServiceToken(getDb() as unknown as Database.Database, clock, toRevoke.jti, "u-admin");
     const all = listServiceTokens(getDb() as unknown as Database.Database);
     expect(all).toHaveLength(2);
-    const onlyActive = listServiceTokens(
-      getDb() as unknown as Database.Database,
-      { activeOnly: true },
-    );
+    const onlyActive = listServiceTokens(getDb() as unknown as Database.Database, {
+      activeOnly: true,
+    });
     expect(onlyActive).toHaveLength(1);
     expect(onlyActive[0]!.jti).toBe(active.jti);
   });
@@ -612,16 +584,14 @@ describe("listServiceTokens", () => {
       reason: "u-2 in org-b service",
       issuedByAdminId: "u-admin",
     });
-    const filteredByUser = listServiceTokens(
-      getDb() as unknown as Database.Database,
-      { userId: "u-1" },
-    );
+    const filteredByUser = listServiceTokens(getDb() as unknown as Database.Database, {
+      userId: "u-1",
+    });
     expect(filteredByUser).toHaveLength(1);
     expect(filteredByUser[0]!.user_id).toBe("u-1");
-    const filteredByOrg = listServiceTokens(
-      getDb() as unknown as Database.Database,
-      { orgId: "org-b" },
-    );
+    const filteredByOrg = listServiceTokens(getDb() as unknown as Database.Database, {
+      orgId: "org-b",
+    });
     expect(filteredByOrg).toHaveLength(1);
     expect(filteredByOrg[0]!.org_id).toBe("org-b");
   });
@@ -756,12 +726,7 @@ describe("verifyServiceTokenJti", () => {
       reason: "verify active jti",
       issuedByAdminId: "u-admin",
     });
-    expect(
-      verifyServiceTokenJti(
-        getDb() as unknown as Database.Database,
-        issued.jti,
-      ),
-    ).toBe(true);
+    expect(verifyServiceTokenJti(getDb() as unknown as Database.Database, issued.jti)).toBe(true);
   });
 
   it("revoked service jti returns false", async () => {
@@ -779,27 +744,14 @@ describe("verifyServiceTokenJti", () => {
       reason: "verify revoked jti",
       issuedByAdminId: "u-admin",
     });
-    revokeServiceToken(
-      getDb() as unknown as Database.Database,
-      clock,
-      issued.jti,
-      "u-admin",
-    );
-    expect(
-      verifyServiceTokenJti(
-        getDb() as unknown as Database.Database,
-        issued.jti,
-      ),
-    ).toBe(false);
+    revokeServiceToken(getDb() as unknown as Database.Database, clock, issued.jti, "u-admin");
+    expect(verifyServiceTokenJti(getDb() as unknown as Database.Database, issued.jti)).toBe(false);
   });
 
   it("unknown jti returns false", () => {
-    expect(
-      verifyServiceTokenJti(
-        getDb() as unknown as Database.Database,
-        "no-such-jti",
-      ),
-    ).toBe(false);
+    expect(verifyServiceTokenJti(getDb() as unknown as Database.Database, "no-such-jti")).toBe(
+      false,
+    );
   });
 
   it("non-service jti (regular refresh) returns false (LIKE 'service:%' filters)", () => {
@@ -821,12 +773,9 @@ describe("verifyServiceTokenJti", () => {
         String(clock.now() + 3600),
         String(clock.now()),
       );
-    expect(
-      verifyServiceTokenJti(
-        getDb() as unknown as Database.Database,
-        "regular-jti-2",
-      ),
-    ).toBe(false);
+    expect(verifyServiceTokenJti(getDb() as unknown as Database.Database, "regular-jti-2")).toBe(
+      false,
+    );
   });
 });
 
@@ -837,11 +786,7 @@ describe("handleIssueServiceToken", () => {
   it("unauthenticated -> 401 UNAUTHORIZED", async () => {
     const req = mockRequest({ body: "{}" });
     const res = mockResponse();
-    await handleIssueServiceToken(
-      req,
-      res as unknown as ServerResponse,
-      makeCtx(),
-    );
+    await handleIssueServiceToken(req, res as unknown as ServerResponse, makeCtx());
     expect(res.statusCode).toBe(401);
     const body = JSON.parse(res.body!);
     expect(body.code).toBe("UNAUTHORIZED");
@@ -863,11 +808,7 @@ describe("handleIssueServiceToken", () => {
       body: "{}",
     });
     const res = mockResponse();
-    await handleIssueServiceToken(
-      req,
-      res as unknown as ServerResponse,
-      makeCtx(),
-    );
+    await handleIssueServiceToken(req, res as unknown as ServerResponse, makeCtx());
     expect(res.statusCode).toBe(403);
     expect(res.headers["WWW-Authenticate"]).toBeUndefined();
     const body = JSON.parse(res.body!);
@@ -886,11 +827,7 @@ describe("handleIssueServiceToken", () => {
       body: "{}",
     });
     const res = mockResponse();
-    await handleIssueServiceToken(
-      req,
-      res as unknown as ServerResponse,
-      makeCtx(),
-    );
+    await handleIssueServiceToken(req, res as unknown as ServerResponse, makeCtx());
     expect(res.statusCode).toBe(403);
     const body = JSON.parse(res.body!);
     expect(body.code).toBe("FORBIDDEN");
@@ -916,11 +853,7 @@ describe("handleIssueServiceToken", () => {
       body: reqBody,
     });
     const res = mockResponse();
-    await handleIssueServiceToken(
-      req,
-      res as unknown as ServerResponse,
-      makeCtx(),
-    );
+    await handleIssueServiceToken(req, res as unknown as ServerResponse, makeCtx());
     expect(res.statusCode).toBe(200);
     expect(res.headers["Cache-Control"]).toBe("no-store");
     const body = JSON.parse(res.body!);
@@ -951,11 +884,7 @@ describe("handleIssueServiceToken", () => {
       body: JSON.stringify({ user_id: "u-target" }),
     });
     const res = mockResponse();
-    await handleIssueServiceToken(
-      req,
-      res as unknown as ServerResponse,
-      makeCtx(),
-    );
+    await handleIssueServiceToken(req, res as unknown as ServerResponse, makeCtx());
     expect(res.statusCode).toBe(400);
     const body = JSON.parse(res.body!);
     expect(body.code).toBe("INVALID_REQUEST");
@@ -973,11 +902,7 @@ describe("handleIssueServiceToken", () => {
       body: "{not json",
     });
     const res = mockResponse();
-    await handleIssueServiceToken(
-      req,
-      res as unknown as ServerResponse,
-      makeCtx(),
-    );
+    await handleIssueServiceToken(req, res as unknown as ServerResponse, makeCtx());
     expect(res.statusCode).toBe(400);
     const body = JSON.parse(res.body!);
     expect(body.code).toBe("INVALID_REQUEST");
@@ -996,11 +921,7 @@ describe("handleIssueServiceToken", () => {
       body: huge,
     });
     const res = mockResponse();
-    await handleIssueServiceToken(
-      req,
-      res as unknown as ServerResponse,
-      makeCtx(),
-    );
+    await handleIssueServiceToken(req, res as unknown as ServerResponse, makeCtx());
     expect(res.statusCode).toBe(400);
     const body = JSON.parse(res.body!);
     expect(body.code).toBe("INVALID_REQUEST");
@@ -1025,11 +946,7 @@ describe("handleIssueServiceToken", () => {
       }),
     });
     const res = mockResponse();
-    await handleIssueServiceToken(
-      req,
-      res as unknown as ServerResponse,
-      makeCtx(),
-    );
+    await handleIssueServiceToken(req, res as unknown as ServerResponse, makeCtx());
     expect(res.statusCode).toBe(400);
     const body = JSON.parse(res.body!);
     expect(body.code).toBe("INVALID_TTL");
@@ -1054,11 +971,7 @@ describe("handleIssueServiceToken", () => {
       }),
     });
     const res = mockResponse();
-    await handleIssueServiceToken(
-      req,
-      res as unknown as ServerResponse,
-      makeCtx(),
-    );
+    await handleIssueServiceToken(req, res as unknown as ServerResponse, makeCtx());
     expect(res.statusCode).toBe(400);
     const body = JSON.parse(res.body!);
     expect(body.code).toBe("USER_NOT_FOUND");
@@ -1091,11 +1004,7 @@ describe("handleIssueServiceToken", () => {
         }),
       });
       const res = mockResponse();
-      await handleIssueServiceToken(
-        req,
-        res as unknown as ServerResponse,
-        makeCtx(),
-      );
+      await handleIssueServiceToken(req, res as unknown as ServerResponse, makeCtx());
       expect(res.statusCode).toBe(200);
       const auditRows = findAuditRows("auth.service_token.issued");
       const meta = JSON.parse(auditRows[0]!.metadata_json as string);
@@ -1129,11 +1038,10 @@ describe("handleIssueServiceToken", () => {
     );
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body!);
-    const { payload } = await jwtVerify(
-      body.access_token,
-      new Uint8Array(SIGNING_SECRET),
-      { algorithms: ["HS256"], issuer: ISSUER },
-    );
+    const { payload } = await jwtVerify(body.access_token, new Uint8Array(SIGNING_SECRET), {
+      algorithms: ["HS256"],
+      issuer: ISSUER,
+    });
     expect(payload.iss).toBe(ISSUER);
   });
 });
@@ -1148,11 +1056,7 @@ describe("handleListServiceTokens", () => {
       url: "/api/admin/service-tokens",
     });
     const res = mockResponse();
-    await handleListServiceTokens(
-      req,
-      res as unknown as ServerResponse,
-      makeCtx(),
-    );
+    await handleListServiceTokens(req, res as unknown as ServerResponse, makeCtx());
     expect(res.statusCode).toBe(401);
     const body = JSON.parse(res.body!);
     expect(body.code).toBe("UNAUTHORIZED");
@@ -1171,11 +1075,7 @@ describe("handleListServiceTokens", () => {
       authorization: `Bearer ${token}`,
     });
     const res = mockResponse();
-    await handleListServiceTokens(
-      req,
-      res as unknown as ServerResponse,
-      makeCtx(),
-    );
+    await handleListServiceTokens(req, res as unknown as ServerResponse, makeCtx());
     expect(res.statusCode).toBe(403);
     const body = JSON.parse(res.body!);
     expect(body.code).toBe("FORBIDDEN");
@@ -1219,11 +1119,7 @@ describe("handleListServiceTokens", () => {
       authorization: `Bearer ${token}`,
     });
     const res = mockResponse();
-    await handleListServiceTokens(
-      req,
-      res as unknown as ServerResponse,
-      makeCtx(),
-    );
+    await handleListServiceTokens(req, res as unknown as ServerResponse, makeCtx());
     expect(res.statusCode).toBe(200);
     expect(res.headers["Cache-Control"]).toBe("no-store");
     const body = JSON.parse(res.body!) as { tokens: Array<Record<string, unknown>> };
@@ -1241,17 +1137,27 @@ describe("handleListServiceTokens", () => {
     seedUser("u-2", "member", "org-acme");
     await issueServiceToken({
       db: getDb() as unknown as Database.Database,
-      clock, signingKeys: registry, issuer: ISSUER,
-      targetUserId: "u-1", targetOrgId: "org-acme",
-      scope: "read", ttlSeconds: 3600,
-      reason: "u-1 filter row aa", issuedByAdminId: "u-admin",
+      clock,
+      signingKeys: registry,
+      issuer: ISSUER,
+      targetUserId: "u-1",
+      targetOrgId: "org-acme",
+      scope: "read",
+      ttlSeconds: 3600,
+      reason: "u-1 filter row aa",
+      issuedByAdminId: "u-admin",
     });
     await issueServiceToken({
       db: getDb() as unknown as Database.Database,
-      clock, signingKeys: registry, issuer: ISSUER,
-      targetUserId: "u-2", targetOrgId: "org-acme",
-      scope: "read", ttlSeconds: 3600,
-      reason: "u-2 filter row bb", issuedByAdminId: "u-admin",
+      clock,
+      signingKeys: registry,
+      issuer: ISSUER,
+      targetUserId: "u-2",
+      targetOrgId: "org-acme",
+      scope: "read",
+      ttlSeconds: 3600,
+      reason: "u-2 filter row bb",
+      issuedByAdminId: "u-admin",
     });
     const token = await createToken("u-admin", "admin", undefined, {
       user_id: "u-admin",
@@ -1263,11 +1169,7 @@ describe("handleListServiceTokens", () => {
       authorization: `Bearer ${token}`,
     });
     const res = mockResponse();
-    await handleListServiceTokens(
-      req,
-      res as unknown as ServerResponse,
-      makeCtx(),
-    );
+    await handleListServiceTokens(req, res as unknown as ServerResponse, makeCtx());
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body!) as { tokens: Array<Record<string, unknown>> };
     expect(body.tokens).toHaveLength(1);
@@ -1282,17 +1184,27 @@ describe("handleListServiceTokens", () => {
     seedUser("u-b", "member", "org-b");
     await issueServiceToken({
       db: getDb() as unknown as Database.Database,
-      clock, signingKeys: registry, issuer: ISSUER,
-      targetUserId: "u-a", targetOrgId: "org-a",
-      scope: "read", ttlSeconds: 3600,
-      reason: "org-a filter row", issuedByAdminId: "u-admin",
+      clock,
+      signingKeys: registry,
+      issuer: ISSUER,
+      targetUserId: "u-a",
+      targetOrgId: "org-a",
+      scope: "read",
+      ttlSeconds: 3600,
+      reason: "org-a filter row",
+      issuedByAdminId: "u-admin",
     });
     await issueServiceToken({
       db: getDb() as unknown as Database.Database,
-      clock, signingKeys: registry, issuer: ISSUER,
-      targetUserId: "u-b", targetOrgId: "org-b",
-      scope: "read", ttlSeconds: 3600,
-      reason: "org-b filter row", issuedByAdminId: "u-admin",
+      clock,
+      signingKeys: registry,
+      issuer: ISSUER,
+      targetUserId: "u-b",
+      targetOrgId: "org-b",
+      scope: "read",
+      ttlSeconds: 3600,
+      reason: "org-b filter row",
+      issuedByAdminId: "u-admin",
     });
     const token = await createToken("u-admin", "admin", undefined, {
       user_id: "u-admin",
@@ -1304,11 +1216,7 @@ describe("handleListServiceTokens", () => {
       authorization: `Bearer ${token}`,
     });
     const res = mockResponse();
-    await handleListServiceTokens(
-      req,
-      res as unknown as ServerResponse,
-      makeCtx(),
-    );
+    await handleListServiceTokens(req, res as unknown as ServerResponse, makeCtx());
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body!) as { tokens: Array<Record<string, unknown>> };
     expect(body.tokens).toHaveLength(1);
@@ -1321,24 +1229,29 @@ describe("handleListServiceTokens", () => {
     seedUser("u-target", "member", "org-acme");
     const active = await issueServiceToken({
       db: getDb() as unknown as Database.Database,
-      clock, signingKeys: registry, issuer: ISSUER,
-      targetUserId: "u-target", targetOrgId: "org-acme",
-      scope: "read", ttlSeconds: 3600,
-      reason: "active-only test row", issuedByAdminId: "u-admin",
+      clock,
+      signingKeys: registry,
+      issuer: ISSUER,
+      targetUserId: "u-target",
+      targetOrgId: "org-acme",
+      scope: "read",
+      ttlSeconds: 3600,
+      reason: "active-only test row",
+      issuedByAdminId: "u-admin",
     });
     const toRevoke = await issueServiceToken({
       db: getDb() as unknown as Database.Database,
-      clock, signingKeys: registry, issuer: ISSUER,
-      targetUserId: "u-target", targetOrgId: "org-acme",
-      scope: "read", ttlSeconds: 3600,
-      reason: "to-be-revoked test row", issuedByAdminId: "u-admin",
-    });
-    revokeServiceToken(
-      getDb() as unknown as Database.Database,
       clock,
-      toRevoke.jti,
-      "u-admin",
-    );
+      signingKeys: registry,
+      issuer: ISSUER,
+      targetUserId: "u-target",
+      targetOrgId: "org-acme",
+      scope: "read",
+      ttlSeconds: 3600,
+      reason: "to-be-revoked test row",
+      issuedByAdminId: "u-admin",
+    });
+    revokeServiceToken(getDb() as unknown as Database.Database, clock, toRevoke.jti, "u-admin");
     const token = await createToken("u-admin", "admin", undefined, {
       user_id: "u-admin",
       org: "org-acme",
@@ -1349,11 +1262,7 @@ describe("handleListServiceTokens", () => {
       authorization: `Bearer ${token}`,
     });
     const res = mockResponse();
-    await handleListServiceTokens(
-      req,
-      res as unknown as ServerResponse,
-      makeCtx(),
-    );
+    await handleListServiceTokens(req, res as unknown as ServerResponse, makeCtx());
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body!) as { tokens: Array<Record<string, unknown>> };
     expect(body.tokens).toHaveLength(1);
@@ -1368,32 +1277,42 @@ describe("handleListServiceTokens", () => {
     // Active token (long TTL).
     const activeRow = await issueServiceToken({
       db: getDb() as unknown as Database.Database,
-      clock, signingKeys: registry, issuer: ISSUER,
-      targetUserId: "u-target", targetOrgId: "org-acme",
-      scope: "read", ttlSeconds: 3600,
-      reason: "status: active row", issuedByAdminId: "u-admin",
+      clock,
+      signingKeys: registry,
+      issuer: ISSUER,
+      targetUserId: "u-target",
+      targetOrgId: "org-acme",
+      scope: "read",
+      ttlSeconds: 3600,
+      reason: "status: active row",
+      issuedByAdminId: "u-admin",
     });
     // Revoked token.
     const revokedRow = await issueServiceToken({
       db: getDb() as unknown as Database.Database,
-      clock, signingKeys: registry, issuer: ISSUER,
-      targetUserId: "u-target", targetOrgId: "org-acme",
-      scope: "read", ttlSeconds: 3600,
-      reason: "status: revoked row", issuedByAdminId: "u-admin",
-    });
-    revokeServiceToken(
-      getDb() as unknown as Database.Database,
       clock,
-      revokedRow.jti,
-      "u-admin",
-    );
+      signingKeys: registry,
+      issuer: ISSUER,
+      targetUserId: "u-target",
+      targetOrgId: "org-acme",
+      scope: "read",
+      ttlSeconds: 3600,
+      reason: "status: revoked row",
+      issuedByAdminId: "u-admin",
+    });
+    revokeServiceToken(getDb() as unknown as Database.Database, clock, revokedRow.jti, "u-admin");
     // Expired token: short TTL, then advance the clock past it.
     const expiredRow = await issueServiceToken({
       db: getDb() as unknown as Database.Database,
-      clock, signingKeys: registry, issuer: ISSUER,
-      targetUserId: "u-target", targetOrgId: "org-acme",
-      scope: "read", ttlSeconds: 10,
-      reason: "status: expired row", issuedByAdminId: "u-admin",
+      clock,
+      signingKeys: registry,
+      issuer: ISSUER,
+      targetUserId: "u-target",
+      targetOrgId: "org-acme",
+      scope: "read",
+      ttlSeconds: 10,
+      reason: "status: expired row",
+      issuedByAdminId: "u-admin",
     });
     clock.advance(100);
     const token = await createToken("u-admin", "admin", undefined, {
@@ -1406,11 +1325,7 @@ describe("handleListServiceTokens", () => {
       authorization: `Bearer ${token}`,
     });
     const res = mockResponse();
-    await handleListServiceTokens(
-      req,
-      res as unknown as ServerResponse,
-      makeCtx(),
-    );
+    await handleListServiceTokens(req, res as unknown as ServerResponse, makeCtx());
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body!) as { tokens: Array<Record<string, unknown>> };
     const byJti = new Map(body.tokens.map((t) => [t.jti as string, t]));
@@ -1430,12 +1345,7 @@ describe("handleRevokeServiceToken", () => {
       url: "/api/admin/service-tokens/some-jti/revoke",
     });
     const res = mockResponse();
-    await handleRevokeServiceToken(
-      req,
-      res as unknown as ServerResponse,
-      makeCtx(),
-      "some-jti",
-    );
+    await handleRevokeServiceToken(req, res as unknown as ServerResponse, makeCtx(), "some-jti");
     expect(res.statusCode).toBe(401);
     const body = JSON.parse(res.body!);
     expect(body.code).toBe("UNAUTHORIZED");
@@ -1454,12 +1364,7 @@ describe("handleRevokeServiceToken", () => {
       authorization: `Bearer ${token}`,
     });
     const res = mockResponse();
-    await handleRevokeServiceToken(
-      req,
-      res as unknown as ServerResponse,
-      makeCtx(),
-      "some-jti",
-    );
+    await handleRevokeServiceToken(req, res as unknown as ServerResponse, makeCtx(), "some-jti");
     expect(res.statusCode).toBe(403);
     const body = JSON.parse(res.body!);
     expect(body.code).toBe("FORBIDDEN");
@@ -1478,12 +1383,7 @@ describe("handleRevokeServiceToken", () => {
       authorization: `Bearer ${token}`,
     });
     const res = mockResponse();
-    await handleRevokeServiceToken(
-      req,
-      res as unknown as ServerResponse,
-      makeCtx(),
-      "no-such-jti",
-    );
+    await handleRevokeServiceToken(req, res as unknown as ServerResponse, makeCtx(), "no-such-jti");
     expect(res.statusCode).toBe(404);
     const body = JSON.parse(res.body!);
     expect(body.code).toBe("NOT_FOUND");
@@ -1495,10 +1395,15 @@ describe("handleRevokeServiceToken", () => {
     seedUser("u-target", "member", "org-acme");
     const issued = await issueServiceToken({
       db: getDb() as unknown as Database.Database,
-      clock, signingKeys: registry, issuer: ISSUER,
-      targetUserId: "u-target", targetOrgId: "org-acme",
-      scope: "read", ttlSeconds: 3600,
-      reason: "revoke-endpoint target row", issuedByAdminId: "u-admin",
+      clock,
+      signingKeys: registry,
+      issuer: ISSUER,
+      targetUserId: "u-target",
+      targetOrgId: "org-acme",
+      scope: "read",
+      ttlSeconds: 3600,
+      reason: "revoke-endpoint target row",
+      issuedByAdminId: "u-admin",
     });
     const token = await createToken("u-admin", "admin", undefined, {
       user_id: "u-admin",
@@ -1510,12 +1415,7 @@ describe("handleRevokeServiceToken", () => {
       authorization: `Bearer ${token}`,
     });
     const res = mockResponse();
-    await handleRevokeServiceToken(
-      req,
-      res as unknown as ServerResponse,
-      makeCtx(),
-      issued.jti,
-    );
+    await handleRevokeServiceToken(req, res as unknown as ServerResponse, makeCtx(), issued.jti);
     expect(res.statusCode).toBe(200);
     expect(res.headers["Cache-Control"]).toBe("no-store");
     const body = JSON.parse(res.body!);
@@ -1541,17 +1441,17 @@ describe("handleRevokeServiceToken", () => {
     seedUser("u-target", "member", "org-acme");
     const issued = await issueServiceToken({
       db: getDb() as unknown as Database.Database,
-      clock, signingKeys: registry, issuer: ISSUER,
-      targetUserId: "u-target", targetOrgId: "org-acme",
-      scope: "read", ttlSeconds: 3600,
-      reason: "double-revoke target row", issuedByAdminId: "u-admin",
-    });
-    revokeServiceToken(
-      getDb() as unknown as Database.Database,
       clock,
-      issued.jti,
-      "u-admin",
-    );
+      signingKeys: registry,
+      issuer: ISSUER,
+      targetUserId: "u-target",
+      targetOrgId: "org-acme",
+      scope: "read",
+      ttlSeconds: 3600,
+      reason: "double-revoke target row",
+      issuedByAdminId: "u-admin",
+    });
+    revokeServiceToken(getDb() as unknown as Database.Database, clock, issued.jti, "u-admin");
     const token = await createToken("u-admin", "admin", undefined, {
       user_id: "u-admin",
       org: "org-acme",
@@ -1562,12 +1462,7 @@ describe("handleRevokeServiceToken", () => {
       authorization: `Bearer ${token}`,
     });
     const res = mockResponse();
-    await handleRevokeServiceToken(
-      req,
-      res as unknown as ServerResponse,
-      makeCtx(),
-      issued.jti,
-    );
+    await handleRevokeServiceToken(req, res as unknown as ServerResponse, makeCtx(), issued.jti);
     expect(res.statusCode).toBe(404);
     const body = JSON.parse(res.body!);
     expect(body.code).toBe("NOT_FOUND");

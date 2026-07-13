@@ -591,7 +591,16 @@ describe("finalizeBrowserOAuth — provisioning audits", () => {
             idp_access_token, role, last_login_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run("u-1", "org-acme", USER_ALICE.email, "github", USER_ALICE.idp_user_id, "old-token", "member", "0");
+      .run(
+        "u-1",
+        "org-acme",
+        USER_ALICE.email,
+        "github",
+        USER_ALICE.idp_user_id,
+        "old-token",
+        "member",
+        "0",
+      );
     clock.advance(1234);
     const expectedNow = String(clock.now());
     const provider = stubProvider({ memberships: ["acme"] });
@@ -754,7 +763,7 @@ describe("finalizeBrowserOAuth — edge cases", () => {
     const wrappedLimiter = new Proxy(rateLimiter, {
       get(target, prop) {
         if (prop === "peek") {
-          return () => ({ allowed: false } as unknown as ReturnType<RateLimiter["peek"]>);
+          return () => ({ allowed: false }) as unknown as ReturnType<RateLimiter["peek"]>;
         }
         const v = Reflect.get(target, prop);
         return typeof v === "function" ? v.bind(target) : v;

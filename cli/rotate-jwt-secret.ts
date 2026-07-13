@@ -50,9 +50,7 @@ export function buildRotationPlan(
   randomSource: (n: number) => Buffer = (n) => crypto.randomBytes(n),
 ): RotationPlan {
   if (byteLength < 16) {
-    throw new Error(
-      `rotate-jwt-secret: --bits ${byteLength * 8} below the 128-bit floor`,
-    );
+    throw new Error(`rotate-jwt-secret: --bits ${byteLength * 8} below the 128-bit floor`);
   }
   const buf = randomSource(byteLength);
   const newSecret = buf.toString("base64");
@@ -115,11 +113,7 @@ export function createRotateJwtSecretCommand(): Command {
   );
 
   cmd
-    .option(
-      "--bits <bits>",
-      "Total bits of randomness in the new secret. Must be >=128.",
-      "256",
-    )
+    .option("--bits <bits>", "Total bits of randomness in the new secret. Must be >=128.", "256")
     .option(
       "--format <format>",
       "Output format: env (default, copy-pasteable env block), json (machine-readable), secret-only (just the new secret on stdout)",

@@ -140,11 +140,23 @@ describe("Sweeper — Phase-1-only wiring (performance-01)", () => {
     expect(handle.sweeper).toBeInstanceOf(Sweeper);
     handle.sweeper!.runPass();
 
-    expect((db.prepare("SELECT file_path FROM file_activity").all() as { file_path: string }[]).map((r) => r.file_path)).toEqual(["f-new.ts"]);
-    expect((db.prepare("SELECT type FROM events").all() as { type: string }[]).map((r) => r.type)).toEqual(["e-new"]);
-    expect((db.prepare("SELECT id FROM thread_messages").all() as { id: string }[]).map((r) => r.id)).toEqual(["tm-new"]);
-    expect((db.prepare("SELECT id FROM action_summaries").all() as { id: string }[]).map((r) => r.id)).toEqual(["as-new"]);
-    expect((db.prepare("SELECT fired_at FROM layer_firings").all() as { fired_at: string }[]).length).toBe(1);
+    expect(
+      (db.prepare("SELECT file_path FROM file_activity").all() as { file_path: string }[]).map(
+        (r) => r.file_path,
+      ),
+    ).toEqual(["f-new.ts"]);
+    expect(
+      (db.prepare("SELECT type FROM events").all() as { type: string }[]).map((r) => r.type),
+    ).toEqual(["e-new"]);
+    expect(
+      (db.prepare("SELECT id FROM thread_messages").all() as { id: string }[]).map((r) => r.id),
+    ).toEqual(["tm-new"]);
+    expect(
+      (db.prepare("SELECT id FROM action_summaries").all() as { id: string }[]).map((r) => r.id),
+    ).toEqual(["as-new"]);
+    expect(
+      (db.prepare("SELECT fired_at FROM layer_firings").all() as { fired_at: string }[]).length,
+    ).toBe(1);
   });
 
   it("R5(3): Phase 2 mode runs exactly ONE Sweeper instance (no double-start)", async () => {
@@ -183,12 +195,10 @@ describe("Sweeper — Phase-1-only wiring (performance-01)", () => {
     expect(handle.sweeper).toBeInstanceOf(Sweeper);
 
     const db = getDb();
-    db.prepare(
-      `INSERT INTO events (type, payload, created_at) VALUES ('e-old','{}', ?)`,
-    ).run(isoDaysAgo(40));
+    db.prepare(`INSERT INTO events (type, payload, created_at) VALUES ('e-old','{}', ?)`).run(
+      isoDaysAgo(40),
+    );
     handle.sweeper!.runPass();
-    expect(
-      (db.prepare("SELECT COUNT(*) AS c FROM events").get() as { c: number }).c,
-    ).toBe(0);
+    expect((db.prepare("SELECT COUNT(*) AS c FROM events").get() as { c: number }).c).toBe(0);
   });
 });

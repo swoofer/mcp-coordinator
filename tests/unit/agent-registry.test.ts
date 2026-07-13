@@ -79,11 +79,15 @@ describe("AgentRegistry", () => {
 });
 
 describe("agent-registry org_id scoping", () => {
-  beforeEach(() => { getDb().exec("DELETE FROM agents"); });
+  beforeEach(() => {
+    getDb().exec("DELETE FROM agents");
+  });
 
   it("register writes org_id", () => {
     registry.register("org-a", "agent-1", "Agent 1", []);
-    const row = getDb().prepare("SELECT org_id FROM agents WHERE id = 'agent-1'").get() as { org_id: string };
+    const row = getDb().prepare("SELECT org_id FROM agents WHERE id = 'agent-1'").get() as {
+      org_id: string;
+    };
     expect(row.org_id).toBe("org-a");
   });
 
@@ -155,5 +159,3 @@ describe("agent-registry org_id scoping", () => {
     expect(afterB2).toBe(beforeB);
   });
 });
-
-

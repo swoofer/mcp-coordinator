@@ -24,10 +24,13 @@ describe("loadConfig", () => {
 
   it("reads config.json when it exists", () => {
     fs.mkdirSync(TEST_CONFIG_DIR, { recursive: true });
-    fs.writeFileSync(`${TEST_CONFIG_DIR}/config.json`, JSON.stringify({
-      server: { port: 4000 },
-      defaults: { coordinator_url: "http://remote:3100" },
-    }));
+    fs.writeFileSync(
+      `${TEST_CONFIG_DIR}/config.json`,
+      JSON.stringify({
+        server: { port: 4000 },
+        defaults: { coordinator_url: "http://remote:3100" },
+      }),
+    );
     const config = loadConfig(TEST_CONFIG_DIR);
     expect(config.server.port).toBe(4000);
     expect(config.defaults.coordinator_url).toBe("http://remote:3100");
@@ -37,9 +40,7 @@ describe("loadConfig", () => {
     fs.mkdirSync(TEST_CONFIG_DIR, { recursive: true });
     fs.writeFileSync(`${TEST_CONFIG_DIR}/config.json`, "{ bad json ]}");
     expect(() => loadConfig(TEST_CONFIG_DIR)).toThrow(/config\.json/);
-    expect(() => loadConfig(TEST_CONFIG_DIR)).toThrow(
-      /Failed to parse config file.*config\.json/,
-    );
+    expect(() => loadConfig(TEST_CONFIG_DIR)).toThrow(/Failed to parse config file.*config\.json/);
   });
 
   it("throws error that includes underlying parse message", () => {

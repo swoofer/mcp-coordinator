@@ -244,7 +244,9 @@ beforeEach(() => {
   // a test below) reference orgs(id). Preserve 'default' so the FK is
   // satisfied; only wipe the bespoke per-test orgs.
   getDb().exec("DELETE FROM orgs WHERE id <> 'default'");
-  getDb().prepare("INSERT OR IGNORE INTO orgs (id, name) VALUES ('default', 'Default Organization')").run();
+  getDb()
+    .prepare("INSERT OR IGNORE INTO orgs (id, name) VALUES ('default', 'Default Organization')")
+    .run();
   resetPhase2Auth();
   clock = new FakeClock(Math.floor(Date.now() / 1000));
   rateLimiter = new RateLimiter(clock);
@@ -487,8 +489,13 @@ describe("handleDeviceApprove — approve failures", () => {
     expect(res.headers["Location"]).toBe(`${ISSUER}/auth/device?error=expired`);
     // Row should remain unchanged (no approved_user_id, no increment)
     const row = getDb()
-      .prepare("SELECT approved_user_id, failed_approval_attempts FROM device_auth_requests WHERE user_code = ?")
-      .get(seeded.user_code) as { approved_user_id: string | null; failed_approval_attempts: number };
+      .prepare(
+        "SELECT approved_user_id, failed_approval_attempts FROM device_auth_requests WHERE user_code = ?",
+      )
+      .get(seeded.user_code) as {
+      approved_user_id: string | null;
+      failed_approval_attempts: number;
+    };
     expect(row.approved_user_id).toBeNull();
     expect(row.failed_approval_attempts).toBe(0);
   });
@@ -560,16 +567,18 @@ describe("handleDeviceApprove — brute-force lockout (V4 FIX 21)", () => {
     // Row should be locked: denied_at set, denied_reason='too_many_failed_approvals',
     // failed_approval_attempts incremented to 6.
     const row = getDb()
-      .prepare(`
+      .prepare(
+        `
         SELECT denied_at, denied_reason, failed_approval_attempts, approved_user_id
         FROM device_auth_requests WHERE user_code = ?
-      `)
+      `,
+      )
       .get(seeded.user_code) as {
-        denied_at: number | null;
-        denied_reason: string | null;
-        failed_approval_attempts: number;
-        approved_user_id: string | null;
-      };
+      denied_at: number | null;
+      denied_reason: string | null;
+      failed_approval_attempts: number;
+      approved_user_id: string | null;
+    };
     expect(row.denied_at).toBe(clock.now());
     expect(row.denied_reason).toBe("too_many_failed_approvals");
     expect(row.failed_approval_attempts).toBe(6);
@@ -628,7 +637,9 @@ describe("handleDeviceApprove — brute-force lockout (V4 FIX 21)", () => {
 
     // Increment happened (0 → 1). Row still pending (not denied).
     const row = getDb()
-      .prepare("SELECT failed_approval_attempts, denied_at FROM device_auth_requests WHERE user_code = ?")
+      .prepare(
+        "SELECT failed_approval_attempts, denied_at FROM device_auth_requests WHERE user_code = ?",
+      )
       .get(seeded.user_code) as { failed_approval_attempts: number; denied_at: number | null };
     expect(row.failed_approval_attempts).toBe(1);
     expect(row.denied_at).toBeNull();
@@ -684,8 +695,14 @@ describe("handleDeviceApprove — deny action", () => {
     expect(res.statusCode).toBe(302);
     expect(res.headers["Location"]).toBe(`${ISSUER}/auth/device?status=denied`);
     const row = getDb()
-      .prepare("SELECT denied_at, denied_reason, approved_user_id FROM device_auth_requests WHERE user_code = ?")
-      .get(seeded.user_code) as { denied_at: number | null; denied_reason: string | null; approved_user_id: string | null };
+      .prepare(
+        "SELECT denied_at, denied_reason, approved_user_id FROM device_auth_requests WHERE user_code = ?",
+      )
+      .get(seeded.user_code) as {
+      denied_at: number | null;
+      denied_reason: string | null;
+      approved_user_id: string | null;
+    };
     expect(row.denied_at).toBe(clock.now());
     expect(row.denied_reason).toBe("user_denied");
     expect(row.approved_user_id).toBeNull();

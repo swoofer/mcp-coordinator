@@ -22,15 +22,7 @@
  * Uses T38 helpers (FakeClock, seedFourOrgs, findAuditRows).
  */
 
-import {
-  describe,
-  it,
-  expect,
-  beforeAll,
-  afterAll,
-  beforeEach,
-  afterEach,
-} from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -40,16 +32,9 @@ import type Database from "better-sqlite3";
 import { SignJWT } from "jose";
 
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
-import {
-  initAuth,
-  initPhase2Auth,
-  resetPhase2Auth,
-  authenticateRequest,
-} from "../../src/auth.js";
+import { initAuth, initPhase2Auth, resetPhase2Auth, authenticateRequest } from "../../src/auth.js";
 import { audit } from "../../src/security/audit.js";
-import {
-  withAuditContext,
-} from "../../src/auth/audit-context.js";
+import { withAuditContext } from "../../src/auth/audit-context.js";
 import { withRequestId } from "../../src/auth/request-id.js";
 import { buildJwtKeyRegistry } from "../../src/auth/jwt-keys.js";
 import { mintAccessJWT } from "../../src/auth/jwt-mint.js";
@@ -66,10 +51,7 @@ import { bumpTokenEpoch, readTokenEpoch } from "../../src/auth/token-epoch.js";
 import { computeFingerprint } from "../../src/auth/oauth-finalize.js";
 import { Sweeper } from "../../src/sweeper/index.js";
 import type { AuthHandlerContext } from "../../src/auth/context.js";
-import type {
-  IdPProvider,
-  ExchangeCodeResult,
-} from "../../src/auth/providers/types.js";
+import type { IdPProvider, ExchangeCodeResult } from "../../src/auth/providers/types.js";
 
 const PHASE1_SECRET = "phase1-test-secret-at-least-32-chars-long!";
 const SIGNING_SECRET = Buffer.alloc(32, 0x32);
@@ -324,14 +306,10 @@ function seedRefreshRow(opts: SeedRefreshOpts): void {
  * compatibility) — most D scenarios want it populated.
  */
 function setIdpAccessToken(userId: string, token: string | null): void {
-  getDb()
-    .prepare("UPDATE users SET idp_access_token = ? WHERE id = ?")
-    .run(token, userId);
+  getDb().prepare("UPDATE users SET idp_access_token = ? WHERE id = ?").run(token, userId);
 }
 
-function makeProvider(
-  listMemberships?: () => Promise<string[]>,
-): IdPProvider {
+function makeProvider(listMemberships?: () => Promise<string[]>): IdPProvider {
   return {
     name: "github",
     buildAuthUrl: () => "https://example/unused",
@@ -342,9 +320,7 @@ function makeProvider(
   } as IdPProvider;
 }
 
-function makeCtx(
-  overrides: Partial<AuthHandlerContext> = {},
-): AuthHandlerContext {
+function makeCtx(overrides: Partial<AuthHandlerContext> = {}): AuthHandlerContext {
   return {
     db: getDb() as unknown as AuthHandlerContext["db"],
     clock,
@@ -416,10 +392,9 @@ describe("D1 — cookie auth + Bearer header race", () => {
       sub: "u-admin-delta",
       active_org_id: "org-delta-004",
     });
-    const result = await authenticateRequest(
-      mockAuthReq({ cookie: sessionCookie(cookieToken) }),
-      { authEnabled: true },
-    );
+    const result = await authenticateRequest(mockAuthReq({ cookie: sessionCookie(cookieToken) }), {
+      authEnabled: true,
+    });
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.claims.sub).toBe("u-admin-delta");
@@ -549,10 +524,7 @@ describe("D3 — logout-all during refresh rotation", () => {
     // current+1 — guarantees the new epoch is strictly > 0 and > iat. For
     // our test iat was real-time-anchored seconds, so wall-clock now is
     // very close; we explicitly UPDATE the column to a value > iat.
-    db.prepare("UPDATE users SET token_epoch = ? WHERE id = ?").run(
-      tMinus30 + 5,
-      "u-admin-acme",
-    );
+    db.prepare("UPDATE users SET token_epoch = ? WHERE id = ?").run(tMinus30 + 5, "u-admin-acme");
 
     // Advance to T-10 (still after the bump) and try to rotate.
     clock.advance(5);
@@ -612,16 +584,16 @@ describe("D3 — logout-all during refresh rotation", () => {
     // T+15: bump epoch (logout-all). Set epoch to (tStart+10) so the
     // successor (iat ≈ tStart+5) is invalidated.
     clock.advance(10);
-    db.prepare("UPDATE users SET token_epoch = ? WHERE id = ?").run(
-      tStart + 10,
-      "u-admin-acme",
-    );
+    db.prepare("UPDATE users SET token_epoch = ? WHERE id = ?").run(tStart + 10, "u-admin-acme");
 
     // T+20: try to rotate the successor.
     clock.advance(5);
     const res2 = mockResponse();
     await refreshTokenGrant(
-      mockRequest({ refresh_token: successor.refresh_token }, { ip: "10.0.0.7", userAgent: "ua/d3-7" }),
+      mockRequest(
+        { refresh_token: successor.refresh_token },
+        { ip: "10.0.0.7", userAgent: "ua/d3-7" },
+      ),
       res2 as unknown as ServerResponse,
       makeCtx(),
     );
@@ -768,10 +740,7 @@ describe("D5 — reuse detection across multi-rotation chain", () => {
       clock.advance(1); // small advance so iat values differ enough
       const res = mockResponse();
       await refreshTokenGrant(
-        mockRequest(
-          { refresh_token: currentToken },
-          { ip: "10.0.0.5", userAgent: "ua/d5" },
-        ),
+        mockRequest({ refresh_token: currentToken }, { ip: "10.0.0.5", userAgent: "ua/d5" }),
         res as unknown as ServerResponse,
         makeCtx(),
       );
@@ -782,9 +751,7 @@ describe("D5 — reuse detection across multi-rotation chain", () => {
       currentToken = body.refresh_token;
       // Find the newest jti (successor row pointing at currentJti).
       const successorRow = db
-        .prepare(
-          "SELECT jti FROM refresh_tokens WHERE parent_jti = ? AND family_id = ?",
-        )
+        .prepare("SELECT jti FROM refresh_tokens WHERE parent_jti = ? AND family_id = ?")
         .get(currentJti, familyId) as { jti: string };
       currentJti = successorRow.jti;
       chainJtis.push(currentJti);
@@ -793,9 +760,7 @@ describe("D5 — reuse detection across multi-rotation chain", () => {
     // Chain length is 5 rows; verify.
     expect(chainJtis).toHaveLength(5);
     const allFamilyRows = db
-      .prepare(
-        "SELECT COUNT(*) AS n FROM refresh_tokens WHERE family_id = ?",
-      )
+      .prepare("SELECT COUNT(*) AS n FROM refresh_tokens WHERE family_id = ?")
       .get(familyId) as { n: number };
     expect(allFamilyRows.n).toBe(5);
 
@@ -816,10 +781,7 @@ describe("D5 — reuse detection across multi-rotation chain", () => {
     });
     const replayRes = mockResponse();
     await refreshTokenGrant(
-      mockRequest(
-        { refresh_token: rt1Token },
-        { ip: "10.0.0.5", userAgent: "ua/d5" },
-      ),
+      mockRequest({ refresh_token: rt1Token }, { ip: "10.0.0.5", userAgent: "ua/d5" }),
       replayRes as unknown as ServerResponse,
       makeCtx(),
     );
@@ -880,21 +842,18 @@ describe("D6 — allowlist removal mid-session via IdP refresh", () => {
     // Sanity-check with allowlist intact: rotation succeeds.
     // (Issuing it would consume the row; instead we just verify the dependency
     // is wired correctly by removing the allowlist NOW before the call.)
-    db.prepare("UPDATE orgs SET allowlist_github_org = NULL WHERE id = ?").run(
-      "org-acme-001",
-    );
+    db.prepare("UPDATE orgs SET allowlist_github_org = NULL WHERE id = ?").run("org-acme-001");
 
     const res = mockResponse();
     await refreshTokenGrant(
-      mockRequest(
-        { refresh_token: token },
-        { ip: "10.0.0.6", userAgent: "ua/d6" },
-      ),
+      mockRequest({ refresh_token: token }, { ip: "10.0.0.6", userAgent: "ua/d6" }),
       res as unknown as ServerResponse,
-      makeCtx((() => {
-        const p = makeProvider(async () => ["acme"]);
-        return { providers: singleProviderRegistry(p) };
-      })()),
+      makeCtx(
+        (() => {
+          const p = makeProvider(async () => ["acme"]);
+          return { providers: singleProviderRegistry(p) };
+        })(),
+      ),
     );
     expect(res.statusCode).toBe(401);
     const body = JSON.parse(res.body!) as {
@@ -907,9 +866,7 @@ describe("D6 — allowlist removal mid-session via IdP refresh", () => {
     // Row revoked with reason='admin' (matches refresh-rotation main-path
     // allowlist-denial branch).
     const row = db
-      .prepare(
-        "SELECT revoked_at, revoked_reason FROM refresh_tokens WHERE jti = ?",
-      )
+      .prepare("SELECT revoked_at, revoked_reason FROM refresh_tokens WHERE jti = ?")
       .get("jti-d6-1") as { revoked_at: string; revoked_reason: string };
     expect(row.revoked_at).not.toBeNull();
     expect(row.revoked_reason).toBe("admin");
@@ -945,28 +902,23 @@ describe("D7 — token_epoch bump invalidates already-verified JWT", () => {
     });
 
     // T-0: verify passes.
-    const ok = await authenticateRequest(
-      mockAuthReq({ cookie: sessionCookie(token) }),
-      { authEnabled: true },
-    );
+    const ok = await authenticateRequest(mockAuthReq({ cookie: sessionCookie(token) }), {
+      authEnabled: true,
+    });
     expect(ok.ok).toBe(true);
 
     // T-5: bump epoch to (iat + 2) so the JWT becomes invalid.
     clock.advance(5);
-    db.prepare("UPDATE users SET token_epoch = ? WHERE id = ?").run(
-      tStart + 2,
-      "u-admin-acme",
-    );
+    db.prepare("UPDATE users SET token_epoch = ? WHERE id = ?").run(tStart + 2, "u-admin-acme");
 
     // Direct readTokenEpoch sees the new value (no cache).
     expect(readTokenEpoch(db, "u-admin-acme")).toBe(tStart + 2);
 
     // T-10: the SAME JWT (same signature, same iat) now fails.
     clock.advance(5);
-    const denied = await authenticateRequest(
-      mockAuthReq({ cookie: sessionCookie(token) }),
-      { authEnabled: true },
-    );
+    const denied = await authenticateRequest(mockAuthReq({ cookie: sessionCookie(token) }), {
+      authEnabled: true,
+    });
     expect(denied.ok).toBe(false);
     if (!denied.ok) {
       expect(denied.status).toBe(401);
@@ -1043,9 +995,7 @@ describe("D8 — audit Tier 1 commit-then-audit separation (V4 FIX 23)", () => {
 
     // Critical: the security UPDATE remains committed.
     const row = db
-      .prepare(
-        "SELECT revoked_at, revoked_reason FROM refresh_tokens WHERE jti = ?",
-      )
+      .prepare("SELECT revoked_at, revoked_reason FROM refresh_tokens WHERE jti = ?")
       .get("jti-d8-1") as { revoked_at: string; revoked_reason: string };
     expect(row.revoked_at).not.toBeNull();
     expect(row.revoked_reason).toBe("reuse_detected");
@@ -1084,9 +1034,7 @@ describe("D8 — audit Tier 1 commit-then-audit separation (V4 FIX 23)", () => {
     const audits = findAuditRows("auth.refresh.chain_revoked");
     expect(audits.length).toBeGreaterThanOrEqual(1);
     const row = db
-      .prepare(
-        "SELECT revoked_reason FROM refresh_tokens WHERE jti = ?",
-      )
+      .prepare("SELECT revoked_reason FROM refresh_tokens WHERE jti = ?")
       .get("jti-d8-2") as { revoked_reason: string };
     expect(row.revoked_reason).toBe("reuse_detected");
   });
@@ -1103,14 +1051,9 @@ describe("D9 — sweeper retention boundary", () => {
    * sweeper expects.
    */
   function insertAuditAt(action: string, createdAtEpoch: number): void {
-    const iso = new Date(createdAtEpoch * 1000)
-      .toISOString()
-      .replace("T", " ")
-      .slice(0, 19);
+    const iso = new Date(createdAtEpoch * 1000).toISOString().replace("T", " ").slice(0, 19);
     getDb()
-      .prepare(
-        `INSERT INTO audit_log (action, outcome, created_at) VALUES (?, 'success', ?)`,
-      )
+      .prepare(`INSERT INTO audit_log (action, outcome, created_at) VALUES (?, 'success', ?)`)
       .run(action, iso);
   }
 
@@ -1136,9 +1079,7 @@ describe("D9 — sweeper retention boundary", () => {
     sweeper.runPass();
 
     const survivors = db
-      .prepare(
-        "SELECT COUNT(*) AS n FROM audit_log WHERE action = ?",
-      )
+      .prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action = ?")
       .get("auth.refresh.chain_revoked") as { n: number };
     expect(survivors.n).toBe(5);
   });
@@ -1161,9 +1102,7 @@ describe("D9 — sweeper retention boundary", () => {
     sweeper.runPass();
 
     const survivors = db
-      .prepare(
-        "SELECT COUNT(*) AS n FROM audit_log WHERE action = ?",
-      )
+      .prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action = ?")
       .get("auth.refresh.rotated") as { n: number };
     expect(survivors.n).toBe(5);
   });
@@ -1184,9 +1123,7 @@ describe("D9 — sweeper retention boundary", () => {
     sweeper.runPass();
 
     const survivors = db
-      .prepare(
-        "SELECT COUNT(*) AS n FROM audit_log WHERE action = ?",
-      )
+      .prepare("SELECT COUNT(*) AS n FROM audit_log WHERE action = ?")
       .get("app.custom.unclassified") as { n: number };
     expect(survivors.n).toBe(1);
   });
@@ -1210,14 +1147,7 @@ describe("D10 — concurrent device approve race", () => {
          (device_code, user_code, nonce, org_id, expires_at,
           requester_ip, requester_user_agent, failed_approval_attempts)
        VALUES (?, ?, ?, NULL, ?, ?, ?, 0)`,
-    ).run(
-      "dev-d10-1",
-      "ZZZZ-9999",
-      "nonce-d10-1",
-      String(now + 600),
-      "10.0.0.10",
-      "ua/d10",
-    );
+    ).run("dev-d10-1", "ZZZZ-9999", "nonce-d10-1", String(now + 600), "10.0.0.10", "ua/d10");
 
     const stmt = db.prepare(
       `UPDATE device_auth_requests
@@ -1232,12 +1162,10 @@ describe("D10 — concurrent device approve race", () => {
 
     // Caller A approves.
     const r1 = stmt.get("u-admin-acme", now, "ZZZZ-9999", now) as
-      | { device_code: string }
-      | undefined;
+      { device_code: string } | undefined;
     // Caller B approves the same user_code immediately after.
     const r2 = stmt.get("u-admin-beta", now, "ZZZZ-9999", now) as
-      | { device_code: string }
-      | undefined;
+      { device_code: string } | undefined;
 
     expect(r1).toBeDefined();
     expect(r2).toBeUndefined();
@@ -1265,14 +1193,7 @@ describe("D10 — concurrent device approve race", () => {
          (device_code, user_code, nonce, org_id, expires_at,
           requester_ip, requester_user_agent, failed_approval_attempts)
        VALUES (?, ?, ?, NULL, ?, ?, ?, 0)`,
-    ).run(
-      "dev-d10-2",
-      "YYYY-8888",
-      "nonce-d10-2",
-      String(now + 600),
-      "10.0.0.11",
-      "ua/d10-2",
-    );
+    ).run("dev-d10-2", "YYYY-8888", "nonce-d10-2", String(now + 600), "10.0.0.11", "ua/d10-2");
 
     // Winner approves.
     db.prepare(

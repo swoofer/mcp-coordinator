@@ -59,7 +59,11 @@ export class DiscoveryCache {
   /** Load doc -- from memory cache, disk cache, or network (in that order). */
   async load(): Promise<DiscoveryDoc> {
     // Memory first
-    if (this.memoryCache && this.memoryCache.baseUrl === this.baseUrl && this.isFresh(this.memoryCache)) {
+    if (
+      this.memoryCache &&
+      this.memoryCache.baseUrl === this.baseUrl &&
+      this.isFresh(this.memoryCache)
+    ) {
       return this.memoryCache.doc;
     }
     // Disk

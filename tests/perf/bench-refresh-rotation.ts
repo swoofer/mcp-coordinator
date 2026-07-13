@@ -55,8 +55,12 @@ function mockResponse(): ServerResponse & { _captured: CapturedRes } {
       captured.statusCode = status;
       return res;
     },
-    setHeader() { /* noop */ },
-    getHeader() { return undefined; },
+    setHeader() {
+      /* noop */
+    },
+    getHeader() {
+      return undefined;
+    },
     end(payload?: string) {
       if (payload !== undefined) captured.body = payload;
     },
@@ -67,8 +71,12 @@ function mockResponse(): ServerResponse & { _captured: CapturedRes } {
 function mockRequest(refreshToken: string): IncomingMessage {
   const body = new URLSearchParams({ refresh_token: refreshToken }).toString();
   const stream = Readable.from([Buffer.from(body, "utf8")]);
-  (stream as unknown as { socket: { remoteAddress: string } }).socket = { remoteAddress: "127.0.0.1" };
-  (stream as unknown as { headers: Record<string, string> }).headers = { "user-agent": "perf-bench/1.0" };
+  (stream as unknown as { socket: { remoteAddress: string } }).socket = {
+    remoteAddress: "127.0.0.1",
+  };
+  (stream as unknown as { headers: Record<string, string> }).headers = {
+    "user-agent": "perf-bench/1.0",
+  };
   return stream as unknown as IncomingMessage;
 }
 
@@ -84,7 +92,11 @@ async function main(): Promise<void> {
 
   // Seed org + user. idp_access_token=NULL so refresh skips IdP membership
   // re-check (the cleanest realistic Phase 1 -> Phase 2 migrated user path).
-  db.prepare("INSERT INTO orgs (id, name, allowlist_github_org) VALUES (?, ?, ?)").run("org-perf", "Perf", "perf");
+  db.prepare("INSERT INTO orgs (id, name, allowlist_github_org) VALUES (?, ?, ?)").run(
+    "org-perf",
+    "Perf",
+    "perf",
+  );
   db.prepare(
     `INSERT INTO users (id, primary_org_id, email, idp_provider, idp_user_id,
        idp_access_token, role, last_login_at, token_epoch)
@@ -94,7 +106,9 @@ async function main(): Promise<void> {
   const stubProvider: IdPProvider = {
     name: "github",
     buildAuthUrl: () => "https://example/unused",
-    exchangeCode: async (): Promise<ExchangeCodeResult> => { throw new Error("unused"); },
+    exchangeCode: async (): Promise<ExchangeCodeResult> => {
+      throw new Error("unused");
+    },
     listMemberships: async () => ["perf"],
   };
 
@@ -113,16 +127,12 @@ async function main(): Promise<void> {
   // Mint the seed refresh JWT via the real mintTokenPair (so the row
   // lookup hits a real refresh_tokens row + fingerprint matches what
   // computeFingerprint produces for ip=127.0.0.1 / ua=perf-bench/1.0).
-  const seed = await mintTokenPair(
-    db as unknown as import("better-sqlite3").Database,
-    realClock,
-    {
-      user: { user_id: "u-perf", primary_org_id: "org-perf", role: "member" },
-      registry: ctx.signingKeys,
-      issuer: ISSUER,
-      fingerprint: null,
-    },
-  );
+  const seed = await mintTokenPair(db as unknown as import("better-sqlite3").Database, realClock, {
+    user: { user_id: "u-perf", primary_org_id: "org-perf", role: "member" },
+    registry: ctx.signingKeys,
+    issuer: ISSUER,
+    fingerprint: null,
+  });
   let currentRefresh = seed.refreshJwt;
 
   // Warmup pass — JIT + prepared-statement caches.
@@ -131,7 +141,9 @@ async function main(): Promise<void> {
     const res = mockResponse();
     await refreshTokenGrant(req, res, ctx);
     if (res._captured.statusCode !== 200) {
-      throw new Error(`warmup failed iter=${i} status=${res._captured.statusCode} body=${res._captured.body}`);
+      throw new Error(
+        `warmup failed iter=${i} status=${res._captured.statusCode} body=${res._captured.body}`,
+      );
     }
     currentRefresh = JSON.parse(res._captured.body).refresh_token;
   }
@@ -147,14 +159,16 @@ async function main(): Promise<void> {
     const elapsed = performance.now() - start;
     latencies[i] = elapsed;
     if (res._captured.statusCode !== 200) {
-      throw new Error(`rotation failed iter=${i} status=${res._captured.statusCode} body=${res._captured.body}`);
+      throw new Error(
+        `rotation failed iter=${i} status=${res._captured.statusCode} body=${res._captured.body}`,
+      );
     }
     currentRefresh = JSON.parse(res._captured.body).refresh_token;
   }
   const totalMs = performance.now() - totalStart;
 
   const sorted = Array.from(latencies).sort((a, b) => a - b);
-  const p50 = sorted[Math.floor(N * 0.50)]!;
+  const p50 = sorted[Math.floor(N * 0.5)]!;
   const p95 = sorted[Math.floor(N * 0.95)]!;
   const p99 = sorted[Math.floor(N * 0.99)]!;
   const throughput = (N / totalMs) * 1000;

@@ -11,10 +11,7 @@ import { RateLimiter } from "../../src/auth/rate-limit.js";
 import { buildJwtKeyRegistry } from "../../src/auth/jwt-keys.js";
 import { MembershipCache } from "../../src/auth/membership-cache.js";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
-import type {
-  IdPProvider,
-  ExchangeCodeResult,
-} from "../../src/auth/providers/types.js";
+import type { IdPProvider, ExchangeCodeResult } from "../../src/auth/providers/types.js";
 import { IdPTokenRevoked } from "../../src/auth/providers/errors.js";
 import { makeTestEncryption } from "../helpers/encryption.js";
 
@@ -200,7 +197,11 @@ it("plaintext idp_access_token row + key set → refresh succeeds; row becomes e
   };
 
   const res = mockResponse();
-  await refreshTokenGrant(mockRequest({ refresh_token: token }), res as unknown as ServerResponse, ctx);
+  await refreshTokenGrant(
+    mockRequest({ refresh_token: token }),
+    res as unknown as ServerResponse,
+    ctx,
+  );
 
   // Refresh succeeded.
   expect(res.statusCode).toBe(200);

@@ -13,11 +13,7 @@ import { AdminValidationError } from "./validate.js";
 const MAX_BODY_BYTES = 4096;
 
 /** Return true and write a JSON error response; caller exits early. */
-export function writeJson(
-  res: ServerResponse,
-  status: number,
-  body: unknown,
-): void {
+export function writeJson(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
@@ -37,11 +33,7 @@ export async function readJsonBody<T = unknown>(
       const buf = chunk as Buffer;
       total += buf.length;
       if (total > MAX_BODY_BYTES) {
-        writeJson(
-          res,
-          400,
-          appError("INVALID_REQUEST", "Request body too large"),
-        );
+        writeJson(res, 400, appError("INVALID_REQUEST", "Request body too large"));
         return null;
       }
       chunks.push(buf);
@@ -53,28 +45,17 @@ export async function readJsonBody<T = unknown>(
     }
     const parsed = JSON.parse(raw) as unknown;
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      writeJson(
-        res,
-        400,
-        appError("INVALID_REQUEST", "Body must be a JSON object"),
-      );
+      writeJson(res, 400, appError("INVALID_REQUEST", "Body must be a JSON object"));
       return null;
     }
     return parsed as T;
   } catch {
-    writeJson(
-      res,
-      400,
-      appError("INVALID_REQUEST", "Could not parse JSON body"),
-    );
+    writeJson(res, 400, appError("INVALID_REQUEST", "Could not parse JSON body"));
     return null;
   }
 }
 
 /** Translate AdminValidationError into a 400 with the validator's code. */
-export function writeValidationError(
-  res: ServerResponse,
-  err: AdminValidationError,
-): void {
+export function writeValidationError(res: ServerResponse, err: AdminValidationError): void {
   writeJson(res, 400, appError(err.code, err.message));
 }

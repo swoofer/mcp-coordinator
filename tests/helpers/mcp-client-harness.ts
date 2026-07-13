@@ -67,8 +67,7 @@ export async function createStdioHarness(opts?: {
   dataDir?: string;
   env?: Record<string, string>;
 }): Promise<McpHarness> {
-  const dataDir =
-    opts?.dataDir ?? mkdtempSync(path.join(tmpdir(), "mcp-stdio-harness-"));
+  const dataDir = opts?.dataDir ?? mkdtempSync(path.join(tmpdir(), "mcp-stdio-harness-"));
 
   // tsx is on the dev PATH; lets us run src/index.ts directly without a
   // pre-built dist/. Falls back to npx-style invocation if tsx isn't on PATH.
@@ -127,8 +126,7 @@ export async function createHttpHarness(opts?: {
   port?: number;
   mqttTcpPort?: number;
 }): Promise<McpHarness & { server: ServerHandle; httpPort: number }> {
-  const dataDir =
-    opts?.dataDir ?? mkdtempSync(path.join(tmpdir(), "mcp-http-harness-"));
+  const dataDir = opts?.dataDir ?? mkdtempSync(path.join(tmpdir(), "mcp-http-harness-"));
   const port = opts?.port ?? (await getFreePort());
   const mqttTcpPort = opts?.mqttTcpPort ?? (await getFreePort());
 
@@ -138,9 +136,7 @@ export async function createHttpHarness(opts?: {
     mqttTcpPort,
   });
 
-  const transport = new StreamableHTTPClientTransport(
-    new URL(`http://127.0.0.1:${port}/mcp`),
-  );
+  const transport = new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`));
   const client = new Client(
     { name: "mcp-coordinator-harness-http", version: "0.0.0-test" },
     { capabilities: {} },

@@ -19,23 +19,13 @@
  *    / `setMqttListeners` from the request lifecycle (see integration patch).
  */
 import type { IncomingMessage, ServerResponse } from "http";
-import {
-  Registry,
-  Counter,
-  Gauge,
-  collectDefaultMetrics,
-} from "prom-client";
+import { Registry, Counter, Gauge, collectDefaultMetrics } from "prom-client";
 import type { CoordinatorServices } from "./server-setup.js";
 import { getDb } from "./database.js";
 
 export type AnnounceResult = "thread_opened" | "auto_resolved";
 export type ResolutionType =
-  | "consensus"
-  | "timeout"
-  | "auto_resolved"
-  | "agent_departure"
-  | "max_rounds"
-  | "closed";
+  "consensus" | "timeout" | "auto_resolved" | "agent_departure" | "max_rounds" | "closed";
 
 export interface MetricsOptions {
   /**
@@ -230,9 +220,9 @@ export class Metrics {
 
     try {
       const db = getDb();
-      const open = db
-        .prepare("SELECT COUNT(*) as c FROM threads WHERE status = 'open'")
-        .get() as { c: number };
+      const open = db.prepare("SELECT COUNT(*) as c FROM threads WHERE status = 'open'").get() as {
+        c: number;
+      };
       const resolving = db
         .prepare("SELECT COUNT(*) as c FROM threads WHERE status = 'resolving'")
         .get() as { c: number };

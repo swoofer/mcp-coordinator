@@ -42,10 +42,16 @@ describe("IntrospectionManager", () => {
     registry.register("default", "a1", "Agent A", ["src/auth"]);
     registry.register("default", "a2", "Agent B", ["src/shared"]);
     const thread = consultation.announceWork("default", {
-      agent_id: "a1", subject: "test", target_modules: ["src/shared"], target_files: [],
+      agent_id: "a1",
+      subject: "test",
+      target_modules: ["src/shared"],
+      target_files: [],
     });
     const intro = introspection.create("default", {
-      thread_id: thread.id, agent_id: "a2", score: 45, reasons: ["module overlap: src/shared"],
+      thread_id: thread.id,
+      agent_id: "a2",
+      score: 45,
+      reasons: ["module overlap: src/shared"],
     });
     expect(intro.status).toBe("pending");
     expect(intro.score).toBe(45);
@@ -55,10 +61,16 @@ describe("IntrospectionManager", () => {
     registry.register("default", "a1", "Agent A", ["src/auth"]);
     registry.register("default", "a2", "Agent B", ["src/shared"]);
     const thread = consultation.announceWork("default", {
-      agent_id: "a1", subject: "test", target_modules: ["src/shared"], target_files: [],
+      agent_id: "a1",
+      subject: "test",
+      target_modules: ["src/shared"],
+      target_files: [],
     });
     const intro = introspection.create("default", {
-      thread_id: thread.id, agent_id: "a2", score: 45, reasons: ["module overlap"],
+      thread_id: thread.id,
+      agent_id: "a2",
+      score: 45,
+      reasons: ["module overlap"],
     });
     const updated = introspection.respond("default", intro.id, "J'importe User dans mon service");
     expect(updated?.status).toBe("responded");
@@ -70,12 +82,22 @@ describe("IntrospectionManager", () => {
     registry.register("default", "a1", "Agent A", ["src/auth"]);
     registry.register("default", "a2", "Agent B", ["src/shared"]);
     const thread = consultation.announceWork("default", {
-      agent_id: "a1", subject: "test", target_modules: ["src/shared"], target_files: [],
+      agent_id: "a1",
+      subject: "test",
+      target_modules: ["src/shared"],
+      target_files: [],
     });
     const intro = introspection.create("default", {
-      thread_id: thread.id, agent_id: "a2", score: 35, reasons: ["module overlap"],
+      thread_id: thread.id,
+      agent_id: "a2",
+      score: 35,
+      reasons: ["module overlap"],
     });
-    const updated = introspection.respond("default", intro.id, "Mon code n'utilise pas cette interface");
+    const updated = introspection.respond(
+      "default",
+      intro.id,
+      "Mon code n'utilise pas cette interface",
+    );
     expect(updated?.status).toBe("responded");
     expect(updated?.response).toContain("interface");
   });
@@ -84,10 +106,23 @@ describe("IntrospectionManager", () => {
     registry.register("default", "a1", "Agent A", ["src/auth"]);
     registry.register("default", "a2", "Agent B", ["src/shared"]);
     const thread = consultation.announceWork("default", {
-      agent_id: "a1", subject: "test", target_modules: ["src/shared"], target_files: [],
+      agent_id: "a1",
+      subject: "test",
+      target_modules: ["src/shared"],
+      target_files: [],
     });
-    introspection.create("default", { thread_id: thread.id, agent_id: "a2", score: 40, reasons: ["overlap"] });
-    introspection.create("default", { thread_id: thread.id, agent_id: "a2", score: 35, reasons: ["co-change"] });
+    introspection.create("default", {
+      thread_id: thread.id,
+      agent_id: "a2",
+      score: 40,
+      reasons: ["overlap"],
+    });
+    introspection.create("default", {
+      thread_id: thread.id,
+      agent_id: "a2",
+      score: 35,
+      reasons: ["co-change"],
+    });
     const pending = introspection.getPending("default", "a2");
     expect(pending).toHaveLength(2);
   });
@@ -97,10 +132,23 @@ describe("IntrospectionManager", () => {
     registry.register("default", "a2", "Agent B", ["src/shared"]);
     registry.register("default", "a3", "Agent C", ["src/users"]);
     const thread = consultation.announceWork("default", {
-      agent_id: "a1", subject: "test", target_modules: ["src/shared"], target_files: [],
+      agent_id: "a1",
+      subject: "test",
+      target_modules: ["src/shared"],
+      target_files: [],
     });
-    introspection.create("default", { thread_id: thread.id, agent_id: "a2", score: 45, reasons: ["overlap"] });
-    introspection.create("default", { thread_id: thread.id, agent_id: "a3", score: 35, reasons: ["co-change"] });
+    introspection.create("default", {
+      thread_id: thread.id,
+      agent_id: "a2",
+      score: 45,
+      reasons: ["overlap"],
+    });
+    introspection.create("default", {
+      thread_id: thread.id,
+      agent_id: "a3",
+      score: 35,
+      reasons: ["co-change"],
+    });
     const all = introspection.getByThread("default", thread.id);
     expect(all).toHaveLength(2);
   });
@@ -126,8 +174,18 @@ describe("introspection org_id scoping", () => {
     registry.register("default", "b1", "Agent B", []);
     // Create threads under org-a and org-b
     consultation = new Consultation();
-    const tA = consultation.announceWork("org-a", { agent_id: "a1", subject: "s", target_modules: [], target_files: [] });
-    const tB = consultation.announceWork("org-b", { agent_id: "b1", subject: "s", target_modules: [], target_files: [] });
+    const tA = consultation.announceWork("org-a", {
+      agent_id: "a1",
+      subject: "s",
+      target_modules: [],
+      target_files: [],
+    });
+    const tB = consultation.announceWork("org-b", {
+      agent_id: "b1",
+      subject: "s",
+      target_modules: [],
+      target_files: [],
+    });
     threadA = tA.id;
     threadB = tB.id;
   });
@@ -147,13 +205,15 @@ describe("introspection org_id scoping", () => {
   });
 
   it("respond scopes by org (cannot respond cross-org)", () => {
-    const r = introspection.create("org-a", { thread_id: threadA, agent_id: "a1", score: 5, reasons: "x" });
-    introspection.respond("org-b", r.id, "wrong-org-response");  // no-op
+    const r = introspection.create("org-a", {
+      thread_id: threadA,
+      agent_id: "a1",
+      score: 5,
+      reasons: "x",
+    });
+    introspection.respond("org-b", r.id, "wrong-org-response"); // no-op
     expect(introspection.list("org-a", threadA)[0].response).toBeNull();
     introspection.respond("org-a", r.id, "correct-response");
     expect(introspection.list("org-a", threadA)[0].response).toBe("correct-response");
   });
 });
-
-
-

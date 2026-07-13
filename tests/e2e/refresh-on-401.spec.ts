@@ -30,7 +30,9 @@ async function obtainTokensViaDeviceFlow(
   // Bootstrap admin login + approve form.
   await page.goto(`${coordinatorUrl}/auth/login`);
   await expect(page).toHaveURL(/\/auth\/success/);
-  await page.goto(`${coordinatorUrl}/auth/device/confirm?user_code=${encodeURIComponent(init.user_code)}`);
+  await page.goto(
+    `${coordinatorUrl}/auth/device/confirm?user_code=${encodeURIComponent(init.user_code)}`,
+  );
   await page.locator('input[name="acknowledge"]').check();
   await page.locator('button[name="action"][value="approve"]').click();
   await expect(page).toHaveURL(/\/auth\/success/);

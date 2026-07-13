@@ -11,14 +11,8 @@ import { RateLimiter } from "../../src/auth/rate-limit.js";
 import { buildJwtKeyRegistry } from "../../src/auth/jwt-keys.js";
 import { MembershipCache } from "../../src/auth/membership-cache.js";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
-import type {
-  IdPProvider,
-  ExchangeCodeResult,
-} from "../../src/auth/providers/types.js";
-import {
-  IdPTokenRevoked,
-  IdPTransientError,
-} from "../../src/auth/providers/errors.js";
+import type { IdPProvider, ExchangeCodeResult } from "../../src/auth/providers/types.js";
+import { IdPTokenRevoked, IdPTransientError } from "../../src/auth/providers/errors.js";
 import { findAuditRows } from "../helpers/audit.js";
 import { hashIdpUserId } from "../../src/auth/audit-helpers.js";
 import { PassthroughEncryption } from "../../src/security/encryption.js";
@@ -92,7 +86,11 @@ let rateLimiter: RateLimiter;
 let membershipCache: MembershipCache;
 
 interface ProviderOverrides {
-  exchangeCode?: (code: string, redirectUri: string, codeVerifier?: string) => Promise<ExchangeCodeResult>;
+  exchangeCode?: (
+    code: string,
+    redirectUri: string,
+    codeVerifier?: string,
+  ) => Promise<ExchangeCodeResult>;
   listMemberships?: (accessToken: string) => Promise<string[]>;
 }
 
@@ -105,8 +103,7 @@ function makeProvider(overrides: ProviderOverrides = {}): IdPProvider {
       (async (): Promise<ExchangeCodeResult> => {
         throw new Error("exchangeCode not stubbed for this test");
       }),
-    listMemberships:
-      overrides.listMemberships ?? (async (): Promise<string[]> => ["acme"]),
+    listMemberships: overrides.listMemberships ?? (async (): Promise<string[]> => ["acme"]),
   } as IdPProvider;
 }
 
@@ -193,12 +190,14 @@ function seedDeviceRow(opts: DeviceRowOpts): void {
     );
 }
 
-async function mintRefresh(opts: {
-  sub?: string;
-  orgId?: string;
-  familyId?: string;
-  jti?: string;
-} = {}): Promise<string> {
+async function mintRefresh(
+  opts: {
+    sub?: string;
+    orgId?: string;
+    familyId?: string;
+    jti?: string;
+  } = {},
+): Promise<string> {
   const claims: Record<string, unknown> = {
     sub: opts.sub ?? "u-alice",
     active_org_id: opts.orgId ?? "org-acme",
@@ -801,9 +800,9 @@ describe("handleOAuthToken — grant_type=device_code", () => {
     expect(typeof meta.family_id).toBe("string");
 
     // A refresh_tokens row was inserted for the new family.
-    const refreshRows = getDb()
-      .prepare("SELECT user_id FROM refresh_tokens")
-      .all() as Array<{ user_id: string }>;
+    const refreshRows = getDb().prepare("SELECT user_id FROM refresh_tokens").all() as Array<{
+      user_id: string;
+    }>;
     expect(refreshRows).toHaveLength(1);
     expect(refreshRows[0].user_id).toBe("u-alice");
   });

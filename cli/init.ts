@@ -228,10 +228,7 @@ export function createInitCommand(): Command {
           if (existsSync(target)) {
             const existing = readFileSync(target, "utf-8");
             if (existing.includes(SENTINEL)) {
-              const re = new RegExp(
-                `${SENTINEL}[\\s\\S]*?${SENTINEL}\\n?`,
-                "g",
-              );
+              const re = new RegExp(`${SENTINEL}[\\s\\S]*?${SENTINEL}\\n?`, "g");
               final = existing.replace(re, sectionBody);
               console.log(`Updated CLAUDE.md (replaced existing coordinator section): ${target}`);
             } else {
@@ -258,7 +255,9 @@ export function createInitCommand(): Command {
       console.log("Next steps:");
       console.log("  1. Start the coordinator:  mcp-coordinator server start --daemon");
       console.log("  2. Open the dashboard:     mcp-coordinator dashboard");
-      console.log("  3. Connect any MCP client (Claude Code, Cursor, Cline, ...) using the snippet above");
+      console.log(
+        "  3. Connect any MCP client (Claude Code, Cursor, Cline, ...) using the snippet above",
+      );
       console.log("  4. Health check:           mcp-coordinator doctor");
 
       if (exitCode !== 0) {
@@ -323,10 +322,7 @@ const REQUIRED_NONINTERACTIVE_FLAGS: Array<[keyof Phase2WizardOptions, string]> 
   ["githubOrg", "--github-org"],
 ];
 
-export async function runInitPhase2(
-  io: WizardIO,
-  opts: Phase2WizardOptions,
-): Promise<void> {
+export async function runInitPhase2(io: WizardIO, opts: Phase2WizardOptions): Promise<void> {
   const envPath = resolve(opts.envFile ?? ".env");
 
   // 1. Pre-check: existing .env?
@@ -335,15 +331,10 @@ export async function runInitPhase2(
       io.printError(
         `[FAIL] ${envPath} already exists. Refusing to overwrite in --non-interactive mode.`,
       );
-      io.printError(
-        "       Delete or move the file, or omit --non-interactive to be prompted.",
-      );
+      io.printError("       Delete or move the file, or omit --non-interactive to be prompted.");
       io.exit(1);
     }
-    const overwrite = await io.confirm(
-      `${envPath} already exists. Overwrite?`,
-      { default: false },
-    );
+    const overwrite = await io.confirm(`${envPath} already exists. Overwrite?`, { default: false });
     if (!overwrite) {
       io.printError("[FAIL] Aborting — existing .env left untouched.");
       io.exit(1);
@@ -389,7 +380,7 @@ export async function runInitPhase2(
   const callbackUrl = buildCallbackUrl(publicUrl);
   io.print("");
   io.print("Step 2: Paste this exact URL into the GitHub OAuth app's");
-  io.print("        \"Authorization callback URL\" field:");
+  io.print('        "Authorization callback URL" field:');
   io.print("");
   io.print(`  ${callbackUrl}`);
   io.print("");
@@ -405,9 +396,7 @@ export async function runInitPhase2(
       if (!opts[key] || (opts[key] as string).trim() === "") missing.push(flag);
     }
     if (missing.length > 0) {
-      io.printError(
-        `[FAIL] --non-interactive requires: ${missing.join(", ")}`,
-      );
+      io.printError(`[FAIL] --non-interactive requires: ${missing.join(", ")}`);
       io.exit(1);
     }
     githubClientId = (opts.githubClientId as string).trim();
@@ -460,7 +449,9 @@ export async function runInitPhase2(
     io.chmod(envPath, 0o600);
   }
 
-  io.print(`[OK] Wrote ${envPath} (${lines.length} variables)${io.isPosix ? " with mode 0600" : ""}`);
+  io.print(
+    `[OK] Wrote ${envPath} (${lines.length} variables)${io.isPosix ? " with mode 0600" : ""}`,
+  );
   io.print("");
   io.print("=== Next steps ===");
   io.print("  1. Start coordinator: `mcp-coordinator server start`");
@@ -506,12 +497,7 @@ export function isInsecurePublicUrl(url: string): boolean {
     const parsed = new URL(url);
     if (parsed.protocol !== "http:") return false;
     const host = parsed.hostname;
-    return (
-      host !== "localhost" &&
-      host !== "127.0.0.1" &&
-      host !== "::1" &&
-      host !== "[::1]"
-    );
+    return host !== "localhost" && host !== "127.0.0.1" && host !== "::1" && host !== "[::1]";
   } catch {
     return false;
   }
@@ -519,7 +505,9 @@ export function isInsecurePublicUrl(url: string): boolean {
 
 async function promptForValidPublicUrl(io: WizardIO): Promise<string> {
   for (let attempt = 0; attempt < PUBLIC_URL_MAX_RETRIES; attempt++) {
-    const raw = await io.prompt("COORDINATOR_PUBLIC_URL (e.g., http://localhost:3100 or https://coord.acme.example)");
+    const raw = await io.prompt(
+      "COORDINATOR_PUBLIC_URL (e.g., http://localhost:3100 or https://coord.acme.example)",
+    );
     const err = validatePublicUrlString(raw);
     if (err !== null) {
       io.printError(`[WARN] ${err}`);
@@ -529,9 +517,7 @@ async function promptForValidPublicUrl(io: WizardIO): Promise<string> {
       io.print(
         "[WARN] You used http:// for a non-localhost host. Cookies cannot be Secure-flagged,",
       );
-      io.print(
-        "       which means session cookies will be visible to network attackers (MITM).",
-      );
+      io.print("       which means session cookies will be visible to network attackers (MITM).");
       io.print(
         "       You MUST set COORDINATOR_INSECURE_COOKIES=true in your environment for boot to succeed.",
       );
@@ -610,10 +596,7 @@ async function defaultPrompt(
   }
 }
 
-async function defaultConfirm(
-  question: string,
-  opts?: { default?: boolean },
-): Promise<boolean> {
+async function defaultConfirm(question: string, opts?: { default?: boolean }): Promise<boolean> {
   const def = opts?.default ?? false;
   const suffix = def ? "[Y/n]" : "[y/N]";
   const ans = await defaultPrompt(`${question} ${suffix}`);

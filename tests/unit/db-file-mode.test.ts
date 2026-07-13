@@ -7,8 +7,14 @@ import os from "os";
 const DIR = "data-test-db-mode";
 
 describe("DB file permissions", () => {
-  beforeAll(() => { fs.mkdirSync(DIR, { recursive: true }); initDatabase(DIR); });
-  afterAll(() => { closeDb(); fs.rmSync(DIR, { recursive: true, force: true }); });
+  beforeAll(() => {
+    fs.mkdirSync(DIR, { recursive: true });
+    initDatabase(DIR);
+  });
+  afterAll(() => {
+    closeDb();
+    fs.rmSync(DIR, { recursive: true, force: true });
+  });
 
   it("coordinator.db is mode 0600 (owner read/write only)", () => {
     if (os.platform() === "win32") return; // POSIX modes don't apply on NTFS

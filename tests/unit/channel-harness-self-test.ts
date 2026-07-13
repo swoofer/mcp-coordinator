@@ -58,8 +58,7 @@ describe("channel-test-harness — createChannelHarness", () => {
       // The stub pushes a single notification 25ms after `initialized`.
       // Generous timeout to absorb tsx startup on slow CI machines.
       const notification = await harness.waitForNotification(
-        (n: ChannelNotification) =>
-          n.params.meta.topic_kind === "consultation_opened",
+        (n: ChannelNotification) => n.params.meta.topic_kind === "consultation_opened",
         5000,
       );
 
@@ -89,10 +88,7 @@ describe("channel-test-harness — createChannelHarness", () => {
     try {
       // Predicate that will NEVER match — the stub only emits `consultation_opened`.
       await expect(
-        harness.waitForNotification(
-          (n) => n.params.meta.topic_kind === "never_emitted_kind",
-          250,
-        ),
+        harness.waitForNotification((n) => n.params.meta.topic_kind === "never_emitted_kind", 250),
       ).rejects.toThrow(/timed out after 250ms/);
     } finally {
       await harness.cleanup();
@@ -163,9 +159,7 @@ describe("channel-test-harness — createMockMqttBroker", () => {
       }
       expect(captured.length).toBeGreaterThanOrEqual(3);
 
-      const newEvent = captured.find(
-        (c) => c.topic === "coordinator/default/consultations/new",
-      );
+      const newEvent = captured.find((c) => c.topic === "coordinator/default/consultations/new");
       expect(newEvent).toBeDefined();
       expect(JSON.parse(newEvent!.payload)).toEqual({
         thread_id: "t-1",

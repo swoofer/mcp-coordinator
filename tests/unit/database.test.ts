@@ -11,7 +11,11 @@ beforeAll(() => {
 });
 
 afterAll(async () => {
-  try { closeDb(); } catch { /* already closed */ }
+  try {
+    closeDb();
+  } catch {
+    /* already closed */
+  }
   // Windows can hold .db handles for many seconds after better-sqlite3 close()
   // (Defender / indexer / WAL teardown). Retry generously; the parent dir cleanup
   // will eventually win once the OS releases the file.
@@ -58,11 +62,14 @@ describe("downgrade refusal", () => {
 
   afterAll(() => {
     // Idempotent cleanup — runs regardless of test outcome
-    try { fs.rmSync(DIR, { recursive: true, force: true }); } catch { /* already gone */ }
+    try {
+      fs.rmSync(DIR, { recursive: true, force: true });
+    } catch {
+      /* already gone */
+    }
   });
 
   it("refuses to boot if user_version is from a newer binary", () => {
     expect(() => initDatabase(DIR)).toThrow(/newer version/);
   });
 });
-

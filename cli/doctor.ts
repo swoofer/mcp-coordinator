@@ -30,13 +30,21 @@ async function tcpReachable(host: string, port: number, timeoutMs = 1500): Promi
   });
 }
 
-async function httpGet(host: string, port: number, path: string, timeoutMs = 1500): Promise<{ status: number; body: string } | null> {
+async function httpGet(
+  host: string,
+  port: number,
+  path: string,
+  timeoutMs = 1500,
+): Promise<{ status: number; body: string } | null> {
   return new Promise((resolveP) => {
     const req = request({ host, port, path, method: "GET", timeout: timeoutMs }, (res) => {
       const chunks: Buffer[] = [];
       res.on("data", (c) => chunks.push(c));
       res.on("end", () => {
-        resolveP({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString("utf-8").slice(0, 200) });
+        resolveP({
+          status: res.statusCode ?? 0,
+          body: Buffer.concat(chunks).toString("utf-8").slice(0, 200),
+        });
       });
     });
     req.on("timeout", () => {
@@ -69,7 +77,7 @@ async function mcpInitialize(host: string, port: number, timeoutMs = 2500): Prom
         timeout: timeoutMs,
         headers: {
           "Content-Type": "application/json",
-          "Accept": "application/json, text/event-stream",
+          Accept: "application/json, text/event-stream",
           "Content-Length": Buffer.byteLength(payload).toString(),
         },
       },
@@ -309,7 +317,7 @@ export async function probeGitHubCreds(
     const res = await fetchImpl("https://github.com/login/oauth/access_token", {
       method: "POST",
       headers: {
-        "Accept": "application/json",
+        Accept: "application/json",
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: body.toString(),
@@ -321,7 +329,8 @@ export async function probeGitHubCreds(
     } catch {
       // GitHub may return form-encoded on rare errors; do a substring check
       if (text.includes("bad_verification_code")) parsed = { error: "bad_verification_code" };
-      else if (text.includes("incorrect_client_credentials")) parsed = { error: "incorrect_client_credentials" };
+      else if (text.includes("incorrect_client_credentials"))
+        parsed = { error: "incorrect_client_credentials" };
     }
     if (parsed.error === "bad_verification_code") {
       return {
@@ -402,7 +411,8 @@ export async function probeSqlite(
     const busyTimeout = Number(db.pragma("busy_timeout", { simple: true }) ?? 0);
     const userVersion = Number(db.pragma("user_version", { simple: true }) ?? 0);
     const sqliteVerStr = String(
-      (db.prepare("SELECT sqlite_version() AS v").get() as { v?: string } | undefined)?.v ?? "0.0.0",
+      (db.prepare("SELECT sqlite_version() AS v").get() as { v?: string } | undefined)?.v ??
+        "0.0.0",
     );
     const [major, minor] = sqliteVerStr.split(".").map((x) => parseInt(x, 10));
     const sqliteVerOk = major > 3 || (major === 3 && minor >= 25);
@@ -411,7 +421,8 @@ export async function probeSqlite(
     if (journalMode !== "wal") problems.push(`journal_mode=${journalMode} (expected wal)`);
     if (fk !== "1") problems.push(`foreign_keys=${fk} (expected 1)`);
     if (busyTimeout < 5000) problems.push(`busy_timeout=${busyTimeout} (expected >=5000)`);
-    if (userVersion < 8) problems.push(`user_version=${userVersion} (expected >=8, Phase 2 migration)`);
+    if (userVersion < 8)
+      problems.push(`user_version=${userVersion} (expected >=8, Phase 2 migration)`);
     if (!sqliteVerOk) problems.push(`sqlite_version=${sqliteVerStr} (expected >=3.25)`);
 
     if (problems.length > 0) {
@@ -591,7 +602,10 @@ export async function probeSweeperStatus(
 
 interface AuditOpener {
   (dbPath: string): {
-    prepare(sql: string): { get(...params: unknown[]): unknown; all?(...params: unknown[]): unknown[] };
+    prepare(sql: string): {
+      get(...params: unknown[]): unknown;
+      all?(...params: unknown[]): unknown[];
+    };
     close?(): void;
   };
 }
@@ -700,7 +714,9 @@ export async function runPhase2Probes(env: Phase2Env): Promise<CheckResult[]> {
 
 export function createDoctorCommand(): Command {
   return new Command("doctor")
-    .description("Run a health check: config, server liveness, MCP endpoint, MQTT broker, dashboard")
+    .description(
+      "Run a health check: config, server liveness, MCP endpoint, MQTT broker, dashboard",
+    )
     .option("--host <host>", "Hostname to probe", "127.0.0.1")
     .option("--port <port>", "HTTP port", "")
     .option("--mqtt-port <port>", "MQTT TCP port", "")
@@ -747,7 +763,10 @@ export function createDoctorCommand(): Command {
       }
 
       const port = parseInt(opts.port || String(parsedConfig?.server.port ?? 3100), 10);
-      const mqttPort = parseInt(opts.mqttPort || process.env.COORDINATOR_MQTT_TCP_PORT || "1883", 10);
+      const mqttPort = parseInt(
+        opts.mqttPort || process.env.COORDINATOR_MQTT_TCP_PORT || "1883",
+        10,
+      );
 
       // 3. Server PID file
       const pidPath = join(configDir, "server.pid");
@@ -783,7 +802,9 @@ export function createDoctorCommand(): Command {
         name: `tcp-${port}`,
         ok: httpUp,
         detail: httpUp ? `${host}:${port} accepts connections` : `${host}:${port} unreachable`,
-        hint: httpUp ? undefined : `Start the server: mcp-coordinator server start --daemon (or check the configured port)`,
+        hint: httpUp
+          ? undefined
+          : `Start the server: mcp-coordinator server start --daemon (or check the configured port)`,
       });
 
       // 5. /health endpoint
@@ -793,7 +814,10 @@ export function createDoctorCommand(): Command {
           name: "/health",
           ok: !!health && health.status === 200,
           detail: health ? `HTTP ${health.status}: ${health.body}` : "no response",
-          hint: !!health && health.status === 200 ? undefined : "Server is reachable but /health failed; check server logs",
+          hint:
+            !!health && health.status === 200
+              ? undefined
+              : "Server is reachable but /health failed; check server logs",
         });
 
         // 6. /mcp initialize
@@ -802,7 +826,9 @@ export function createDoctorCommand(): Command {
           name: "/mcp initialize",
           ok: mcpOk,
           detail: mcpOk ? "JSON-RPC 2.0 initialize succeeded" : "no valid MCP response",
-          hint: mcpOk ? undefined : "MCP HTTP transport not responding; check server logs and version compatibility",
+          hint: mcpOk
+            ? undefined
+            : "MCP HTTP transport not responding; check server logs and version compatibility",
         });
 
         // 7. Dashboard
@@ -811,7 +837,10 @@ export function createDoctorCommand(): Command {
           name: "/dashboard",
           ok: !!dash && dash.status === 200,
           detail: dash ? `HTTP ${dash.status}` : "no response",
-          hint: !!dash && dash.status === 200 ? undefined : "Dashboard files not found; verify package install or rerun init",
+          hint:
+            !!dash && dash.status === 200
+              ? undefined
+              : "Dashboard files not found; verify package install or rerun init",
         });
       }
 
@@ -820,17 +849,23 @@ export function createDoctorCommand(): Command {
       results.push({
         name: `mqtt-${mqttPort}`,
         ok: mqttUp,
-        detail: mqttUp ? `${host}:${mqttPort} accepts connections` : `${host}:${mqttPort} unreachable`,
-        hint: mqttUp ? undefined : `MQTT broker not listening on port ${mqttPort}; check COORDINATOR_MQTT_TCP_PORT and server logs`,
+        detail: mqttUp
+          ? `${host}:${mqttPort} accepts connections`
+          : `${host}:${mqttPort} unreachable`,
+        hint: mqttUp
+          ? undefined
+          : `MQTT broker not listening on port ${mqttPort}; check COORDINATOR_MQTT_TCP_PORT and server logs`,
       });
 
       // ---- Phase 2 probes (T42) ----
       const phase2Enabled =
-        opts.phase2 === true ||
-        process.env.COORDINATOR_OAUTH_ENABLED === "true";
+        opts.phase2 === true || process.env.COORDINATOR_OAUTH_ENABLED === "true";
       let phase2Results: CheckResult[] = [];
       if (phase2Enabled) {
-        const dbPath = join(parsedConfig?.server.data_dir ?? join(configDir, "data"), "coordinator.db");
+        const dbPath = join(
+          parsedConfig?.server.data_dir ?? join(configDir, "data"),
+          "coordinator.db",
+        );
         phase2Results = await runPhase2Probes({
           publicUrl: process.env.COORDINATOR_PUBLIC_URL,
           githubClientId: process.env.COORDINATOR_GITHUB_CLIENT_ID,

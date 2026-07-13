@@ -49,10 +49,7 @@ describe("bumpTokenEpoch", () => {
 
   it("is NTP-safe: pre-set far-future epoch stays monotonic (current+1, not wall-clock)", () => {
     const future = 9999999999;
-    db.prepare("INSERT INTO users (id, token_epoch) VALUES (?, ?)").run(
-      "u1",
-      future,
-    );
+    db.prepare("INSERT INTO users (id, token_epoch) VALUES (?, ?)").run("u1", future);
     const bumped = bumpTokenEpoch(db, "u1");
     expect(bumped).toBe(future + 1);
   });
@@ -82,14 +79,8 @@ describe("bumpTokenEpochAllUsers", () => {
 
   it("is NTP-safe on each row (mix of low and far-future epochs)", () => {
     const future = 9999999999;
-    db.prepare("INSERT INTO users (id, token_epoch) VALUES (?, ?)").run(
-      "low",
-      0,
-    );
-    db.prepare("INSERT INTO users (id, token_epoch) VALUES (?, ?)").run(
-      "future",
-      future,
-    );
+    db.prepare("INSERT INTO users (id, token_epoch) VALUES (?, ?)").run("low", 0);
+    db.prepare("INSERT INTO users (id, token_epoch) VALUES (?, ?)").run("future", future);
     bumpTokenEpochAllUsers(db);
     // "low" row -> takes wall-clock seconds (much larger than 0+1)
     const lowEpoch = readTokenEpoch(db, "low");

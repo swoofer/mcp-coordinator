@@ -59,7 +59,9 @@ function httpRequest(opts: {
         method: opts.method,
         timeout: 5000,
         headers: {
-          ...(bodyStr ? { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(bodyStr) } : {}),
+          ...(bodyStr
+            ? { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(bodyStr) }
+            : {}),
           ...opts.headers,
         },
       },
@@ -76,7 +78,9 @@ function httpRequest(opts: {
       },
     );
     req.on("error", reject);
-    req.on("timeout", () => { req.destroy(new Error("HTTP timeout")); });
+    req.on("timeout", () => {
+      req.destroy(new Error("HTTP timeout"));
+    });
     if (bodyStr) req.write(bodyStr);
     req.end();
   });
@@ -162,18 +166,42 @@ describe("S3 - HTTP integration tests for B1 (concurrent announceWork) end-to-en
     handle = await startServer({ port, dataDir, mqttTcpPort, registerSignalHandlers: false });
 
     // Register 2 agents
-    await httpRequest({ port, method: "POST", path: "/api/register", body: { agent_id: "a1", name: "A1", modules: ["src/auth"] } });
-    await httpRequest({ port, method: "POST", path: "/api/register", body: { agent_id: "a2", name: "A2", modules: ["src/auth"] } });
+    await httpRequest({
+      port,
+      method: "POST",
+      path: "/api/register",
+      body: { agent_id: "a1", name: "A1", modules: ["src/auth"] },
+    });
+    await httpRequest({
+      port,
+      method: "POST",
+      path: "/api/register",
+      body: { agent_id: "a2", name: "A2", modules: ["src/auth"] },
+    });
 
     // Fire 2 announces "concurrently" via Promise.all
     const [r1, r2] = await Promise.all([
       httpRequest({
-        port, method: "POST", path: "/api/announce",
-        body: { agent_id: "a1", subject: "A1 work", target_modules: ["src/auth"], target_files: ["src/auth/types.ts"] },
+        port,
+        method: "POST",
+        path: "/api/announce",
+        body: {
+          agent_id: "a1",
+          subject: "A1 work",
+          target_modules: ["src/auth"],
+          target_files: ["src/auth/types.ts"],
+        },
       }),
       httpRequest({
-        port, method: "POST", path: "/api/announce",
-        body: { agent_id: "a2", subject: "A2 work", target_modules: ["src/auth"], target_files: ["src/auth/types.ts"] },
+        port,
+        method: "POST",
+        path: "/api/announce",
+        body: {
+          agent_id: "a2",
+          subject: "A2 work",
+          target_modules: ["src/auth"],
+          target_files: ["src/auth/types.ts"],
+        },
       }),
     ]);
 

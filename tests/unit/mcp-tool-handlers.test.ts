@@ -102,10 +102,15 @@ function fakeExtra(sessionId?: string): RequestHandlerExtra<ServerRequest, Serve
 
 /** Retrieve a registered tool handler by name (see mcp-tool-org-scoping.test.ts for rationale). */
 function getHandler(server: McpServer, toolName: string) {
-  const _server = server as unknown as { _registeredTools: Record<string, { handler: (...args: unknown[]) => unknown }> };
+  const _server = server as unknown as {
+    _registeredTools: Record<string, { handler: (...args: unknown[]) => unknown }>;
+  };
   const registered = _server._registeredTools[toolName];
   if (!registered) throw new Error(`Tool not registered: ${toolName}`);
-  return registered.handler as (args: unknown, extra: RequestHandlerExtra<ServerRequest, ServerNotification>) => Promise<{ isError?: boolean; content: [{ type: string; text: string }] }>;
+  return registered.handler as (
+    args: unknown,
+    extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
+  ) => Promise<{ isError?: boolean; content: [{ type: string; text: string }] }>;
 }
 
 /** No claims resolve for this getter, regardless of sessionId. Models both the
@@ -153,8 +158,16 @@ afterAll(() => {
 describe("status-tools: coordinator_status", () => {
   it("nominal: reports org-scoped counts (agents/threads/hot_files/mqtt)", async () => {
     const server = new McpServer({ name: "test", version: "0" });
-    const claims: AuthClaims = { sub: "a1", user_id: "u1", org: "org-status", role: "agent", jti: "j1" };
-    registerStatusTools(server, services, silentLogger, (sid) => (sid === "sess-1" ? claims : null));
+    const claims: AuthClaims = {
+      sub: "a1",
+      user_id: "u1",
+      org: "org-status",
+      role: "agent",
+      jti: "j1",
+    };
+    registerStatusTools(server, services, silentLogger, (sid) =>
+      sid === "sess-1" ? claims : null,
+    );
 
     services.registry.register("org-status", "agent-1", "Agent One", ["mod-a"]);
     // A second org's agent must NOT leak into org-status's count.
@@ -183,7 +196,9 @@ describe("status-tools: coordinator_status", () => {
     registerStatusTools(server, services, silentLogger, NO_CLAIMS_GETTER);
     const handler = getHandler(server, "coordinator_status");
     // extra.sessionId is undefined — the exact shape of bug #133 (stdio transport).
-    await expect(handler({}, fakeExtra(undefined))).rejects.toThrow("Session has no captured claims (auth bug)");
+    await expect(handler({}, fakeExtra(undefined))).rejects.toThrow(
+      "Session has no captured claims (auth bug)",
+    );
   });
 });
 
@@ -192,8 +207,16 @@ describe("status-tools: coordinator_status", () => {
 describe("status-tools: wait_for_peers", () => {
   it("nominal: resolves immediately (no poll wait) when min_peers is already met", async () => {
     const server = new McpServer({ name: "test", version: "0" });
-    const claims: AuthClaims = { sub: "a1", user_id: "u1", org: "org-status", role: "agent", jti: "j1" };
-    registerStatusTools(server, services, silentLogger, (sid) => (sid === "sess-w" ? claims : null));
+    const claims: AuthClaims = {
+      sub: "a1",
+      user_id: "u1",
+      org: "org-status",
+      role: "agent",
+      jti: "j1",
+    };
+    registerStatusTools(server, services, silentLogger, (sid) =>
+      sid === "sess-w" ? claims : null,
+    );
 
     services.registry.register("org-status", "waiter", "Waiter", []);
     services.registry.register("org-status", "peer-1", "Peer One", []);
@@ -205,7 +228,10 @@ describe("status-tools: wait_for_peers", () => {
       fakeExtra("sess-w"),
     );
     const elapsedMs = Date.now() - start;
-    const payload = JSON.parse(result.content[0].text) as { ready: boolean; online_peers: Array<{ id: string }> };
+    const payload = JSON.parse(result.content[0].text) as {
+      ready: boolean;
+      online_peers: Array<{ id: string }>;
+    };
     expect(payload.ready).toBe(true);
     expect(payload.online_peers.map((p) => p.id)).toEqual(["peer-1"]);
     // Sanity: the peer was already online, so the loop returned on its first
@@ -231,8 +257,16 @@ describe("status-tools: wait_for_peers", () => {
 describe("consultation-tools: announce_work", () => {
   it("nominal: opens a thread scoped to claims.org and auto-resolves when alone", async () => {
     const server = new McpServer({ name: "test", version: "0" });
-    const claims: AuthClaims = { sub: "init-1", user_id: "u1", org: "org-cons", role: "agent", jti: "j1" };
-    registerConsultationTools(server, services, silentLogger, (sid) => (sid === "sess-a" ? claims : null));
+    const claims: AuthClaims = {
+      sub: "init-1",
+      user_id: "u1",
+      org: "org-cons",
+      role: "agent",
+      jti: "j1",
+    };
+    registerConsultationTools(server, services, silentLogger, (sid) =>
+      sid === "sess-a" ? claims : null,
+    );
 
     const handler = getHandler(server, "announce_work");
     const result = await handler(
@@ -244,7 +278,9 @@ describe("consultation-tools: announce_work", () => {
       },
       fakeExtra("sess-a"),
     );
-    const payload = JSON.parse(result.content[0].text) as { thread: { id: string; status: string; org_id: string } };
+    const payload = JSON.parse(result.content[0].text) as {
+      thread: { id: string; status: string; org_id: string };
+    };
     expect(payload.thread.org_id).toBe("org-cons");
     // No other online agents in org-cons — the shared announce-workflow
     // auto-resolves a lone announce (see runCommonAnnounceFlow).
@@ -272,11 +308,23 @@ describe("consultation-tools: announce_work", () => {
 describe("consultation-tools: post_to_thread", () => {
   it("nominal: posts a message and returns it", async () => {
     const server = new McpServer({ name: "test", version: "0" });
-    const claims: AuthClaims = { sub: "init-1", user_id: "u1", org: "org-cons", role: "agent", jti: "j1" };
-    registerConsultationTools(server, services, silentLogger, (sid) => (sid === "sess-p" ? claims : null));
+    const claims: AuthClaims = {
+      sub: "init-1",
+      user_id: "u1",
+      org: "org-cons",
+      role: "agent",
+      jti: "j1",
+    };
+    registerConsultationTools(server, services, silentLogger, (sid) =>
+      sid === "sess-p" ? claims : null,
+    );
 
     const thread = services.consultation.announceWork("org-cons", {
-      agent_id: "init-1", subject: "s", target_modules: [], target_files: [], keep_open: true,
+      agent_id: "init-1",
+      subject: "s",
+      target_modules: [],
+      target_files: [],
+      keep_open: true,
     });
 
     const handler = getHandler(server, "post_to_thread");
@@ -293,11 +341,18 @@ describe("consultation-tools: post_to_thread", () => {
     const server = new McpServer({ name: "test", version: "0" });
     registerConsultationTools(server, services, silentLogger, NO_CLAIMS_GETTER);
     const thread = services.consultation.announceWork("org-cons", {
-      agent_id: "init-1", subject: "s", target_modules: [], target_files: [], keep_open: true,
+      agent_id: "init-1",
+      subject: "s",
+      target_modules: [],
+      target_files: [],
+      keep_open: true,
     });
     const handler = getHandler(server, "post_to_thread");
     await expect(
-      handler({ thread_id: thread.id, agent_id: "init-1", type: "context", content: "hello" }, fakeExtra(undefined)),
+      handler(
+        { thread_id: thread.id, agent_id: "init-1", type: "context", content: "hello" },
+        fakeExtra(undefined),
+      ),
     ).rejects.toThrow("Session has no captured claims (auth bug)");
     const withMessages = services.consultation.getThreadWithMessages("org-cons", thread.id);
     expect(withMessages!.messages).toEqual([]);
@@ -305,14 +360,24 @@ describe("consultation-tools: post_to_thread", () => {
 });
 
 describe("consultation-tools: propose_resolution / approve_resolution / contest_resolution", () => {
-  const claims: AuthClaims = { sub: "init-1", user_id: "u1", org: "org-cons", role: "agent", jti: "j1" };
+  const claims: AuthClaims = {
+    sub: "init-1",
+    user_id: "u1",
+    org: "org-cons",
+    role: "agent",
+    jti: "j1",
+  };
   const getter = (sid: string): AuthClaims | null => (sid === "sess-r" ? claims : null);
 
   it("propose_resolution nominal: transitions thread to resolving", async () => {
     const server = new McpServer({ name: "test", version: "0" });
     registerConsultationTools(server, services, silentLogger, getter);
     const thread = services.consultation.announceWork("org-cons", {
-      agent_id: "init-1", subject: "s", target_modules: [], target_files: [], keep_open: true,
+      agent_id: "init-1",
+      subject: "s",
+      target_modules: [],
+      target_files: [],
+      keep_open: true,
     });
 
     const handler = getHandler(server, "propose_resolution");
@@ -320,7 +385,10 @@ describe("consultation-tools: propose_resolution / approve_resolution / contest_
       { thread_id: thread.id, agent_id: "init-1", summary: "done" },
       fakeExtra("sess-r"),
     );
-    const payload = JSON.parse(result.content[0].text) as { status: string; resolution_summary: string };
+    const payload = JSON.parse(result.content[0].text) as {
+      status: string;
+      resolution_summary: string;
+    };
     expect(payload.status).toBe("resolving");
     expect(payload.resolution_summary).toBe("done");
   });
@@ -329,7 +397,11 @@ describe("consultation-tools: propose_resolution / approve_resolution / contest_
     const server = new McpServer({ name: "test", version: "0" });
     registerConsultationTools(server, services, silentLogger, NO_CLAIMS_GETTER);
     const thread = services.consultation.announceWork("org-cons", {
-      agent_id: "init-1", subject: "s", target_modules: [], target_files: [], keep_open: true,
+      agent_id: "init-1",
+      subject: "s",
+      target_modules: [],
+      target_files: [],
+      keep_open: true,
     });
     const handler = getHandler(server, "propose_resolution");
     await expect(
@@ -341,15 +413,23 @@ describe("consultation-tools: propose_resolution / approve_resolution / contest_
   it("approve_resolution nominal: a solo expected respondent resolves the thread", async () => {
     const server = new McpServer({ name: "test", version: "0" });
     services.registry.register("org-cons", "resp-1", "Responder", []);
-    registerConsultationTools(server, services, silentLogger, (sid) => (sid === "sess-appr" ? { ...claims, sub: "resp-1" } : null));
+    registerConsultationTools(server, services, silentLogger, (sid) =>
+      sid === "sess-appr" ? { ...claims, sub: "resp-1" } : null,
+    );
 
     const thread = services.consultation.announceWork("org-cons", {
-      agent_id: "init-1", subject: "s", target_modules: [], target_files: [], keep_open: true,
+      agent_id: "init-1",
+      subject: "s",
+      target_modules: [],
+      target_files: [],
+      keep_open: true,
     });
     // Seed expected_respondents directly via the DB (mirrors what
     // runCommonAnnounceFlow's impact-scoring override would do) so the
     // approval quorum check has exactly one respondent to satisfy.
-    getDb().prepare("UPDATE threads SET expected_respondents = ? WHERE id = ?").run(JSON.stringify(["resp-1"]), thread.id);
+    getDb()
+      .prepare("UPDATE threads SET expected_respondents = ? WHERE id = ?")
+      .run(JSON.stringify(["resp-1"]), thread.id);
     services.consultation.proposeResolution("org-cons", thread.id, "init-1", "done");
 
     const handler = getHandler(server, "approve_resolution");
@@ -365,7 +445,11 @@ describe("consultation-tools: propose_resolution / approve_resolution / contest_
     const server = new McpServer({ name: "test", version: "0" });
     registerConsultationTools(server, services, silentLogger, NO_CLAIMS_GETTER);
     const thread = services.consultation.announceWork("org-cons", {
-      agent_id: "init-1", subject: "s", target_modules: [], target_files: [], keep_open: true,
+      agent_id: "init-1",
+      subject: "s",
+      target_modules: [],
+      target_files: [],
+      keep_open: true,
     });
     services.consultation.proposeResolution("org-cons", thread.id, "init-1", "done");
     const handler = getHandler(server, "approve_resolution");
@@ -379,7 +463,11 @@ describe("consultation-tools: propose_resolution / approve_resolution / contest_
     const server = new McpServer({ name: "test", version: "0" });
     registerConsultationTools(server, services, silentLogger, getter);
     const thread = services.consultation.announceWork("org-cons", {
-      agent_id: "init-1", subject: "s", target_modules: [], target_files: [], keep_open: true,
+      agent_id: "init-1",
+      subject: "s",
+      target_modules: [],
+      target_files: [],
+      keep_open: true,
     });
     services.consultation.proposeResolution("org-cons", thread.id, "init-1", "first try");
 
@@ -398,7 +486,11 @@ describe("consultation-tools: propose_resolution / approve_resolution / contest_
     const server = new McpServer({ name: "test", version: "0" });
     registerConsultationTools(server, services, silentLogger, NO_CLAIMS_GETTER);
     const thread = services.consultation.announceWork("org-cons", {
-      agent_id: "init-1", subject: "s", target_modules: [], target_files: [], keep_open: true,
+      agent_id: "init-1",
+      subject: "s",
+      target_modules: [],
+      target_files: [],
+      keep_open: true,
     });
     services.consultation.proposeResolution("org-cons", thread.id, "init-1", "first try");
     const handler = getHandler(server, "contest_resolution");
@@ -410,14 +502,24 @@ describe("consultation-tools: propose_resolution / approve_resolution / contest_
 });
 
 describe("consultation-tools: close_thread / cancel_thread", () => {
-  const claims: AuthClaims = { sub: "init-1", user_id: "u1", org: "org-cons", role: "agent", jti: "j1" };
+  const claims: AuthClaims = {
+    sub: "init-1",
+    user_id: "u1",
+    org: "org-cons",
+    role: "agent",
+    jti: "j1",
+  };
   const getter = (sid: string): AuthClaims | null => (sid === "sess-c" ? claims : null);
 
   it("close_thread nominal: resolves the thread with the given summary", async () => {
     const server = new McpServer({ name: "test", version: "0" });
     registerConsultationTools(server, services, silentLogger, getter);
     const thread = services.consultation.announceWork("org-cons", {
-      agent_id: "init-1", subject: "s", target_modules: [], target_files: [], keep_open: true,
+      agent_id: "init-1",
+      subject: "s",
+      target_modules: [],
+      target_files: [],
+      keep_open: true,
     });
     const handler = getHandler(server, "close_thread");
     const result = await handler(
@@ -434,7 +536,11 @@ describe("consultation-tools: close_thread / cancel_thread", () => {
     const server = new McpServer({ name: "test", version: "0" });
     registerConsultationTools(server, services, silentLogger, NO_CLAIMS_GETTER);
     const thread = services.consultation.announceWork("org-cons", {
-      agent_id: "init-1", subject: "s", target_modules: [], target_files: [], keep_open: true,
+      agent_id: "init-1",
+      subject: "s",
+      target_modules: [],
+      target_files: [],
+      keep_open: true,
     });
     const handler = getHandler(server, "close_thread");
     await expect(
@@ -447,7 +553,11 @@ describe("consultation-tools: close_thread / cancel_thread", () => {
     const server = new McpServer({ name: "test", version: "0" });
     registerConsultationTools(server, services, silentLogger, getter);
     const thread = services.consultation.announceWork("org-cons", {
-      agent_id: "init-1", subject: "s", target_modules: [], target_files: [], keep_open: true,
+      agent_id: "init-1",
+      subject: "s",
+      target_modules: [],
+      target_files: [],
+      keep_open: true,
     });
     const handler = getHandler(server, "cancel_thread");
     const result = await handler(
@@ -462,7 +572,11 @@ describe("consultation-tools: close_thread / cancel_thread", () => {
     const server = new McpServer({ name: "test", version: "0" });
     registerConsultationTools(server, services, silentLogger, NO_CLAIMS_GETTER);
     const thread = services.consultation.announceWork("org-cons", {
-      agent_id: "init-1", subject: "s", target_modules: [], target_files: [], keep_open: true,
+      agent_id: "init-1",
+      subject: "s",
+      target_modules: [],
+      target_files: [],
+      keep_open: true,
     });
     const handler = getHandler(server, "cancel_thread");
     await expect(
@@ -473,20 +587,38 @@ describe("consultation-tools: close_thread / cancel_thread", () => {
 });
 
 describe("consultation-tools: get_thread", () => {
-  const claims: AuthClaims = { sub: "init-1", user_id: "u1", org: "org-cons", role: "agent", jti: "j1" };
+  const claims: AuthClaims = {
+    sub: "init-1",
+    user_id: "u1",
+    org: "org-cons",
+    role: "agent",
+    jti: "j1",
+  };
   const getter = (sid: string): AuthClaims | null => (sid === "sess-g" ? claims : null);
 
   it("nominal: returns the thread with its messages", async () => {
     const server = new McpServer({ name: "test", version: "0" });
     registerConsultationTools(server, services, silentLogger, getter);
     const thread = services.consultation.announceWork("org-cons", {
-      agent_id: "init-1", subject: "s", target_modules: [], target_files: [], keep_open: true,
+      agent_id: "init-1",
+      subject: "s",
+      target_modules: [],
+      target_files: [],
+      keep_open: true,
     });
-    services.consultation.postToThread("org-cons", { thread_id: thread.id, agent_id: "init-1", type: "context", content: "hi" });
+    services.consultation.postToThread("org-cons", {
+      thread_id: thread.id,
+      agent_id: "init-1",
+      type: "context",
+      content: "hi",
+    });
 
     const handler = getHandler(server, "get_thread");
     const result = await handler({ thread_id: thread.id }, fakeExtra("sess-g"));
-    const payload = JSON.parse(result.content[0].text) as { thread: { id: string }; messages: unknown[] };
+    const payload = JSON.parse(result.content[0].text) as {
+      thread: { id: string };
+      messages: unknown[];
+    };
     expect(payload.thread.id).toBe(thread.id);
     expect(payload.messages).toHaveLength(1);
   });
@@ -511,7 +643,13 @@ describe("consultation-tools: get_thread", () => {
 });
 
 describe("consultation-tools: get_thread_updates", () => {
-  const claims: AuthClaims = { sub: "resp-1", user_id: "u1", org: "org-cons", role: "agent", jti: "j1" };
+  const claims: AuthClaims = {
+    sub: "resp-1",
+    user_id: "u1",
+    org: "org-cons",
+    role: "agent",
+    jti: "j1",
+  };
   const getter = (sid: string): AuthClaims | null => (sid === "sess-u" ? claims : null);
 
   it("nominal: returns updates from OTHER agents, excluding the caller's own posts", async () => {
@@ -519,14 +657,31 @@ describe("consultation-tools: get_thread_updates", () => {
     registerConsultationTools(server, services, silentLogger, getter);
     services.registry.register("org-cons", "resp-1", "Responder", []);
     const thread = services.consultation.announceWork("org-cons", {
-      agent_id: "init-1", subject: "s", target_modules: [], target_files: [], keep_open: true,
+      agent_id: "init-1",
+      subject: "s",
+      target_modules: [],
+      target_files: [],
+      keep_open: true,
     });
-    services.consultation.postToThread("org-cons", { thread_id: thread.id, agent_id: "init-1", type: "context", content: "from initiator" });
-    services.consultation.postToThread("org-cons", { thread_id: thread.id, agent_id: "resp-1", type: "context", content: "from me, excluded" });
+    services.consultation.postToThread("org-cons", {
+      thread_id: thread.id,
+      agent_id: "init-1",
+      type: "context",
+      content: "from initiator",
+    });
+    services.consultation.postToThread("org-cons", {
+      thread_id: thread.id,
+      agent_id: "resp-1",
+      type: "context",
+      content: "from me, excluded",
+    });
 
     const handler = getHandler(server, "get_thread_updates");
     const result = await handler({ agent_id: "resp-1" }, fakeExtra("sess-u"));
-    const updates = JSON.parse(result.content[0].text) as Array<{ agent_id: string; content: string }>;
+    const updates = JSON.parse(result.content[0].text) as Array<{
+      agent_id: string;
+      content: string;
+    }>;
     expect(updates).toHaveLength(1);
     expect(updates[0].content).toBe("from initiator");
   });
@@ -542,19 +697,40 @@ describe("consultation-tools: get_thread_updates", () => {
 });
 
 describe("consultation-tools: list_threads", () => {
-  const claims: AuthClaims = { sub: "init-1", user_id: "u1", org: "org-cons", role: "agent", jti: "j1" };
+  const claims: AuthClaims = {
+    sub: "init-1",
+    user_id: "u1",
+    org: "org-cons",
+    role: "agent",
+    jti: "j1",
+  };
   const getter = (sid: string): AuthClaims | null => (sid === "sess-l" ? claims : null);
 
   it("nominal: lists only threads for claims.org, filtered by status", async () => {
     const server = new McpServer({ name: "test", version: "0" });
     registerConsultationTools(server, services, silentLogger, getter);
     services.registry.register("org-status", "init-2", "Init Two", []);
-    services.consultation.announceWork("org-cons", { agent_id: "init-1", subject: "open-one", target_modules: [], target_files: [], keep_open: true });
-    services.consultation.announceWork("org-status", { agent_id: "init-2", subject: "other-org", target_modules: [], target_files: [], keep_open: true });
+    services.consultation.announceWork("org-cons", {
+      agent_id: "init-1",
+      subject: "open-one",
+      target_modules: [],
+      target_files: [],
+      keep_open: true,
+    });
+    services.consultation.announceWork("org-status", {
+      agent_id: "init-2",
+      subject: "other-org",
+      target_modules: [],
+      target_files: [],
+      keep_open: true,
+    });
 
     const handler = getHandler(server, "list_threads");
     const result = await handler({ status: "open" }, fakeExtra("sess-l"));
-    const threads = JSON.parse(result.content[0].text) as Array<{ subject: string; org_id: string }>;
+    const threads = JSON.parse(result.content[0].text) as Array<{
+      subject: string;
+      org_id: string;
+    }>;
     expect(threads).toHaveLength(1);
     expect(threads[0].subject).toBe("open-one");
     expect(threads[0].org_id).toBe("org-cons");
@@ -564,12 +740,20 @@ describe("consultation-tools: list_threads", () => {
     const server = new McpServer({ name: "test", version: "0" });
     registerConsultationTools(server, services, silentLogger, NO_CLAIMS_GETTER);
     const handler = getHandler(server, "list_threads");
-    await expect(handler({}, fakeExtra(undefined))).rejects.toThrow("Session has no captured claims (auth bug)");
+    await expect(handler({}, fakeExtra(undefined))).rejects.toThrow(
+      "Session has no captured claims (auth bug)",
+    );
   });
 });
 
 describe("consultation-tools: log_action_summary", () => {
-  const claims: AuthClaims = { sub: "init-1", user_id: "u1", org: "org-cons", role: "agent", jti: "j1" };
+  const claims: AuthClaims = {
+    sub: "init-1",
+    user_id: "u1",
+    org: "org-cons",
+    role: "agent",
+    jti: "j1",
+  };
   const getter = (sid: string): AuthClaims | null => (sid === "sess-log" ? claims : null);
 
   it("nominal: records a one-liner scoped to claims.org", async () => {

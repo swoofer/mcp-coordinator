@@ -67,10 +67,12 @@ export async function handleUserinfo(
 
   // Look up user + org
   const userRow = ctx.db
-    .prepare(`
+    .prepare(
+      `
       SELECT id, primary_org_id, email, name, role
       FROM users WHERE id = ?
-    `)
+    `,
+    )
     .get(claims.user_id) as UserinfoRow | undefined;
 
   if (!userRow) {
@@ -96,12 +98,14 @@ export async function handleUserinfo(
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
   });
-  res.end(JSON.stringify({
-    user_id: userRow.id,
-    email: userRow.email,
-    name: userRow.name,
-    role: userRow.role,
-    org: { id: orgRow.id, name: orgRow.name },
-    active_org_id: orgRow.id,
-  }));
+  res.end(
+    JSON.stringify({
+      user_id: userRow.id,
+      email: userRow.email,
+      name: userRow.name,
+      role: userRow.role,
+      org: { id: orgRow.id, name: orgRow.name },
+      active_org_id: orgRow.id,
+    }),
+  );
 }

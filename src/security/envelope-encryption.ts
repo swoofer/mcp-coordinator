@@ -27,10 +27,7 @@ export class EnvelopeEncryption implements EncryptionProvider {
     const nonceData = randomBytes(12);
     const cipherData = createCipheriv(ALG, dek, nonceData);
     cipherData.setAAD(this.aad(context));
-    const ciphertext = Buffer.concat([
-      cipherData.update(plaintext, "utf8"),
-      cipherData.final(),
-    ]);
+    const ciphertext = Buffer.concat([cipherData.update(plaintext, "utf8"), cipherData.final()]);
     const tagData = cipherData.getAuthTag();
 
     const nonceDek = randomBytes(12);
@@ -74,9 +71,7 @@ export class EnvelopeEncryption implements EncryptionProvider {
       throw new MalformedCiphertext("base64url decode failed", { cause });
     } /* c8 ignore stop */
     if (blob.length < 88) {
-      throw new MalformedCiphertext(
-        `ciphertext too short (got ${blob.length} bytes, need >=88)`,
-      );
+      throw new MalformedCiphertext(`ciphertext too short (got ${blob.length} bytes, need >=88)`);
     }
 
     const nonceDek = blob.subarray(0, 12);

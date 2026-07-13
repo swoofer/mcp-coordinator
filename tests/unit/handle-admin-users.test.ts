@@ -1,19 +1,9 @@
-import {
-  describe,
-  it,
-  expect,
-  beforeAll,
-  afterAll,
-  beforeEach,
-} from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { Readable } from "node:stream";
 import fs from "node:fs";
 import type Database from "better-sqlite3";
-import {
-  handleListUsers,
-  handleUpdateUser,
-} from "../../src/admin/handle-admin-users.js";
+import { handleListUsers, handleUpdateUser } from "../../src/admin/handle-admin-users.js";
 import type { AuthHandlerContext } from "../../src/auth/context.js";
 import { FakeClock } from "../helpers/clock.js";
 import { singleProviderRegistry } from "../helpers/index.js";
@@ -21,17 +11,10 @@ import { RateLimiter } from "../../src/auth/rate-limit.js";
 import { buildJwtKeyRegistry } from "../../src/auth/jwt-keys.js";
 import { MembershipCache } from "../../src/auth/membership-cache.js";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
-import {
-  initAuth,
-  initPhase2Auth,
-  resetPhase2Auth,
-} from "../../src/auth.js";
+import { initAuth, initPhase2Auth, resetPhase2Auth } from "../../src/auth.js";
 import { makeAdminSession } from "../helpers/admin-session.js";
 import { findAuditRows } from "../helpers/audit.js";
-import type {
-  IdPProvider,
-  ExchangeCodeResult,
-} from "../../src/auth/providers/types.js";
+import type { IdPProvider, ExchangeCodeResult } from "../../src/auth/providers/types.js";
 
 /**
  * T06 — handle-admin-users unit tests. Covers:
@@ -98,8 +81,7 @@ interface MockReqOpts {
 }
 
 function mockRequest(opts: MockReqOpts = {}): IncomingMessage {
-  const chunks: Buffer[] =
-    typeof opts.body === "string" ? [Buffer.from(opts.body, "utf8")] : [];
+  const chunks: Buffer[] = typeof opts.body === "string" ? [Buffer.from(opts.body, "utf8")] : [];
   const stream = Readable.from(chunks);
   const headers: Record<string, string> = {};
   if (opts.cookieHeader) headers.cookie = opts.cookieHeader;
@@ -107,8 +89,7 @@ function mockRequest(opts: MockReqOpts = {}): IncomingMessage {
   if (opts.authorization) headers.authorization = opts.authorization;
   (stream as unknown as { headers: Record<string, string> }).headers = headers;
   (stream as unknown as { method: string }).method = opts.method ?? "GET";
-  (stream as unknown as { url: string }).url =
-    opts.url ?? "/api/admin/users";
+  (stream as unknown as { url: string }).url = opts.url ?? "/api/admin/users";
   return stream as unknown as IncomingMessage;
 }
 
@@ -124,9 +105,7 @@ const stubProvider: IdPProvider = {
   },
 };
 
-function makeCtx(
-  overrides: Partial<AuthHandlerContext> = {},
-): AuthHandlerContext {
+function makeCtx(overrides: Partial<AuthHandlerContext> = {}): AuthHandlerContext {
   return {
     db: getDb() as unknown as AuthHandlerContext["db"],
     clock,
@@ -142,9 +121,7 @@ function makeCtx(
 
 function seedOrg(orgId = "org-acme", name = "Acme"): void {
   getDb()
-    .prepare(
-      "INSERT INTO orgs (id, name, allowlist_github_org) VALUES (?, ?, ?)",
-    )
+    .prepare("INSERT INTO orgs (id, name, allowlist_github_org) VALUES (?, ?, ?)")
     .run(orgId, name, "acme");
 }
 
@@ -189,7 +166,9 @@ beforeEach(() => {
   // v0.9 (issue #79): revoked_agents now has FK on org_id → orgs(id); preserve
   // 'default' so the test below's INSERT INTO revoked_agents satisfies the FK.
   getDb().exec("DELETE FROM orgs WHERE id <> 'default'");
-  getDb().prepare("INSERT OR IGNORE INTO orgs (id, name) VALUES ('default', 'Default Organization')").run();
+  getDb()
+    .prepare("INSERT OR IGNORE INTO orgs (id, name) VALUES ('default', 'Default Organization')")
+    .run();
   getDb().exec("DELETE FROM revoked_agents");
   resetPhase2Auth();
   clock = new FakeClock(1_700_000_000);
@@ -390,9 +369,7 @@ describe("handleListUsers — behavior", () => {
     });
     // Demote the only admin under the hood. The session cookie's `role`
     // claim is still "admin" so requireAdmin still passes.
-    getDb()
-      .prepare("UPDATE users SET role = 'member' WHERE id = ?")
-      .run("u-admin");
+    getDb().prepare("UPDATE users SET role = 'member' WHERE id = ?").run("u-admin");
     const req = mockRequest({
       method: "GET",
       url: "/api/admin/users",
@@ -815,9 +792,9 @@ describe("handleUpdateUser — happy path + audit", () => {
     expect(body.user).toEqual({ id: "u-bob", role: "admin" });
 
     // DB row updated.
-    const row = getDb()
-      .prepare("SELECT role FROM users WHERE id = ?")
-      .get("u-bob") as { role: string };
+    const row = getDb().prepare("SELECT role FROM users WHERE id = ?").get("u-bob") as {
+      role: string;
+    };
     expect(row.role).toBe("admin");
 
     // Tier 1 audit row emitted with flat scalar metadata.
@@ -942,9 +919,9 @@ describe("handleUpdateUser — 404 + NOT_HUMAN_USER", () => {
     // No audit for an NOT_HUMAN_USER refusal.
     expect(findAuditRows("admin.user.role_changed")).toHaveLength(0);
     // DB role unchanged.
-    const row = getDb()
-      .prepare("SELECT role FROM users WHERE id = ?")
-      .get("u-agent") as { role: string };
+    const row = getDb().prepare("SELECT role FROM users WHERE id = ?").get("u-agent") as {
+      role: string;
+    };
     expect(row.role).toBe("agent");
   });
 
@@ -1006,9 +983,9 @@ describe("handleUpdateUser — LAST_ADMIN guard (V3 PATCH 1)", () => {
     expect(findAuditRows("admin.user.role_changed")).toHaveLength(0);
 
     // DB row unchanged.
-    const row = getDb()
-      .prepare("SELECT role FROM users WHERE id = ?")
-      .get("u-admin") as { role: string };
+    const row = getDb().prepare("SELECT role FROM users WHERE id = ?").get("u-admin") as {
+      role: string;
+    };
     expect(row.role).toBe("admin");
   });
 
@@ -1093,9 +1070,9 @@ describe("handleUpdateUser — LAST_ADMIN guard (V3 PATCH 1)", () => {
     const res = mockResponse();
     await handleUpdateUser(req, res as unknown as ServerResponse, makeCtx());
     expect(res.statusCode).toBe(200);
-    const row = getDb()
-      .prepare("SELECT role FROM users WHERE id = ?")
-      .get("u-b") as { role: string };
+    const row = getDb().prepare("SELECT role FROM users WHERE id = ?").get("u-b") as {
+      role: string;
+    };
     expect(row.role).toBe("member");
     // Audit emitted for the successful change.
     expect(findAuditRows("admin.user.role_changed")).toHaveLength(1);
@@ -1133,9 +1110,9 @@ describe("handleUpdateUser — LAST_ADMIN guard (V3 PATCH 1)", () => {
     }
     // Across both attempts: zero audit rows + DB role unchanged.
     expect(findAuditRows("admin.user.role_changed")).toHaveLength(0);
-    const row = getDb()
-      .prepare("SELECT role FROM users WHERE id = ?")
-      .get("u-admin") as { role: string };
+    const row = getDb().prepare("SELECT role FROM users WHERE id = ?").get("u-admin") as {
+      role: string;
+    };
     expect(row.role).toBe("admin");
   });
 });

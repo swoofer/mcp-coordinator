@@ -26,7 +26,11 @@ function makeSandbox(): { home: string; configDir: string; cleanup: () => void }
       else process.env.HOME = prevHome;
       if (prevProfile === undefined) delete process.env.USERPROFILE;
       else process.env.USERPROFILE = prevProfile;
-      try { rmSync(home, { recursive: true, force: true }); } catch { /* best effort */ }
+      try {
+        rmSync(home, { recursive: true, force: true });
+      } catch {
+        /* best effort */
+      }
     },
   };
 }
@@ -39,13 +43,20 @@ function seedConfigDir(configDir: string): void {
     join(configDir, "config.json"),
     JSON.stringify({ server: { port: 3100, data_dir: join(configDir, "data") } }, null, 2),
   );
-  writeFileSync(join(configDir, "data", "coordinator.db"), Buffer.from("SQLite format 3\0fake-bytes"));
+  writeFileSync(
+    join(configDir, "data", "coordinator.db"),
+    Buffer.from("SQLite format 3\0fake-bytes"),
+  );
   writeFileSync(join(configDir, "data", "coordinator.db-wal"), Buffer.from("wal-bytes"));
   writeFileSync(join(configDir, "logs", "server.log"), "log-noise\n"); // present but not packed
 }
 
 afterAll(() => {
-  try { rmSync(SANDBOX_ROOT, { recursive: true, force: true }); } catch { /* ok */ }
+  try {
+    rmSync(SANDBOX_ROOT, { recursive: true, force: true });
+  } catch {
+    /* ok */
+  }
 });
 
 describe("getRunningCoordinatorPid", () => {
@@ -92,10 +103,10 @@ describe("backup tarball", () => {
 
   it("creates a tar.gz containing config.json and data/", async () => {
     const archive = join(sandbox.home, "snap.tar.gz");
-    await tarCreate(
-      { gzip: true, file: archive, cwd: sandbox.configDir, portable: true },
-      ["config.json", "data"],
-    );
+    await tarCreate({ gzip: true, file: archive, cwd: sandbox.configDir, portable: true }, [
+      "config.json",
+      "data",
+    ]);
     expect(existsSync(archive)).toBe(true);
     expect(statSync(archive).size).toBeGreaterThan(0);
 
@@ -115,10 +126,10 @@ describe("backup tarball", () => {
 
   it("excludes logs/ (not in entry list)", async () => {
     const archive = join(sandbox.home, "snap.tar.gz");
-    await tarCreate(
-      { gzip: true, file: archive, cwd: sandbox.configDir, portable: true },
-      ["config.json", "data"],
-    );
+    await tarCreate({ gzip: true, file: archive, cwd: sandbox.configDir, portable: true }, [
+      "config.json",
+      "data",
+    ]);
     const seen: string[] = [];
     await tarList({ file: archive, onReadEntry: (e) => seen.push(e.path) });
     expect(seen.some((p) => p.includes("logs"))).toBe(false);
@@ -139,10 +150,10 @@ describe("restore (extract) round-trip", () => {
     const originalDb = readFileSync(join(sandbox.configDir, "data", "coordinator.db"));
     const originalCfg = readFileSync(join(sandbox.configDir, "config.json"));
 
-    await tarCreate(
-      { gzip: true, file: archive, cwd: sandbox.configDir, portable: true },
-      ["config.json", "data"],
-    );
+    await tarCreate({ gzip: true, file: archive, cwd: sandbox.configDir, portable: true }, [
+      "config.json",
+      "data",
+    ]);
 
     // Wipe the config dir, then extract back into it.
     rmSync(sandbox.configDir, { recursive: true, force: true });

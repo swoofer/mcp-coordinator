@@ -32,9 +32,8 @@ describe("cli/server status — exit code reflects daemon health (issue #78)", (
     // Redirect getConfigDir() so the action looks at our empty temp dir
     // instead of the real ~/.mcp-coordinator.
     vi.doMock("../../cli/config.js", async () => {
-      const real = await vi.importActual<typeof import("../../cli/config.js")>(
-        "../../cli/config.js",
-      );
+      const real =
+        await vi.importActual<typeof import("../../cli/config.js")>("../../cli/config.js");
       return {
         ...real,
         getConfigDir: () => tmpConfigDir,

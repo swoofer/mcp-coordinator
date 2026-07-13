@@ -116,9 +116,7 @@ describe("runOrgsUniquenessGuard — branch matrix", () => {
     // Hijack `prepare` to detect whether the GROUP BY SELECT is invoked.
     const originalPrepare = raw.prepare.bind(raw);
     const preparedSqls: string[] = [];
-    (raw as unknown as { prepare: (sql: string) => unknown }).prepare = (
-      sql: string,
-    ) => {
+    (raw as unknown as { prepare: (sql: string) => unknown }).prepare = (sql: string) => {
       preparedSqls.push(sql);
       return originalPrepare(sql);
     };
@@ -171,9 +169,7 @@ describe("runOrgsUniquenessGuard — branch matrix", () => {
     // Common mistakes: empty string, "0", "true", "yes".
     for (const bogus of ["", "0", "true", "yes", "1 "]) {
       expect(() =>
-        runOrgsUniquenessGuard(
-          deps({ COORDINATOR_ALLOW_DUPLICATE_ORG_NAMES: bogus }),
-        ),
+        runOrgsUniquenessGuard(deps({ COORDINATOR_ALLOW_DUPLICATE_ORG_NAMES: bogus })),
       ).toThrow(BootValidationError);
     }
   });
@@ -186,9 +182,7 @@ describe("runOrgsUniquenessGuard — branch matrix", () => {
     raw.prepare("INSERT INTO orgs (id, name) VALUES (?, ?)").run("o4", "wayne");
     raw.prepare("INSERT INTO orgs (id, name) VALUES (?, ?)").run("o5", "wayne");
 
-    const r = runOrgsUniquenessGuard(
-      deps({ COORDINATOR_ALLOW_DUPLICATE_ORG_NAMES: "1" }),
-    );
+    const r = runOrgsUniquenessGuard(deps({ COORDINATOR_ALLOW_DUPLICATE_ORG_NAMES: "1" }));
 
     expect(r.pendingDuplicatesAcceptedAudit).not.toBeNull();
     const payload = r.pendingDuplicatesAcceptedAudit!;
@@ -237,9 +231,7 @@ describe("emitDuplicatesAcceptedAudit — writes Tier 1 chain row", () => {
       totalDuplicateRows: 5,
     });
     const rows = raw
-      .prepare(
-        "SELECT action, outcome, metadata_json, prev_hash, row_hash FROM audit_log",
-      )
+      .prepare("SELECT action, outcome, metadata_json, prev_hash, row_hash FROM audit_log")
       .all() as Array<{
       action: string;
       outcome: string;
@@ -276,9 +268,7 @@ describe("emitDuplicatesAcceptedAudit — writes Tier 1 chain row", () => {
     // prev_hash points to the seeded tip.
     const priorRowHash = "a".repeat(64);
     raw
-      .prepare(
-        "INSERT INTO audit_log (action, outcome, prev_hash, row_hash) VALUES (?, ?, ?, ?)",
-      )
+      .prepare("INSERT INTO audit_log (action, outcome, prev_hash, row_hash) VALUES (?, ?, ?, ?)")
       .run("seed.event", "success", "0".repeat(64), priorRowHash);
 
     emitDuplicatesAcceptedAudit(db, {
@@ -286,11 +276,10 @@ describe("emitDuplicatesAcceptedAudit — writes Tier 1 chain row", () => {
       totalDuplicateRows: 2,
     });
 
-    const rows = raw
-      .prepare(
-        "SELECT action, prev_hash FROM audit_log ORDER BY id",
-      )
-      .all() as Array<{ action: string; prev_hash: string }>;
+    const rows = raw.prepare("SELECT action, prev_hash FROM audit_log ORDER BY id").all() as Array<{
+      action: string;
+      prev_hash: string;
+    }>;
     expect(rows).toHaveLength(2);
     expect(rows[1].action).toBe("admin.orgs.duplicate_names_accepted");
     expect(rows[1].prev_hash).toBe(priorRowHash);

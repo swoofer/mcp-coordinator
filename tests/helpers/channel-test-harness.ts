@@ -245,10 +245,12 @@ export async function createChannelHarness(
         const timer = setTimeout(() => {
           const idx = waiters.findIndex((w) => w.timer === timer);
           if (idx >= 0) waiters.splice(idx, 1);
-          reject(new Error(
-            `channel-harness: waitForNotification timed out after ${timeoutMs}ms ` +
-              `(received ${receivedNotifications.length} notification(s) so far, none matched)`,
-          ));
+          reject(
+            new Error(
+              `channel-harness: waitForNotification timed out after ${timeoutMs}ms ` +
+                `(received ${receivedNotifications.length} notification(s) so far, none matched)`,
+            ),
+          );
         }, timeoutMs);
         // `unref()` so a leaked waiter doesn't hold the event loop open.
         timer.unref?.();
@@ -298,7 +300,11 @@ export interface MockMqttBroker {
    * Escape hatch — publish a raw payload to an arbitrary topic. Use the typed
    * helpers above where possible.
    */
-  publishRaw(topic: string, payload: string | Buffer, opts?: { qos?: 0 | 1 | 2; retain?: boolean }): Promise<void>;
+  publishRaw(
+    topic: string,
+    payload: string | Buffer,
+    opts?: { qos?: 0 | 1 | 2; retain?: boolean },
+  ): Promise<void>;
   cleanup(): Promise<void>;
 }
 

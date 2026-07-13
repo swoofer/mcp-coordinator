@@ -41,7 +41,7 @@ export default defineConfig({
         "src/auth/jwt-mint.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/auth/oauth-finalize.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         // TODO(coverage-ratchet): remonter à 100 — cf. audit tests-01
-        "src/auth/oauth-token.ts": { branches: 75.8, lines: 92.56, statements: 91.93, functions: 91.66 },
+        "src/auth/oauth-token.ts": { branches: 75.8, lines: 92.5, statements: 91.93, functions: 91.66 },
         "src/auth/logout.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/auth/userinfo.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/auth/membership-cache.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },

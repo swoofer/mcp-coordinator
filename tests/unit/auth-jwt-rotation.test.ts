@@ -5,8 +5,14 @@ import fs from "fs";
 
 const DIR = "data-test-rotation";
 
-beforeAll(() => { fs.mkdirSync(DIR, { recursive: true }); initDatabase(DIR); });
-afterAll(() => { closeDb(); fs.rmSync(DIR, { recursive: true, force: true }); });
+beforeAll(() => {
+  fs.mkdirSync(DIR, { recursive: true });
+  initDatabase(DIR);
+});
+afterAll(() => {
+  closeDb();
+  fs.rmSync(DIR, { recursive: true, force: true });
+});
 
 // CRITICAL: reset auth state so prevKey doesn't contaminate later test files
 // under vitest's fileParallelism: false. See "Module-state hygiene" in Conventions.

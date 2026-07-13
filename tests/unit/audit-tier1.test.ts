@@ -52,7 +52,9 @@ describe("audit() Tier 1 sync path", () => {
     const Database = require("better-sqlite3");
     const reader = new Database(path.join(DIR, "coordinator.db"), { readonly: true });
     try {
-      const rows = reader.prepare("SELECT * FROM audit_log WHERE action = ?").all("auth.test.tier1") as AuditRow[];
+      const rows = reader
+        .prepare("SELECT * FROM audit_log WHERE action = ?")
+        .all("auth.test.tier1") as AuditRow[];
       expect(rows).toHaveLength(1);
     } finally {
       reader.close();
@@ -182,7 +184,9 @@ describe("audit() Tier 1 sync path", () => {
     await Promise.all([runOne("alpha"), runOne("bravo")]);
 
     const rows = getDb()
-      .prepare("SELECT action, actor_user_id, actor_org_id, actor_ip FROM audit_log ORDER BY action")
+      .prepare(
+        "SELECT action, actor_user_id, actor_org_id, actor_ip FROM audit_log ORDER BY action",
+      )
       .all() as Pick<AuditRow, "action" | "actor_user_id" | "actor_org_id" | "actor_ip">[];
     expect(rows).toHaveLength(2);
     expect(rows.find((r) => r.action === "test.concurrent.alpha")).toMatchObject({

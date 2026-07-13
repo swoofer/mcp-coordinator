@@ -61,20 +61,26 @@ export class ImpactScorer {
     // re-parsed agent state up to ~4·A times per call.
     const moduleCache = new Map<string, string[]>();
     for (const a of onlineAgents) {
-      moduleCache.set(a.id, safeJsonParse<string[]>(a.modules, [], undefined, "impact-scorer.score:agent.modules"));
+      moduleCache.set(
+        a.id,
+        safeJsonParse<string[]>(a.modules, [], undefined, "impact-scorer.score:agent.modules"),
+      );
     }
 
     // O3: pre-compute file → set<agent_id> for every file we'll inspect.
     // Replaces N `checkFileConflict` calls (each = 1 SQL round-trip) with a
     // single batched query, and turns the inner per-agent file check into
     // an O(1) Set.has() lookup.
-    const filesToIndex = [
-      ...params.target_files,
-      ...(params.depends_on_files || []),
-    ];
-    const fileToAgents = filesToIndex.length > 0
-      ? this.fileTracker.getFileToAgentsIndex(params.org_id, filesToIndex, params.agent_id, FILE_ACTIVITY_WINDOW_MINUTES)
-      : new Map<string, Set<string>>();
+    const filesToIndex = [...params.target_files, ...(params.depends_on_files || [])];
+    const fileToAgents =
+      filesToIndex.length > 0
+        ? this.fileTracker.getFileToAgentsIndex(
+            params.org_id,
+            filesToIndex,
+            params.agent_id,
+            FILE_ACTIVITY_WINDOW_MINUTES,
+          )
+        : new Map<string, Set<string>>();
 
     const inFlightToAgents = this.workingFiles
       ? this.workingFiles.getIndex(params.org_id, filesToIndex, params.agent_id)
@@ -83,7 +89,11 @@ export class ImpactScorer {
     // Pre-load symbols_touched for the target_files × online_agents matrix once,
     // keyed by (file_path, agent_id). Avoids N*M DB roundtrips inside the score loop.
     let symbolsByFileAgent: Map<string, string[]> | null = null;
-    if (params.target_symbols && params.target_symbols.length > 0 && params.target_files.length > 0) {
+    if (
+      params.target_symbols &&
+      params.target_symbols.length > 0 &&
+      params.target_files.length > 0
+    ) {
       symbolsByFileAgent = this._collectSymbolsTouched(params.org_id, params.target_files);
     }
 
@@ -101,7 +111,10 @@ export class ImpactScorer {
     // query covering every (partner file × recent activity) pair, then
     // consulted as an O(1) Set lookup inside the agent loop.
     const layer4CandidatesByFile = this._layer4Candidates(params.org_id, params.target_files);
-    const layer4PartnerActivity = this._layer4PartnerActivity(params.org_id, layer4CandidatesByFile);
+    const layer4PartnerActivity = this._layer4PartnerActivity(
+      params.org_id,
+      layer4CandidatesByFile,
+    );
 
     // O2: bound the resolved-thread query to a recency window. Without this,
     // listThreads({status:'resolved'}) returns ALL historical resolved threads
@@ -113,7 +126,10 @@ export class ImpactScorer {
       const allActive = [
         ...this.consultation.listThreads(params.org_id, { status: "open" }),
         ...this.consultation.listThreads(params.org_id, { status: "resolving" }),
-        ...this.consultation.listThreads(params.org_id, { status: "resolved", since_minutes: LAYER_0_WINDOW_MINUTES }),
+        ...this.consultation.listThreads(params.org_id, {
+          status: "resolved",
+          since_minutes: LAYER_0_WINDOW_MINUTES,
+        }),
       ];
       // Group by initiator_id so the per-agent loop is O(threads-for-this-agent)
       // rather than O(all-active-threads). Avoids an outer-product scan over
@@ -139,14 +155,26 @@ export class ImpactScorer {
         const agentThreads = activeThreadsByAgent.get(agent.id);
         if (agentThreads) {
           for (const thread of agentThreads) {
-            const threadFiles: string[] = safeJsonParse<string[]>(thread.target_files, [], undefined, "impact-scorer.score:thread.target_files");
-            const threadDeps: string[] = safeJsonParse<string[]>(thread.depends_on_files, [], undefined, "impact-scorer.score:thread.depends_on_files");
+            const threadFiles: string[] = safeJsonParse<string[]>(
+              thread.target_files,
+              [],
+              undefined,
+              "impact-scorer.score:thread.target_files",
+            );
+            const threadDeps: string[] = safeJsonParse<string[]>(
+              thread.depends_on_files,
+              [],
+              undefined,
+              "impact-scorer.score:thread.depends_on_files",
+            );
 
             // 0a: My target_files ∩ their target_files → score 100
             const fileOverlap = params.target_files.filter((f) => threadFiles.includes(f));
             if (fileOverlap.length > 0) {
               maxScore = Math.max(maxScore, 100);
-              reasons.push(`announced same file: ${fileOverlap.join(", ")} (thread ${thread.id.slice(0, 8)})`);
+              reasons.push(
+                `announced same file: ${fileOverlap.join(", ")} (thread ${thread.id.slice(0, 8)})`,
+              );
             }
 
             // 0b: My depends_on ∩ their target_files → score 80 (they modify what I depend on)
@@ -154,7 +182,9 @@ export class ImpactScorer {
               const depOverlap = params.depends_on_files.filter((f) => threadFiles.includes(f));
               if (depOverlap.length > 0) {
                 maxScore = Math.max(maxScore, 80);
-                reasons.push(`modifies my dependency: ${depOverlap.join(", ")} (thread ${thread.id.slice(0, 8)})`);
+                reasons.push(
+                  `modifies my dependency: ${depOverlap.join(", ")} (thread ${thread.id.slice(0, 8)})`,
+                );
               }
             }
 
@@ -162,7 +192,9 @@ export class ImpactScorer {
             const reverseDepOverlap = params.target_files.filter((f) => threadDeps.includes(f));
             if (reverseDepOverlap.length > 0) {
               maxScore = Math.max(maxScore, 80);
-              reasons.push(`they depend on my target: ${reverseDepOverlap.join(", ")} (thread ${thread.id.slice(0, 8)})`);
+              reasons.push(
+                `they depend on my target: ${reverseDepOverlap.join(", ")} (thread ${thread.id.slice(0, 8)})`,
+              );
             }
           }
         }
@@ -180,10 +212,10 @@ export class ImpactScorer {
             if (theirSymbols && theirSymbols.length > 0) {
               const mine = new Set(params.target_symbols);
               const theirs = new Set(theirSymbols);
-              const overlap = [...mine].some(s => theirs.has(s));
+              const overlap = [...mine].some((s) => theirs.has(s));
               if (!overlap) {
                 reasons.push(
-                  `same file: ${targetFile}; disjoint symbols: you=[${[...mine].join(",")}], them=[${[...theirs].join(",")}] — verify shared module state`
+                  `same file: ${targetFile}; disjoint symbols: you=[${[...mine].join(",")}], them=[${[...theirs].join(",")}] — verify shared module state`,
                 );
                 annotated = true;
               }
@@ -213,8 +245,8 @@ export class ImpactScorer {
       // Layer 3: Module overlap (score 30)
       const overlapping = agentModules.filter((am) =>
         params.target_modules.some(
-          (tm) => am === tm || am.startsWith(tm + "/") || tm.startsWith(am + "/")
-        )
+          (tm) => am === tm || am.startsWith(tm + "/") || tm.startsWith(am + "/"),
+        ),
       );
       if (overlapping.length > 0) {
         maxScore = Math.max(maxScore, 30);
@@ -260,8 +292,9 @@ export class ImpactScorer {
   private _collectSymbolsTouched(orgId: string, files: string[]): Map<string, string[]> {
     const db = getDb();
     const placeholders = files.map(() => "?").join(",");
-    const rows = db.prepare(
-      `SELECT agent_id, file_path, symbols_touched
+    const rows = db
+      .prepare(
+        `SELECT agent_id, file_path, symbols_touched
        FROM file_activity
        WHERE org_id = ?
          AND file_path IN (${placeholders})
@@ -272,15 +305,22 @@ export class ImpactScorer {
              AND file_path IN (${placeholders})
              AND symbols_touched IS NOT NULL
            GROUP BY agent_id, file_path
-         )`
-    ).all(orgId, ...files, orgId, ...files) as Array<{ agent_id: string; file_path: string; symbols_touched: string }>;
+         )`,
+      )
+      .all(orgId, ...files, orgId, ...files) as Array<{
+      agent_id: string;
+      file_path: string;
+      symbols_touched: string;
+    }>;
 
     const result = new Map<string, string[]>();
     for (const r of rows) {
       try {
         const arr = JSON.parse(r.symbols_touched) as string[];
         result.set(`${r.file_path}|${r.agent_id}`, arr);
-      } catch { /* malformed JSON: ignore */ }
+      } catch {
+        /* malformed JSON: ignore */
+      }
     }
     return result;
   }
@@ -304,10 +344,17 @@ export class ImpactScorer {
     const db = getDb();
     const result = new Map<string, Array<{ partner: string; score: number; ratio: number }>>();
     for (const targetFile of targetFiles) {
-      const rows = db.prepare(
-        `SELECT file_a, file_b, count, total_commits FROM git_cochange
-         WHERE org_id = ? AND (file_a = ? OR file_b = ?)`
-      ).all(orgId, targetFile, targetFile) as Array<{ file_a: string; file_b: string; count: number; total_commits: number }>;
+      const rows = db
+        .prepare(
+          `SELECT file_a, file_b, count, total_commits FROM git_cochange
+         WHERE org_id = ? AND (file_a = ? OR file_b = ?)`,
+        )
+        .all(orgId, targetFile, targetFile) as Array<{
+        file_a: string;
+        file_b: string;
+        count: number;
+        total_commits: number;
+      }>;
 
       const candidates: Array<{ partner: string; score: number; ratio: number }> = [];
       for (const r of rows) {
@@ -345,11 +392,13 @@ export class ImpactScorer {
     const db = getDb();
     const partnerList = [...partners];
     const placeholders = partnerList.map(() => "?").join(",");
-    const rows = db.prepare(
-      `SELECT DISTINCT file_path, agent_id FROM file_activity
+    const rows = db
+      .prepare(
+        `SELECT DISTINCT file_path, agent_id FROM file_activity
        WHERE org_id = ? AND file_path IN (${placeholders})
-         AND created_at > datetime('now', '-60 minutes')`
-    ).all(orgId, ...partnerList) as Array<{ file_path: string; agent_id: string }>;
+         AND created_at > datetime('now', '-60 minutes')`,
+      )
+      .all(orgId, ...partnerList) as Array<{ file_path: string; agent_id: string }>;
 
     const result = new Set<string>();
     for (const r of rows) result.add(`${r.file_path}|${r.agent_id}`);

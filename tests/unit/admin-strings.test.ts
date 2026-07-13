@@ -60,9 +60,7 @@ describe("admin-strings.js", () => {
     });
 
     it("treats null-valued vars as missing", () => {
-      expect(t("toasts.welcome", { name: null as unknown as string })).toBe(
-        "Welcome, {name}.",
-      );
+      expect(t("toasts.welcome", { name: null as unknown as string })).toBe("Welcome, {name}.");
     });
   });
 
@@ -73,9 +71,7 @@ describe("admin-strings.js", () => {
     });
 
     it("returns the path itself for a partially-valid path", () => {
-      expect(t("pages.orgs.no_such_field")).toBe(
-        "pages.orgs.no_such_field",
-      );
+      expect(t("pages.orgs.no_such_field")).toBe("pages.orgs.no_such_field");
     });
 
     it("returns the path itself when traversal hits a non-object", () => {

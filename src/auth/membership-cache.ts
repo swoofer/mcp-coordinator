@@ -2,10 +2,7 @@ import { LRUCache } from "lru-cache";
 import crypto from "node:crypto";
 import type { Clock } from "./clock.js";
 import type { IdPProvider } from "./providers/types.js";
-import {
-  IdPTransientError,
-  ProviderCapabilityError,
-} from "./providers/errors.js";
+import { IdPTransientError, ProviderCapabilityError } from "./providers/errors.js";
 
 export interface MembershipCacheEntry {
   memberships: string[]; // lowercase org logins
@@ -79,7 +76,7 @@ export class MembershipCache {
     const cached = this.cache.get(key);
     const now = this.clock.now();
 
-    if (cached && (now - cached.ts) < POSITIVE_TTL_S) {
+    if (cached && now - cached.ts < POSITIVE_TTL_S) {
       this._metrics.hits++;
       return cached.memberships;
     }
@@ -121,8 +118,6 @@ export class MembershipCache {
   }
 
   private cacheKey(userId: string, providerName: string): string {
-    return crypto.createHash("sha256")
-      .update(`${userId}|${providerName}`)
-      .digest("hex");
+    return crypto.createHash("sha256").update(`${userId}|${providerName}`).digest("hex");
   }
 }

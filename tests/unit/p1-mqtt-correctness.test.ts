@@ -29,12 +29,20 @@ const publishCalls: PublishCall[] = [];
 let lastClient: FakeMqttClient | null = null;
 
 class FakeMqttClient extends EventEmitter {
-  publish(topic: string, payload: string | Buffer, options?: { qos?: number; retain?: boolean }): this {
+  publish(
+    topic: string,
+    payload: string | Buffer,
+    options?: { qos?: number; retain?: boolean },
+  ): this {
     publishCalls.push({ topic, payload, options });
     return this;
   }
-  subscribe(_topic: string | string[]): this { return this; }
-  endAsync(): Promise<void> { return Promise.resolve(); }
+  subscribe(_topic: string | string[]): this {
+    return this;
+  }
+  endAsync(): Promise<void> {
+    return Promise.resolve();
+  }
 }
 
 vi.mock("mqtt", () => ({
@@ -69,7 +77,9 @@ describe("P1 — MQTT QoS 1 for state-change publishes", () => {
   it("publishTaskClaimed publishes with qos:1", async () => {
     const bridge = await makeConnectedBridge();
     bridge.publishTaskClaimed("thread-123", "agent-A");
-    const call = publishCalls.find((c) => c.topic === "coordinator/default/consultations/thread-123/claimed");
+    const call = publishCalls.find(
+      (c) => c.topic === "coordinator/default/consultations/thread-123/claimed",
+    );
     expect(call).toBeDefined();
     expect(call!.options?.qos).toBe(1);
   });
@@ -77,7 +87,9 @@ describe("P1 — MQTT QoS 1 for state-change publishes", () => {
   it("publishTaskCompleted publishes with qos:1", async () => {
     const bridge = await makeConnectedBridge();
     bridge.publishTaskCompleted("thread-456", "agent-B", "all good");
-    const call = publishCalls.find((c) => c.topic === "coordinator/default/consultations/thread-456/completed");
+    const call = publishCalls.find(
+      (c) => c.topic === "coordinator/default/consultations/thread-456/completed",
+    );
     expect(call).toBeDefined();
     expect(call!.options?.qos).toBe(1);
   });
@@ -93,7 +105,9 @@ describe("P1 — MQTT QoS 1 for state-change publishes", () => {
   it("publishResolution publishes with qos:1", async () => {
     const bridge = await makeConnectedBridge();
     bridge.publishResolution("thread-xyz", "resolved", "all good");
-    const call = publishCalls.find((c) => c.topic === "coordinator/default/consultations/thread-xyz/status");
+    const call = publishCalls.find(
+      (c) => c.topic === "coordinator/default/consultations/thread-xyz/status",
+    );
     expect(call).toBeDefined();
     expect(call!.options?.qos).toBe(1);
   });
@@ -101,7 +115,9 @@ describe("P1 — MQTT QoS 1 for state-change publishes", () => {
   it("publishMessage stays at QoS 0 (high-frequency, lossy-OK)", async () => {
     const bridge = await makeConnectedBridge();
     bridge.publishMessage("thread-1", "agent-X", "comment", "hi");
-    const call = publishCalls.find((c) => c.topic === "coordinator/default/consultations/thread-1/messages");
+    const call = publishCalls.find(
+      (c) => c.topic === "coordinator/default/consultations/thread-1/messages",
+    );
     expect(call).toBeDefined();
     // QoS 0 = either undefined or 0 (mqtt.js default).
     expect(call!.options?.qos ?? 0).toBe(0);
@@ -134,7 +150,8 @@ describe("P1 — retained consultations/new", () => {
     const clear = publishCalls.find((c) => c.topic === "coordinator/default/consultations/new");
     expect(clear).toBeDefined();
     // Empty payload signals "clear retained".
-    const payloadStr = typeof clear!.payload === "string" ? clear!.payload : clear!.payload.toString();
+    const payloadStr =
+      typeof clear!.payload === "string" ? clear!.payload : clear!.payload.toString();
     expect(payloadStr).toBe("");
     expect(clear!.options?.retain).toBe(true);
   });
@@ -146,7 +163,9 @@ describe("P1 — retained consultations/new", () => {
 
     // Stale resolve callback for an old thread that's already been overwritten.
     bridge.clearRetainedConsultation("stale-thread");
-    expect(publishCalls.find((c) => c.topic === "coordinator/default/consultations/new")).toBeUndefined();
+    expect(
+      publishCalls.find((c) => c.topic === "coordinator/default/consultations/new"),
+    ).toBeUndefined();
   });
 
   it("a newer publishConsultation overwrites the retained slot (next clear by older threadId is no-op)", async () => {
@@ -156,10 +175,14 @@ describe("P1 — retained consultations/new", () => {
     publishCalls.length = 0;
 
     bridge.clearRetainedConsultation("thread-old"); // stale
-    expect(publishCalls.find((c) => c.topic === "coordinator/default/consultations/new")).toBeUndefined();
+    expect(
+      publishCalls.find((c) => c.topic === "coordinator/default/consultations/new"),
+    ).toBeUndefined();
 
     bridge.clearRetainedConsultation("thread-new"); // matches latest retain
-    expect(publishCalls.find((c) => c.topic === "coordinator/default/consultations/new")).toBeDefined();
+    expect(
+      publishCalls.find((c) => c.topic === "coordinator/default/consultations/new"),
+    ).toBeDefined();
   });
 });
 
@@ -167,12 +190,14 @@ describe("P1 — Last Will & Testament on connect", () => {
   it("registers an LWT for the default 'coordinator-internal' agent", async () => {
     await makeConnectedBridge();
     expect(connectCalls.length).toBe(1);
-    const will = connectCalls[0].options.will as {
-      topic: string;
-      payload: Buffer | string;
-      qos: number;
-      retain: boolean;
-    } | undefined;
+    const will = connectCalls[0].options.will as
+      | {
+          topic: string;
+          payload: Buffer | string;
+          qos: number;
+          retain: boolean;
+        }
+      | undefined;
     expect(will).toBeDefined();
     expect(will!.topic).toBe("coordinator/default/agents/coordinator-internal/status");
     const payload = typeof will!.payload === "string" ? will!.payload : will!.payload.toString();
@@ -199,7 +224,9 @@ describe("P1 — backward-compat: existing publishes still produce the right sha
   it("publishTaskClaimed payload still includes thread metadata + ISO timestamp", async () => {
     const bridge = await makeConnectedBridge();
     bridge.publishTaskClaimed("t-1", "agent-X");
-    const call = publishCalls.find((c) => c.topic === "coordinator/default/consultations/t-1/claimed")!;
+    const call = publishCalls.find(
+      (c) => c.topic === "coordinator/default/consultations/t-1/claimed",
+    )!;
     const payload = JSON.parse(call.payload.toString());
     expect(payload.agent_id).toBe("agent-X");
     expect(payload.claimed_by).toBe("agent-X");

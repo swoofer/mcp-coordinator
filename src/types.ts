@@ -24,7 +24,8 @@ export interface AgentActivity {
 // "poisoned" = a work-stealing task that was unclaimed too many times without
 // reaching DONE. Filtered out of the claim pool so it doesn't churn indefinitely.
 export type ThreadStatus = "open" | "resolving" | "resolved" | "cancelled" | "poisoned";
-export type ResolutionType = "consensus" | "auto_resolved" | "timeout" | "closed" | "max_rounds" | "agent_departure";
+export type ResolutionType =
+  "consensus" | "auto_resolved" | "timeout" | "closed" | "max_rounds" | "agent_departure";
 
 export interface Thread {
   id: string;
@@ -58,12 +59,7 @@ export interface Thread {
 }
 
 export type MessageType =
-  | "context"
-  | "suggestion"
-  | "warning"
-  | "resolution"
-  | "approve"
-  | "contest";
+  "context" | "suggestion" | "warning" | "resolution" | "approve" | "contest";
 
 export interface ThreadMessage {
   id: string;

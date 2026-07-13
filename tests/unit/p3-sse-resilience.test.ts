@@ -150,7 +150,11 @@ describe("P3 Fix 2 + Fix 4 — heartbeat + interval cleanup on close", () => {
     vi.useFakeTimers();
     writes = [];
     req = new EventEmitter();
-    res = { write: (chunk: string) => { writes.push(chunk); } };
+    res = {
+      write: (chunk: string) => {
+        writes.push(chunk);
+      },
+    };
   });
 
   afterEach(() => {

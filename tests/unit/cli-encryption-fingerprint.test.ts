@@ -1,9 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { randomBytes } from "node:crypto";
-import {
-  createFingerprintCommand,
-  runFingerprint,
-} from "../../cli/encryption/fingerprint.js";
+import { createFingerprintCommand, runFingerprint } from "../../cli/encryption/fingerprint.js";
 import { createEncryptionCommand } from "../../cli/encryption/index.js";
 
 const KEY_A_HEX = randomBytes(32).toString("hex");
@@ -80,9 +77,7 @@ describe("cli encryption fingerprint — command + wiring", () => {
       .mockImplementation((code?: string | number | null) => {
         throw new Error(`__exit:${code}`);
       });
-    const stdoutSpy = vi
-      .spyOn(process.stdout, "write")
-      .mockReturnValue(true);
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockReturnValue(true);
     try {
       const cmd = createFingerprintCommand();
       expect(() => cmd.parse([], { from: "user" })).toThrow(/__exit:0/);
@@ -105,9 +100,7 @@ describe("cli encryption fingerprint — command + wiring", () => {
       .mockImplementation((code?: string | number | null) => {
         throw new Error(`__exit:${code}`);
       });
-    const stderrSpy = vi
-      .spyOn(process.stderr, "write")
-      .mockReturnValue(true);
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockReturnValue(true);
     try {
       const cmd = createFingerprintCommand();
       expect(() => cmd.parse([], { from: "user" })).toThrow(/__exit:2/);

@@ -83,12 +83,25 @@ beforeAll(async () => {
     );
     INSERT INTO orgs (id, name) VALUES ('default', 'Default Organization');
   `);
-  raw.prepare(
-    "INSERT INTO users (id, org_id, email, name, idp_provider, idp_user_id, role, last_login_at) VALUES (?,?,?,?,?,?,?,?)"
-  ).run("user-alice", "default", "alice@example.com", "Alice Adams", "github", "alice-gh", "member", "2026-01-01T00:00:00Z");
-  raw.prepare(
-    "INSERT INTO users (id, org_id, email, name, idp_provider, idp_user_id, role) VALUES (?,?,?,?,?,?,?)"
-  ).run("user-bob", "default", "bob@example.com", "Bob Brown", "github", "bob-gh", "admin");
+  raw
+    .prepare(
+      "INSERT INTO users (id, org_id, email, name, idp_provider, idp_user_id, role, last_login_at) VALUES (?,?,?,?,?,?,?,?)",
+    )
+    .run(
+      "user-alice",
+      "default",
+      "alice@example.com",
+      "Alice Adams",
+      "github",
+      "alice-gh",
+      "member",
+      "2026-01-01T00:00:00Z",
+    );
+  raw
+    .prepare(
+      "INSERT INTO users (id, org_id, email, name, idp_provider, idp_user_id, role) VALUES (?,?,?,?,?,?,?)",
+    )
+    .run("user-bob", "default", "bob@example.com", "Bob Brown", "github", "bob-gh", "admin");
   raw.exec("PRAGMA user_version = 7;");
   raw.close();
 
@@ -97,14 +110,19 @@ beforeAll(async () => {
 
 afterAll(() => {
   closeDb();
-  try { fs.rmSync(DIR, { recursive: true, force: true }); } catch { /* EBUSY ignored */ }
+  try {
+    fs.rmSync(DIR, { recursive: true, force: true });
+  } catch {
+    /* EBUSY ignored */
+  }
 });
 
 describe("users_legacy_v0_7 compat view (T43)", () => {
   it("query SELECT org_id FROM users_legacy_v0_7 returns the renamed primary_org_id value", () => {
-    const rows = getDb()
-      .prepare("SELECT id, org_id FROM users_legacy_v0_7 ORDER BY id")
-      .all() as { id: string; org_id: string }[];
+    const rows = getDb().prepare("SELECT id, org_id FROM users_legacy_v0_7 ORDER BY id").all() as {
+      id: string;
+      org_id: string;
+    }[];
     expect(rows).toHaveLength(2);
     for (const r of rows) {
       expect(r.org_id).toBe("default");
@@ -114,9 +132,9 @@ describe("users_legacy_v0_7 compat view (T43)", () => {
   it("view exposes all Phase 1 columns including renamed ones", () => {
     // PRAGMA table_info works on views; columns are derived from the
     // SELECT list of the view definition.
-    const cols = getDb()
-      .prepare("PRAGMA table_info(users_legacy_v0_7)")
-      .all() as { name: string }[];
+    const cols = getDb().prepare("PRAGMA table_info(users_legacy_v0_7)").all() as {
+      name: string;
+    }[];
     const names = cols.map((c) => c.name);
     // Phase 1 view contract: original column names from the v0.7 baseline.
     expect(names).toContain("id");
@@ -136,19 +154,19 @@ describe("users_legacy_v0_7 compat view (T43)", () => {
   });
 
   it("view returns one row per users row (no projection drift)", () => {
-    const viewCount = getDb()
-      .prepare("SELECT COUNT(*) AS c FROM users_legacy_v0_7")
-      .get() as { c: number };
-    const tableCount = getDb()
-      .prepare("SELECT COUNT(*) AS c FROM users")
-      .get() as { c: number };
+    const viewCount = getDb().prepare("SELECT COUNT(*) AS c FROM users_legacy_v0_7").get() as {
+      c: number;
+    };
+    const tableCount = getDb().prepare("SELECT COUNT(*) AS c FROM users").get() as { c: number };
     expect(viewCount.c).toBe(tableCount.c);
     expect(viewCount.c).toBe(2);
   });
 
   it("view returns same logical data shape as Phase 1 users table", () => {
     const aliceFromView = getDb()
-      .prepare("SELECT id, org_id, email, name, idp_provider, idp_user_id, role FROM users_legacy_v0_7 WHERE id = ?")
+      .prepare(
+        "SELECT id, org_id, email, name, idp_provider, idp_user_id, role FROM users_legacy_v0_7 WHERE id = ?",
+      )
       .get("user-alice") as Record<string, unknown>;
     expect(aliceFromView).toMatchObject({
       id: "user-alice",
@@ -170,7 +188,7 @@ describe("users_legacy_v0_7 compat view (T43)", () => {
       getDb()
         .prepare(
           "INSERT INTO users_legacy_v0_7 (id, org_id, email, idp_provider, idp_user_id) " +
-          "VALUES ('user-evil', 'default', 'e@x.com', 'github', 'evil-gh')",
+            "VALUES ('user-evil', 'default', 'e@x.com', 'github', 'evil-gh')",
         )
         .run();
     }).toThrow();

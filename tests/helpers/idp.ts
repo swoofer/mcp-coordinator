@@ -60,7 +60,9 @@ function defaultsFor(endpoint: IdpEndpoint): ResponseSpec {
   }
 }
 
-export function createMockIdp(opts: { authBaseUrl?: string; apiBaseUrl?: string } = {}): MockIdpHandlers {
+export function createMockIdp(
+  opts: { authBaseUrl?: string; apiBaseUrl?: string } = {},
+): MockIdpHandlers {
   const authBase = opts.authBaseUrl ?? DEFAULT_AUTH_BASE;
   const apiBase = opts.apiBaseUrl ?? DEFAULT_API_BASE;
 

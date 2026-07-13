@@ -70,18 +70,24 @@ export function createConsoleLogger(
   bindings: Record<string, unknown> = {},
   stdio = false,
 ): Logger {
-  const levels: Record<string, number> = { debug: 10, info: 20, warn: 30, error: 40, fatal: 50, silent: 100 };
+  const levels: Record<string, number> = {
+    debug: 10,
+    info: 20,
+    warn: 30,
+    error: 40,
+    fatal: 50,
+    silent: 100,
+  };
   const threshold = levels[level] ?? 20;
 
   function log(lvl: string, num: number, args: unknown[]): void {
     if (num < threshold) return;
     const ts = new Date().toISOString();
-    const prefix = Object.keys(bindings).length > 0
-      ? `[${Object.values(bindings).join(":")}]`
-      : "";
+    const prefix = Object.keys(bindings).length > 0 ? `[${Object.values(bindings).join(":")}]` : "";
     const obj = typeof args[0] === "object" && args[0] !== null ? args[0] : {};
-    const msg = typeof args[0] === "string" ? args[0] : (args[1] as string) ?? "";
-    const rawData = typeof args[0] === "object" ? { ...bindings, ...(obj as Record<string, unknown>) } : bindings;
+    const msg = typeof args[0] === "string" ? args[0] : ((args[1] as string) ?? "");
+    const rawData =
+      typeof args[0] === "object" ? { ...bindings, ...(obj as Record<string, unknown>) } : bindings;
     const data = redactPaths(rawData, REDACT_PATHS);
     if (stdio || lvl === "error" || lvl === "fatal") {
       console.error(JSON.stringify({ level: num, time: ts, ...data, msg }));
@@ -116,9 +122,10 @@ export function createPinoLogger(
 ): Logger {
   const pino = require("pino");
   const isDev = process.env.NODE_ENV === "development";
-  const transport = isDev && !stdio
-    ? { target: "pino-pretty", options: { colorize: true, translateTime: "SYS:HH:mm:ss" } }
-    : undefined;
+  const transport =
+    isDev && !stdio
+      ? { target: "pino-pretty", options: { colorize: true, translateTime: "SYS:HH:mm:ss" } }
+      : undefined;
   const pinoOpts = {
     level,
     transport,
