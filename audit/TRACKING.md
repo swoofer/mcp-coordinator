@@ -20,15 +20,14 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | | High (13) | Med (46) | Low (42) | Info (18) | **Total (119)** |
 |--|:--:|:--:|:--:|:--:|:--:|
-| **Fermés ✅ / 📄** | 12 | 44 | 40 | 18 | **114 / 119** |
+| **Fermés ✅ / 📄** | 12 | 46 | 40 | 18 | **116 / 119** |
 | **⏳ action mainteneur** | 1 | 0 | 2 | 0 | **3** |
-| **⏭️ différé (décision mainteneur)** | 0 | 2 | 0 | 0 | **2** |
+| **⏭️ différé (décision mainteneur)** | 0 | 0 | 0 | 0 | **0** |
 
-> **112/119 traités**. 24 PR mergées + v1.0.0 publiée + branch protection activée. **v1.0.0 (2026-07-12)** : npm + Docker/GHCR + binaires — confirme ci-cd-01/02 + maintenabilite-02, solde maintenabilite-03.
-> **7 restants :**
-> - **⏳ 3 actions mainteneur (vraiment non-agent)** : `maintenabilite-01` (🔴 High — PR externe #151), `maintenabilite-08` (triage issues), `maintenabilite-09` (décision sur les notes `docs/superpowers/working/`).
-> - **⏭️ 2 restants** : `qualite-code-03` + `maintenabilite-05` (adoption Prettier + reformat repo-wide — en cours). Suivi noté : durcir le CSP strict du dashboard (convertir 4 `onclick=` + 16 styles inline) maintenant que le script est externe (#192).
-> Bugs produit trouvés en cours de route (hors 119) : mqtt-bridge `isConnected()` mentait en coupure (**corrigé**, #184) ; `handleSse()` sans `flushHeaders()` (**suivi 1 ligne recommandé**).
+> **116/119 traités**. ~30 PR mergées + **v1.0.0 publiée** (2026-07-12 : npm + Docker/GHCR + binaires) + branch protection activée + Prettier adopté repo-wide (#194).
+> **3 restants — TOUS des actions mainteneur (rien de codable côté agent) :**
+> - `maintenabilite-01` (🔴 High — reviewer/merger la PR externe #151, dernier High), `maintenabilite-08` (triage des issues), `maintenabilite-09` (décision sur les notes `docs/superpowers/working/`).
+> Bugs produit trouvés en cours de route (hors 119) : mqtt-bridge `isConnected()` mentait en coupure (**corrigé** #184) ; `handleSse()` sans `flushHeaders()` (**corrigé** #189). Suivi optionnel : durcir le CSP strict du dashboard (4 `onclick=` + 16 styles inline → CSS/addEventListener) maintenant que le script est externe (#192).
 
 ---
 
@@ -130,7 +129,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 6 | `architecture-08` | 🟠 Med | M | Org 'default' codé en dur aux frontières MQTT et quota alors que le mu | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 62fdf82 (multi-org exp. documenté) |
 | 7 | `qualite-code-01` | 🟠 Med | L | Trois fonctions géantes (390 à 505 lignes) concentrent la complexité d | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ handleRest #190 + refreshTokenGrant #193 + startServer #191 (tests verts sans modif) |
 | 8 | `qualite-code-02` | 🟠 Med | M | Couche REST : corps de requêtes castés sans validation (15 « body as { | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ b39326b |
-| 9 | `qualite-code-03` | 🟠 Med | M | Aucun linter réel : le job CI « Lint » = 5 scripts bash grep + tsc ; c | ☐ | ☐ | ☐ | ☐ | ☐ | ⏭️ différé — décision mainteneur (adoption ESLint/Prettier, cf. maintenabilite-05) |
+| 9 | `qualite-code-03` | 🟠 Med | M | Aucun linter réel : le job CI « Lint » = 5 scripts bash grep + tsc ; c | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ #194 (Prettier + check CI ; ESLint écarté per audit) |
 | 10 | `tests-03` | 🟠 Med | M | Couche handlers d'outils MCP faiblement couverte : consultation-tools  | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 3fcabbf |
 | 11 | `tests-04` | 🟠 Med | S | Le hook d'authentification MQTT de production n'est jamais exercé : le | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 1d414bb |
 | 12 | `tests-05` | 🟠 Med | M | Le dashboard principal (index.html, ~77 fonctions JS inline) n'a aucun | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 1e1f9ee (smoke Playwright) |
@@ -178,7 +177,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | 1 | `maintenabilite-01` | 🔴 High | S | PR d'un contributeur externe (#151) sans aucune réponse depuis 6,5 sem | ☐ | ☐ | ☐ | ☐ | ☐ | ⏳ action mainteneur (#151) |
 | 2 | `maintenabilite-03` | 🟠 Med | S | Release 0.13.1 bloquée depuis 7 semaines avec des correctifs utilisate | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ release v1.0.0 (npm+Docker+binaires, 2026-07-12) |
 | 3 | `maintenabilite-04` | 🟠 Med | S | pnpm test échoue sur Windows (20 tests, exit 127) quand bash résout ve | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 27d43c3 |
-| 4 | `maintenabilite-05` | 🟠 Med | M | Aucun formatter ni linter généraliste — le style repose entièrement su | ☐ | ☐ | ☐ | ☐ | ☐ | ⏭️ différé — décision mainteneur (Prettier + reformat repo-wide) |
+| 4 | `maintenabilite-05` | 🟠 Med | M | Aucun formatter ni linter généraliste — le style repose entièrement su | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ #194 (Prettier repo-wide + .git-blame-ignore-revs) |
 | 5 | `maintenabilite-06` | 🟠 Med | M | sdk/ est un sous-paquet orphelin : jamais testé en CI, lockfile npm da | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ #154 (sdk-test en CI) |
 | 6 | `maintenabilite-07` | 🟠 Med | S | Surface Phase 2 (OAuth/multi-org/chiffrement) surdimensionnée par rapp | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 1125e1f (gelé+documenté) |
 | 7 | `maintenabilite-08` | 🟡 Low | S | Tracker figé depuis le 23 mai : 23 issues semées sans triage ni lien a | ☐ | ☐ | ☐ | ☐ | ☐ | ⏳ action mainteneur (triage) |
