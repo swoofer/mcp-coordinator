@@ -25,8 +25,8 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 | **⏭️ différé (décision mainteneur)** | 0 | 0 | 0 | 0 | **0** |
 
 > **117/119 traités — les 13 High sont tous fermés.** ~35 PR mergées + **v1.0.0 & v1.0.1 publiées** (npm + Docker/GHCR + binaires) + branch protection + Prettier repo-wide (#194) + feature `--log-json` du contributeur adoptée (#196, crédit `@nanookclaw`).
-> **2 restants — pures courtoisies mainteneur (Low) :**
-> - `maintenabilite-08` (triage des issues), `maintenabilite-09` (décision sur les notes `docs/superpowers/working/`). + fermer la PR externe #151 avec un merci (sa feature est déjà mergée via #196).
+> **2 restants — pures courtoisies mainteneur (Low), aucune écriture de code :**
+> - `maintenabilite-08` (triage des issues), `maintenabilite-09` (décision sur les notes `docs/superpowers/working/`).
 > Bonus (hors 119) : mqtt-bridge `isConnected()` mentait en coupure (**corrigé** #184) ; `handleSse()` sans `flushHeaders()` (**corrigé** #189) ; CSP strict `script-src 'self'` appliqué au dashboard (4 `onclick=` → `addEventListener`, **fait** #195, suite à l'extraction du script #192). Reste noté : migrer les 16 styles inline en CSS pour `style-src 'self'` (non-XSS, non urgent).
 
 ---
@@ -174,7 +174,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | # | ID | Sév | Eff | Constat | R1 | R2 | R3 | R4 | R5 | Statut |
 |---|----|-----|-----|---------|----|----|----|----|----|--------|
-| 1 | `maintenabilite-01` | 🔴 High | S | PR d'un contributeur externe (#151) sans aucune réponse depuis 6,5 sem | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ #196 (feature #151 adoptée+créditée ; fermer #151 = courtoisie mainteneur) |
+| 1 | `maintenabilite-01` | 🔴 High | S | PR d'un contributeur externe (#151) sans aucune réponse depuis 6,5 sem | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ #196 (feature adoptée+créditée) ; #151 fermée avec remerciement |
 | 2 | `maintenabilite-03` | 🟠 Med | S | Release 0.13.1 bloquée depuis 7 semaines avec des correctifs utilisate | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ release v1.0.0 (npm+Docker+binaires, 2026-07-12) |
 | 3 | `maintenabilite-04` | 🟠 Med | S | pnpm test échoue sur Windows (20 tests, exit 127) quand bash résout ve | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 27d43c3 |
 | 4 | `maintenabilite-05` | 🟠 Med | M | Aucun formatter ni linter généraliste — le style repose entièrement su | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ #194 (Prettier repo-wide + .git-blame-ignore-revs) |
