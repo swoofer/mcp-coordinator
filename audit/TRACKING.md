@@ -20,13 +20,13 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | | High (13) | Med (46) | Low (42) | Info (18) | **Total (119)** |
 |--|:--:|:--:|:--:|:--:|:--:|
-| **Fermés ✅ / 📄** | 12 | 46 | 40 | 18 | **116 / 119** |
-| **⏳ action mainteneur** | 1 | 0 | 2 | 0 | **3** |
+| **Fermés ✅ / 📄** | **13** | 46 | 40 | 18 | **117 / 119** |
+| **⏳ action mainteneur** | 0 | 0 | 2 | 0 | **2** |
 | **⏭️ différé (décision mainteneur)** | 0 | 0 | 0 | 0 | **0** |
 
-> **116/119 traités**. ~30 PR mergées + **v1.0.0 publiée** (2026-07-12 : npm + Docker/GHCR + binaires) + branch protection activée + Prettier adopté repo-wide (#194).
-> **3 restants — TOUS des actions mainteneur (rien de codable côté agent) :**
-> - `maintenabilite-01` (🔴 High — reviewer/merger la PR externe #151, dernier High), `maintenabilite-08` (triage des issues), `maintenabilite-09` (décision sur les notes `docs/superpowers/working/`).
+> **117/119 traités — les 13 High sont tous fermés.** ~35 PR mergées + **v1.0.0 & v1.0.1 publiées** (npm + Docker/GHCR + binaires) + branch protection + Prettier repo-wide (#194) + feature `--log-json` du contributeur adoptée (#196, crédit `@nanookclaw`).
+> **2 restants — pures courtoisies mainteneur (Low) :**
+> - `maintenabilite-08` (triage des issues), `maintenabilite-09` (décision sur les notes `docs/superpowers/working/`). + fermer la PR externe #151 avec un merci (sa feature est déjà mergée via #196).
 > Bonus (hors 119) : mqtt-bridge `isConnected()` mentait en coupure (**corrigé** #184) ; `handleSse()` sans `flushHeaders()` (**corrigé** #189) ; CSP strict `script-src 'self'` appliqué au dashboard (4 `onclick=` → `addEventListener`, **fait** #195, suite à l'extraction du script #192). Reste noté : migrer les 16 styles inline en CSS pour `style-src 'self'` (non-XSS, non urgent).
 
 ---
@@ -174,7 +174,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 
 | # | ID | Sév | Eff | Constat | R1 | R2 | R3 | R4 | R5 | Statut |
 |---|----|-----|-----|---------|----|----|----|----|----|--------|
-| 1 | `maintenabilite-01` | 🔴 High | S | PR d'un contributeur externe (#151) sans aucune réponse depuis 6,5 sem | ☐ | ☐ | ☐ | ☐ | ☐ | ⏳ action mainteneur (#151) |
+| 1 | `maintenabilite-01` | 🔴 High | S | PR d'un contributeur externe (#151) sans aucune réponse depuis 6,5 sem | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ #196 (feature #151 adoptée+créditée ; fermer #151 = courtoisie mainteneur) |
 | 2 | `maintenabilite-03` | 🟠 Med | S | Release 0.13.1 bloquée depuis 7 semaines avec des correctifs utilisate | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ release v1.0.0 (npm+Docker+binaires, 2026-07-12) |
 | 3 | `maintenabilite-04` | 🟠 Med | S | pnpm test échoue sur Windows (20 tests, exit 127) quand bash résout ve | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 27d43c3 |
 | 4 | `maintenabilite-05` | 🟠 Med | M | Aucun formatter ni linter généraliste — le style repose entièrement su | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ #194 (Prettier repo-wide + .git-blame-ignore-revs) |
