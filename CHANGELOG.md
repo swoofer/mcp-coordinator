@@ -1,5 +1,37 @@
 # Changelog
 
+## [1.0.1](https://github.com/swoofer/mcp-coordinator/compare/v1.0.0...v1.0.1) (2026-07-13)
+
+
+### Bug Fixes
+
+* **dashboard:** convert inline onclick to addEventListener + apply script-src 'self' CSP (architecture-14 follow-up) ([9fdccd9](https://github.com/swoofer/mcp-coordinator/commit/9fdccd9e5bd040b0d2df807ca278eb1ffb1417dc))
+* **dashboard:** strict script-src 'self' CSP + inline onclick → addEventListener (arch-14 follow-up) ([4a7102f](https://github.com/swoofer/mcp-coordinator/commit/4a7102fa88d23f7f5218f41a9daedeb51427b9ba))
+* **sse:** flush headers immediately (EventSource opens without waiting for heartbeat) ([bfce26a](https://github.com/swoofer/mcp-coordinator/commit/bfce26a5132f90e1fad2eb2e39180f2bc38d8700))
+* **sse:** flush headers immediately so EventSource opens without waiting for heartbeat ([416b640](https://github.com/swoofer/mcp-coordinator/commit/416b6404d764f236dd1184c7fb23e3c74f263455))
+
+
+### Documentation
+
+* **audit:** close ci-cd-03 (branch protection enabled); 111→112 ([195215f](https://github.com/swoofer/mcp-coordinator/commit/195215fad1b0c94d10c32755b8cb606022c28c16))
+* **audit:** close qualite-code-01 (3 giant fns) + architecture-14 (dashboard script); 112→114 ([61dcd12](https://github.com/swoofer/mcp-coordinator/commit/61dcd1238d7f11613d86298fb530bd33e196bde9))
+* **audit:** close qualite-code-03 + maintenabilite-05 (Prettier [#194](https://github.com/swoofer/mcp-coordinator/issues/194)); 114→116 ([e8fcd86](https://github.com/swoofer/mcp-coordinator/commit/e8fcd869890d3f7cbb8469753e16e48a2d906e24))
+* **audit:** dashboard CSP hardening done ([#195](https://github.com/swoofer/mcp-coordinator/issues/195)) ([defa91c](https://github.com/swoofer/mcp-coordinator/commit/defa91c18fcb51842f6bf6ce11ddd12797573380))
+* **audit:** v1.0.0 shipped — close maintenabilite-03, confirm binary/provenance R5 (110→111) ([1eb1787](https://github.com/swoofer/mcp-coordinator/commit/1eb17870b0e2878c00622dac39a7f93f3d2eb21f))
+* **landing:** mark v1.0 shipped on roadmap, add post-1.0 future card, bump version refs ([3420c79](https://github.com/swoofer/mcp-coordinator/commit/3420c79930e0156de4c3a86a365eedc1aebf934d))
+* **landing:** mark v1.0 shipped on roadmap; post-1.0 future card; version refs → 1.0.0 ([e96fcec](https://github.com/swoofer/mcp-coordinator/commit/e96fcec12e56b85cda5bdf6aef88b7c4eaa932db))
+
+
+### Code Refactoring
+
+* **auth:** extract numbered steps from refreshTokenGrant into helpers (qualite-code-01 2/3) ([0b92e54](https://github.com/swoofer/mcp-coordinator/commit/0b92e54fc7bb9c09560cddab4dab1fb00c4c62a5))
+* **auth:** extract numbered steps from refreshTokenGrant into named helpers (qualite-code-01, 2/3) ([fd15e83](https://github.com/swoofer/mcp-coordinator/commit/fd15e83d1fdf5668fa9980a3c8ed64bee9284d3a))
+* **dashboard:** extract inline script to external dashboard.js (architecture-14) ([546af34](https://github.com/swoofer/mcp-coordinator/commit/546af3464a0004645c4488c08d19d68896f2934d))
+* **dashboard:** extract inline script to external dashboard.js (architecture-14) ([7674256](https://github.com/swoofer/mcp-coordinator/commit/7674256c58ac5c59c1ef2ed9f0e3827f4db451ce))
+* **rest:** dispatch table for handleRest — extract 24 endpoint handlers (qualite-code-01, 1/3) ([3d36f63](https://github.com/swoofer/mcp-coordinator/commit/3d36f63508e12a2b7a1534717d90bf48973af61d))
+* **rest:** dispatch table for handleRest — extract 28 endpoint handlers (qualite-code-01 1/3) ([262906f](https://github.com/swoofer/mcp-coordinator/commit/262906f4e864247cb3799ada2e8abe07e6e3124f))
+* **server:** extract createHttpHandler/wireMqtt/wireShutdown from startServer (qualite-code-01 3/3) ([3d731a2](https://github.com/swoofer/mcp-coordinator/commit/3d731a25d9fbf33ae4f1d4f02c42affe1b64df26))
+
 ## [1.0.0](https://github.com/swoofer/mcp-coordinator/compare/v0.13.0...v1.0.0) (2026-07-12)
 
 
