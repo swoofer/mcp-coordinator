@@ -597,22 +597,29 @@ function createHttpHandler(
                 "Cache-Control": "no-store",
               });
             } else {
-              // securite-surface-07: legacy dashboard assets (index.html and
-              // everything that isn't admin-scoped) get the SAFE subset of the
-              // admin baseline — nosniff, frame-options, referrer-policy — but
-              // deliberately NOT the strict CSP above. index.html is a ~63KB
-              // monolith with a single inline <script>; `script-src 'self'`
-              // would break it outright. Extracting that script is tracked
-              // separately (audit findings tests-05 / architecture-14) — until
-              // then, no CSP is safer than a CSP that either does nothing
-              // (missing 'unsafe-inline') or defeats the point (with it).
-              // X-Frame-Options: DENY is safe here too: nothing in this repo
-              // (or its docs) iframes the legacy dashboard, so there's no
-              // legitimate embedding to preserve. ACAO: * is left untouched —
-              // some deployments may have external clients depending on it.
+              // securite-surface-07 / architecture-14 follow-up: legacy
+              // dashboard assets (index.html, dashboard.js, and any other
+              // non-admin-scoped file under this path) now get the same
+              // strict script-src as the admin baseline. The former inline
+              // <script> in index.html was extracted to dashboard.js (#192)
+              // and the 5 remaining inline onclick= handlers were converted
+              // to addEventListener — nothing in this asset set relies on
+              // inline script anymore, so `script-src 'self'` is safe (it's
+              // same-origin, so dashboard.js/.css load fine). `style-src`
+              // keeps 'unsafe-inline': the ~16 inline `style="..."` attributes
+              // and the <style> block in index.html are unmigrated (separate,
+              // non-security-critical follow-up) — inline CSS isn't an XSS
+              // vector the way inline JS is, so this doesn't undercut the
+              // script-src hardening. X-Frame-Options: DENY is safe here too:
+              // nothing in this repo (or its docs) iframes the legacy
+              // dashboard, so there's no legitimate embedding to preserve.
+              // ACAO: * is left untouched — some deployments may have
+              // external clients depending on it.
               res.writeHead(200, {
                 "Content-Type": contentTypes[ext] || "text/plain",
                 "Access-Control-Allow-Origin": "*",
+                "Content-Security-Policy":
+                  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
                 "X-Content-Type-Options": "nosniff",
                 "X-Frame-Options": "DENY",
                 "Referrer-Policy": "same-origin",

@@ -343,7 +343,7 @@
     function renderFilterBar() {
       const el = document.getElementById('thread-filters');
       el.innerHTML = FILTER_CATEGORIES.map(cat =>
-        `<span class="filter-chip ${state.filters.has(cat) ? 'active' : ''}" onclick="toggleFilter('${cat}')">${FILTER_LABELS[cat]}</span>`
+        `<span class="filter-chip ${state.filters.has(cat) ? 'active' : ''}" data-filter="${cat}">${FILTER_LABELS[cat]}</span>`
       ).join('');
     }
     function toggleFilter(cat) {
@@ -353,6 +353,17 @@
       renderFilterBar();
       renderThreads();
     }
+    // Event delegation: #thread-filters is static (rendered once, in place);
+    // its children (.filter-chip) are re-rendered on every toggle, so binding
+    // listeners per-chip would leak/detach. One listener on the parent reads
+    // the clicked chip's data-filter instead — safe under script-src 'self'
+    // (no onclick= in the generated HTML).
+    document.getElementById('thread-filters').addEventListener('click', (e) => {
+      const chip = e.target.closest('.filter-chip');
+      if (!chip) return;
+      const cat = chip.dataset.filter;
+      if (cat) toggleFilter(cat);
+    });
 
     // ── Thread card rendering ──────────────────────────────────────────
     function escapeHtml(s) {
@@ -976,6 +987,16 @@
     }
     refreshConflictSignals();
     setInterval(refreshConflictSignals, 30000);
+
+    // ── Static button wiring (was inline onclick=, blocked by script-src
+    // 'self') ── This <script> tag is the last element in <body>, so the DOM
+    // is already parsed here; no DOMContentLoaded wrapper needed. resetServer
+    // keeps its exact gating (confirm() inside the function body, untouched)
+    // — only the wiring moved.
+    document.getElementById('quota-refresh-btn').addEventListener('click', refreshQuota);
+    document.getElementById('btn-verbose').addEventListener('click', toggleVerbose);
+    document.getElementById('btn-clear-timeline').addEventListener('click', clearTimeline);
+    document.getElementById('btn-reset-server').addEventListener('click', resetServer);
 
     connectSSE();
     updateAgents();

@@ -99,9 +99,13 @@ describe("securite-surface-07: legacy dashboard gets baseline security headers",
     expect(r.headers["referrer-policy"]).toBe("same-origin");
     // Backward-compat: ACAO preserved for legacy dashboard clients.
     expect(r.headers["access-control-allow-origin"]).toBe("*");
-    // No strict CSP on the legacy surface — it would break the monolithic
-    // inline <script> in index.html (tracked separately: tests-05/architecture-14).
-    expect(r.headers["content-security-policy"]).toBeUndefined();
+    // architecture-14 follow-up: the inline <script> was extracted (#192) and
+    // the onclick handlers converted, so index.html now carries a strict
+    // `script-src 'self'` CSP (style-src keeps 'unsafe-inline' for the
+    // remaining inline styles).
+    expect(r.headers["content-security-policy"]).toBe(
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+    );
   });
 
   it("GET /dashboard/ (index redirect route) → same baseline headers", async () => {

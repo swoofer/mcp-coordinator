@@ -174,7 +174,7 @@
       <div id="hot-files"></div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;">
         <div class="panel-title" style="margin-bottom:0;">Quota Anthropic</div>
-        <button id="quota-refresh-btn" onclick="refreshQuota()" title="Force refresh from Anthropic (bypass cache)"
+        <button id="quota-refresh-btn" title="Force refresh from Anthropic (bypass cache)"
                 style="background:#1e293b;border:1px solid #334155;color:#94a3b8;font-size:11px;padding:3px 10px;border-radius:4px;cursor:pointer;">
           ↻ Refresh
         </button>
@@ -187,9 +187,9 @@
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
         <div class="panel-title" style="margin-bottom:0;">Timeline</div>
         <div style="display:flex;gap:6px;">
-          <button id="btn-verbose" onclick="toggleVerbose()" style="background:#1e293b;border:1px solid #334155;color:#94a3b8;font-size:11px;padding:3px 10px;border-radius:4px;cursor:pointer;">Détails</button>
-          <button onclick="clearTimeline()" title="Vide l'UI locale uniquement (le serveur garde son état)" style="background:#1e293b;border:1px solid #334155;color:#94a3b8;font-size:11px;padding:3px 10px;border-radius:4px;cursor:pointer;">Clear UI</button>
-          <button onclick="resetServer()" title="DESTRUCTIF — efface l'état serveur, casse les agents en cours" style="background:#1e293b;border:1px solid #7f1d1d;color:#fca5a5;font-size:11px;padding:3px 10px;border-radius:4px;cursor:pointer;">Reset Server</button>
+          <button id="btn-verbose" style="background:#1e293b;border:1px solid #334155;color:#94a3b8;font-size:11px;padding:3px 10px;border-radius:4px;cursor:pointer;">Détails</button>
+          <button id="btn-clear-timeline" title="Vide l'UI locale uniquement (le serveur garde son état)" style="background:#1e293b;border:1px solid #334155;color:#94a3b8;font-size:11px;padding:3px 10px;border-radius:4px;cursor:pointer;">Clear UI</button>
+          <button id="btn-reset-server" title="DESTRUCTIF — efface l'état serveur, casse les agents en cours" style="background:#1e293b;border:1px solid #7f1d1d;color:#fca5a5;font-size:11px;padding:3px 10px;border-radius:4px;cursor:pointer;">Reset Server</button>
         </div>
       </div>
       <div id="no-events">En attente d'événements...</div>

@@ -184,14 +184,18 @@ function assertLegacyHeaders(r: Resp, urlPath: string): void {
   expect(r.status, `${urlPath} status`).toBe(200);
   // Legacy dashboard assets keep the wildcard CORS for backward compat.
   expect(r.headers["access-control-allow-origin"], `${urlPath} ACAO preserved`).toBe("*");
-  // securite-surface-07: legacy assets now get the SAFE subset of the admin
-  // baseline (nosniff, frame-options, referrer-policy) — see src/serve-http.ts
-  // for why a strict CSP is deliberately NOT included (inline-script monolith).
+  // securite-surface-07 + architecture-14 follow-up: legacy assets get the
+  // baseline (nosniff, frame-options, referrer-policy) AND, since the inline
+  // script was extracted (#192) + onclick handlers converted, a strict
+  // `script-src 'self'` CSP. It differs from the admin CSP only in style-src,
+  // which keeps 'unsafe-inline' for the dashboard's remaining inline styles.
   expect(r.headers["x-content-type-options"], `${urlPath} must have nosniff`).toBe("nosniff");
   expect(r.headers["x-frame-options"], `${urlPath} must have XFO`).toBe("DENY");
   expect(r.headers["referrer-policy"], `${urlPath} must have Referrer-Policy`).toBe("same-origin");
-  // They must still NOT have the admin-only strict CSP / no-store caching.
-  expect(r.headers["content-security-policy"], `${urlPath} must not have CSP`).toBeUndefined();
+  expect(r.headers["content-security-policy"], `${urlPath} dashboard CSP`).toBe(
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+  );
+  // Still NOT the admin-only no-store caching.
   expect(r.headers["cache-control"], `${urlPath} must not have Cache-Control`).toBeUndefined();
 }
 
