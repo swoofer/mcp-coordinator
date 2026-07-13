@@ -127,6 +127,9 @@ export class Consultation {
       // Implies keep_open=true because the target agent must have time to pick
       // it up even if no module-based respondents are found.
       assigned_to?: string | null;
+      // Run this thread belongs to. NULL = un-scoped (human session) and stays
+      // visible to every run — see listThreads({ run_id }).
+      run_id?: string | null;
     },
   ): Thread {
     const db = getDb();
@@ -167,8 +170,8 @@ export class Consultation {
       const autoResolve = respondentIds.length === 0 && !keepOpen;
 
       db.prepare(
-        `INSERT INTO threads (id, org_id, initiator_id, subject, plan, target_modules, target_files, status, expected_respondents, resolved_at, depends_on_files, exports_affected, timeout_seconds, assigned_to)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO threads (id, org_id, initiator_id, subject, plan, target_modules, target_files, status, expected_respondents, resolved_at, depends_on_files, exports_affected, timeout_seconds, assigned_to, run_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(
         id,
         orgId,
@@ -184,6 +187,7 @@ export class Consultation {
         JSON.stringify(params.exports_affected || []),
         keepOpen ? 0 : 600,
         assignedTo,
+        params.run_id ?? null,
       );
 
       return { autoResolve, respondentIds, assignedTo };
@@ -529,6 +533,17 @@ export class Consultation {
        * so the filter is meaningful for both states.
        */
       since_minutes?: number;
+      /**
+       * Scope to one run: returns the threads of THIS run, plus every un-scoped
+       * thread (run_id IS NULL).
+       *
+       * The "OR IS NULL" is the whole design. A strict equality would hide the
+       * threads of a human working the same repo from the swarm's agents — and
+       * they would cheerfully edit files out from under them, which is precisely
+       * what this coordinator exists to prevent. So: hide other RUNS (an aborted
+       * one leaking its stale threads into the next), never other SESSIONS.
+       */
+      run_id?: string;
     },
   ): Thread[] {
     // B2 fix: removed checkTimeouts() side-effect; sweeper handles it.
@@ -554,6 +569,10 @@ export class Consultation {
     if (filters.assigned_to_me) {
       sql += " AND (assigned_to IS NULL OR assigned_to = ?)";
       params.push(filters.assigned_to_me);
+    }
+    if (filters.run_id) {
+      sql += " AND (run_id IS NULL OR run_id = ?)";
+      params.push(filters.run_id);
     }
     if (typeof filters.since_minutes === "number") {
       // For resolved threads, gate on resolved_at (the moment that matters

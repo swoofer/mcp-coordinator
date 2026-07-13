@@ -56,6 +56,11 @@ export interface Thread {
   // claim). Populated by lead agents that want to hand a specific piece of
   // work to a specific worker instead of publishing it to the pool at large.
   assigned_to?: string | null;
+  // Run this thread belongs to (essaim swarm run, CI job...). NULL = un-scoped:
+  // a human session, a laptop agent — visible to everyone. Filtering on it hides
+  // the threads of OTHER runs (notably an aborted one), never those of other
+  // sessions. See listThreads({ run_id }).
+  run_id?: string | null;
 }
 
 export type MessageType =
