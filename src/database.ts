@@ -108,6 +108,7 @@ const SCHEMA = `
       exports_affected TEXT,
       claimed_by TEXT,
       claimed_at TEXT,
+      run_id TEXT,
       FOREIGN KEY (initiator_id) REFERENCES agents(id)
     );
 
@@ -425,6 +426,16 @@ export function initDatabase(dataDir: string): void {
   // pipelines that need explicit hand-offs instead of first-come claims.
   try {
     db.exec("ALTER TABLE threads ADD COLUMN assigned_to TEXT");
+  } catch {
+    /* already exists */
+  }
+  // Per-run scoping: a shared, persistent coordinator (where /api/reset is
+  // 403-forbidden by design) kept showing the threads of an ABORTED run to the
+  // next run's agents. NULL = un-scoped (a human session, a laptop agent) and
+  // stays visible to everyone — the point is to hide other RUNS, never other
+  // SESSIONS, or agents would happily stomp on a human's files.
+  try {
+    db.exec("ALTER TABLE threads ADD COLUMN run_id TEXT");
   } catch {
     /* already exists */
   }
@@ -1197,14 +1208,18 @@ function migrateOrgsFkV9(targetDb: DatabaseAdapter): void {
         unclaim_count INTEGER DEFAULT 0,
         assigned_to TEXT,
         org_id TEXT NOT NULL DEFAULT 'default',
+        run_id TEXT,
         FOREIGN KEY (initiator_id) REFERENCES agents(id),
         FOREIGN KEY (org_id) REFERENCES orgs(id) ON DELETE RESTRICT
       )`,
+      // run_id MUST be listed here too: this migration recreates the table and
+      // copies only the columns named below — omitting it would silently drop
+      // the column (and every run's scoping with it) on an existing database.
       columnList:
         "id, initiator_id, subject, plan, target_modules, target_files, status, " +
         "resolution_summary, conflicts, round, max_rounds, timeout_seconds, " +
         "created_at, resolved_at, expected_respondents, depends_on_files, " +
-        "exports_affected, claimed_by, claimed_at, unclaim_count, assigned_to, org_id",
+        "exports_affected, claimed_by, claimed_at, unclaim_count, assigned_to, org_id, run_id",
       indexCreateSqls: [
         "CREATE INDEX IF NOT EXISTS idx_threads_status ON threads(status)",
         "CREATE INDEX IF NOT EXISTS idx_threads_initiator ON threads(initiator_id)",

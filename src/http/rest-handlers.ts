@@ -25,6 +25,7 @@ import {
   ProposeResolutionBodySchema,
   ApproveResolutionBodySchema,
   HotFilesBodySchema,
+  ThreadsActiveBodySchema,
   IntrospectionResponseBodySchema,
   RunConfigBodySchema,
   CheckInterruptBodySchema,
@@ -209,6 +210,7 @@ export function handleAnnounce(
     keep_open,
     assigned_to,
     target_symbols,
+    run_id,
   } = parsed.data;
 
   const thread = consultation.announceWork(ctx.claims.org, {
@@ -221,6 +223,7 @@ export function handleAnnounce(
     exports_affected,
     keep_open,
     assigned_to,
+    run_id,
   });
   const agentInfo = registry.get(ctx.claims.org, agent_id);
 
@@ -507,8 +510,17 @@ export function handleThreadsActive(
   body: Record<string, unknown>,
 ): void {
   const { consultation } = ctx.services;
-  const open = consultation.listThreads(ctx.claims.org, { status: "open" });
-  const resolving = consultation.listThreads(ctx.claims.org, { status: "resolving" });
+  // The body used to be ignored outright. `run_id` scopes the listing so an
+  // aborted run stops leaking its stale threads into the next one; omitted, the
+  // response is exactly what it always was.
+  const parsed = ThreadsActiveBodySchema.safeParse(body);
+  if (!parsed.success) {
+    sendValidationError(res, parsed.error);
+    return;
+  }
+  const { run_id } = parsed.data;
+  const open = consultation.listThreads(ctx.claims.org, { status: "open", run_id });
+  const resolving = consultation.listThreads(ctx.claims.org, { status: "resolving", run_id });
   json(res, [...open, ...resolving]);
 }
 

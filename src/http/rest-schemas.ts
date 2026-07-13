@@ -70,8 +70,19 @@ export const AnnounceBodySchema = z.object({
   keep_open: z.boolean().optional(),
   assigned_to: z.string().nullable().optional(),
   target_symbols: z.array(z.string()).optional(),
+  // Run this thread belongs to (e.g. an essaim swarm run). Omitted = un-scoped,
+  // visible to every run — the historical behaviour.
+  run_id: z.string().nullable().optional(),
 });
 export type AnnounceBody = z.infer<typeof AnnounceBodySchema>;
+
+// POST /api/threads-active — the body was previously ignored entirely.
+// run_id scopes the listing to one run (plus every un-scoped thread), so an
+// aborted run stops leaking its stale threads into the next one.
+export const ThreadsActiveBodySchema = z.object({
+  run_id: z.string().optional(),
+});
+export type ThreadsActiveBody = z.infer<typeof ThreadsActiveBodySchema>;
 
 // POST /api/post-to-thread — mirrors MCP post_to_thread (consultation-tools.ts)
 // fields actually read by the REST handler (context_snapshot/in_reply_to are
