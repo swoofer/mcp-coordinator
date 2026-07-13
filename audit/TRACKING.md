@@ -27,7 +27,7 @@ Légende statut : ☐ TODO · 🔧 en cours · ✅ 5/5 fermé · ⏭️ écarté
 > **116/119 traités**. ~30 PR mergées + **v1.0.0 publiée** (2026-07-12 : npm + Docker/GHCR + binaires) + branch protection activée + Prettier adopté repo-wide (#194).
 > **3 restants — TOUS des actions mainteneur (rien de codable côté agent) :**
 > - `maintenabilite-01` (🔴 High — reviewer/merger la PR externe #151, dernier High), `maintenabilite-08` (triage des issues), `maintenabilite-09` (décision sur les notes `docs/superpowers/working/`).
-> Bugs produit trouvés en cours de route (hors 119) : mqtt-bridge `isConnected()` mentait en coupure (**corrigé** #184) ; `handleSse()` sans `flushHeaders()` (**corrigé** #189). Suivi optionnel : durcir le CSP strict du dashboard (4 `onclick=` + 16 styles inline → CSS/addEventListener) maintenant que le script est externe (#192).
+> Bonus (hors 119) : mqtt-bridge `isConnected()` mentait en coupure (**corrigé** #184) ; `handleSse()` sans `flushHeaders()` (**corrigé** #189) ; CSP strict `script-src 'self'` appliqué au dashboard (4 `onclick=` → `addEventListener`, **fait** #195, suite à l'extraction du script #192). Reste noté : migrer les 16 styles inline en CSS pour `style-src 'self'` (non-XSS, non urgent).
 
 ---
 
