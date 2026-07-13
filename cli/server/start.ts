@@ -106,6 +106,7 @@ export function buildDaemonEnv(
   fwd("COORDINATOR_LAYER4_MAX_COMMITS", parentEnv.COORDINATOR_LAYER4_MAX_COMMITS);
   fwd("COORDINATOR_LAYER4_REFRESH_INTERVAL_MS", parentEnv.COORDINATOR_LAYER4_REFRESH_INTERVAL_MS);
   fwd("COORDINATOR_LAYER4_RETRY_MS", parentEnv.COORDINATOR_LAYER4_RETRY_MS);
+  fwd("COORDINATOR_LOG_JSON", parentEnv.COORDINATOR_LOG_JSON);
   // T06a: Phase 3 encryption envs. Forward only when set in parent.
   fwd("COORDINATOR_ENCRYPTION_KEY", parentEnv.COORDINATOR_ENCRYPTION_KEY);
   fwd("COORDINATOR_ALLOW_TOKEN_LOSS", parentEnv.COORDINATOR_ALLOW_TOKEN_LOSS);
@@ -177,6 +178,10 @@ export function createServerStartCommand(): Command {
       "Layer 4 successful-build refresh interval. Default 1800000.",
     )
     .option("--layer4-retry-ms <ms>", "Layer 4 retry interval on timeout. Default 300000.")
+    .option(
+      "--log-json",
+      "Emit NDJSON logs (disable pino-pretty). For Docker/systemd/Loki/Datadog/CloudWatch. Default env COORDINATOR_LOG_JSON.",
+    )
     .action(
       async (opts: {
         port?: string;
@@ -190,6 +195,7 @@ export function createServerStartCommand(): Command {
         layer4MaxCommits?: string;
         layer4RefreshMs?: string;
         layer4RetryMs?: string;
+        logJson?: boolean;
       }) => {
         // Wire CLI flags to env vars (CLI takes precedence; rest of codebase reads from env)
         if (opts.repoRoot) process.env.COORDINATOR_REPO_ROOT = opts.repoRoot;
@@ -204,6 +210,7 @@ export function createServerStartCommand(): Command {
         if (opts.layer4RefreshMs)
           process.env.COORDINATOR_LAYER4_REFRESH_INTERVAL_MS = opts.layer4RefreshMs;
         if (opts.layer4RetryMs) process.env.COORDINATOR_LAYER4_RETRY_MS = opts.layer4RetryMs;
+        if (opts.logJson) process.env.COORDINATOR_LOG_JSON = "true";
 
         const config = loadConfig();
         const port = parseInt(opts.port ?? process.env.PORT ?? String(config.server.port), 10);

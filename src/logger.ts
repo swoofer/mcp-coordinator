@@ -119,11 +119,15 @@ export function createPinoLogger(
   level: string,
   destination?: NodeJS.WritableStream,
   stdio = false,
+  json = false,
 ): Logger {
   const pino = require("pino");
   const isDev = process.env.NODE_ENV === "development";
+  // pino-pretty is only used in dev. `json=true` (from --log-json or
+  // COORDINATOR_LOG_JSON=true) forces NDJSON even in dev, for log aggregators
+  // (Docker/systemd/Loki/Datadog/CloudWatch).
   const transport =
-    isDev && !stdio
+    isDev && !stdio && !json
       ? { target: "pino-pretty", options: { colorize: true, translateTime: "SYS:HH:mm:ss" } }
       : undefined;
   const pinoOpts = {
@@ -146,11 +150,18 @@ export interface LoggerOptions {
   stdio?: boolean;
   /** Test-only: override the pino destination stream to capture output. */
   destination?: NodeJS.WritableStream;
+  /**
+   * Force NDJSON output (disable pino-pretty), for log aggregators. Falls back
+   * to COORDINATOR_LOG_JSON=true when not provided. The console logger already
+   * emits NDJSON, so this is a no-op on the Bun/console path.
+   */
+  json?: boolean;
 }
 
 export function createLogger(options?: LoggerOptions): Logger {
   const level = options?.level || process.env.LOG_LEVEL || "info";
   const stdio = options?.stdio ?? false;
+  const json = options?.json ?? process.env.COORDINATOR_LOG_JSON === "true";
 
   // Use console logger in Bun compiled binary (pino uses thread-stream which breaks)
   if (typeof (globalThis as Record<string, unknown>).Bun !== "undefined") {
@@ -159,7 +170,7 @@ export function createLogger(options?: LoggerOptions): Logger {
 
   // Use pino in Node.js (dev/test)
   try {
-    return createPinoLogger(level, options?.destination, stdio);
+    return createPinoLogger(level, options?.destination, stdio, json);
   } catch {
     return createConsoleLogger(level, {}, stdio);
   }
