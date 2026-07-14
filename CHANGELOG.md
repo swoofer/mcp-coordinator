@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.1.0](https://github.com/swoofer/mcp-coordinator/compare/v1.0.1...v1.1.0) (2026-07-13)
+
+
+### Features
+
+* **cli:** --log-json NDJSON logging flag (adopts contributor PR [#151](https://github.com/swoofer/mcp-coordinator/issues/151)) ([0c4b79d](https://github.com/swoofer/mcp-coordinator/commit/0c4b79d5fe9fd60667cc39f55a6f9f5646f9adf5))
+* **cli:** add --log-json flag for NDJSON logging (adopts [#151](https://github.com/swoofer/mcp-coordinator/issues/151)) ([a2c04b6](https://github.com/swoofer/mcp-coordinator/commit/a2c04b624f768c778da2db11b4daab3d691b6d57))
+* **threads:** per-run scoping — stop leaking an aborted run into the next ([#32](https://github.com/swoofer/mcp-coordinator/issues/32)) ([#198](https://github.com/swoofer/mcp-coordinator/issues/198)) ([d83c49f](https://github.com/swoofer/mcp-coordinator/commit/d83c49f066cbd677bd8a1a60041143c9fb9c884f))
+
+
+### Documentation
+
+* **audit:** [#151](https://github.com/swoofer/mcp-coordinator/issues/151) closed with thanks (feature via [#196](https://github.com/swoofer/mcp-coordinator/issues/196)) ([31163d0](https://github.com/swoofer/mcp-coordinator/commit/31163d00c71c01ff8ddc58f48473582afa00778d))
+* **audit:** close maintenabilite-01 (--log-json adopted from [#151](https://github.com/swoofer/mcp-coordinator/issues/151), [#196](https://github.com/swoofer/mcp-coordinator/issues/196)) — all 13 Highs done; 116→117 ([10bc081](https://github.com/swoofer/mcp-coordinator/commit/10bc081b7b9091b662916ca390f41ac7136d3ee2))
+
 ## [1.0.1](https://github.com/swoofer/mcp-coordinator/compare/v1.0.0...v1.0.1) (2026-07-13)
 
 
