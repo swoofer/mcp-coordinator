@@ -22,11 +22,11 @@ describe("Dockerfile (production image)", () => {
     expect(fromLines.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("bases both stages on node:22-alpine for a small final image", () => {
+  it("bases both stages on node:26-alpine for a small final image", () => {
     // The tag may carry a pinned digest (@sha256:…) for supply-chain
     // reproducibility (ci-cd-10); the base image and stage names are what matter.
-    expect(dockerfile).toMatch(/FROM\s+node:22-alpine(@sha256:[0-9a-f]{64})?\s+AS\s+builder/i);
-    expect(dockerfile).toMatch(/FROM\s+node:22-alpine(@sha256:[0-9a-f]{64})?\s+AS\s+runtime/i);
+    expect(dockerfile).toMatch(/FROM\s+node:26-alpine(@sha256:[0-9a-f]{64})?\s+AS\s+builder/i);
+    expect(dockerfile).toMatch(/FROM\s+node:26-alpine(@sha256:[0-9a-f]{64})?\s+AS\s+runtime/i);
   });
 
   it("creates a non-root coordinator user with uid 1001 and switches to it", () => {
