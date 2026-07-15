@@ -51,14 +51,14 @@ describe("parseCookies", () => {
   });
 
   it("filters undefined entries (defensive contract for cookie.parse type)", async () => {
-    // cookie.parse's TS return type is Record<string, string | undefined>.
+    // cookie.parseCookie's TS return type is Record<string, string | undefined>.
     // The implementation never emits undefined in practice, but the filter
     // guards against future package releases that might. Mock parse to
     // inject undefined and assert the filter drops that key.
     vi.resetModules();
     vi.doMock("cookie", () => ({
-      parse: (_: string) => ({ good: "1", bad: undefined as unknown as string }),
-      serialize: (n: string, v: string) => `${n}=${v}`,
+      parseCookie: (_: string) => ({ good: "1", bad: undefined as unknown as string }),
+      stringifySetCookie: (c: { name: string; value: string }) => `${c.name}=${c.value}`,
     }));
     try {
       const mod = await import("../../src/auth/cookies.js");
