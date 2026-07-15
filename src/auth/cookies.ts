@@ -1,4 +1,4 @@
-import { parse, serialize } from "cookie";
+import { parseCookie, stringifySetCookie } from "cookie";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 // Canonical cookie names for Phase 2 session + CSRF. Exported here so
@@ -24,7 +24,7 @@ export function parseCookies(req: IncomingMessage): Record<string, string> {
   // cookie.parse returns Record<string, string | undefined>; the package may
   // assign undefined for malformed entries. Filter to give callers a cleaner
   // contract (no `| undefined` propagating through call sites).
-  const raw = parse(header);
+  const raw = parseCookie(header);
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(raw)) {
     if (typeof v === "string") out[k] = v;
@@ -33,11 +33,13 @@ export function parseCookies(req: IncomingMessage): Record<string, string> {
 }
 
 export function serializeCookie(name: string, value: string, attrs: CookieAttrs): string {
-  return serialize(name, value, {
+  return stringifySetCookie({
+    name,
+    value,
     httpOnly: attrs.httpOnly,
     secure: attrs.secure,
     // Downcast safe because CookieAttrs.sameSite is constrained upstream to
-    // the three PascalCase variants; cookie@1 accepts the lowercase form.
+    // the three PascalCase variants; cookie accepts the lowercase form.
     sameSite: attrs.sameSite?.toLowerCase() as "strict" | "lax" | "none" | undefined,
     path: attrs.path,
     domain: attrs.domain,

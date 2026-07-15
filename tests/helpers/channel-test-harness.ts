@@ -71,7 +71,7 @@ export const ChannelNotificationSchema = z.object({
   params: z
     .object({
       content: z.string(),
-      meta: z.record(z.string()),
+      meta: z.record(z.string(), z.string()),
     })
     .passthrough(),
 });

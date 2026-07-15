@@ -672,7 +672,7 @@ describe("Sweeper — lifecycle", () => {
     // explicitly by patching setInterval to return an object without unref.
     const realSetInterval = globalThis.setInterval;
     const fakeTimer = {} as unknown as NodeJS.Timeout;
-    globalThis.setInterval = ((..._args: unknown[]) => fakeTimer) as typeof setInterval;
+    globalThis.setInterval = ((..._args: unknown[]) => fakeTimer) as unknown as typeof setInterval;
     try {
       const s = new Sweeper(db, clock);
       expect(() => s.start()).not.toThrow();
