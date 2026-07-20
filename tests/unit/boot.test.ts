@@ -33,6 +33,7 @@ const ENV_KEYS = [
   "COORDINATOR_GITHUB_CLIENT_SECRET",
   "COORDINATOR_PUBLIC_URL",
   "COORDINATOR_GITHUB_ORG",
+  "COORDINATOR_GOOGLE_WORKSPACE_DOMAIN",
   "COORDINATOR_INSECURE_COOKIES",
   "COORDINATOR_ALLOW_RESTORE",
   "COORDINATOR_JWT_SECRET_PREV",
@@ -241,20 +242,18 @@ describe("bootPhase2 — required env validation", () => {
     );
   });
 
-  it("throws BootValidationError when COORDINATOR_GITHUB_CLIENT_ID is missing", () => {
+  it("throws when only COORDINATOR_GITHUB_CLIENT_SECRET is set (half-config)", () => {
     applyValidEnv();
+    // GitHub OAuth App creds are both-or-neither, like Google.
     delete process.env.COORDINATOR_GITHUB_CLIENT_ID;
-    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
-      /COORDINATOR_GITHUB_CLIENT_ID is required/,
-    );
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(BootValidationError);
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(/both be set, or both unset/);
   });
 
-  it("throws BootValidationError when COORDINATOR_GITHUB_CLIENT_SECRET is missing", () => {
+  it("throws when only COORDINATOR_GITHUB_CLIENT_ID is set (half-config)", () => {
     applyValidEnv();
     delete process.env.COORDINATOR_GITHUB_CLIENT_SECRET;
-    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
-      /COORDINATOR_GITHUB_CLIENT_SECRET is required/,
-    );
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(/both be set, or both unset/);
   });
 
   it("throws BootValidationError when COORDINATOR_PUBLIC_URL is missing", () => {
@@ -764,6 +763,101 @@ describe("bootPhase2 — GHES base URL wiring (v0.8.1-P2)", () => {
 
     expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
       /COORDINATOR_GITHUB_API_BASE_URL must be http:\/\/ or https:\/\//,
+    );
+  });
+});
+
+describe("bootPhase2 — optional GitHub / Google-only", () => {
+  function applyGoogleOnlyEnv(): void {
+    setEnv({
+      COORDINATOR_OAUTH_ENABLED: "true",
+      COORDINATOR_JWT_SECRET: STRONG_SECRET,
+      COORDINATOR_PUBLIC_URL: "http://localhost:3100",
+      COORDINATOR_GITHUB_CLIENT_ID: undefined,
+      COORDINATOR_GITHUB_CLIENT_SECRET: undefined,
+      COORDINATOR_GITHUB_ORG: undefined,
+      COORDINATOR_GOOGLE_CLIENT_ID: "google-cid.apps.googleusercontent.com",
+      COORDINATOR_GOOGLE_CLIENT_SECRET: "google-secret",
+      COORDINATOR_INSECURE_COOKIES: undefined,
+      COORDINATOR_ALLOW_RESTORE: undefined,
+    });
+  }
+
+  it("boots with only Google configured — GitHub creds not required", () => {
+    applyGoogleOnlyEnv();
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+    expect(result!.context.providers.names()).toEqual(["google"]);
+    expect(result!.context.providers.getDefault()!.name).toBe("google");
+    void result!.shutdown();
+  });
+
+  it("throws when no IdP provider is configured at all", () => {
+    setEnv({
+      COORDINATOR_OAUTH_ENABLED: "true",
+      COORDINATOR_JWT_SECRET: STRONG_SECRET,
+      COORDINATOR_PUBLIC_URL: "http://localhost:3100",
+      COORDINATOR_GITHUB_CLIENT_ID: undefined,
+      COORDINATOR_GITHUB_CLIENT_SECRET: undefined,
+      COORDINATOR_GITHUB_ORG: undefined,
+      COORDINATOR_GOOGLE_CLIENT_ID: undefined,
+      COORDINATOR_GOOGLE_CLIENT_SECRET: undefined,
+    });
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(BootValidationError);
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(/At least one IdP provider/);
+  });
+
+  it("still requires COORDINATOR_GITHUB_ORG when the GitHub OAuth App is configured", () => {
+    applyValidEnv();
+    delete process.env.COORDINATOR_GITHUB_ORG;
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
+      /COORDINATOR_GITHUB_ORG is required/,
+    );
+  });
+
+  it("does NOT require COORDINATOR_GITHUB_ORG for a Google-only deployment", () => {
+    applyGoogleOnlyEnv();
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+    void result!.shutdown();
+  });
+
+  it("auto-seeds an orgs row on allowlist_idp_org_id from COORDINATOR_GOOGLE_WORKSPACE_DOMAIN", () => {
+    applyGoogleOnlyEnv();
+    process.env.COORDINATOR_GOOGLE_WORKSPACE_DOMAIN = "example.com";
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+    const rows = db
+      .prepare("SELECT allowlist_idp_org_id FROM orgs WHERE allowlist_idp_org_id IS NOT NULL")
+      .all() as Array<{ allowlist_idp_org_id: string }>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0].allowlist_idp_org_id).toBe("example.com");
+    void result!.shutdown();
+  });
+
+  it("does NOT duplicate-seed the workspace-domain org (case-insensitive, idempotent)", () => {
+    applyGoogleOnlyEnv();
+    process.env.COORDINATOR_GOOGLE_WORKSPACE_DOMAIN = "Example.com";
+    db.prepare("INSERT INTO orgs (id, name, allowlist_idp_org_id) VALUES (?, ?, ?)").run(
+      "org-existing-idp",
+      "Example Workspace",
+      "example.com",
+    );
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+    const n = db
+      .prepare("SELECT COUNT(*) AS n FROM orgs WHERE allowlist_idp_org_id IS NOT NULL")
+      .get() as { n: number };
+    expect(n.n).toBe(1);
+    void result!.shutdown();
+  });
+
+  it("throws when COORDINATOR_GOOGLE_WORKSPACE_DOMAIN is set but Google is not configured", () => {
+    applyValidEnv(); // GitHub-only
+    process.env.COORDINATOR_GOOGLE_WORKSPACE_DOMAIN = "example.com";
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(BootValidationError);
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(
+      /COORDINATOR_GOOGLE_WORKSPACE_DOMAIN/,
     );
   });
 });
