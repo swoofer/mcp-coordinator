@@ -103,12 +103,29 @@ export function bootPhase2(opts: Phase2BootOptions, deps?: BootPhase2Deps): Phas
     );
   }
 
-  // 1. Required env vars (V3 §4).
+  // 1. Required env vars (V3 §4). Only the JWT secret and public URL are
+  //    unconditionally required. IdP provider credentials are optional so a
+  //    Google-only (or OIDC-only) deployment can boot; at least one provider
+  //    must still end up registered — enforced after all providers wire up.
   const jwtSecret = readRequiredEnv(env, "COORDINATOR_JWT_SECRET");
-  const githubClientId = readRequiredEnv(env, "COORDINATOR_GITHUB_CLIENT_ID");
-  const githubClientSecret = readRequiredEnv(env, "COORDINATOR_GITHUB_CLIENT_SECRET");
   const publicUrl = readRequiredEnv(env, "COORDINATOR_PUBLIC_URL");
-  const githubOrg = readRequiredEnv(env, "COORDINATOR_GITHUB_ORG");
+
+  // GitHub OAuth App credentials: optional, both-or-neither (like Google).
+  const githubClientId = readOptionalEnv(env, "COORDINATOR_GITHUB_CLIENT_ID");
+  const githubClientSecret = readOptionalEnv(env, "COORDINATOR_GITHUB_CLIENT_SECRET");
+  if (Boolean(githubClientId) !== Boolean(githubClientSecret)) {
+    throw new BootValidationError(
+      "COORDINATOR_GITHUB_CLIENT_ID and COORDINATOR_GITHUB_CLIENT_SECRET must both be set, or both unset",
+    );
+  }
+  const githubConfigured = Boolean(githubClientId && githubClientSecret);
+
+  // COORDINATOR_GITHUB_ORG is the OAuth-App membership allowlist. Required
+  // iff the GitHub OAuth App is configured (without it, GitHub sign-in
+  // matches no org and every GitHub login is denied). Ignored otherwise.
+  const githubOrg = githubConfigured
+    ? readRequiredEnv(env, "COORDINATOR_GITHUB_ORG")
+    : undefined;
 
   logger.debug({ public_url: publicUrl }, "bootPhase2: env resolved");
 
@@ -128,8 +145,9 @@ export function bootPhase2(opts: Phase2BootOptions, deps?: BootPhase2Deps): Phas
   const secretBuf = Buffer.from(jwtSecret, "utf8");
   assertSecretEntropy(secretBuf, MIN_JWT_SECRET_BITS);
 
-  // 4. Bootstrap orgs row if needed (V3 §B-NEW-4 — Phase 5 readiness).
-  ensureBootstrapOrg(db, githubOrg);
+  // 4. Bootstrap orgs row(s) are seeded later (step 6b), once we know which
+  //    providers are configured — GitHub seeds allowlist_github_org, Google
+  //    seeds allowlist_idp_org_id. See ensureBootstrapOrg below.
 
   // 5. NR12 restore detection — refuse boot if audit_log is more than
   //    5 minutes stale relative to wall clock, unless explicitly overridden.
@@ -171,19 +189,24 @@ export function bootPhase2(opts: Phase2BootOptions, deps?: BootPhase2Deps): Phas
   if (githubApiBaseUrl) {
     validateGithubBaseUrl(githubApiBaseUrl, "COORDINATOR_GITHUB_API_BASE_URL");
   }
-  const githubProvider = new GitHubProvider({
-    clientId: githubClientId,
-    clientSecret: githubClientSecret,
-    ...(githubAuthBaseUrl ? { authBaseUrl: githubAuthBaseUrl } : {}),
-    ...(githubApiBaseUrl ? { apiBaseUrl: githubApiBaseUrl } : {}),
-  });
-
-  // T45 (v0.9.0): provider registry. GitHub is always registered;
-  // Google + OIDC register iff their env vars are present. The picker
-  // UI activates (T48) whenever providers.size() > 1; GitHub is the
-  // implicit default since it is registered first.
+  // T45 (v0.9.0): provider registry. Each provider registers iff its env
+  // vars are present. The picker UI activates (T48) whenever
+  // providers.size() > 1; the FIRST registered provider is the implicit
+  // default. GitHub registers first when configured, so it stays the
+  // default for existing GitHub deployments; a Google-only deployment gets
+  // Google as its default. At least one provider is required (checked below).
   const providers = new ProviderRegistry();
-  providers.register(githubProvider);
+
+  if (githubConfigured) {
+    providers.register(
+      new GitHubProvider({
+        clientId: githubClientId!,
+        clientSecret: githubClientSecret!,
+        ...(githubAuthBaseUrl ? { authBaseUrl: githubAuthBaseUrl } : {}),
+        ...(githubApiBaseUrl ? { apiBaseUrl: githubApiBaseUrl } : {}),
+      }),
+    );
+  }
 
   // T47 (v0.9.0): GoogleProvider. Opt-in via env. Both client_id and
   // client_secret are required; presence of only one is a config error
@@ -201,6 +224,19 @@ export function bootPhase2(opts: Phase2BootOptions, deps?: BootPhase2Deps): Phas
         clientId: googleClientId,
         clientSecret: googleClientSecret,
       }),
+    );
+  }
+  const googleConfigured = Boolean(googleClientId && googleClientSecret);
+
+  // COORDINATOR_GOOGLE_WORKSPACE_DOMAIN seeds the Google allowlist org
+  // (orgs.allowlist_idp_org_id = the Workspace hosted-domain `hd` claim), so
+  // a Google-only deployment can bootstrap its first admin without hand-
+  // inserting a row. Meaningless without Google configured — fail closed.
+  const googleWorkspaceDomain = readOptionalEnv(env, "COORDINATOR_GOOGLE_WORKSPACE_DOMAIN");
+  if (googleWorkspaceDomain && !googleConfigured) {
+    throw new BootValidationError(
+      "COORDINATOR_GOOGLE_WORKSPACE_DOMAIN is set but Google OAuth is not configured " +
+        "(set COORDINATOR_GOOGLE_CLIENT_ID and COORDINATOR_GOOGLE_CLIENT_SECRET)",
     );
   }
 
@@ -286,6 +322,21 @@ export function bootPhase2(opts: Phase2BootOptions, deps?: BootPhase2Deps): Phas
     );
   }
 
+  // 6a. At least one IdP provider must be configured — otherwise /auth/login
+  //     has nothing to redirect to (getDefault() === null → 500). Fail closed.
+  if (providers.size() === 0) {
+    throw new BootValidationError(
+      "At least one IdP provider must be configured when COORDINATOR_OAUTH_ENABLED=true: " +
+        "set COORDINATOR_GITHUB_CLIENT_ID/SECRET, COORDINATOR_GOOGLE_CLIENT_ID/SECRET, " +
+        "COORDINATOR_GITHUB_APP_CLIENT_ID/SECRET, or the COORDINATOR_OIDC_* vars",
+    );
+  }
+
+  // 6b. Seed bootstrap allowlist org row(s) (idempotent) so the first sign-in
+  //     matches an org and becomes admin. GitHub → allowlist_github_org;
+  //     Google → allowlist_idp_org_id (Workspace hosted-domain). V3 §B-NEW-4.
+  ensureBootstrapOrg(db, { githubOrg, idpOrg: googleWorkspaceDomain });
+
   // 7. Initialize audit queue (Tier 2 buffered writes; T11b).
   initAuditQueue(db);
 
@@ -338,7 +389,12 @@ export function bootPhase2(opts: Phase2BootOptions, deps?: BootPhase2Deps): Phas
   // 11. Emit config.boot audit (Tier 1, never drop).
   audit("config.boot", {
     tier: 1,
-    metadata: { public_url: publicUrl, github_org: githubOrg },
+    metadata: {
+      public_url: publicUrl,
+      providers: providers.names(),
+      github_org: githubOrg ?? null,
+      google_workspace_domain: googleWorkspaceDomain ?? null,
+    },
   });
 
   // 11b. Emit config.key_rotation audit when a prev secret is configured
@@ -383,6 +439,12 @@ function readRequiredEnv(env: NodeJS.ProcessEnv, key: string): string {
     throw new BootValidationError(`${key} is required when COORDINATOR_OAUTH_ENABLED=true`);
   }
   return value;
+}
+
+/** Like readRequiredEnv but returns undefined (never throws) when absent or blank. */
+function readOptionalEnv(env: NodeJS.ProcessEnv, key: string): string | undefined {
+  const value = env[key];
+  return value && value.trim() !== "" ? value : undefined;
 }
 
 function validatePublicUrl(url: string, env: NodeJS.ProcessEnv): void {
@@ -457,19 +519,34 @@ function validateGithubBaseUrl(url: string, varName: string): void {
   }
 }
 
-function ensureBootstrapOrg(db: Database.Database, githubOrg: string): void {
-  // Per V3 §B-NEW-4: if no orgs row has allowlist_github_org=githubOrg
-  // (case-insensitive), insert one. Idempotent — re-running boot with the
-  // same env is a no-op.
-  const existing = db
-    .prepare("SELECT id FROM orgs WHERE LOWER(allowlist_github_org) = LOWER(?)")
-    .get(githubOrg);
+function ensureBootstrapOrg(
+  db: Database.Database,
+  opts: { githubOrg?: string; idpOrg?: string },
+): void {
+  // Per V3 §B-NEW-4: seed a bootstrap org row for each configured allowlist
+  // strategy so the first sign-in can match an org and become admin.
+  if (opts.githubOrg) seedAllowlistOrg(db, "allowlist_github_org", opts.githubOrg);
+  if (opts.idpOrg) seedAllowlistOrg(db, "allowlist_idp_org_id", opts.idpOrg);
+}
+
+/**
+ * Insert one orgs row keyed on the given allowlist column if none matches
+ * (case-insensitive). Idempotent — re-running boot with the same env is a
+ * no-op. `column` is a trusted internal literal (never user input), so
+ * interpolating it into the SQL is safe.
+ */
+function seedAllowlistOrg(
+  db: Database.Database,
+  column: "allowlist_github_org" | "allowlist_idp_org_id",
+  value: string,
+): void {
+  const existing = db.prepare(`SELECT id FROM orgs WHERE LOWER(${column}) = LOWER(?)`).get(value);
   if (!existing) {
     const suffix = Math.random().toString(36).slice(2, 10);
-    db.prepare(`INSERT INTO orgs (id, name, allowlist_github_org) VALUES (?, ?, ?)`).run(
-      `org-${githubOrg}-${suffix}`,
-      githubOrg,
-      githubOrg,
+    db.prepare(`INSERT INTO orgs (id, name, ${column}) VALUES (?, ?, ?)`).run(
+      `org-${value}-${suffix}`,
+      value,
+      value,
     );
   }
 }
