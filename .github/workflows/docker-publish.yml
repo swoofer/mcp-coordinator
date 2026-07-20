@@ -75,7 +75,7 @@ jobs:
       # workflow_call, so :latest still updates on real tag pushes.
       - name: Derive image tags
         id: meta
-        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051  # v5
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302  # v6.2.0
         with:
           images: ghcr.io/${{ github.repository }}
           # metadata-action's default flavor (`latest=auto`) adds `:latest`
