@@ -1,316 +1,110 @@
-# Handoff — mcp-coordinator + essaim
+# Handoff — mcp-coordinator session continuation
 
-**Last work session**: 2026-05-10
-**Current published**: `mcp-coordinator@0.4.0` on npm
-**Repo**: https://github.com/swoofer/mcp-coordinator
+> Read this end-to-end before doing anything. Then check `~/.claude/projects/C--Users-gagno-projet-mcp-coordinator-new/memory/MEMORY.md` for durable context (user profile, feedback, project state, references) — it's already loaded at session start. Don't re-litigate decisions captured in those memories.
 
-This document is a self-contained context dump so a fresh conversation can verify the system, hunt regressions, or continue work.
+## 1. Objectif
 
----
+**Cut and verify v0.13.0**, then close out the Claude Code Channels integration epic (issue #130 was already closed; v0.13.0 ships Phase 2 reply tool + the chained-Docker workflow fix).
 
-## TL;DR — What was done across recent sessions
+The strategic objective is to **prove the docker-publish workflow_call fix (#142) actually works on a real release**. v0.12.0 had a broken chained publish — had to dispatch manually. The fix in #142 should make v0.13.0 auto-publish to GHCR without intervention.
 
-Three big sprints, all merged to `main` and published:
+## 2. État actuel du code
 
-1. **Landing page redesign** (`docs/index.html`) — 11 sections + FAQ + templates + 6 locales (en/fr/es/de/zh/ja). Done by 36 sub-agents in 4 layers. Pushed in commits before v0.3.0.
-2. **v0.3.0 — Bug fixes (B1-B6) + Structural (S1-S3)**:
-   - B1: transactions in `announceWork`/`approveResolution`
-   - B2: `checkTimeouts` moved to background sweeper
-   - B3: opt-in MQTT JWT auth
-   - B4: `/api/reset` admin-gated
-   - B5: dashboard path-traversal guard
-   - B6: SIGTERM graceful shutdown + `ServerHandle.stop()`
-   - S1: god files split (`server-setup.ts` 526→133, `serve-http.ts` 919→543, 6 tool modules + `http/handle-rest.ts` + `http/utils.ts`)
-   - S2: `runCommonAnnounceFlow` extracted (eliminated MCP/REST duplication)
-   - S3: 6 network integration tests
-3. **v0.4.0 — Operability (P1 phase) + Performance (P2 phase)**:
-   - **Operability**: Prometheus `/metrics`, `/livez`+`/readyz`, Dockerfile + compose, `server backup`/`restore` CLI commands
-   - **Performance**:
-     - P1 MQTT: QoS 1 on state-changes, retained on `consultations/new`, LWT on connect, `clearRetainedConsultation()`
-     - P2 impact-scorer: **40.77ms → 0.48ms (85× speedup)** via module cache + `since_minutes` filter + file→agents reverse index
-     - P3 SSE: `MAX_SSE_CLIENTS` cap (default 100), 30s heartbeat, async fan-out via `setImmediate`, per-listener try/catch
-     - P4 db-adapter: made-real with `withTransaction<T>` helper, pilot migration in `dependency-map.setMap()`
+- On `main`, HEAD around commit `071a234` ("surface polling-vs-push choice")
+- **v0.12.0** is shipped on npm + GHCR (`ghcr.io/swoofer/mcp-coordinator:0.12.0` / `:0.12` / `:latest`)
+- **PR #143** open and ready to merge: `chore(main): release 0.13.0` (release-please auto-PR)
+  - Contents: Channels Phase 2 (#145), CI tag-gating fix (#142), docs PRs (#146, #147), contributor schema fix (#132/144 chain)
+- No other PRs open
+- Full test suite green: 173 files / ~2317 tests
+- Lockfile is pnpm — `pnpm install --frozen-lockfile` from a clean clone is the canonical setup
 
----
+### What just shipped (recent)
 
-## Repo paths (Windows)
+- **Channels Phase 1 (v0.12.0)** — `cli/channel.ts` stdio MCP server, subscribes to MQTT broker, pushes events as `notifications/claude/channel`
+- **Channels Phase 2 (in #143 → v0.13.0)** — `post_to_thread` reply tool; channel is now bidirectional
+- **Stdio mode tool calls fixed (#135)** — was throwing "MCP tool requires a session"; now wires synthetic claims
+- **MCP integration harness (#134, #140)** — `tests/helpers/mcp-client-harness.ts` + `tests/helpers/channel-test-harness.ts` exercise the real MCP SDK
+- **operating-modes.md** + landing-page callouts for the polling-vs-push choice
 
-| Project | Path |
+### Issue tracker shape
+
+- ~22 open issues, all GFI or strategic. No urgent bugs.
+- Issue #130 (Channels integration epic) — **closed** when Phase 1+2 landed
+- Issue #133 (stdio mode tool calls) — **closed** by #135
+- Phase 3 of Channels (permission relay) intentionally deferred per #139 reference-plugin study
+
+## 3. Fichiers touchés récemment (et pourquoi)
+
+| File | What changed |
 |---|---|
-| mcp-coordinator (source) | `C:\Users\gagno\projet\mcp-coordinator-new\` |
-| essaim (consumer / regression check) | `C:\Users\gagno\projet\essaim-new\` |
-| Audit synthesis | `C:\Users\gagno\projet\mcp-coordinator-new\docs\superpowers\working\audit\code\00-SYNTHESIS.md` |
-| v0.4 working notes | `C:\Users\gagno\projet\mcp-coordinator-new\docs\superpowers\working\v04\` |
-| v0.5 working notes | `C:\Users\gagno\projet\mcp-coordinator-new\docs\superpowers\working\v05\` |
+| `cli/channel.ts` | Phase 1 push + Phase 2 `post_to_thread` reply tool. Declares `claude/channel` capability. Subscribes to 3 MQTT topic patterns. |
+| `cli/index.ts` | Registered `createChannelCommand()` |
+| `src/index.ts` | Stdio mode wires synthetic claims `{org: "default", ...}` so tool calls work |
+| `src/tools/*-tools.ts` (6 files) | Collapsed 4-line session guard into 1 line: `const claims = getSessionClaims(extra.sessionId ?? "");` |
+| `src/server-setup.ts` | JSDoc on `createMcpServer` updated to reflect the new contract (line ~152) |
+| `tests/helpers/mcp-client-harness.ts` | Spawns HTTP or stdio MCP server, returns an SDK Client |
+| `tests/helpers/channel-test-harness.ts` | Spawns channel CLI, captures notifications, exposes mock MQTT broker |
+| `tests/integration/channel-smoke.test.ts` | End-to-end: spawn channel + broker + assert events flow |
+| `tests/unit/cli-channel.test.ts` | Unit tests for `buildChannelNotification` + the reply tool publish |
+| `.github/workflows/docker-publish.yml` | `type=match` `enable=` now gates on `inputs.tag != ''` instead of `github.event_name` |
+| `.github/workflows/release.yml` | Calls `docker-publish.yml` as a reusable workflow when `release_created == 'true'` |
+| `docs/operating-modes.md` | New comparison doc: polling vs push |
+| `docs/index.html` | Added `start.modes` install-alt callout (6 locales). Roadmap card updated for Channels. |
+| `README.md` | Added "🔀 Two ways" callout in Getting Started |
 
----
+## 4. Tentatives échouées (à NE PAS refaire)
 
-## Verification protocol (run on a fresh conversation start)
+1. **Stdio mode synthetic-claims via centralized SDK shim** — first instinct was to monkey-patch `server.tool()` in `createMcpServer` to inject a sessionId. Rejected because the MCP SDK reads `extra.sessionId` on every handler call internally and isn't trivially overridable. The clean fix (#135) is the per-handler `extra.sessionId ?? ""` pattern.
 
-### 1. mcp-coordinator unit suite — should be 336/336
+2. **Docker workflow_call gating on `github.event_name`** — my original chain fix in #125 used `github.event_name == 'workflow_call'`. **This is always false** inside a called reusable workflow — `github.event_name` reflects the CALLER's event (`push`), not `workflow_call`. Fixed in #142 by switching to `inputs.tag != ''`. **Don't repeat this — it's not a `github.event_name` problem.**
 
-```bash
-cd C:/Users/gagno/projet/mcp-coordinator-new
-npm test 2>&1 | tail -5
-```
+3. **Postgres adapter spec** — closed #103 (and dependent #85, #104, #84) as YAGNI. Spec preserved at `docs/superpowers/specs/2026-05-16-postgres-adapter-design.md`. Don't reopen unless a real signal arrives (paying customer, multi-instance demand).
 
-**Expected**:
-```
-Test Files  1 failed | 32 passed (33)   ← 1 file fails on Windows file-lock (cleanup), pre-existing
-Tests       336 passed (336)            ← all 336 individual tests must pass
-```
+4. **Edit tool on UTF-8 BOM files** — silently reports success but doesn't persist changes (encountered on `cli/server/status.ts`). Fallback: rewrite via bash heredoc or `sed -i`. See `feedback_edit_tool_bom_gotcha.md` in memory.
 
-The single "failed file" is `tests/unit/metrics.test.ts` due to a Windows EBUSY on `data-test-metrics/coordinator.db` cleanup — **the 12 tests inside it pass**, only the `afterAll` cleanup fails. Not a real regression.
+5. **Channels Phase 3 (permission relay)** — intentionally deferred per #139's reference-plugin study. The `claude/channel/permission` capability needs a sender allowlist to be safe, and the loopback-MQTT trust model doesn't have one. Don't accidentally re-spike this without a concrete operator request.
 
-### 2. TypeScript strict — should be 0 errors
+6. **Pinning `tree-sitter-rust@^0.21.2`** — that version was never published to npm (line jumps from 0.21.0 to 0.23.0). pnpm's stricter resolver caught it; fixed to `^0.21.0` in the pnpm migration PR. Don't bump back.
 
-```bash
-cd C:/Users/gagno/projet/mcp-coordinator-new
-npx tsc --noEmit
-```
+## 5. Prochaine étape
 
-**Expected**: empty output (no errors).
+**Immediate (next session)**:
 
-### 3. Build — should produce dist/ cleanly
+1. **Merge PR #143** (release-please v0.13.0) → cuts the release tag, triggers `release.yml`, which should chain to `docker-publish.yml` via `workflow_call` and auto-publish to GHCR.
 
-```bash
-cd C:/Users/gagno/projet/mcp-coordinator-new
-npm run build && ls dist/cli/index.js dist/src/serve-http.js
-```
+2. **Verify the chained Docker publish actually works this time**. The #142 fix should make it succeed without manual intervention. Check:
+   - `gh run watch <release-run-id>` — both `release` and `docker` jobs should complete success
+   - `npm view mcp-coordinator dist-tags` shows `latest: 0.13.0`
+   - GHCR has `:0.13.0`, `:0.13`, and `:latest` pointing to v0.13.0 (verify via `curl -H "Authorization: Bearer $TOKEN" https://ghcr.io/v2/swoofer/mcp-coordinator/tags/list`)
 
-**Expected**: both files present, no compile errors.
+3. **If the chain succeeds**: confirm by docker-pulling the new image (`docker pull ghcr.io/swoofer/mcp-coordinator:0.13.0` — not from this Windows terminal since Docker Desktop isn't always running). The chained docker workflow is the final verification of #142.
 
-### 4. Smoke test — start daemon, hit endpoints, stop
+4. **If the chain fails**: read the failed run's `docker / build-and-push` job log. Check the `Derive image tags` step's `DOCKER_METADATA_OUTPUT_TAGS` output. If empty, the `inputs.tag` is somehow not flowing through `workflow_call`. Don't bandage — root-cause it.
 
-```bash
-cd C:/Users/gagno/projet/mcp-coordinator-new
-node dist/cli/index.js --version
-node dist/cli/index.js server start --daemon
-sleep 1
-curl -sS http://localhost:3100/health
-curl -sS http://localhost:3100/livez
-curl -sS http://localhost:3100/readyz
-curl -sS http://localhost:3100/metrics | head -5
-node dist/cli/index.js server stop
-```
+**Manual fallback** (if anything goes sideways): `gh workflow run "Docker publish" -f tag=v0.13.0`
 
-**Expected**:
-- `--version` → `0.4.0`
-- `/health` → `{"status":"alive","uptime_seconds":...,"version":"0.4.0"}`
-- `/livez` → same as `/health`
-- `/readyz` → `{"status":"ready","checks":{"db":{"ok":true},"mqtt":{"ok":true}}}`
-- `/metrics` → Prometheus text format (`# HELP mcp_coordinator_announces_total ...`)
-- `server stop` → `Coordinator stopped.`
+**After v0.13.0 is verified**:
+- Update landing-page version refs from `0.11.0` / `0.12.0` to `0.13.0` (hero eyebrow, footer, JSON-LD softwareVersion, Docker callouts that pin to a specific version)
+- Bump `examples/channels-quickstart/` and `examples/docker-compose/` to `:0.13.0` if they pin `:0.12.0`
+- Add a v0.13.0 entry to the landing-page roadmap timeline (mirror the v0.11/v0.12 card shape — title, desc, date, link). Translate the 4 keys into the 5 non-EN locales (FR, ES, DE, ZH, JA) or rely on EN fallback.
 
-### 5. essaim regression — should be 302/303 (1 pre-existing Windows perms failure)
+**Strategic, not urgent**:
+- Channels Phase 3 is deferred (don't spike it)
+- Windows CI flakiness on `tests/integration/channel-smoke.test.ts` — monitor on next CI runs, file an issue if reproducible
+- Node 20 actions deprecation (Sept 2026 cutoff) — wait for `actions/checkout@v5` / `actions/setup-node@v5` GA before migrating
 
-```bash
-# Sync mcp-coordinator dist into essaim's node_modules
-cd C:/Users/gagno/projet/essaim-new/node_modules/mcp-coordinator
-rm -rf dist && cp -r C:/Users/gagno/projet/mcp-coordinator-new/dist .
+## Communication style with the user
 
-# Make sure prom-client + tar are available (added in v0.4.0)
-npm install --no-save prom-client@^15.1.3 tar@^7.4.3
+- **French casual.** Short replies ("ok", "go", "fait toi-même"). Doesn't waste words.
+- **Bias toward autonomy.** When user says "go" or "sois autonome", just execute. Don't ask permission on tactical choices.
+- **Push back when they push back.** When they say "fait toi-même le test, tu va voir" — they suspect I wrote off a real bug. Test concretely before dismissing.
+- **Strategic vs tactical**: ask on strategic decisions (close an issue family? cut a major version? security trade-offs). Execute on tactical (which label, which file path, which assignee).
 
-# Run essaim's test suite
-cd C:/Users/gagno/projet/essaim-new
-npm test 2>&1 | tail -5
-```
+## Where to find more context
 
-**Expected**:
-```
-Test Files  1 failed | 15 passed (16)
-Tests       1 failed | 302 passed (303)   ← 1 failed is pre-existing Windows 0o755 perms test
-```
-
-The 1 failed test is `tests/unit/orchestrator-write.test.ts > writeClaudeHooksDir > writes hook scripts with 0o755 permissions`. This is a Windows-specific filesystem permission test that has been failing **since before any of my work** (verified by running on the v0.2.1 baseline). Not a regression.
-
-### 6. npm registry sanity — should report 0.4.0
-
-```bash
-curl -sS https://registry.npmjs.org/mcp-coordinator/latest | grep -o '"version":"[^"]*"'
-# Expected: "version":"0.4.0"
-
-curl -sS https://registry.npmjs.org/mcp-coordinator/0.4.0 | grep -o '"version":"[^"]*"' | head -1
-# Expected: "version":"0.4.0"
-```
-
----
-
-## Marketing claims — should all be TRUE post v0.4.0
-
-| Claim | Source | Verification |
-|---|---|---|
-| "<5ms detection" | hero / mechanism | `tests/unit/p2-impact-scorer-perf.test.ts` benchmark → 0.48ms avg on 50 agents + 200 file activities + 100 threads |
-| "<50ms push" | hero | QoS 1 + retain on state-change topics — survives reconnect |
-| "Production-ready" | FAQ | `/metrics` + `/livez` + `/readyz` + Dockerfile + `server backup/restore` + SIGTERM graceful shutdown |
-| "Work-stealing atomic" | mechanism | `db.transaction()` in `consultation.announceWork` + CAS UPDATE in `approveResolution` |
-| "Embedded MQTT broker" | mechanism | Aedes + LWT + retained — `src/mqtt-broker.ts`, `src/mqtt-bridge.ts` |
-| "26 MCP tools" | mechanism | Verified by tech-accuracy agent (counted real registrations in `src/server-setup.ts` + `src/tools/*.ts`) |
-| "216 unit tests" | results | **OUTDATED** — actual number is **336** (216 baseline + 120 from B1-B6/S1-S3/v0.4/v0.5). Update landing page if/when releasing v0.5 visibly. |
-
----
-
-## File structure (post v0.4.0)
-
-```
-src/
-├── announce-workflow.ts       # S2: shared orchestration
-├── auth.ts                    # JWT (HS256 via jose)
-├── consultation.ts            # B1 transactions, B2 sweeper, db.transaction
-├── db-adapter.ts              # P4: withTransaction helper
-├── database.ts                # SQLite init/close
-├── http/
-│   ├── handle-health.ts       # v0.4: /livez, /readyz, /health
-│   ├── handle-rest.ts         # S1: REST router (was 382 LOC inline)
-│   └── utils.ts               # S1: parseBody, json, decodeJwtPayload, safeEqual
-├── impact-scorer.ts           # P2: 85x perf optim
-├── metrics.ts                 # v0.4: Prometheus endpoint
-├── mqtt-bridge.ts             # P1: QoS 1, LWT, retained
-├── mqtt-broker.ts             # B3: opt-in JWT auth
-├── path-guard.ts              # B5: safeJoinUnderRoot
-├── reset-guard.ts             # B4: canResetDb
-├── serve-http.ts              # 543 LOC (was 919) — startup, lifecycle
-├── server-setup.ts            # 133 LOC (was 526) — service wiring
-├── sse-emitter.ts             # P3: cap, heartbeat, async fan-out
-├── tools/                     # S1: 6 per-domain MCP tool modules
-│   ├── agents-tools.ts
-│   ├── consultation-tools.ts
-│   ├── dependencies-tools.ts
-│   ├── files-tools.ts
-│   ├── mqtt-tools.ts
-│   └── status-tools.ts
-└── ... (file-tracker, dependency-map, agent-registry, quota/, etc.)
-
-cli/
-├── index.ts
-└── server/
-    ├── index.ts
-    ├── start.ts, stop.ts, status.ts, logs.ts
-    ├── backup.ts             # v0.4: tarball backup
-    └── restore.ts            # v0.4: safe restore
-
-tests/unit/                    # 336 tests across 33+ files
-├── b1-transactions.test.ts
-├── b2-timeout-sweeper.test.ts
-├── b3-mqtt-auth.test.ts
-├── reset-guard.test.ts        # B4
-├── path-guard.test.ts         # B5
-├── graceful-shutdown.test.ts  # B6
-├── s2-announce-workflow.test.ts
-├── s3-network-integration.test.ts
-├── metrics.test.ts            # v0.4
-├── health-handlers.test.ts    # v0.4
-├── backup-restore.test.ts     # v0.4
-├── dockerfile-validation.test.ts  # v0.4
-├── p1-mqtt-correctness.test.ts # v0.5
-├── p2-impact-scorer-perf.test.ts # v0.5
-├── p3-sse-resilience.test.ts  # v0.5
-└── ... (216 baseline tests on the original modules)
-
-Dockerfile + .dockerignore + docker-compose.yml   # v0.4
-```
-
----
-
-## Known issues (non-blocking, document don't fix)
-
-1. **CI npm publish fails with EOTP**
-   - Root cause: GitHub Secret `NPM_TOKEN` is not a "Bypass 2FA" type token. The package has 2FA-required policy on npmjs.com.
-   - Workaround: publish from local with `npm publish --ignore-scripts` (already used for v0.3.0 + v0.4.0).
-   - Fix path: create a Granular Access Token on npmjs.com with **"Bypass two-factor authentication when publishing"** checked, set as `NPM_TOKEN` via `gh secret set NPM_TOKEN --repo swoofer/mcp-coordinator`.
-
-2. **`tests/unit/metrics.test.ts` flaky cleanup on Windows**
-   - All 12 tests pass; only the `afterAll` `fs.rmSync` fails because something still holds the SQLite file handle.
-   - Not a real regression. Could be fixed by ensuring all DB connections close before cleanup (low priority).
-
-3. **`tests/unit/orchestrator-write.test.ts` 0o755 perms failure (essaim)**
-   - Pre-existing Windows-specific test. Has been failing since before v0.2.1 baseline. Not caused by any of our changes.
-
-4. **`docs/index.html.backup-2026-05-09`** sits untracked at the repo root
-   - Old backup from a redesign sprint. Safe to delete or keep. We have explicitly NOT committed it (per the user's earlier preference).
-
-5. **README still says "216 unit tests"**
-   - Outdated since the test count grew to 336. The landing page (`docs/index.html`) was updated in the redesign sprint to say "216 tests" too — this is a deliberate marketing-vs-truth gap, low-priority to refresh.
-
----
-
-## What's left from the audit synthesis (post v0.4.0)
-
-All 🔴 BLOCKING (B1-B6) and 🟠 STRUCTURAL (S1-S3) and 🟡 PROTOCOL/PERFORMANCE (P1-P4) issues are **CLOSED**.
-
-Still open from the audit:
-- DevOps audit's "HA / clustering story" — single-node by design today
-- DevOps audit's "Update path: how to upgrade coordinator without losing state?" — covered by `server backup/restore` now but no migration framework
-- v0.6 — original v0.3 roadmap goal: "Semantic conflict detection (AST)"
-- v1.0 — "Stable API + cross-repo coordination"
-
----
-
-## Open PRs / branches at session end
-
-```bash
-gh pr list --repo swoofer/mcp-coordinator
-# Should be empty or only show dependabot bumps
-```
-
----
-
-## Quick commands cheat sheet for the next session
-
-```bash
-# Verify everything in 60 seconds:
-cd C:/Users/gagno/projet/mcp-coordinator-new
-npm test 2>&1 | grep "Tests "                          # 336/336
-npx tsc --noEmit                                       # 0 errors
-node dist/cli/index.js --version                       # 0.4.0
-node dist/cli/index.js server start --daemon
-curl -sS http://localhost:3100/livez
-curl -sS http://localhost:3100/readyz
-node dist/cli/index.js server stop
-
-# essaim regression:
-cd C:/Users/gagno/projet/essaim-new && npm test 2>&1 | grep "Tests "
-# Should be: 1 failed | 302 passed (303)
-```
-
----
-
-## Audit reports (full reference)
-
-```
-docs/superpowers/working/audit/code/
-├── 00-SYNTHESIS.md             # Executive summary, score 4.85/10 pre-fix
-├── 01-architect.md             # 4/10 — god files (S1)
-├── 02-typescript.md            # 6/10 — strict mode, casts
-├── 03-async-concurrency.md     # 4/10 — race conditions (B1)
-├── 04-database.md              # 5/10 — transactions, indexes
-├── 05-mqtt.md                  # 4/10 — QoS 0, no LWT (P1)
-├── 06-tests.md                 # 6.5/10 — coverage gaps
-├── 07-security.md              # 4/10 — auth gaps (B3, B4, B5)
-├── 08-api-design.md            # 5/10 — 26 MCP tools surface
-├── 09-performance.md           # 4/10 — impact-scorer (P2)
-├── 10-error-handling.md        # 5/10 — try/catch patterns
-├── 11-resources.md             # 3/10 — leaks, no shutdown (B6)
-├── 12-code-quality.md          # 6/10 — readability
-├── 13-refactoring.md           # 4/10 — duplication (S2)
-├── 14-dependencies.md          # 7.5/10 — clean tree
-├── 15-build-tooling.md         # 5/10 — CI gaps
-├── 16-logging.md               # 5/10 — Pino structure OK
-├── 17-cli-ux.md                # 6.5/10 — commander UX
-├── 18-http-sse.md              # 4/10 — SSE leaks (P3)
-├── 19-edge-cases.md            # 4/10 — input validation
-└── 20-mcp-spec.md              # 6/10 — MCP 2024-11-05 conformance
-```
-
-Each report has line-quoted file:line evidence and concrete fix recommendations.
-
----
-
-## Last commit on main
-
-```
-chore(main): release 0.4.0 (#9)
-```
-
-After that: pure release-please book-keeping. Next planned work: **v0.5 release on npm** (already published 0.4.0 contains both v0.4 + v0.5 features) OR **v0.6 Semantic conflict detection** (greenfield work).
+- **Durable memory**: `~/.claude/projects/C--Users-gagno-projet-mcp-coordinator-new/memory/MEMORY.md` (auto-loaded). 9 files behind it cover user profile, feedback patterns, project tooling state, release pipeline, repo layout, and gotchas.
+- **Recent specs / catalogs**:
+  - `docs/superpowers/specs/2026-05-23-channels-event-catalog.md` — every MQTT publish path with priority + sample payload
+  - `docs/superpowers/working/channels-reference-plugins-study.md` — patterns from Anthropic's telegram/discord/imessage/fakechat
+  - `docs/operating-modes.md` — polling vs push decision guide
+- **CHANGELOG.md** — `git log v0.11.0..HEAD --oneline` for the full sequence of work since the last user-visible release
