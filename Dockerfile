@@ -11,9 +11,10 @@
 # never ships; only its dist/ + production node_modules are copied forward.
 FROM node:26-alpine@sha256:e88a35be04478413b7c71c455cd9865de9b9360e1f43456be5951032d7ac1a66 AS builder
 
-# Corepack ships with Node 22 — enable it so the `packageManager` field in
-# package.json (pnpm@<version>) is honored without a separate install.
-RUN corepack enable
+# Node 25+ no longer bundles Corepack, so install it explicitly, then enable
+# it so the `packageManager` field in package.json (pnpm@<version>) drives the
+# pnpm version without hardcoding it here.
+RUN npm install -g corepack@latest && corepack enable
 
 WORKDIR /build
 
