@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.0](https://github.com/swoofer/mcp-coordinator/compare/v1.1.0...v1.2.0) (2026-07-20)
+
+
+### Features
+
+* **auth:** make GitHub OAuth optional — Google-only Phase 2 boots ([#205](https://github.com/swoofer/mcp-coordinator/issues/205)) ([e5e08de](https://github.com/swoofer/mcp-coordinator/commit/e5e08dec6b13a1057ac7b09c22780c9e7885cedf))
+* **doctor:** probe Google creds + treat GitHub as optional; guard cookie major ([e3bcce0](https://github.com/swoofer/mcp-coordinator/commit/e3bcce0e678b9a146eb881ae28c88e1c5303e46e))
+
 ## [1.1.0](https://github.com/swoofer/mcp-coordinator/compare/v1.0.1...v1.1.0) (2026-07-13)
 
 
