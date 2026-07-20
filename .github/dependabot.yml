@@ -10,6 +10,13 @@ updates:
       dependencies:
         patterns:
           - "*"
+    ignore:
+      # cookie v2 is ESM-only (Node 22+) and renamed its API
+      # (parse/serialize -> parseCookie/stringifyCookie). Migrating is a
+      # deliberate, code-touching change on security-sensitive cookie
+      # handling, not an automated bump. Hold at v1 until we choose to move.
+      - dependency-name: "cookie"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"

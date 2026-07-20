@@ -292,12 +292,23 @@ export async function probeGitHubCreds(
   smoke: boolean = true,
 ): Promise<CheckResult> {
   if (!clientId || !clientSecret) {
+    // GitHub OAuth App is optional since feat/optional-github-provider. Only
+    // half-config (exactly one of the pair) is a problem; both-absent is a
+    // legitimate Google-only / OIDC-only deployment.
+    if (clientId || clientSecret) {
+      return {
+        name: "phase2.github_creds",
+        ok: false,
+        severity: "warn",
+        detail: "COORDINATOR_GITHUB_CLIENT_ID/SECRET half-configured (set both or neither)",
+        hint: "Set both COORDINATOR_GITHUB_CLIENT_ID and COORDINATOR_GITHUB_CLIENT_SECRET, or unset both",
+      };
+    }
     return {
       name: "phase2.github_creds",
-      ok: false,
-      severity: "fail",
-      detail: `COORDINATOR_GITHUB_CLIENT_ID/SECRET missing`,
-      hint: "Set both COORDINATOR_GITHUB_CLIENT_ID and COORDINATOR_GITHUB_CLIENT_SECRET",
+      ok: true,
+      severity: "ok",
+      detail: "GitHub OAuth App not configured (optional)",
     };
   }
   if (!smoke) {
@@ -363,6 +374,102 @@ export async function probeGitHubCreds(
       severity: "warn",
       detail: `GitHub smoke failed: ${(e as Error).message}`,
       hint: "Network unreachable or GitHub down — creds may still be valid",
+    };
+  }
+}
+
+/**
+ * Probe 3b: Google OAuth credentials. Mirrors probeGitHubCreds — both-absent
+ * is a legitimate (non-Google) deployment, half-config is a warning, and a
+ * configured pair is smoke-tested against Google's token endpoint with a fake
+ * code: a valid client returns `invalid_grant` (code is bad, creds are fine),
+ * a bad client returns `invalid_client`.
+ */
+export async function probeGoogleCreds(
+  clientId: string | undefined,
+  clientSecret: string | undefined,
+  fetchImpl: FetchLike = fetch,
+  smoke: boolean = true,
+): Promise<CheckResult> {
+  if (!clientId || !clientSecret) {
+    if (clientId || clientSecret) {
+      return {
+        name: "phase2.google_creds",
+        ok: false,
+        severity: "warn",
+        detail: "COORDINATOR_GOOGLE_CLIENT_ID/SECRET half-configured (set both or neither)",
+        hint: "Set both COORDINATOR_GOOGLE_CLIENT_ID and COORDINATOR_GOOGLE_CLIENT_SECRET, or unset both",
+      };
+    }
+    return {
+      name: "phase2.google_creds",
+      ok: true,
+      severity: "ok",
+      detail: "Google OAuth not configured (optional)",
+    };
+  }
+  if (!smoke) {
+    return {
+      name: "phase2.google_creds",
+      ok: true,
+      severity: "ok",
+      detail: "credentials present (smoke skipped)",
+    };
+  }
+  try {
+    const body = new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      code: "doctor-fake-code-for-smoke-test",
+      grant_type: "authorization_code",
+      redirect_uri: "http://localhost",
+    });
+    const res = await fetchImpl("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: body.toString(),
+    });
+    const text = await res.text();
+    let parsed: { error?: string } = {};
+    try {
+      parsed = JSON.parse(text) as { error?: string };
+    } catch {
+      /* non-JSON body — leave parsed empty, handled below */
+    }
+    if (parsed.error === "invalid_grant") {
+      return {
+        name: "phase2.google_creds",
+        ok: true,
+        severity: "ok",
+        detail: "credentials accepted by Google (smoke: invalid_grant as expected)",
+      };
+    }
+    if (parsed.error === "invalid_client") {
+      return {
+        name: "phase2.google_creds",
+        ok: false,
+        severity: "warn",
+        detail: "Google rejected client credentials (invalid_client)",
+        hint: "CLIENT_ID/SECRET pair is wrong — re-check the GCP OAuth client",
+      };
+    }
+    return {
+      name: "phase2.google_creds",
+      ok: false,
+      severity: "warn",
+      detail: `unexpected Google response: ${parsed.error ?? text.slice(0, 80)}`,
+      hint: "Inconclusive smoke — check the GCP OAuth client manually",
+    };
+  } catch (e) {
+    return {
+      name: "phase2.google_creds",
+      ok: false,
+      severity: "warn",
+      detail: `Google smoke failed: ${(e as Error).message}`,
+      hint: "Network unreachable or Google down — creds may still be valid",
     };
   }
 }
@@ -692,6 +799,8 @@ export interface Phase2Env {
   publicUrl?: string;
   githubClientId?: string;
   githubClientSecret?: string;
+  googleClientId?: string;
+  googleClientSecret?: string;
   jwtSecret?: string;
   dbPath: string;
 }
@@ -704,6 +813,7 @@ export async function runPhase2Probes(env: Phase2Env): Promise<CheckResult[]> {
     probePublicUrl(env.publicUrl),
     probeDiscoveryDoc(env.publicUrl),
     probeGitHubCreds(env.githubClientId, env.githubClientSecret),
+    probeGoogleCreds(env.googleClientId, env.googleClientSecret),
     probeSqlite(env.dbPath),
     probeJwtSecretEntropy(env.jwtSecret),
     probeAuditQueueDepth(env.publicUrl),
@@ -870,6 +980,8 @@ export function createDoctorCommand(): Command {
           publicUrl: process.env.COORDINATOR_PUBLIC_URL,
           githubClientId: process.env.COORDINATOR_GITHUB_CLIENT_ID,
           githubClientSecret: process.env.COORDINATOR_GITHUB_CLIENT_SECRET,
+          googleClientId: process.env.COORDINATOR_GOOGLE_CLIENT_ID,
+          googleClientSecret: process.env.COORDINATOR_GOOGLE_CLIENT_SECRET,
           jwtSecret: process.env.COORDINATOR_JWT_SECRET,
           dbPath,
         });

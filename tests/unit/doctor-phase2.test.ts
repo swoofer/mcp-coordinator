@@ -5,6 +5,7 @@ import {
   probePublicUrl,
   probeDiscoveryDoc,
   probeGitHubCreds,
+  probeGoogleCreds,
   probeSqlite,
   probeJwtSecretEntropy,
   probeAuditQueueDepth,
@@ -166,9 +167,16 @@ describe("probeDiscoveryDoc", () => {
 // ----------------------------------------------------------------------------
 
 describe("probeGitHubCreds", () => {
-  it("returns fail when creds missing", async () => {
+  it("returns ok (not configured) when both creds missing — GitHub is optional", async () => {
     const r = await probeGitHubCreds(undefined, undefined, throwingFetch());
-    expect(r.severity).toBe("fail");
+    expect(r.severity).toBe("ok");
+    expect(r.detail).toMatch(/not configured/i);
+  });
+
+  it("returns warn on half-config (only one of the pair set)", async () => {
+    const r = await probeGitHubCreds("id", undefined, throwingFetch());
+    expect(r.severity).toBe("warn");
+    expect(r.detail).toMatch(/half-configured/i);
   });
 
   it("returns ok when GitHub responds bad_verification_code", async () => {
@@ -191,6 +199,47 @@ describe("probeGitHubCreds", () => {
 
   it("skips smoke when smoke=false", async () => {
     const r = await probeGitHubCreds("id", "secret", throwingFetch(), false);
+    expect(r.severity).toBe("ok");
+  });
+});
+
+// ----------------------------------------------------------------------------
+// probeGoogleCreds
+// ----------------------------------------------------------------------------
+
+describe("probeGoogleCreds", () => {
+  it("returns ok (not configured) when both creds missing — Google is optional", async () => {
+    const r = await probeGoogleCreds(undefined, undefined, throwingFetch());
+    expect(r.severity).toBe("ok");
+    expect(r.detail).toMatch(/not configured/i);
+  });
+
+  it("returns warn on half-config (only one of the pair set)", async () => {
+    const r = await probeGoogleCreds(undefined, "secret", throwingFetch());
+    expect(r.severity).toBe("warn");
+    expect(r.detail).toMatch(/half-configured/i);
+  });
+
+  it("returns ok when Google responds invalid_grant (creds valid, code bad)", async () => {
+    const f = stubFetch(() => ({
+      status: 400,
+      body: JSON.stringify({ error: "invalid_grant" }),
+    }));
+    const r = await probeGoogleCreds("id", "secret", f);
+    expect(r.severity).toBe("ok");
+  });
+
+  it("returns warn when Google responds invalid_client", async () => {
+    const f = stubFetch(() => ({
+      status: 401,
+      body: JSON.stringify({ error: "invalid_client" }),
+    }));
+    const r = await probeGoogleCreds("id", "secret", f);
+    expect(r.severity).toBe("warn");
+  });
+
+  it("skips smoke when smoke=false", async () => {
+    const r = await probeGoogleCreds("id", "secret", throwingFetch(), false);
     expect(r.severity).toBe("ok");
   });
 });
