@@ -123,9 +123,7 @@ export function bootPhase2(opts: Phase2BootOptions, deps?: BootPhase2Deps): Phas
   // COORDINATOR_GITHUB_ORG is the OAuth-App membership allowlist. Required
   // iff the GitHub OAuth App is configured (without it, GitHub sign-in
   // matches no org and every GitHub login is denied). Ignored otherwise.
-  const githubOrg = githubConfigured
-    ? readRequiredEnv(env, "COORDINATOR_GITHUB_ORG")
-    : undefined;
+  const githubOrg = githubConfigured ? readRequiredEnv(env, "COORDINATOR_GITHUB_ORG") : undefined;
 
   logger.debug({ public_url: publicUrl }, "bootPhase2: env resolved");
 
