@@ -1,0 +1,16 @@
+{
+  "name": "coordinator-slack-webhook",
+  "version": "1.0.0",
+  "description": "Forward mcp-coordinator consultation events to a Slack Incoming Webhook.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node bridge.mjs"
+  },
+  "dependencies": {
+    "mqtt": "^5.10.1"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

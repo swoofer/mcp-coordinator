@@ -1,0 +1,93 @@
+# fly.toml — mcp-coordinator on Fly.io with a persistent volume
+# ---------------------------------------------------------------------------
+# Runs the published image `ghcr.io/swoofer/mcp-coordinator` unchanged. Fly
+# terminates TLS at its edge and forwards plain HTTP to the container's :3100.
+# SQLite (coordinator.db) lives on a Fly volume mounted at /data, so it
+# survives `fly deploy`, machine restarts, and image upgrades.
+#
+# Copy this file, then edit `app` and `primary_region`. See README.md for the
+# create-volume / set-secrets / deploy sequence — this file alone is not
+# enough because the volume and secrets are provisioned out-of-band.
+# ---------------------------------------------------------------------------
+
+# Change to your app name (must be globally unique on Fly).
+app = "mcp-coordinator"
+
+# Pick a region near your agents. `fly platform regions` lists them.
+primary_region = "iad"
+
+# Use the prebuilt multi-arch image from GHCR instead of building locally.
+# Pinned to an exact version for reproducible deploys — bump when you upgrade.
+# `:0.13` tracks the 0.13.x series; avoid `:latest` in production.
+[build]
+  image = "ghcr.io/swoofer/mcp-coordinator:0.13.0"
+
+# Persistent volume. The mount source must match the volume you create with
+# `fly volumes create coordinator_data` (see README). The image declares
+# VOLUME /data and pins COORDINATOR_DATA_DIR=/data/data, so coordinator.db,
+# the JWKS rotation state, and registration files all land on this volume.
+# A Fly volume is pinned to one machine in one region — keep a single machine
+# (min_machines_running below) so the DB always has its disk.
+[mounts]
+  source = "coordinator_data"
+  destination = "/data"
+
+# Non-secret configuration only. Secrets (JWT secret, GitHub client secret,
+# encryption key) go through `fly secrets set` — never put them here, this
+# file is committed. See README.
+#
+# COORDINATOR_DATA_DIR / NODE_ENV / PORT are already baked into the image's
+# ENV; they are repeated here as documentation and to keep internal_port,
+# below, honest. Edit COORDINATOR_PUBLIC_URL to your real *.fly.dev hostname
+# (or custom domain) — the coordinator rejects http:// on a non-localhost
+# origin and issues Secure cookies against this origin.
+[env]
+  COORDINATOR_DATA_DIR = "/data/data"
+  NODE_ENV = "production"
+  PORT = "3100"
+  COORDINATOR_PUBLIC_URL = "https://mcp-coordinator.fly.dev"
+  COORDINATOR_OAUTH_ENABLED = "true"
+  # GitHub OAuth *client ID* is not a secret; the *client secret* is (secrets).
+  COORDINATOR_GITHUB_CLIENT_ID = ""
+  COORDINATOR_GITHUB_ORG = ""
+
+# HTTP service — the only port Fly exposes to the internet.
+#   - internal_port 3100 matches the image's PORT / EXPOSE 3100 / HEALTHCHECK.
+#   - force_https makes Fly's edge redirect http -> https; TLS is terminated
+#     at the edge and plain HTTP is forwarded to the container.
+#   - auto_stop_machines is off and one machine is always kept running: a
+#     volume-backed SQLite coordinator should not scale to zero (the volume
+#     binds it to a single machine anyway).
+#
+# The MCP HTTP transport, REST API, dashboard, AND the MQTT-over-WebSocket
+# bridge (path /mqtt) all ride this one HTTPS service. Agents that would use
+# MQTT connect over wss://<app>.fly.dev/mqtt.
+[http_service]
+  internal_port = 3100
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  # Health check hits GET /health on :3100 — the same endpoint the image's
+  # Docker HEALTHCHECK probes. Returns 200 once DB migration + boot finish,
+  # 503 (with Retry-After) before that.
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "get"
+    path = "/health"
+
+# NOTE on MQTT-over-TCP (1883): the embedded broker binds to 127.0.0.1 inside
+# the container (see src/mqtt-broker.ts), so it is deliberately NOT published
+# as a Fly service — there is no [[services]] block for 1883. Remote agents
+# reach the broker over the WebSocket path (wss://<app>.fly.dev/mqtt) carried
+# by the HTTP service above, which gets Fly's TLS for free. Plain-TCP MQTT is
+# reachable only from inside the machine (e.g. a co-located process).
+
+[[vm]]
+  # Free-tier-friendly sizing. 256MB is enough for a small coordinator; bump
+  # to 512MB if you see OOMs under load. cpu_kind "shared" keeps it cheap.
+  size = "shared-cpu-1x"
+  memory = "256mb"

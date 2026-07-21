@@ -1,0 +1,105 @@
+# mcp-coordinator — systemd service unit
+#
+# Runs the coordinator as a long-lived, non-root service that logs to
+# journald and restarts on failure. Install to
+# /etc/systemd/system/mcp-coordinator.service — see README.md in this dir.
+#
+# IMPORTANT: do NOT pass --daemon here. Under systemd the process must stay
+# in the foreground (Type=simple); --daemon forks/backgrounds and detaches,
+# which makes systemd think the service exited. Foreground + stdout/stderr is
+# exactly what journald wants.
+
+[Unit]
+Description=mcp-coordinator — multi-agent coordination daemon (MCP + REST + MQTT)
+Documentation=https://github.com/swoofer/mcp-coordinator
+# Start after the network stack is up. Use network-online.target instead if
+# you bind to a specific non-loopback address that may not exist at boot.
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+
+# --- Identity -------------------------------------------------------------
+# Dedicated unprivileged service account. Create it once (see README):
+#   sudo useradd --system --home /var/lib/mcp-coordinator \
+#                --shell /usr/sbin/nologin mcp-coordinator
+User=mcp-coordinator
+Group=mcp-coordinator
+
+# --- Runtime config -------------------------------------------------------
+# COORDINATOR_* variables (PORT, COORDINATOR_DATA_DIR, auth/OAuth secrets…)
+# live here so credentials stay out of the unit file. See env.example.
+EnvironmentFile=/etc/mcp-coordinator/env
+
+# Persistent state (SQLite DB, run config, registration files). This should
+# match COORDINATOR_DATA_DIR in the EnvironmentFile.
+WorkingDirectory=/var/lib/mcp-coordinator
+
+# --- Command --------------------------------------------------------------
+# ExecStart must be an ABSOLUTE path — systemd does not search $PATH.
+# Global npm install: find the real path with `command -v mcp-coordinator`
+# (commonly /usr/bin or /usr/local/bin) and adjust the line below to match.
+ExecStart=/usr/bin/mcp-coordinator server start
+#
+# Alternative — running from a source/dist checkout instead of a global bin:
+#   ExecStart=/usr/bin/node /opt/mcp-coordinator/dist/cli/index.js server start
+
+# Graceful shutdown: the server traps SIGTERM and stops the HTTP + MQTT
+# listeners cleanly, so the default KillSignal=SIGTERM is what we want.
+TimeoutStopSec=30
+
+# --- Restart policy -------------------------------------------------------
+Restart=on-failure
+RestartSec=5
+# Give up if it crash-loops: 5 restarts within 60s → unit enters failed state
+# instead of hammering the box. Tune to taste.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+# --- Logging --------------------------------------------------------------
+# Server logs to stdout/stderr; journald captures both.
+#   journalctl -u mcp-coordinator -f
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mcp-coordinator
+
+# --- Hardening ------------------------------------------------------------
+# Reduce blast radius. All of these are safe for a pure-Node service whose
+# only writable state is its data directory.
+NoNewPrivileges=true
+# Read-only /usr, /boot, /etc; strict also makes the rest of the FS read-only
+# except paths explicitly granted below.
+ProtectSystem=strict
+ProtectHome=true
+# Grant a private, persistent writable dir owned by the service user.
+# Creates/chowns /var/lib/mcp-coordinator automatically (mode 0750).
+StateDirectory=mcp-coordinator
+StateDirectoryMode=0750
+# Private /tmp, hidden /home, no access to other users' processes.
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=false
+# Node needs AF_INET/AF_INET6 (HTTP + MQTT) and AF_UNIX. Nothing else.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# Drop every capability — the service binds ports 3100/1883, both >1024, so
+# it never needs CAP_NET_BIND_SERVICE.
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,90 @@
+name: coordinator-bridge
+
+# Bridge mcp-coordinator consultation events to a webhook (Slack / generic).
+#
+# IMPORTANT — GitHub Actions is not a daemon. A job cannot hold an MQTT
+# connection open indefinitely, so this is a BOUNDED DRAIN, not a live bridge:
+# each run connects, subscribes, forwards everything it sees for RUN_SECONDS,
+# then exits. Schedule it to poll periodically (below), or trigger it manually.
+#
+# QoS-1 retained events (consultations/new, .../status) are re-delivered on
+# every connect, so scheduled runs still catch the latest open/resolved state
+# even between polls. Transient events (messages, claimed, completed, broadcast)
+# are only seen if they happen to fire inside a drain window — that is the
+# fundamental limitation of polling. For continuous, gap-free bridging run a
+# long-lived process instead: see ../systemd and ../fly-io.
+
+on:
+  # Poll every 15 minutes. GitHub may delay scheduled runs under load, and the
+  # shortest supported interval is 5 minutes. Tune to taste (and to your event
+  # volume) — a shorter drain window that runs more often is usually better than
+  # a long one.
+  schedule:
+    - cron: "*/15 * * * *"
+  # Manual trigger, with an adjustable drain window.
+  workflow_dispatch:
+    inputs:
+      run_seconds:
+        description: "How long to drain events before exiting"
+        required: false
+        default: "55"
+  # Reusable: another workflow can `uses:` this file. See README "Reuse".
+  workflow_call:
+    inputs:
+      run_seconds:
+        required: false
+        type: string
+        default: "55"
+      webhook_type:
+        description: "slack or generic"
+        required: false
+        type: string
+        default: "slack"
+    secrets:
+      COORDINATOR_URL:
+        required: true
+      WEBHOOK_URL:
+        required: true
+      COORDINATOR_TOKEN:
+        required: false
+
+# Never let two drains overlap — they would double-forward the retained events.
+concurrency:
+  group: coordinator-bridge
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  bridge:
+    runs-on: ubuntu-latest
+    # Hard ceiling so a hung connection can't burn Actions minutes. Keep this
+    # comfortably above RUN_SECONDS.
+    timeout-minutes: 5
+    defaults:
+      run:
+        # Adjust if you copy bridge.mjs/package.json elsewhere in your repo.
+        working-directory: examples/github-actions-mqtt-bridge
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install deps
+        run: npm install --no-audit --no-fund
+
+      - name: Drain coordinator events and forward
+        env:
+          # Point at the coordinator behind a TLS reverse proxy (wss://host/mqtt).
+          # The mqtt://127.0.0.1:1883 TCP listener is NOT reachable from a runner.
+          COORDINATOR_URL: ${{ secrets.COORDINATOR_URL }}
+          # Optional Phase-1 JWT; only needed if COORDINATOR_AUTH_ENABLED=true.
+          COORDINATOR_TOKEN: ${{ secrets.COORDINATOR_TOKEN }}
+          # Slack incoming webhook, or any endpoint that accepts a JSON POST.
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+          WEBHOOK_TYPE: ${{ inputs.webhook_type || vars.WEBHOOK_TYPE || 'slack' }}
+          RUN_SECONDS: ${{ inputs.run_seconds || '55' }}
+        run: node bridge.mjs
