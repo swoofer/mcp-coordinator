@@ -11,7 +11,7 @@ One daemon. Every Claude Code / Cursor / Cline / Aider session on the same repo 
 [![Tests](https://github.com/swoofer/mcp-coordinator/actions/workflows/test.yml/badge.svg)](https://github.com/swoofer/mcp-coordinator/actions)
 [![E2E](https://github.com/swoofer/mcp-coordinator/actions/workflows/e2e.yml/badge.svg)](https://github.com/swoofer/mcp-coordinator/actions/workflows/e2e.yml)
 
-[Getting started](#getting-started) · [Problem](#the-problem) · [How It Works](#how-it-works) · [MCP Tools](#mcp-tools) · [CLI](#cli) · [Auth](#authentication) · [Dashboard](#dashboard) · [Config](#configuration) · [Usage guide →](./docs/usage.md)
+[Getting started](#getting-started) · [Problem](#the-problem) · [How It Works](#how-it-works) · [MCP Tools](#mcp-tools) · [CLI](#cli) · [Auth](#authentication) · [Dashboard](#dashboard) · [Config](#configuration) · [FAQ →](./docs/faq.md) · [Usage guide →](./docs/usage.md)
 
 </div>
 
