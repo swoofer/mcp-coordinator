@@ -1,0 +1,16 @@
+{
+  "name": "mcp-coordinator-github-actions-mqtt-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Bounded MQTT-over-WSS -> webhook bridge for mcp-coordinator, runnable from GitHub Actions",
+  "type": "module",
+  "scripts": {
+    "start": "node bridge.mjs"
+  },
+  "dependencies": {
+    "mqtt": "^5.10.1"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "mcp-coordinator-node-mqtt-subscriber",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Node.js mqtt.js subscriber for mcp-coordinator MQTT events",
+  "type": "module",
+  "scripts": {
+    "start": "node subscriber.mjs"
+  },
+  "dependencies": {
+    "mqtt": "^5.10.1"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

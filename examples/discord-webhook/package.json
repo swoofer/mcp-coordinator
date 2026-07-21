@@ -1,0 +1,16 @@
+{
+  "name": "coordinator-discord-webhook",
+  "version": "1.0.0",
+  "description": "Forward mcp-coordinator consultation events to a Discord webhook.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node bridge.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "mqtt": "^5.10.1"
+  }
+}

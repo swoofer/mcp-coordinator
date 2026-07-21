@@ -1,0 +1,105 @@
+version: "3.9"
+
+# Traefik reverse proxy in front of mcp-coordinator.
+#
+# Traefik terminates TLS (Let's Encrypt), routes ${COORDINATOR_PUBLIC_DOMAIN}
+# to the coordinator on :3100, transparently upgrades the /mqtt WebSocket, and
+# streams the /api/events SSE feed. The coordinator port 3100 is NEVER published
+# to the host — it is reachable only over the internal compose network, so
+# every request must pass through Traefik and its TLS.
+
+services:
+  traefik:
+    image: traefik:v3.3
+    command:
+      # --- Entrypoints -------------------------------------------------------
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      # Redirect all plaintext HTTP to HTTPS (mirrors nginx's 80->443 block).
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      # SSE + WebSocket are long-lived. Raise the keep-alive idle timeout on the
+      # HTTPS entrypoint so Traefik does not reap a quiet /api/events or /mqtt
+      # connection between keepalives (default is 180s). This is the Traefik
+      # equivalent of nginx's `proxy_read_timeout 1d`.
+      - "--entrypoints.websecure.transport.respondingTimeouts.idleTimeout=86400s"
+
+      # --- Providers ---------------------------------------------------------
+      # Read routing from container labels on the same Docker network. We do NOT
+      # expose containers by default, so only services with
+      # `traefik.enable=true` are routed.
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=internal"
+
+      # --- TLS via Let's Encrypt (ACME) -------------------------------------
+      # HTTP-01 challenge over the `web` entrypoint (port 80 must be reachable
+      # from the public internet). For wildcard certs or closed port 80, switch
+      # to a DNS-01 challenge — see the README.
+      - "--certificatesresolvers.le.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.le.acme.httpchallenge=true"
+      - "--certificatesresolvers.le.acme.httpchallenge.entrypoint=web"
+      # Uncomment while testing to avoid Let's Encrypt rate limits, then remove
+      # the acme.json volume contents once you go to production:
+      # - "--certificatesresolvers.le.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory"
+
+      # --- Ops ---------------------------------------------------------------
+      - "--accesslog=true"
+      - "--log.level=INFO"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Read-only socket so Traefik can watch container labels. On hardened
+      # hosts, front this with a docker-socket-proxy instead of a raw mount.
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "letsencrypt:/letsencrypt"
+    networks: [internal]
+    restart: unless-stopped
+
+  coordinator:
+    # Pinned for reproducibility — bump when you upgrade. See the docker-compose
+    # example for the :0.13 / :latest trade-offs.
+    image: ghcr.io/swoofer/mcp-coordinator:0.13.0
+    env_file: .env
+    volumes:
+      - coordinator-data:/data
+    networks: [internal]
+    restart: unless-stopped
+    # NO `ports:` mapping — 3100 stays private to the compose network. All
+    # public traffic arrives through Traefik on 443.
+    labels:
+      - "traefik.enable=true"
+
+      # --- Router: the domain -> this service, over HTTPS -------------------
+      # One router covers everything: OAuth + REST + MCP HTTP, the /mqtt
+      # WebSocket, and the /api/events SSE stream all live on the same origin,
+      # so a single Host() rule routes them together (Traefik auto-detects and
+      # upgrades WebSocket connections — no extra rule needed for /mqtt).
+      - "traefik.http.routers.coordinator.rule=Host(`${COORDINATOR_PUBLIC_DOMAIN}`)"
+      - "traefik.http.routers.coordinator.entrypoints=websecure"
+      - "traefik.http.routers.coordinator.tls=true"
+      - "traefik.http.routers.coordinator.tls.certresolver=le"
+      - "traefik.http.routers.coordinator.service=coordinator"
+
+      # --- Service: forward to the coordinator on 3100 ----------------------
+      - "traefik.http.services.coordinator.loadbalancer.server.port=3100"
+      # CRITICAL for SSE (/api/events, and MCP HTTP streaming). flushInterval
+      # controls how often Traefik flushes buffered response bytes downstream.
+      # Traefik already flushes immediately for text/event-stream, but pinning a
+      # tiny interval guarantees no batching if a response's content-type is not
+      # detected. This is the Traefik analogue of nginx `proxy_buffering off`.
+      - "traefik.http.services.coordinator.loadbalancer.responseForwarding.flushInterval=1ms"
+
+      # Container-level health, picked up by `docker compose ps`. The image's
+      # own HEALTHCHECK already probes :3100/healthz; this is here for clarity.
+      # (Traefik routes regardless of this — it does not gate on the healthcheck.)
+
+volumes:
+  coordinator-data:
+  letsencrypt:
+
+networks:
+  internal:
+    driver: bridge
