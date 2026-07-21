@@ -43,6 +43,14 @@ This is a task-focused quick start. For deeper reference see:
 
 ## 2. Configure the environment
 
+> **Shortcut:** `mcp-coordinator init phase2` scaffolds this `.env` interactively — it now offers Google (answer *no* to GitHub, *yes* to Google) and prompts for the Workspace domain. Non-interactive:
+> ```bash
+> mcp-coordinator init phase2 --non-interactive \
+>   --public-url https://coordinator.example.com \
+>   --google-client-id <id> --google-client-secret <secret> \
+>   --google-workspace-domain example.com
+> ```
+
 Minimal Google-only Phase 2 config (secrets via your secret manager, never committed):
 
 ```bash

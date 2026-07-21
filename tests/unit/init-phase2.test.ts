@@ -231,10 +231,10 @@ describe("T41 init phase2 wizard — PUBLIC_URL validation", () => {
     });
     await runCapturingExit(io, {});
     expect(io.writes).toHaveLength(1);
-    // Confirm queue should not have been consumed for the URL flow.
-    // (It may have been called for the overwrite prompt, but in this test
-    // no existing file is set, so no overwrite prompt fires either.)
-    expect(io.confirmCalls).toHaveLength(0);
+    // localhost must NOT trigger the insecure-cookies confirmation. (Provider
+    // toggles "Configure GitHub/Google sign-in?" do fire, but the insecure
+    // "Proceed anyway?" prompt must not.)
+    expect(io.confirmCalls.some((q) => q.includes("Proceed anyway"))).toBe(false);
   });
 
   it("case 4b: http://127.0.0.1 is accepted without insecure-cookies confirmation", async () => {
@@ -243,7 +243,7 @@ describe("T41 init phase2 wizard — PUBLIC_URL validation", () => {
     });
     await runCapturingExit(io, {});
     expect(io.writes).toHaveLength(1);
-    expect(io.confirmCalls).toHaveLength(0);
+    expect(io.confirmCalls.some((q) => q.includes("Proceed anyway"))).toBe(false);
   });
 
   it("case 4c: https:// non-localhost is accepted without confirm", async () => {
@@ -252,7 +252,7 @@ describe("T41 init phase2 wizard — PUBLIC_URL validation", () => {
     });
     await runCapturingExit(io, {});
     expect(io.writes).toHaveLength(1);
-    expect(io.confirmCalls).toHaveLength(0);
+    expect(io.confirmCalls.some((q) => q.includes("Proceed anyway"))).toBe(false);
   });
 
   it("case 4d: http:// non-localhost with confirm=yes proceeds and writes .env", async () => {
@@ -360,6 +360,112 @@ describe("T41 init phase2 wizard — non-interactive mode", () => {
     expect(env.COORDINATOR_GITHUB_CLIENT_SECRET).toBe("sek");
     expect(env.COORDINATOR_GITHUB_ORG).toBe("acme");
     expect(env.COORDINATOR_JWT_SECRET).toBe(FAKE_JWT_43);
+  });
+});
+
+describe("init phase2 wizard — provider selection (GitHub optional / Google)", () => {
+  it("interactive Google-only: decline GitHub, configure Google + workspace domain", async () => {
+    const io = makeIO({
+      confirmAnswers: [false, true], // GitHub? no, Google? yes
+      promptAnswers: [
+        "http://localhost:3100", // PUBLIC_URL
+        "goog-cid.apps.googleusercontent.com", // GOOGLE_CLIENT_ID
+        "goog-secret", // GOOGLE_CLIENT_SECRET
+        "example.com", // GOOGLE_WORKSPACE_DOMAIN
+      ],
+    });
+    const result = await runCapturingExit(io, {});
+    expect(result.exitCode).toBeNull();
+    expect(io.writes).toHaveLength(1);
+    const env = parseEnv(io.writes[0].contents);
+    expect(env.COORDINATOR_GOOGLE_CLIENT_ID).toBe("goog-cid.apps.googleusercontent.com");
+    expect(env.COORDINATOR_GOOGLE_CLIENT_SECRET).toBe("goog-secret");
+    expect(env.COORDINATOR_GOOGLE_WORKSPACE_DOMAIN).toBe("example.com");
+    expect(env.COORDINATOR_GITHUB_CLIENT_ID).toBeUndefined();
+    expect(env.COORDINATOR_GITHUB_ORG).toBeUndefined();
+  });
+
+  it("interactive Google-only: blank workspace domain is skipped, not written", async () => {
+    const io = makeIO({
+      confirmAnswers: [false, true],
+      promptAnswers: ["http://localhost:3100", "goog-id", "goog-secret", ""],
+    });
+    await runCapturingExit(io, {});
+    const env = parseEnv(io.writes[0].contents);
+    expect(env.COORDINATOR_GOOGLE_CLIENT_ID).toBe("goog-id");
+    expect(env.COORDINATOR_GOOGLE_WORKSPACE_DOMAIN).toBeUndefined();
+  });
+
+  it("interactive both: GitHub + Google configured together", async () => {
+    const io = makeIO({
+      confirmAnswers: [true, true], // GitHub yes, Google yes
+      promptAnswers: [
+        "http://localhost:3100",
+        "gh-id",
+        "gh-secret",
+        "acme", // github org
+        "goog-id",
+        "goog-secret",
+        "", // no workspace domain
+      ],
+    });
+    await runCapturingExit(io, {});
+    const env = parseEnv(io.writes[0].contents);
+    expect(env.COORDINATOR_GITHUB_CLIENT_ID).toBe("gh-id");
+    expect(env.COORDINATOR_GITHUB_ORG).toBe("acme");
+    expect(env.COORDINATOR_GOOGLE_CLIENT_ID).toBe("goog-id");
+  });
+
+  it("interactive neither: declining both providers exits 1 without writing", async () => {
+    const io = makeIO({
+      confirmAnswers: [false, false],
+      promptAnswers: ["http://localhost:3100"],
+    });
+    const result = await runCapturingExit(io, {});
+    expect(result.exitCode).toBe(1);
+    expect(io.writes).toHaveLength(0);
+    expect(io.errors.some((e) => e.includes("At least one IdP provider"))).toBe(true);
+  });
+
+  it("non-interactive Google-only: writes Google vars, no GitHub", async () => {
+    const io = makeIO({ jwtSecret: FAKE_JWT_43 });
+    const result = await runCapturingExit(io, {
+      nonInteractive: true,
+      publicUrl: "https://coord.example.com",
+      googleClientId: "goog-id",
+      googleClientSecret: "goog-secret",
+      googleWorkspaceDomain: "example.com",
+      envFile: ".env.googtest",
+    });
+    expect(result.exitCode).toBeNull();
+    expect(io.writes).toHaveLength(1);
+    const env = parseEnv(io.writes[0].contents);
+    expect(env.COORDINATOR_GOOGLE_CLIENT_ID).toBe("goog-id");
+    expect(env.COORDINATOR_GOOGLE_WORKSPACE_DOMAIN).toBe("example.com");
+    expect(env.COORDINATOR_GITHUB_CLIENT_ID).toBeUndefined();
+  });
+
+  it("non-interactive: GitHub half-config (id without secret) exits 1", async () => {
+    const io = makeIO();
+    const result = await runCapturingExit(io, {
+      nonInteractive: true,
+      publicUrl: "http://localhost:3100",
+      githubClientId: "id-only",
+      githubOrg: "acme",
+    });
+    expect(result.exitCode).toBe(1);
+    expect(io.errors.join("\n")).toContain("must be set together");
+  });
+
+  it("non-interactive: Google half-config (secret without id) exits 1", async () => {
+    const io = makeIO();
+    const result = await runCapturingExit(io, {
+      nonInteractive: true,
+      publicUrl: "http://localhost:3100",
+      googleClientSecret: "secret-only",
+    });
+    expect(result.exitCode).toBe(1);
+    expect(io.errors.join("\n")).toContain("must be set together");
   });
 });
 
