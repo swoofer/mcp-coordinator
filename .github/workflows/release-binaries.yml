@@ -51,7 +51,11 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
         with:
-          ref: ${{ inputs.tag || github.ref_name }}
+          # workflow_call/dispatch pass an explicit tag; for push:tags and
+          # pull_request, leave ref empty so checkout uses its default (the
+          # pushed tag, or the PR merge ref — `github.ref_name` would be the
+          # invalid `NN/merge` on pull_request and break the checkout).
+          ref: ${{ inputs.tag || '' }}
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6  # v2
 
