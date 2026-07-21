@@ -5,7 +5,7 @@ import { randomBytes } from "node:crypto";
 import readline from "node:readline";
 import Database from "better-sqlite3";
 import { bootPhase2 } from "../src/boot.js";
-import { ensureConfigDir, loadConfig, saveConfig } from "./config.js";
+import { ensureConfigDir, getConfigDir, loadConfig, saveConfig } from "./config.js";
 
 const CLAUDE_MD_TEMPLATE = `## Coordination via mcp-coordinator
 
@@ -105,165 +105,213 @@ export function createInitCommand(): Command {
       "--write-claude-md <path>",
       "Write a sample CLAUDE.md (system instructions for your coordinator-aware agent) into <path>/CLAUDE.md (merges with existing — appends a clearly-marked section). <path> must be an existing directory.",
     )
-    .action((opts: { url?: string; writeMcpConfig?: string; writeClaudeMd?: string }) => {
-      const dir = ensureConfigDir();
-      console.log(`Config directory: ${dir}`);
+    .option(
+      "--print-only",
+      "Dry run: print what would be written (config.json, .mcp.json, CLAUDE.md) without creating or modifying any file.",
+      false,
+    )
+    .action(
+      (opts: {
+        url?: string;
+        writeMcpConfig?: string;
+        writeClaudeMd?: string;
+        printOnly?: boolean;
+      }) => {
+        const printOnly = opts.printOnly ?? false;
+        // print-only must not create the config dir; getConfigDir resolves the
+        // path without the mkdir side effect ensureConfigDir has.
+        const dir = printOnly ? getConfigDir() : ensureConfigDir();
+        console.log(
+          printOnly
+            ? `Config directory: ${dir} (print-only, nothing written)`
+            : `Config directory: ${dir}`,
+        );
 
-      // loadConfig() throws on a malformed existing config.json (see #108).
-      // For init that's a UX regression: init's whole job is to write a
-      // fresh config, so a corrupt existing file should be exactly what
-      // init recovers from -- not a blocker. We wrap with a try/catch
-      // here, warn on stderr, and fall back to the same defaults
-      // cli/config.ts uses internally. The throw in cli/config.ts is
-      // preserved (correct contract for server/start, encryption/migrate,
-      // etc. -- those callers should fail loud). See issue #109.
-      const DEFAULTS_FOR_INIT = {
-        server: { port: 3100, data_dir: join(dir, "data") },
-        defaults: { coordinator_url: "http://localhost:3100" },
-      };
-      const safeLoadConfig = (): ReturnType<typeof loadConfig> => {
-        try {
-          return loadConfig();
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          console.error(
-            `Warning: existing config.json is malformed and will be overwritten with defaults.\n  ${msg}`,
-          );
-          return DEFAULTS_FOR_INIT;
-        }
-      };
-
-      const configPath = join(dir, "config.json");
-      if (!existsSync(configPath)) {
-        // File doesn't exist -- loadConfig() returns defaults and doesn't
-        // throw, but use the safe wrapper defensively (race-safe).
-        saveConfig(safeLoadConfig());
-        console.log(`Wrote default config:    ${configPath}`);
-      } else {
-        // File exists -- if it parses, leave it untouched. If it's malformed,
-        // recover by overwriting with defaults (#109).
-        let parsed = false;
-        try {
-          loadConfig();
-          parsed = true;
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          console.error(
-            `Warning: existing config.json is malformed and will be overwritten with defaults.\n  ${msg}`,
-          );
-        }
-        if (parsed) {
-          console.log(`Config already exists:   ${configPath} (untouched)`);
-        } else {
-          saveConfig(DEFAULTS_FOR_INIT);
-          console.log(`Rewrote config.json with defaults: ${configPath}`);
-        }
-      }
-
-      const config = safeLoadConfig();
-      const url = opts.url ?? `http://localhost:${config.server.port}/mcp`;
-
-      const snippet = {
-        mcpServers: {
-          coordinator: {
-            type: "http",
-            url,
-          },
-        },
-      };
-
-      const validateDir = (p: string, label: string): string | null => {
-        const abs = resolve(p);
-        if (!existsSync(abs)) {
-          console.error(`Error: ${label} path ${abs} does not exist.`);
-          return null;
-        }
-        const st = statSync(abs);
-        if (!st.isDirectory()) {
-          console.error(`Error: ${label} path ${abs} is not a directory.`);
-          return null;
-        }
-        return abs;
-      };
-
-      let exitCode = 0;
-
-      if (opts.writeMcpConfig) {
-        const dirAbs = validateDir(opts.writeMcpConfig, "--write-mcp-config");
-        if (!dirAbs) {
-          exitCode = 1;
-        } else {
-          const target = resolve(dirAbs, ".mcp.json");
-          let merged: { mcpServers?: Record<string, unknown> } = snippet;
-          if (existsSync(target)) {
-            try {
-              const existing = JSON.parse(readFileSync(target, "utf-8")) as {
-                mcpServers?: Record<string, unknown>;
-              };
-              merged = {
-                ...existing,
-                mcpServers: {
-                  ...(existing.mcpServers ?? {}),
-                  coordinator: snippet.mcpServers.coordinator,
-                },
-              };
-            } catch {
-              console.warn(`Warning: ${target} is not valid JSON; overwriting`);
-            }
+        // loadConfig() throws on a malformed existing config.json (see #108).
+        // For init that's a UX regression: init's whole job is to write a
+        // fresh config, so a corrupt existing file should be exactly what
+        // init recovers from -- not a blocker. We wrap with a try/catch
+        // here, warn on stderr, and fall back to the same defaults
+        // cli/config.ts uses internally. The throw in cli/config.ts is
+        // preserved (correct contract for server/start, encryption/migrate,
+        // etc. -- those callers should fail loud). See issue #109.
+        const DEFAULTS_FOR_INIT = {
+          server: { port: 3100, data_dir: join(dir, "data") },
+          defaults: { coordinator_url: "http://localhost:3100" },
+        };
+        const safeLoadConfig = (): ReturnType<typeof loadConfig> => {
+          try {
+            return loadConfig();
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error(
+              `Warning: existing config.json is malformed and will be overwritten with defaults.\n  ${msg}`,
+            );
+            return DEFAULTS_FOR_INIT;
           }
-          writeFileSync(target, JSON.stringify(merged, null, 2) + "\n");
-          console.log(`Wrote MCP config:        ${target}`);
-        }
-      }
+        };
 
-      if (opts.writeClaudeMd) {
-        const dirAbs = validateDir(opts.writeClaudeMd, "--write-claude-md");
-        if (!dirAbs) {
-          exitCode = 1;
-        } else {
-          const target = resolve(dirAbs, "CLAUDE.md");
-          const SENTINEL = "<!-- mcp-coordinator:coordination-section -->";
-          const sectionBody = SENTINEL + "\n" + CLAUDE_MD_TEMPLATE + SENTINEL + "\n";
-          let final: string;
-          if (existsSync(target)) {
-            const existing = readFileSync(target, "utf-8");
-            if (existing.includes(SENTINEL)) {
-              const re = new RegExp(`${SENTINEL}[\\s\\S]*?${SENTINEL}\\n?`, "g");
-              final = existing.replace(re, sectionBody);
-              console.log(`Updated CLAUDE.md (replaced existing coordinator section): ${target}`);
-            } else {
-              const sep = existing.endsWith("\n") ? "\n" : "\n\n";
-              final = existing + sep + sectionBody;
-              console.log(`Appended coordinator section to CLAUDE.md: ${target}`);
-            }
+        const configPath = join(dir, "config.json");
+        if (!existsSync(configPath)) {
+          // File doesn't exist -- loadConfig() returns defaults and doesn't
+          // throw, but use the safe wrapper defensively (race-safe).
+          const cfg = safeLoadConfig();
+          if (printOnly) {
+            console.log(`[print-only] Would write default config: ${configPath}`);
+            console.log(JSON.stringify(cfg, null, 2));
           } else {
-            final = "# CLAUDE.md\n\n" + sectionBody;
-            console.log(`Wrote CLAUDE.md:         ${target}`);
+            saveConfig(cfg);
+            console.log(`Wrote default config:    ${configPath}`);
           }
-          writeFileSync(target, final);
+        } else {
+          // File exists -- if it parses, leave it untouched. If it's malformed,
+          // recover by overwriting with defaults (#109).
+          let parsed = false;
+          try {
+            loadConfig();
+            parsed = true;
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error(
+              `Warning: existing config.json is malformed and will be overwritten with defaults.\n  ${msg}`,
+            );
+          }
+          if (parsed) {
+            console.log(`Config already exists:   ${configPath} (untouched)`);
+          } else if (printOnly) {
+            console.log(
+              `[print-only] Would rewrite malformed config.json with defaults: ${configPath}`,
+            );
+            console.log(JSON.stringify(DEFAULTS_FOR_INIT, null, 2));
+          } else {
+            saveConfig(DEFAULTS_FOR_INIT);
+            console.log(`Rewrote config.json with defaults: ${configPath}`);
+          }
         }
-      }
 
-      if (!opts.writeMcpConfig && !opts.writeClaudeMd) {
+        const config = safeLoadConfig();
+        const url = opts.url ?? `http://localhost:${config.server.port}/mcp`;
+
+        const snippet = {
+          mcpServers: {
+            coordinator: {
+              type: "http",
+              url,
+            },
+          },
+        };
+
+        const validateDir = (p: string, label: string): string | null => {
+          const abs = resolve(p);
+          if (!existsSync(abs)) {
+            console.error(`Error: ${label} path ${abs} does not exist.`);
+            return null;
+          }
+          const st = statSync(abs);
+          if (!st.isDirectory()) {
+            console.error(`Error: ${label} path ${abs} is not a directory.`);
+            return null;
+          }
+          return abs;
+        };
+
+        let exitCode = 0;
+
+        if (opts.writeMcpConfig) {
+          const dirAbs = validateDir(opts.writeMcpConfig, "--write-mcp-config");
+          if (!dirAbs) {
+            exitCode = 1;
+          } else {
+            const target = resolve(dirAbs, ".mcp.json");
+            let merged: { mcpServers?: Record<string, unknown> } = snippet;
+            if (existsSync(target)) {
+              try {
+                const existing = JSON.parse(readFileSync(target, "utf-8")) as {
+                  mcpServers?: Record<string, unknown>;
+                };
+                merged = {
+                  ...existing,
+                  mcpServers: {
+                    ...(existing.mcpServers ?? {}),
+                    coordinator: snippet.mcpServers.coordinator,
+                  },
+                };
+              } catch {
+                console.warn(`Warning: ${target} is not valid JSON; overwriting`);
+              }
+            }
+            if (printOnly) {
+              console.log(`[print-only] Would write MCP config: ${target}`);
+              console.log(JSON.stringify(merged, null, 2));
+            } else {
+              writeFileSync(target, JSON.stringify(merged, null, 2) + "\n");
+              console.log(`Wrote MCP config:        ${target}`);
+            }
+          }
+        }
+
+        if (opts.writeClaudeMd) {
+          const dirAbs = validateDir(opts.writeClaudeMd, "--write-claude-md");
+          if (!dirAbs) {
+            exitCode = 1;
+          } else {
+            const target = resolve(dirAbs, "CLAUDE.md");
+            const SENTINEL = "<!-- mcp-coordinator:coordination-section -->";
+            const sectionBody = SENTINEL + "\n" + CLAUDE_MD_TEMPLATE + SENTINEL + "\n";
+            let final: string;
+            const prefix = printOnly ? "[print-only] Would update" : "";
+            if (existsSync(target)) {
+              const existing = readFileSync(target, "utf-8");
+              if (existing.includes(SENTINEL)) {
+                const re = new RegExp(`${SENTINEL}[\\s\\S]*?${SENTINEL}\\n?`, "g");
+                final = existing.replace(re, sectionBody);
+                console.log(
+                  printOnly
+                    ? `${prefix} CLAUDE.md (replace existing coordinator section): ${target}`
+                    : `Updated CLAUDE.md (replaced existing coordinator section): ${target}`,
+                );
+              } else {
+                const sep = existing.endsWith("\n") ? "\n" : "\n\n";
+                final = existing + sep + sectionBody;
+                console.log(
+                  printOnly
+                    ? `${prefix} CLAUDE.md (append coordinator section): ${target}`
+                    : `Appended coordinator section to CLAUDE.md: ${target}`,
+                );
+              }
+            } else {
+              final = "# CLAUDE.md\n\n" + sectionBody;
+              console.log(
+                printOnly
+                  ? `[print-only] Would write CLAUDE.md: ${target}`
+                  : `Wrote CLAUDE.md:         ${target}`,
+              );
+            }
+            if (!printOnly) writeFileSync(target, final);
+          }
+        }
+
+        if (!opts.writeMcpConfig && !opts.writeClaudeMd) {
+          console.log("");
+          console.log("Add this to your MCP client (e.g., ~/.claude/.mcp.json):");
+          console.log("");
+          console.log(JSON.stringify(snippet, null, 2));
+        }
+
         console.log("");
-        console.log("Add this to your MCP client (e.g., ~/.claude/.mcp.json):");
-        console.log("");
-        console.log(JSON.stringify(snippet, null, 2));
-      }
+        console.log("Next steps:");
+        console.log("  1. Start the coordinator:  mcp-coordinator server start --daemon");
+        console.log("  2. Open the dashboard:     mcp-coordinator dashboard");
+        console.log(
+          "  3. Connect any MCP client (Claude Code, Cursor, Cline, ...) using the snippet above",
+        );
+        console.log("  4. Health check:           mcp-coordinator doctor");
 
-      console.log("");
-      console.log("Next steps:");
-      console.log("  1. Start the coordinator:  mcp-coordinator server start --daemon");
-      console.log("  2. Open the dashboard:     mcp-coordinator dashboard");
-      console.log(
-        "  3. Connect any MCP client (Claude Code, Cursor, Cline, ...) using the snippet above",
-      );
-      console.log("  4. Health check:           mcp-coordinator doctor");
-
-      if (exitCode !== 0) {
-        process.exit(exitCode);
-      }
-    });
+        if (exitCode !== 0) {
+          process.exit(exitCode);
+        }
+      },
+    );
 
   cmd.addCommand(createInitPhase2Command());
   return cmd;
