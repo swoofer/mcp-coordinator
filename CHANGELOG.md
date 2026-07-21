@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.1](https://github.com/swoofer/mcp-coordinator/compare/v1.2.0...v1.2.1) (2026-07-21)
+
+
+### Bug Fixes
+
+* **binaries:** mark tree-sitter grammars external in bun --compile (closes [#210](https://github.com/swoofer/mcp-coordinator/issues/210)) ([#212](https://github.com/swoofer/mcp-coordinator/issues/212)) ([c7d1252](https://github.com/swoofer/mcp-coordinator/commit/c7d12522de58e415e07e91de2ae4c9be26d70183))
+* **docker:** install Corepack explicitly — Node 26 dropped the bundled one ([5c8b365](https://github.com/swoofer/mcp-coordinator/commit/5c8b3658a61d089696c0083a96f92f70fc57acc5))
+
 ## [1.2.0](https://github.com/swoofer/mcp-coordinator/compare/v1.1.0...v1.2.0) (2026-07-20)
 
 
