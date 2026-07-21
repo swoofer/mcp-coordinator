@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.4.0](https://github.com/swoofer/mcp-coordinator/compare/v1.3.0...v1.4.0) (2026-07-21)
+
+
+### Features
+
+* **cli:** --json output for service-token issue and list ([#97](https://github.com/swoofer/mcp-coordinator/issues/97)) ([1e410dd](https://github.com/swoofer/mcp-coordinator/commit/1e410ddecea9bd7ba555dbbce802ff8275fa9813))
+* **cli:** --print-only dry-run flag for init ([#70](https://github.com/swoofer/mcp-coordinator/issues/70)) ([a0fc025](https://github.com/swoofer/mcp-coordinator/commit/a0fc025866f30a51afa6a547e887ca20aa05132e))
+* **cli:** --since, --grep, --level filters for server logs ([#98](https://github.com/swoofer/mcp-coordinator/issues/98)) ([e2ad9fd](https://github.com/swoofer/mcp-coordinator/commit/e2ad9fd5e7fb2d992b4da6241c70991248c7b460))
+* **cli:** --timeout and --force flags on server stop ([#96](https://github.com/swoofer/mcp-coordinator/issues/96)) ([62d47fa](https://github.com/swoofer/mcp-coordinator/commit/62d47faddd7fbbfda59ace368af3ac992a4edf09))
+* **cli:** server restart subcommand ([#95](https://github.com/swoofer/mcp-coordinator/issues/95)) ([aaa2a7d](https://github.com/swoofer/mcp-coordinator/commit/aaa2a7dfe4ca08a012532b61ddba52454cc481a4))
+
+
+### Documentation
+
+* FAQ, troubleshooting guide, and MQTT topic reference ([#81](https://github.com/swoofer/mcp-coordinator/issues/81) [#82](https://github.com/swoofer/mcp-coordinator/issues/82) [#83](https://github.com/swoofer/mcp-coordinator/issues/83)) ([8683d76](https://github.com/swoofer/mcp-coordinator/commit/8683d76e54f82a68acb9441dc3eaaaab10dca248))
+
 ## [1.3.0](https://github.com/swoofer/mcp-coordinator/compare/v1.2.1...v1.3.0) (2026-07-21)
 
 
