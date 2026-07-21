@@ -511,7 +511,9 @@ async function collectProvidersInteractive(
   const useGoogle = await io.confirm("Configure Google sign-in?", { default: false });
   if (useGoogle) {
     io.print("");
-    io.print("Create an OAuth 2.0 Web client in Google Cloud Console → APIs & Services → Credentials");
+    io.print(
+      "Create an OAuth 2.0 Web client in Google Cloud Console → APIs & Services → Credentials",
+    );
     io.print(`  Authorized redirect URI: ${callbackUrl}`);
     io.print("");
     env.COORDINATOR_GOOGLE_CLIENT_ID = await promptNonEmpty(io, "COORDINATOR_GOOGLE_CLIENT_ID");
