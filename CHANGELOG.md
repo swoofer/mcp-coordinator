@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/swoofer/mcp-coordinator/compare/v1.2.1...v1.3.0) (2026-07-21)
+
+
+### Features
+
+* **init:** add Google provider support to the phase2 wizard ([#213](https://github.com/swoofer/mcp-coordinator/issues/213)) ([8884902](https://github.com/swoofer/mcp-coordinator/commit/888490242af67de3c4b6d5e87f55ea7269abf231))
+
 ## [1.2.1](https://github.com/swoofer/mcp-coordinator/compare/v1.2.0...v1.2.1) (2026-07-21)
 
 
