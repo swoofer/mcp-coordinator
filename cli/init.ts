@@ -306,6 +306,9 @@ export interface Phase2WizardOptions {
   githubClientId?: string;
   githubClientSecret?: string;
   githubOrg?: string;
+  googleClientId?: string;
+  googleClientSecret?: string;
+  googleWorkspaceDomain?: string;
 }
 
 /**
@@ -314,13 +317,6 @@ export interface Phase2WizardOptions {
  * loop; 3 is empirically enough for typos.
  */
 const PUBLIC_URL_MAX_RETRIES = 3;
-
-const REQUIRED_NONINTERACTIVE_FLAGS: Array<[keyof Phase2WizardOptions, string]> = [
-  ["publicUrl", "--public-url"],
-  ["githubClientId", "--github-client-id"],
-  ["githubClientSecret", "--github-client-secret"],
-  ["githubOrg", "--github-org"],
-];
 
 export async function runInitPhase2(io: WizardIO, opts: Phase2WizardOptions): Promise<void> {
   const envPath = resolve(opts.envFile ?? ".env");
@@ -341,17 +337,10 @@ export async function runInitPhase2(io: WizardIO, opts: Phase2WizardOptions): Pr
     }
   }
 
-  // 2. GitHub OAuth app pre-instructions.
+  // 2. Setup banner. Provider-specific app-creation instructions are printed
+  //    per provider below, once PUBLIC_URL (and thus the callback URL) is known.
   io.print("");
   io.print("=== mcp-coordinator Phase 2 OAuth setup ===");
-  io.print("");
-  io.print("Step 1: Create a GitHub OAuth App at:");
-  io.print("  https://github.com/settings/applications/new");
-  io.print("");
-  io.print(
-    "  Your callback URL will be `${PUBLIC_URL}/api/auth/oauth/callback` " +
-      "— but you need to set PUBLIC_URL first; you'll come back to this.",
-  );
   io.print("");
 
   // 3-4. Resolve PUBLIC_URL (interactive or flag).
@@ -376,60 +365,33 @@ export async function runInitPhase2(io: WizardIO, opts: Phase2WizardOptions): Pr
     publicUrl = await promptForValidPublicUrl(io);
   }
 
-  // 4. Print the callback URL the user should paste into the GitHub form.
+  // 4. Callback URL — shared by every IdP; printed with each provider's
+  //    app-creation instructions below.
   const callbackUrl = buildCallbackUrl(publicUrl);
-  io.print("");
-  io.print("Step 2: Paste this exact URL into the GitHub OAuth app's");
-  io.print('        "Authorization callback URL" field:');
-  io.print("");
-  io.print(`  ${callbackUrl}`);
-  io.print("");
 
-  // 5-7. Collect remaining credentials.
-  let githubClientId: string;
-  let githubClientSecret: string;
-  let githubOrg: string;
+  // 5. Assemble the env. OAuth is always on; providers are added conditionally.
+  //    At least one IdP provider must end up configured (GitHub, Google, or
+  //    both) — mirrors bootPhase2's fail-closed requirement.
+  const env: Record<string, string> = {
+    COORDINATOR_OAUTH_ENABLED: "true",
+    COORDINATOR_PUBLIC_URL: publicUrl,
+  };
 
   if (opts.nonInteractive) {
-    const missing: string[] = [];
-    for (const [key, flag] of REQUIRED_NONINTERACTIVE_FLAGS) {
-      if (!opts[key] || (opts[key] as string).trim() === "") missing.push(flag);
-    }
-    if (missing.length > 0) {
-      io.printError(`[FAIL] --non-interactive requires: ${missing.join(", ")}`);
-      io.exit(1);
-    }
-    githubClientId = (opts.githubClientId as string).trim();
-    githubClientSecret = (opts.githubClientSecret as string).trim();
-    githubOrg = (opts.githubOrg as string).trim();
+    collectProvidersNonInteractive(io, opts, env);
   } else {
-    githubClientId = await promptNonEmpty(io, "COORDINATOR_GITHUB_CLIENT_ID");
-    githubClientSecret = await promptNonEmpty(io, "COORDINATOR_GITHUB_CLIENT_SECRET", {
-      mask: true,
-    });
-    githubOrg = await promptNonEmpty(io, "COORDINATOR_GITHUB_ORG");
+    await collectProvidersInteractive(io, callbackUrl, env);
   }
 
-  // 8. Generate JWT secret. crypto.randomBytes(32).toString("base64url")
+  // 6. Generate JWT secret. crypto.randomBytes(32).toString("base64url")
   //    produces a 43-character URL-safe string (256 bits).
   const jwtSecret = io.generateJwtSecret();
+  env.COORDINATOR_JWT_SECRET = jwtSecret;
   io.print("");
   io.print("=== GENERATED JWT_SECRET (save this; you won't see it again) ===");
   io.print(`  ${jwtSecret}`);
   io.print("================================================================");
   io.print("");
-
-  // 9. Assemble env file. COORDINATOR_INSECURE_COOKIES is intentionally NOT
-  //    written automatically — operators must set it explicitly to make the
-  //    insecure choice an obvious manual decision.
-  const env: Record<string, string> = {
-    COORDINATOR_OAUTH_ENABLED: "true",
-    COORDINATOR_PUBLIC_URL: publicUrl,
-    COORDINATOR_GITHUB_CLIENT_ID: githubClientId,
-    COORDINATOR_GITHUB_CLIENT_SECRET: githubClientSecret,
-    COORDINATOR_GITHUB_ORG: githubOrg,
-    COORDINATOR_JWT_SECRET: jwtSecret,
-  };
 
   // 10. Dry-run validation. validateConfig either returns null (OK) or an
   //     error string. We do this BEFORE writing so a bad config doesn't
@@ -455,9 +417,127 @@ export async function runInitPhase2(io: WizardIO, opts: Phase2WizardOptions): Pr
   io.print("");
   io.print("=== Next steps ===");
   io.print("  1. Start coordinator: `mcp-coordinator server start`");
-  io.print(`  2. Visit ${publicUrl}/auth/login in a browser to sign in via GitHub.`);
+  io.print(`  2. Visit ${publicUrl}/auth/login in a browser to sign in.`);
   io.print("     The FIRST user to sign in becomes admin.");
   io.print("");
+}
+
+/**
+ * Non-interactive provider resolution: read GitHub/Google credentials from
+ * flags, enforce both-or-neither per provider, require at least one provider,
+ * and require GITHUB_ORG when the GitHub OAuth App is configured. Writes the
+ * resolved vars into `env`. Calls io.exit(1) on any misconfiguration.
+ */
+function collectProvidersNonInteractive(
+  io: WizardIO,
+  opts: Phase2WizardOptions,
+  env: Record<string, string>,
+): void {
+  const githubId = opts.githubClientId?.trim() ?? "";
+  const githubSecret = opts.githubClientSecret?.trim() ?? "";
+  const googleId = opts.googleClientId?.trim() ?? "";
+  const googleSecret = opts.googleClientSecret?.trim() ?? "";
+
+  if ((githubId !== "") !== (githubSecret !== "")) {
+    io.printError(
+      "[FAIL] --github-client-id and --github-client-secret must be set together (or neither).",
+    );
+    io.exit(1);
+  }
+  if ((googleId !== "") !== (googleSecret !== "")) {
+    io.printError(
+      "[FAIL] --google-client-id and --google-client-secret must be set together (or neither).",
+    );
+    io.exit(1);
+  }
+
+  const githubConfigured = githubId !== "" && githubSecret !== "";
+  const googleConfigured = googleId !== "" && googleSecret !== "";
+
+  if (!githubConfigured && !googleConfigured) {
+    io.printError(
+      "[FAIL] --non-interactive requires at least one IdP provider: " +
+        "--github-client-id + --github-client-secret + --github-org, " +
+        "or --google-client-id + --google-client-secret.",
+    );
+    io.exit(1);
+  }
+
+  if (githubConfigured) {
+    const org = opts.githubOrg?.trim() ?? "";
+    if (org === "") {
+      io.printError("[FAIL] --github-org is required when the GitHub OAuth App is configured.");
+      io.exit(1);
+    }
+    env.COORDINATOR_GITHUB_CLIENT_ID = githubId;
+    env.COORDINATOR_GITHUB_CLIENT_SECRET = githubSecret;
+    env.COORDINATOR_GITHUB_ORG = org;
+  }
+
+  if (googleConfigured) {
+    env.COORDINATOR_GOOGLE_CLIENT_ID = googleId;
+    env.COORDINATOR_GOOGLE_CLIENT_SECRET = googleSecret;
+    const domain = opts.googleWorkspaceDomain?.trim() ?? "";
+    if (domain !== "") env.COORDINATOR_GOOGLE_WORKSPACE_DOMAIN = domain;
+  }
+}
+
+/**
+ * Interactive provider selection: offer GitHub (default yes) and Google
+ * (default no) as independent toggles, printing each provider's app-creation
+ * instructions and collecting its credentials. Requires at least one provider.
+ * Writes the resolved vars into `env`. Calls io.exit(1) if neither is chosen.
+ */
+async function collectProvidersInteractive(
+  io: WizardIO,
+  callbackUrl: string,
+  env: Record<string, string>,
+): Promise<void> {
+  const useGitHub = await io.confirm("Configure GitHub sign-in?", { default: true });
+  if (useGitHub) {
+    io.print("");
+    io.print("Create a GitHub OAuth App at https://github.com/settings/applications/new");
+    io.print(`  Authorization callback URL: ${callbackUrl}`);
+    io.print("");
+    env.COORDINATOR_GITHUB_CLIENT_ID = await promptNonEmpty(io, "COORDINATOR_GITHUB_CLIENT_ID");
+    env.COORDINATOR_GITHUB_CLIENT_SECRET = await promptNonEmpty(
+      io,
+      "COORDINATOR_GITHUB_CLIENT_SECRET",
+      { mask: true },
+    );
+    env.COORDINATOR_GITHUB_ORG = await promptNonEmpty(io, "COORDINATOR_GITHUB_ORG");
+  }
+
+  const useGoogle = await io.confirm("Configure Google sign-in?", { default: false });
+  if (useGoogle) {
+    io.print("");
+    io.print(
+      "Create an OAuth 2.0 Web client in Google Cloud Console → APIs & Services → Credentials",
+    );
+    io.print(`  Authorized redirect URI: ${callbackUrl}`);
+    io.print("");
+    env.COORDINATOR_GOOGLE_CLIENT_ID = await promptNonEmpty(io, "COORDINATOR_GOOGLE_CLIENT_ID");
+    env.COORDINATOR_GOOGLE_CLIENT_SECRET = await promptNonEmpty(
+      io,
+      "COORDINATOR_GOOGLE_CLIENT_SECRET",
+      { mask: true },
+    );
+    // Workspace-domain allowlist is optional (blank = skip; personal Gmail
+    // has no `hd` claim and cannot be allowlisted this way).
+    const domain = (
+      await io.prompt(
+        "COORDINATOR_GOOGLE_WORKSPACE_DOMAIN (Workspace domain to allowlist, blank to skip)",
+      )
+    ).trim();
+    if (domain !== "") env.COORDINATOR_GOOGLE_WORKSPACE_DOMAIN = domain;
+  }
+
+  if (!useGitHub && !useGoogle) {
+    io.printError(
+      "[FAIL] At least one IdP provider must be configured (GitHub or Google); aborting.",
+    );
+    io.exit(1);
+  }
 }
 
 /**
@@ -667,6 +747,12 @@ export function createInitPhase2Command(): Command {
     .option("--github-client-id <id>", "COORDINATOR_GITHUB_CLIENT_ID value")
     .option("--github-client-secret <secret>", "COORDINATOR_GITHUB_CLIENT_SECRET value")
     .option("--github-org <org>", "COORDINATOR_GITHUB_ORG value")
+    .option("--google-client-id <id>", "COORDINATOR_GOOGLE_CLIENT_ID value")
+    .option("--google-client-secret <secret>", "COORDINATOR_GOOGLE_CLIENT_SECRET value")
+    .option(
+      "--google-workspace-domain <domain>",
+      "COORDINATOR_GOOGLE_WORKSPACE_DOMAIN value (allowlist bootstrap)",
+    )
     .action(async (opts: Phase2WizardOptions) => {
       const io = makeDefaultWizardIO();
       try {
