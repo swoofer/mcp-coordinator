@@ -3,6 +3,15 @@ name: Release binaries
 on:
   push:
     tags: ["v*"]
+  # Validate the binary build (compile + verify, no publish) on PRs that touch
+  # build-affecting files, so release-time-only failures (e.g. a native module
+  # bun --compile can't embed) are caught before a release, not during one.
+  pull_request:
+    paths:
+      - ".github/workflows/release-binaries.yml"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "src/tree-sitter-extractor.ts"
   # Called from release.yml after release-please tags + npm/Docker publish
   # complete, so the binary build runs in the same workflow run as the
   # release. (GitHub's anti-recursive policy means a tag push from
@@ -60,7 +69,18 @@ jobs:
       - name: Build binary
         run: |
           mkdir -p bin
-          bun build --compile cli/index.ts --outfile bin/mcp-coordinator
+          # tree-sitter + its grammar packages are OPTIONAL native modules,
+          # loaded via dynamic import with graceful fallback
+          # (src/tree-sitter-extractor.ts). `bun build --compile` cannot embed
+          # their native .node prebuilds into the single-file executable
+          # (it fails resolving e.g. ./prebuilds/darwin-arm64/tree-sitter.node),
+          # so mark them external — the compiled binary degrades gracefully
+          # without the optional code-analysis grammars.
+          EXTERNAL="--external tree-sitter"
+          for g in typescript javascript python go rust java c-sharp c cpp ruby php kotlin swift bash; do
+            EXTERNAL="$EXTERNAL --external tree-sitter-$g"
+          done
+          bun build --compile cli/index.ts --outfile bin/mcp-coordinator $EXTERNAL
 
       - name: Sign binary (macOS)
         if: matrix.platform == 'darwin'
@@ -87,6 +107,7 @@ jobs:
           ./bin/mcp-coordinator server --help
 
       - name: Package tarball
+        if: github.event_name != 'pull_request'
         run: |
           TAG="${{ inputs.tag || github.ref_name }}"
           VERSION="${TAG#v}"
@@ -101,6 +122,7 @@ jobs:
           tar czf "${DIST_NAME}.tar.gz" "${DIST_NAME}"
 
       - name: Publish tarball to GH Release
+        if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228  # v3.0.2
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
