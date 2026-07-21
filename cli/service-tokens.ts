@@ -13,6 +13,7 @@ interface IssueOpts {
   reason: string;
   server: string;
   adminToken?: string;
+  json?: boolean;
 }
 
 interface ListOpts {
@@ -21,6 +22,44 @@ interface ListOpts {
   user?: string;
   org?: string;
   activeOnly: boolean;
+  json?: boolean;
+}
+
+interface IssuedToken {
+  jti: string;
+  access_token: string;
+  expires_at: string;
+}
+
+/**
+ * Render an issued token for stdout. `--json` emits a single JSON object
+ * (script/CI-parseable); default is the human-readable key/value block.
+ * The "store it securely" warning is NOT part of this — the caller routes it
+ * to stderr in JSON mode so stdout stays clean JSON.
+ */
+export function formatIssuedToken(result: IssuedToken, json: boolean): string {
+  if (json) return JSON.stringify(result) + "\n";
+  return (
+    "Service token issued:\n" +
+    `  jti:          ${result.jti}\n` +
+    `  access_token: ${result.access_token}\n` +
+    `  expires_at:   ${result.expires_at}\n`
+  );
+}
+
+/**
+ * Render a token list for stdout. `--json` emits a JSON array (empty array
+ * when there are none); default is a TSV table (or a "(no service tokens)"
+ * line).
+ */
+export function formatTokenList(tokens: ListedToken[], json: boolean): string {
+  if (json) return JSON.stringify(tokens) + "\n";
+  if (tokens.length === 0) return "(no service tokens)\n";
+  let out = "JTI\tUSER\tORG\tSTATUS\tEXPIRES_AT\n";
+  for (const t of tokens) {
+    out += `${t.jti}\t${t.user_id}\t${t.org_id}\t${t.status}\t${t.expires_at}\n`;
+  }
+  return out;
 }
 
 interface RevokeOpts {
@@ -56,6 +95,7 @@ export function createServiceTokensCommand(): Command {
     .requiredOption("--reason <text>", "Reason for issuance (>=10 chars)")
     .option("--server <url>", "Coordinator URL", "http://localhost:3000")
     .option("--admin-token <token>", "Admin Bearer token (or set COORDINATOR_ADMIN_TOKEN env)")
+    .option("--json", "Emit a JSON object instead of the human-readable block", false)
     .action(async (opts: IssueOpts) => {
       const adminToken = opts.adminToken ?? process.env.COORDINATOR_ADMIN_TOKEN;
       if (!adminToken) {
@@ -80,18 +120,12 @@ export function createServiceTokensCommand(): Command {
         process.stderr.write(`Error ${response.status}: ${await response.text()}\n`);
         process.exit(1);
       }
-      const result = (await response.json()) as {
-        jti: string;
-        access_token: string;
-        expires_at: string;
-      };
-      process.stdout.write("Service token issued:\n");
-      process.stdout.write(`  jti:          ${result.jti}\n`);
-      process.stdout.write(`  access_token: ${result.access_token}\n`);
-      process.stdout.write(`  expires_at:   ${result.expires_at}\n`);
-      process.stdout.write(
-        "\nWARNING: Store the access_token securely -- it cannot be retrieved again.\n",
-      );
+      const result = (await response.json()) as IssuedToken;
+      process.stdout.write(formatIssuedToken(result, opts.json ?? false));
+      const warning = "WARNING: Store the access_token securely -- it cannot be retrieved again.\n";
+      // Keep stdout clean JSON in --json mode; route the advisory to stderr.
+      if (opts.json) process.stderr.write(warning);
+      else process.stdout.write("\n" + warning);
     });
 
   cmd
@@ -102,6 +136,7 @@ export function createServiceTokensCommand(): Command {
     .option("--user <id>", "Filter by target user ID")
     .option("--org <id>", "Filter by target org ID")
     .option("--active-only", "Only show non-revoked tokens", false)
+    .option("--json", "Emit a JSON array instead of the TSV table", false)
     .action(async (opts: ListOpts) => {
       const adminToken = opts.adminToken ?? process.env.COORDINATOR_ADMIN_TOKEN;
       if (!adminToken) {
@@ -121,14 +156,7 @@ export function createServiceTokensCommand(): Command {
         process.exit(1);
       }
       const body = (await response.json()) as { tokens: ListedToken[] };
-      if (body.tokens.length === 0) {
-        process.stdout.write("(no service tokens)\n");
-        return;
-      }
-      process.stdout.write("JTI\tUSER\tORG\tSTATUS\tEXPIRES_AT\n");
-      for (const t of body.tokens) {
-        process.stdout.write(`${t.jti}\t${t.user_id}\t${t.org_id}\t${t.status}\t${t.expires_at}\n`);
-      }
+      process.stdout.write(formatTokenList(body.tokens, opts.json ?? false));
     });
 
   cmd
