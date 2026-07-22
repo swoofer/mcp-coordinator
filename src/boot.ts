@@ -7,8 +7,11 @@ import { GitHubAppProvider } from "./auth/providers/github-app.js";
 import { GoogleProvider } from "./auth/providers/google.js";
 import { OIDCProvider } from "./auth/providers/oidc.js";
 import { ProviderRegistry } from "./auth/providers/registry.js";
-import { MembershipCache } from "./auth/membership-cache.js";
-import { RateLimiter } from "./auth/rate-limit.js";
+import { MembershipCache, type SharedMembershipStore } from "./auth/membership-cache.js";
+import { RateLimiter, type IRateLimiter } from "./auth/rate-limit.js";
+import { RedisRateLimiter } from "./auth/rate-limit-redis.js";
+import { acquireOrRenewLock, type RedisHandles } from "./infra/redis.js";
+import { randomUUID } from "node:crypto";
 import { initAuditQueue, getAuditQueue, audit } from "./security/audit.js";
 import { initPhase2Auth } from "./auth.js";
 import { bumpTokenEpochAllUsers } from "./auth/token-epoch.js";
@@ -41,6 +44,10 @@ export interface Phase2BootOptions {
   enabled: boolean;
   db: Database.Database;
   clock?: Clock;
+  /** Phase 5 multi-instance: when set (COORDINATOR_REDIS_URL), the rate
+   *  limiter, membership cache and sweeper switch to their Redis-backed /
+   *  leader-elected variants. Absent = in-memory single-instance (unchanged). */
+  redis?: RedisHandles;
 }
 
 export interface Phase2Bootstrap {
@@ -166,14 +173,28 @@ export function bootPhase2(opts: Phase2BootOptions, deps?: BootPhase2Deps): Phas
     assertSecretEntropy(prevSecretBuf, MIN_JWT_SECRET_BITS);
   }
   const signingKeys = buildJwtKeyRegistry(secretBuf, prevSecretBuf);
-  const rateLimiter = new RateLimiter(clock);
+  // Phase 5: Redis-backed swaps via the pre-marked DI seams. Without redis,
+  // the in-memory implementations are constructed exactly as before.
+  const rateLimiter: IRateLimiter = opts.redis
+    ? new RedisRateLimiter(opts.redis.client, clock)
+    : new RateLimiter(clock);
   // performance-06: sweep() existed but nothing ever called it, so `buckets`
   // grew unbounded (one entry per unauth'd IP/key hitting rate-limited
-  // endpoints). Wire it here, next to construction — this is the only place
-  // RateLimiter is instantiated — so lifecycle stays local instead of
-  // threading a start call through server-setup.
-  rateLimiter.startSweeper();
-  const membershipCache = new MembershipCache(clock);
+  // endpoints). Wire it here, next to construction. Only the in-memory
+  // RateLimiter needs this — the Redis-backed limiter relies on native key
+  // TTLs and has no sweeper of its own.
+  if (rateLimiter instanceof RateLimiter) {
+    rateLimiter.startSweeper();
+  }
+  const sharedMembershipStore: SharedMembershipStore | undefined = opts.redis
+    ? {
+        get: (key) => opts.redis!.client.get(`coordinator:mc:${key}`),
+        setex: async (key, ttlS, value) => {
+          await opts.redis!.client.setEx(`coordinator:mc:${key}`, ttlS, value);
+        },
+      }
+    : undefined;
+  const membershipCache = new MembershipCache(clock, undefined, sharedMembershipStore);
 
   // GHES support (v0.8.1-P2): both optional. Unset/empty → GitHubProvider
   // defaults (github.com / api.github.com) take over. Conditional spread so we
@@ -381,7 +402,17 @@ export function bootPhase2(opts: Phase2BootOptions, deps?: BootPhase2Deps): Phas
   };
 
   // 10. Start sweeper (60s cadence; T28).
-  const sweeper = new Sweeper(db, clock);
+  // Phase 5: leader-elected behind Redis — `SET NX EX` lease (TTL 90s >
+  // 60s tick so the incumbent renews; on crash another instance takes over
+  // within the TTL). Without redis: unconditional, as before.
+  const sweeperOwner = `sweeper-${randomUUID()}`;
+  const sweeper = new Sweeper(
+    db,
+    clock,
+    opts.redis
+      ? () => acquireOrRenewLock(opts.redis!.client, "coordinator:sweeper:leader", 90, sweeperOwner)
+      : undefined,
+  );
   sweeper.start();
 
   // 11. Emit config.boot audit (Tier 1, never drop).
@@ -419,8 +450,11 @@ export function bootPhase2(opts: Phase2BootOptions, deps?: BootPhase2Deps): Phas
       // safe across multiple shutdown invocations in tests).
       stopReminder();
       // performance-06: stop the RateLimiter bucket sweeper alongside the
-      // other Phase 2 timers. stopSweeper() is idempotent.
-      rateLimiter.stopSweeper();
+      // other Phase 2 timers. stopSweeper() is idempotent. Only the
+      // in-memory limiter has a sweeper to stop.
+      if (rateLimiter instanceof RateLimiter) {
+        rateLimiter.stopSweeper();
+      }
       sweeper.stop();
       await sweeper.drain(DRAIN_TIMEOUT_MS);
       const queue = getAuditQueue();

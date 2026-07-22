@@ -4,6 +4,11 @@ import {
   readTokenEpoch,
   bumpTokenEpoch,
   bumpTokenEpochAllUsers,
+  setTokenEpochBus,
+  noteEpochBump,
+  getEpochFloor,
+  resetEpochFloorForTest,
+  type TokenEpochBus,
 } from "../../src/auth/token-epoch.js";
 
 let db: Database.Database;
@@ -91,5 +96,154 @@ describe("bumpTokenEpochAllUsers", () => {
 
   it("returns 0 when there are no users", () => {
     expect(bumpTokenEpochAllUsers(db)).toBe(0);
+  });
+});
+
+// ── Phase 5 multi-instance: epoch bump pub/sub ──────────────────────────────
+//
+// setTokenEpochBus / noteEpochBump / getEpochFloor / resetEpochFloorForTest
+// and the publish-side seam (exercised indirectly via bumpTokenEpoch /
+// bumpTokenEpochAllUsers, since publishBump itself isn't exported).
+
+class FakeBus implements TokenEpochBus {
+  calls: Array<{ userId: string; epoch: number }> = [];
+  throwOnPublish = false;
+  publish(userId: string, epoch: number): void {
+    if (this.throwOnPublish) throw new Error("bus unavailable");
+    this.calls.push({ userId, epoch });
+  }
+}
+
+afterEach(() => {
+  // The bus and floor are module-level singletons — never leak between
+  // tests (this suite's cases and token-epoch-floor.test.ts both mutate
+  // them).
+  setTokenEpochBus(null);
+  resetEpochFloorForTest();
+});
+
+describe("noteEpochBump / getEpochFloor", () => {
+  beforeEach(() => {
+    resetEpochFloorForTest();
+  });
+
+  it("getEpochFloor is 0 for an unknown user with no bumps observed", () => {
+    expect(getEpochFloor("nobody")).toBe(0);
+  });
+
+  it("records a per-user floor", () => {
+    noteEpochBump("user-1", 5);
+    expect(getEpochFloor("user-1")).toBe(5);
+    // Unrelated user unaffected.
+    expect(getEpochFloor("user-2")).toBe(0);
+  });
+
+  it("is monotonic per-user: a lower epoch does not lower the floor", () => {
+    noteEpochBump("user-1", 10);
+    noteEpochBump("user-1", 3);
+    expect(getEpochFloor("user-1")).toBe(10);
+  });
+
+  it("a higher epoch raises the floor", () => {
+    noteEpochBump("user-1", 3);
+    noteEpochBump("user-1", 10);
+    expect(getEpochFloor("user-1")).toBe(10);
+  });
+
+  it('the "*" sentinel sets the GLOBAL floor, applied to every user', () => {
+    noteEpochBump("*", 42);
+    expect(getEpochFloor("user-1")).toBe(42);
+    expect(getEpochFloor("anyone")).toBe(42);
+  });
+
+  it('the "*" sentinel is also monotonic (never decreases)', () => {
+    noteEpochBump("*", 42);
+    noteEpochBump("*", 7);
+    expect(getEpochFloor("user-1")).toBe(42);
+  });
+
+  it("getEpochFloor returns the MAX of the global floor and the per-user floor", () => {
+    noteEpochBump("*", 10);
+    noteEpochBump("user-1", 25);
+    expect(getEpochFloor("user-1")).toBe(25);
+    // A different user only sees the global floor.
+    expect(getEpochFloor("user-2")).toBe(10);
+
+    noteEpochBump("user-1", 5); // lower than current per-user floor: no-op
+    expect(getEpochFloor("user-1")).toBe(25);
+  });
+
+  it("ignores non-finite epochs (NaN, Infinity) — guards against malformed pub/sub payloads", () => {
+    noteEpochBump("user-1", NaN);
+    noteEpochBump("user-1", Infinity);
+    noteEpochBump("user-1", -Infinity);
+    expect(getEpochFloor("user-1")).toBe(0);
+  });
+
+  it("ignores a non-finite epoch on the * sentinel too", () => {
+    noteEpochBump("*", NaN);
+    expect(getEpochFloor("anyone")).toBe(0);
+  });
+
+  it("resetEpochFloorForTest clears both per-user and global floors", () => {
+    noteEpochBump("user-1", 5);
+    noteEpochBump("*", 9);
+    resetEpochFloorForTest();
+    expect(getEpochFloor("user-1")).toBe(0);
+    expect(getEpochFloor("anyone")).toBe(0);
+  });
+});
+
+describe("publishBump (via bumpTokenEpoch / bumpTokenEpochAllUsers)", () => {
+  beforeEach(() => {
+    resetEpochFloorForTest();
+  });
+
+  it("with no bus set (default/single-instance): bumping does not throw and publishes nothing", () => {
+    setTokenEpochBus(null);
+    db.prepare("INSERT INTO users (id) VALUES (?)").run("u1");
+    expect(() => bumpTokenEpoch(db, "u1")).not.toThrow();
+  });
+
+  it("with a bus set: bumpTokenEpoch publishes (userId, newEpoch) to the bus", () => {
+    const bus = new FakeBus();
+    setTokenEpochBus(bus);
+    db.prepare("INSERT INTO users (id) VALUES (?)").run("u1");
+    const bumped = bumpTokenEpoch(db, "u1");
+    expect(bus.calls).toEqual([{ userId: "u1", epoch: bumped }]);
+  });
+
+  it("with a bus set: bumpTokenEpochAllUsers publishes under the * sentinel with a wall-clock epoch", () => {
+    const bus = new FakeBus();
+    setTokenEpochBus(bus);
+    db.prepare("INSERT INTO users (id) VALUES (?)").run("u1");
+    const before = Math.floor(Date.now() / 1000);
+    bumpTokenEpochAllUsers(db);
+    expect(bus.calls.length).toBe(1);
+    expect(bus.calls[0].userId).toBe("*");
+    expect(bus.calls[0].epoch).toBeGreaterThanOrEqual(before);
+  });
+
+  it("a bus that throws on publish() does not propagate — the DB write already succeeded", () => {
+    const bus = new FakeBus();
+    bus.throwOnPublish = true;
+    setTokenEpochBus(bus);
+    db.prepare("INSERT INTO users (id) VALUES (?)").run("u1");
+    let bumped: number | undefined;
+    expect(() => {
+      bumped = bumpTokenEpoch(db, "u1");
+    }).not.toThrow();
+    expect(bumped).toBeGreaterThan(0);
+    // The publish attempt is swallowed, not recorded.
+    expect(bus.calls).toEqual([]);
+  });
+
+  it("setTokenEpochBus(null) after setting a bus reverts to the single-instance no-op", () => {
+    const bus = new FakeBus();
+    setTokenEpochBus(bus);
+    setTokenEpochBus(null);
+    db.prepare("INSERT INTO users (id) VALUES (?)").run("u1");
+    expect(() => bumpTokenEpoch(db, "u1")).not.toThrow();
+    expect(bus.calls).toEqual([]);
   });
 });

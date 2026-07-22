@@ -3,7 +3,7 @@ import type { Clock } from "./clock.js";
 import type { JwtKeyRegistry } from "./jwt-keys.js";
 import type { MembershipCache } from "./membership-cache.js";
 import type { ProviderRegistry } from "./providers/registry.js";
-import type { RateLimiter } from "./rate-limit.js";
+import type { IRateLimiter } from "./rate-limit.js";
 import type { EncryptionProvider } from "../security/encryption.js";
 
 /**
@@ -24,7 +24,9 @@ export interface AuthHandlerContext {
    *  `providers.get(name)` (callback uses state.provider, refresh uses
    *  user.idp_provider, login uses `providers.getDefault()`). */
   providers: ProviderRegistry;
-  rateLimiter: RateLimiter;
+  /** Phase 5: IRateLimiter — in-memory (sync) or Redis-backed (async);
+   *  call sites await either. */
+  rateLimiter: IRateLimiter;
   /** Public URL for redirect URI construction. From COORDINATOR_PUBLIC_URL.
    *  T29 boot validates this is set; tests pass directly. */
   publicUrl: string;

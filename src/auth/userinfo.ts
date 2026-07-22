@@ -55,7 +55,7 @@ export async function handleUserinfo(
   const claims = authResult.claims;
 
   // Rate limit per user
-  const rate = ctx.rateLimiter.check(`userinfo:${claims.user_id}`, RATE_LIMIT_CONFIG);
+  const rate = await ctx.rateLimiter.check(`userinfo:${claims.user_id}`, RATE_LIMIT_CONFIG);
   if (!rate.allowed) {
     res.writeHead(429, {
       "Content-Type": "application/json; charset=utf-8",

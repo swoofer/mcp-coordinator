@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import crypto from "node:crypto";
 import type { Clock } from "../../src/auth/clock.js";
 import type { IdPProvider } from "../../src/auth/providers/types.js";
 import {
@@ -6,7 +7,11 @@ import {
   IdPTransientError,
   ProviderCapabilityError,
 } from "../../src/auth/providers/errors.js";
-import { MembershipCache, type StaleServedEvent } from "../../src/auth/membership-cache.js";
+import {
+  MembershipCache,
+  type StaleServedEvent,
+  type SharedMembershipStore,
+} from "../../src/auth/membership-cache.js";
 
 class FakeClock implements Clock {
   constructor(public current = 1_000_000) {}
@@ -231,3 +236,154 @@ describe("MembershipCache.getMemberships", () => {
     expect(events).toEqual([]);
   });
 });
+
+// ── Phase 5 multi-instance: optional shared write-through store ────────────
+//
+// Hand-mocked store (no live Redis) covering: SETEX write on a fresh miss,
+// GET hit (fresh entry served without calling the provider), GET miss
+// (falls through to the provider), and best-effort error swallowing on
+// both the read and write sides.
+
+class FakeSharedStore implements SharedMembershipStore {
+  private map = new Map<string, string>();
+  getCalls = 0;
+  setexCalls: Array<{ key: string; ttlSeconds: number; value: string }> = [];
+  throwOnGet = false;
+  throwOnSetex = false;
+
+  async get(key: string): Promise<string | null> {
+    this.getCalls++;
+    if (this.throwOnGet) throw new Error("shared store unavailable");
+    return this.map.has(key) ? this.map.get(key)! : null;
+  }
+
+  async setex(key: string, ttlSeconds: number, value: string): Promise<void> {
+    this.setexCalls.push({ key, ttlSeconds, value });
+    if (this.throwOnSetex) throw new Error("shared store unavailable");
+    this.map.set(key, value);
+  }
+
+  // Test helper: seed a raw entry as another instance would have written it.
+  seed(key: string, value: string): void {
+    this.map.set(key, value);
+  }
+}
+
+describe("MembershipCache.getMemberships — Phase 5 shared store", () => {
+  it("miss with no local/shared entry: hits the provider, then write-through SETEXes the shared store", async () => {
+    const shared = new FakeSharedStore();
+    const cache = new MembershipCache(clock, undefined, shared);
+    const provider = makeFakeProvider("github", { ok: ["acme"] });
+
+    const result = await cache.getMemberships("user-1", provider, "tok");
+
+    expect(result).toEqual(["acme"]);
+    expect(provider.callCount).toBe(1);
+    expect(cache.metrics.misses).toBe(1);
+    // Write-through is fire-and-forget but awaited by the setex Promise
+    // resolving synchronously in this fake — give the microtask queue a
+    // tick so the un-awaited `void ...setex(...)` call has landed.
+    await Promise.resolve();
+    expect(shared.setexCalls.length).toBe(1);
+    expect(shared.setexCalls[0].ttlSeconds).toBe(60);
+    expect(JSON.parse(shared.setexCalls[0].value)).toEqual({
+      memberships: ["acme"],
+      ts: clock.now(),
+    });
+  });
+
+  it("local cache miss but a FRESH shared entry exists: returns it, copies into local cache, does NOT call the provider", async () => {
+    const shared = new FakeSharedStore();
+    const cache = new MembershipCache(clock, undefined, shared);
+    const provider = makeFakeProvider("github", { ok: ["should-not-be-used"] });
+
+    // Seed the shared store as another instance's write would look, at the
+    // cache's internal key shape: we don't know the sha256 key here, so
+    // seed via a first miss on a sibling cache instance sharing the store,
+    // then verify THIS cache's fresh read hits it without calling its own
+    // provider.
+    const writerCache = new MembershipCache(clock, undefined, shared);
+    const writerProvider = makeFakeProvider("github", { ok: ["acme"] });
+    await writerCache.getMemberships("user-1", writerProvider, "tok");
+    await Promise.resolve();
+    expect(shared.setexCalls.length).toBe(1);
+
+    const result = await cache.getMemberships("user-1", provider, "tok");
+
+    expect(result).toEqual(["acme"]);
+    expect(provider.callCount).toBe(0);
+    expect(cache.metrics.hits).toBe(1);
+    expect(cache.metrics.misses).toBe(0);
+    // Copied into the local LRU so a later stale-on-error has something to
+    // serve without going back through the shared store.
+    expect(cache.size()).toBe(1);
+  });
+
+  it("shared entry exists but is STALE (past the 60s positive TTL): falls through to the provider", async () => {
+    const shared = new FakeSharedStore();
+    shared.seed(
+      cacheKeyFor("user-1", "github"),
+      JSON.stringify({ memberships: ["old"], ts: clock.now() - 61 }),
+    );
+    const cache = new MembershipCache(clock, undefined, shared);
+    const provider = makeFakeProvider("github", { ok: ["fresh"] });
+
+    const result = await cache.getMemberships("user-1", provider, "tok");
+
+    expect(result).toEqual(["fresh"]);
+    expect(provider.callCount).toBe(1);
+    expect(cache.metrics.misses).toBe(1);
+  });
+
+  it("shared store GET returns null (miss): falls through to the provider", async () => {
+    const shared = new FakeSharedStore();
+    const cache = new MembershipCache(clock, undefined, shared);
+    const provider = makeFakeProvider("github", { ok: ["acme"] });
+
+    const result = await cache.getMemberships("user-1", provider, "tok");
+
+    expect(shared.getCalls).toBe(1);
+    expect(result).toEqual(["acme"]);
+    expect(provider.callCount).toBe(1);
+  });
+
+  it("shared store GET throws: best-effort — swallowed, falls through to the provider", async () => {
+    const shared = new FakeSharedStore();
+    shared.throwOnGet = true;
+    const cache = new MembershipCache(clock, undefined, shared);
+    const provider = makeFakeProvider("github", { ok: ["acme"] });
+
+    const result = await cache.getMemberships("user-1", provider, "tok");
+
+    expect(result).toEqual(["acme"]);
+    expect(provider.callCount).toBe(1);
+    expect(cache.metrics.misses).toBe(1);
+  });
+
+  it("shared store SETEX throws on write-through: swallowed — getMemberships still resolves normally", async () => {
+    const shared = new FakeSharedStore();
+    shared.throwOnSetex = true;
+    const cache = new MembershipCache(clock, undefined, shared);
+    const provider = makeFakeProvider("github", { ok: ["acme"] });
+
+    const result = await cache.getMemberships("user-1", provider, "tok");
+
+    expect(result).toEqual(["acme"]);
+    await Promise.resolve(); // let the fire-and-forget setex rejection settle
+    expect(shared.setexCalls.length).toBe(1);
+  });
+
+  it("without a shared store (undefined): getMemberships behaves exactly as single-instance (no get/setex calls)", async () => {
+    const cache = new MembershipCache(clock);
+    const provider = makeFakeProvider("github", { ok: ["acme"] });
+    const result = await cache.getMemberships("user-1", provider, "tok");
+    expect(result).toEqual(["acme"]);
+  });
+});
+
+// Mirrors MembershipCache's private cacheKey() (sha256 of "userId|providerName")
+// so a test can seed the shared store directly under the same key the cache
+// computes internally.
+function cacheKeyFor(userId: string, providerName: string): string {
+  return crypto.createHash("sha256").update(`${userId}|${providerName}`).digest("hex");
+}

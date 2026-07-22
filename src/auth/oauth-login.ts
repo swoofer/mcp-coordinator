@@ -71,7 +71,7 @@ export async function handleAuthLogin(
   // a 60/min burst is generous enough that legitimate users never hit
   // it.
   const ip = req.socket?.remoteAddress ?? "unknown";
-  const rate = ctx.rateLimiter.check(`auth-login:${ip}`, RATE_LIMIT_CONFIG);
+  const rate = await ctx.rateLimiter.check(`auth-login:${ip}`, RATE_LIMIT_CONFIG);
   if (!rate.allowed) {
     res.writeHead(429, {
       "Content-Type": "application/json; charset=utf-8",

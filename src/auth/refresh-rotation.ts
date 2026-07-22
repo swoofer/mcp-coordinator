@@ -8,7 +8,7 @@ import { oauthError, bearerAuthHeader } from "../http/response-contract.js";
 import { mintTokenPair, computeFingerprint } from "./oauth-finalize.js";
 import { mintAccessJWT, mintRefreshJWT } from "./jwt-mint.js";
 import { isAcceptedKid } from "./jwt-keys.js";
-import { readTokenEpoch, bumpTokenEpoch } from "./token-epoch.js";
+import { readTokenEpoch, bumpTokenEpoch, getEpochFloor } from "./token-epoch.js";
 import { resolveOrgFromMemberships, type AllowlistMatch } from "./allowlist.js";
 import { IdPTokenRevoked, IdPTransientError } from "./providers/errors.js";
 import { getOrgSetting } from "./org-settings.js";
@@ -505,13 +505,17 @@ function checkNotServiceAccount(
   return { ok: true, data: undefined };
 }
 
-/** Step 4. token_epoch check (T03). */
-function checkTokenEpoch(
+/** Step 4. token_epoch check (T03). Exported for direct unit coverage of the
+ *  multi-instance epoch-floor fix (tests/unit/token-epoch-floor.test.ts). */
+export function checkTokenEpoch(
   ctx: AuthHandlerContext,
   claims: ParsedRefreshClaims,
   res: ServerResponse,
 ): StepResult<void> {
-  const epoch = readTokenEpoch(ctx.db, claims.sub);
+  // multi-instance floor fix: mirror auth.ts:336 — max(db, floor) so a cross-instance epoch
+  // bump (observed via pub/sub, see token-epoch.ts) revokes a refresh whose
+  // local DB read hasn't converged yet (WAL cross-process visibility gap).
+  const epoch = Math.max(readTokenEpoch(ctx.db, claims.sub), getEpochFloor(claims.sub));
   if (claims.iat < epoch) {
     audit("auth.invalid_token", {
       tier: 2,

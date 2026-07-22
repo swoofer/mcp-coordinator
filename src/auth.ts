@@ -6,7 +6,7 @@ import { getDb } from "./database.js";
 import { silentLogger, type Logger } from "./logger.js";
 import { parseCookies, SESSION_COOKIE_NAME } from "./auth/cookies.js";
 import { isAcceptedKid, type JwtKeyRegistry } from "./auth/jwt-keys.js";
-import { readTokenEpoch } from "./auth/token-epoch.js";
+import { readTokenEpoch, getEpochFloor } from "./auth/token-epoch.js";
 import { verifyServiceTokenJti } from "./auth/service-tokens.js";
 import { audit } from "./security/audit.js";
 import { bearerAuthHeader } from "./http/response-contract.js";
@@ -331,7 +331,9 @@ async function verifyPhase2SessionCookie(
     }
 
     // T03: admin-force-revoke check — claims older than the bumped epoch fail.
-    const epoch = readTokenEpoch(ctx.db, claims.sub);
+    // Phase 5: max() with the pub/sub epoch floor closes the cross-instance
+    // WAL-visibility window (single-instance-constraints.md token-epoch race).
+    const epoch = Math.max(readTokenEpoch(ctx.db, claims.sub), getEpochFloor(claims.sub));
     if (claims.iat < epoch) {
       audit("auth.invalid_token", {
         tier: 2,

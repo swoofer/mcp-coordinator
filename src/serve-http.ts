@@ -53,8 +53,11 @@ import { withRequestId, resolveRequestId } from "./auth/request-id.js";
 import { bootPhase2, type Phase2Bootstrap } from "./boot.js";
 import { Sweeper } from "./sweeper/index.js";
 import { realClock } from "./auth/clock.js";
-import { RateLimiter, type RateLimitConfig } from "./auth/rate-limit.js";
+import { RateLimiter, type RateLimitConfig, type IRateLimiter } from "./auth/rate-limit.js";
 import { dispatchAuthRoutes } from "./http/auth-routes.js";
+import { connectRedis, acquireLock, withLock, type RedisHandles } from "./infra/redis.js";
+import { setTokenEpochBus, noteEpochBump } from "./auth/token-epoch.js";
+import os from "node:os";
 import { getDb } from "./database.js";
 import type DatabaseT from "better-sqlite3";
 
@@ -78,6 +81,12 @@ const DATA_DIR = process.env.COORDINATOR_DATA_DIR || "./data";
 // MQTT is always embedded; ports/paths are configurable for multi-instance setups
 const MQTT_TCP_PORT = parseInt(process.env.COORDINATOR_MQTT_TCP_PORT || "1883");
 const MQTT_WS_PATH = process.env.COORDINATOR_MQTT_WS_PATH || "/mqtt";
+// Multi-instance: opt-in shared state via Redis. Unset
+// (default) = single-instance, all in-memory implementations unchanged.
+const REDIS_URL = process.env.COORDINATOR_REDIS_URL || "";
+// Unique instance identity for distributed locks (boot migration, sweeper
+// leadership, MQTT-offline dedup).
+const INSTANCE_ID = `${os.hostname()}-${process.pid}-${randomUUID().slice(0, 8)}`;
 const AUTH_ENABLED = process.env.COORDINATOR_AUTH_ENABLED === "true";
 const JWT_SECRET = process.env.COORDINATOR_JWT_SECRET || "";
 // Capture whether the env var was EXPLICITLY set at startup. Do not derive this
@@ -121,7 +130,7 @@ let serverRunning = false;
 // rate-limit wiring there. Reuses bootPhase2's RateLimiter (already swept)
 // when Phase 2 is active, mirroring the retentionSweeper reuse-or-own
 // pattern below; owns its own sweeper lifecycle otherwise.
-let registerRateLimiter: RateLimiter;
+let registerRateLimiter: IRateLimiter;
 
 // S1: parseBody and json moved to ./http/utils.js (shared with handle-rest.ts).
 // Re-bound to local names so the rest of this file (handleAuth, handleSse,
@@ -171,7 +180,12 @@ async function handleAuth(req: IncomingMessage, res: ServerResponse): Promise<vo
     // same budget (an attacker with a valid registration_secret shouldn't
     // be able to mass-mint agents any more than one brute-forcing it can).
     const ip = req.socket.remoteAddress || "unknown";
-    const rateResult = registerRateLimiter.check(`register:${ip}`, REGISTER_RATE_LIMIT_CONFIG);
+    // Phase 5: registerRateLimiter may be reused from bootPhase2's context,
+    // which is Redis-backed (async) when COORDINATOR_REDIS_URL is set.
+    const rateResult = await registerRateLimiter.check(
+      `register:${ip}`,
+      REGISTER_RATE_LIMIT_CONFIG,
+    );
     if (!rateResult.allowed) {
       res.setHeader("Retry-After", String(rateResult.retry_after_seconds));
       authLog.warn({ ip }, "Registration rate limit exceeded");
@@ -861,12 +875,16 @@ interface MqttWiring {
   mqttWsPath: string;
   httpServer: import("node:http").Server;
   log: Logger;
+  /** Phase 5 multi-instance: when set, agent-departure processing is
+   *  deduplicated across replicas via a short Redis lock. Absent = every
+   *  event is processed locally, unchanged (single-instance behavior). */
+  redis?: RedisHandles;
 }
 
 async function wireMqtt(
   opts: MqttWiring,
 ): Promise<{ broker: Awaited<ReturnType<typeof startEmbeddedMqttBroker>> }> {
-  const { mqttTcpPort, mqttWsPath, httpServer, log } = opts;
+  const { mqttTcpPort, mqttWsPath, httpServer, log, redis } = opts;
   // Start the embedded MQTT broker (TCP + WebSocket on HTTP upgrade).
   // Awaiting ensures the TCP listener is fully bound before we connect our
   // own client or tell users the coordinator is ready.
@@ -918,14 +936,30 @@ async function wireMqtt(
     // no-ops for any agent registered under a non-default org. Acceptable in single-tenant Phase 1
     // (everything is "default"); becomes a correctness bug the moment multi-org goes live. Task 22
     // (MQTT topic scoping + Aedes ACL hook) will thread the real org from the topic prefix.
-    services.registry.setOffline("default", agentId);
-    services.consultation.handleAgentDeparture(agentId);
-    // Clear in-flight working_files AFTER consultation cleanup so any future
-    // consultation logic that might inspect working_files state for this agent
-    // sees the pre-cleanup view.
-    services.workingFiles.clearForAgent(agentId);
-    // TODO(Task 22): MQTT offline path has no org_id context; using "default" for single-tenant Phase 1.
-    services.sseEmitter.emit("agent_offline", { agent_id: agentId }, { org_id: "default" });
+    const processDeparture = () => {
+      services.registry.setOffline("default", agentId);
+      services.consultation.handleAgentDeparture(agentId);
+      // Clear in-flight working_files AFTER consultation cleanup so any future
+      // consultation logic that might inspect working_files state for this agent
+      // sees the pre-cleanup view.
+      services.workingFiles.clearForAgent(agentId);
+      // TODO(Task 22): MQTT offline path has no org_id context; using "default" for single-tenant Phase 1.
+      services.sseEmitter.emit("agent_offline", { agent_id: agentId }, { org_id: "default" });
+    };
+    if (!redis) {
+      processDeparture();
+      return;
+    }
+    // Phase 5: every instance subscribes to the same broker topics, so an
+    // offline event fires on ALL replicas. A short NX lock elects exactly one
+    // processor — the DB mutations are idempotent, but double-processing
+    // would duplicate SSE/resolution side effects. On Redis error, process
+    // anyway (idempotence makes duplicates benign; a lost departure is not).
+    void acquireLock(redis.client, `coordinator:offline:default:${agentId}`, 10, INSTANCE_ID)
+      .then((won) => {
+        if (won) processDeparture();
+      })
+      .catch(() => processDeparture());
   });
   return { broker };
 }
@@ -940,12 +974,14 @@ async function wireMqtt(
 interface ShutdownDeps {
   phase2Bootstrap: Phase2Bootstrap | null;
   retentionSweeper: Sweeper;
-  registerRateLimiter: RateLimiter;
+  registerRateLimiter: IRateLimiter;
   httpServer: import("node:http").Server;
   broker: Awaited<ReturnType<typeof startEmbeddedMqttBroker>>;
   mcpSessionSweepHandle: NodeJS.Timeout;
   log: Logger;
   registerSignalHandlers: boolean;
+  /** Phase 5 multi-instance: closed during teardown when present. */
+  redis?: RedisHandles;
 }
 
 function wireShutdown(deps: ShutdownDeps): () => Promise<void> {
@@ -957,6 +993,7 @@ function wireShutdown(deps: ShutdownDeps): () => Promise<void> {
     broker,
     mcpSessionSweepHandle,
     log,
+    redis,
   } = deps;
   // B6 fix: graceful shutdown.
   // Cleanup sequence: stop accepting new HTTP connections → end MQTT bridge →
@@ -991,9 +1028,13 @@ function wireShutdown(deps: ShutdownDeps): () => Promise<void> {
         log.warn({ err }, "Error stopping retention sweeper");
       }
       // securite-surface-05: same reasoning — we only own the register
-      // RateLimiter's sweeper when Phase 2 didn't already start one.
+      // RateLimiter's sweeper when Phase 2 didn't already start one. Only
+      // the in-memory RateLimiter has a sweeper to stop (Phase 5: the
+      // Redis-backed limiter relies on native key TTLs).
       try {
-        registerRateLimiter.stopSweeper();
+        if (registerRateLimiter instanceof RateLimiter) {
+          registerRateLimiter.stopSweeper();
+        }
       } catch (err) {
         log.warn({ err }, "Error stopping register rate-limit sweeper");
       }
@@ -1017,6 +1058,12 @@ function wireShutdown(deps: ShutdownDeps): () => Promise<void> {
       services.quotaCache.stopBackgroundTick();
     } catch (err) {
       log.warn({ err }, "Error stopping quota timer");
+    }
+    try {
+      setTokenEpochBus(null);
+      await redis?.close();
+    } catch (err) {
+      log.warn({ err }, "Error closing Redis");
     }
     try {
       services.consultation.stopTimeoutSweeper();
@@ -1092,7 +1139,26 @@ async function startServerInner(opts?: ServerOptions): Promise<ServerHandle> {
   const mqttTcpPort = opts?.mqttTcpPort ?? MQTT_TCP_PORT;
   const mqttWsPath = opts?.mqttWsPath ?? MQTT_WS_PATH;
 
-  services = createServices({ dataDir });
+  // Phase 5: connect Redis BEFORE the services boot — the DB migrations in
+  // createServices/initDatabase must run under a cross-instance lock (the
+  // "PRAGMA user_version write race" is the most dangerous multi-instance
+  // hazard per single-instance-constraints.md). Loud failure on a bad URL.
+  let redis: RedisHandles | undefined;
+  if (REDIS_URL) {
+    redis = await connectRedis(REDIS_URL);
+  }
+  if (redis) {
+    services = await withLock(
+      redis.client,
+      "coordinator:boot:migration",
+      120,
+      INSTANCE_ID,
+      () => createServices({ dataDir }),
+      { retryMs: 500, maxWaitMs: 120_000 },
+    );
+  } else {
+    services = createServices({ dataDir });
+  }
   const log = services.logger;
   httpLog = log.child({ component: "http" });
   mcpLog = log.child({ component: "mcp" });
@@ -1139,6 +1205,7 @@ async function startServerInner(opts?: ServerOptions): Promise<ServerHandle> {
   const phase2Bootstrap: Phase2Bootstrap | null = bootPhase2({
     enabled: process.env.COORDINATOR_OAUTH_ENABLED === "true",
     db: getDb() as unknown as DatabaseT.Database,
+    ...(redis ? { redis } : {}),
   });
   if (phase2Bootstrap) {
     log.info("Phase 2 OAuth enabled (dispatchAuthRoutes wired, sweeper running)");
@@ -1162,8 +1229,34 @@ async function startServerInner(opts?: ServerOptions): Promise<ServerHandle> {
   // instance + sweeper lifecycle for Phase-1-only deployments, same
   // reuse-or-own shape as retentionSweeper above.
   registerRateLimiter = phase2Bootstrap?.context.rateLimiter ?? new RateLimiter(realClock);
-  if (!phase2Bootstrap) {
+  if (!phase2Bootstrap && registerRateLimiter instanceof RateLimiter) {
     registerRateLimiter.startSweeper();
+  }
+
+  // Phase 5: token-epoch bump pub/sub — collapses the cross-instance WAL
+  // visibility window to pub/sub latency. The publisher also receives its own
+  // messages; noteEpochBump is a monotonic max, so that is harmless.
+  if (redis) {
+    const EPOCH_CHANNEL = "coordinator:token-epoch";
+    setTokenEpochBus({
+      publish: (userId, epoch) => {
+        void redis!.client
+          .publish(EPOCH_CHANNEL, JSON.stringify({ u: userId, e: epoch }))
+          .catch((err) => log.warn({ err }, "token-epoch publish failed"));
+      },
+    });
+    await redis.subscriber.subscribe(EPOCH_CHANNEL, (message) => {
+      try {
+        const { u, e } = JSON.parse(message) as { u: string; e: number };
+        noteEpochBump(u, e);
+      } catch {
+        /* malformed — ignore */
+      }
+    });
+    log.info(
+      { url: redis.url, instance: INSTANCE_ID },
+      "Multi-instance mode: Redis connected (locks, rate-limit, epoch pub/sub)",
+    );
   }
 
   // Multi-session: one transport+server per MCP client session
@@ -1224,7 +1317,7 @@ async function startServerInner(opts?: ServerOptions): Promise<ServerHandle> {
     createHttpHandler({ phase2Bootstrap, port, sessions, sessionClaims, sessionLastActivity }),
   );
 
-  const { broker } = await wireMqtt({ mqttTcpPort, mqttWsPath, httpServer, log });
+  const { broker } = await wireMqtt({ mqttTcpPort, mqttWsPath, httpServer, log, redis });
 
   // Wait for the HTTP server to be actually listening before resolving the
   // returned handle. Otherwise callers (tests, essaim) may try to connect
@@ -1263,6 +1356,7 @@ async function startServerInner(opts?: ServerOptions): Promise<ServerHandle> {
     broker,
     mcpSessionSweepHandle,
     log,
+    redis,
     registerSignalHandlers: opts?.registerSignalHandlers !== false,
   });
 
