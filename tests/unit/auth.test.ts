@@ -292,6 +292,15 @@ describe("Auth endpoint flows", () => {
     const token = await createToken("bridge-internal", "internal");
     await expect(refreshToken(token, { authEnabled: false })).rejects.toThrow();
   });
+
+  it("refreshToken refuses an EXPIRED role:'internal' token within the grace period (no downgrade to member)", async () => {
+    // The expired-token recovery branch must reject "internal" explicitly,
+    // not silently fall through its role allowlist into a "member" default.
+    const token = await createToken("bridge-internal-expired", "internal", "1s");
+    await new Promise((r) => setTimeout(r, 1500));
+    await expect(verifyToken(token)).rejects.toThrow();
+    await expect(refreshToken(token, { authEnabled: false })).rejects.toThrow();
+  });
 });
 
 describe("Auth disabled pass-through", () => {

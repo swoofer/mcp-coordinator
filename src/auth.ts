@@ -28,9 +28,11 @@ export function setAuthLogger(logger: Logger): void {
  * verifyToken falls back to "member" for it, and although verifyTokenStrict
  * preserves the literal role (so the MQTT authenticate hook can recover it),
  * authenticateRequest explicitly rejects claims.role === "internal" as
- * unauthorized, and refreshToken refuses to re-mint a non-expired
- * "internal" token. Only the MQTT authenticate hook (mqtt-broker.ts) may
- * act on this role.
+ * unauthorized, and refreshToken refuses to re-mint an "internal" token —
+ * on both the non-expired (happy) path and the expired-token grace-period
+ * recovery path, so a leaked bridge token can never be turned into a
+ * renewable "member" credential. Only the MQTT authenticate hook
+ * (mqtt-broker.ts) may act on this role.
  */
 export type AuthRole = "agent" | "admin" | "member" | "service" | "internal";
 
@@ -165,8 +167,9 @@ export async function refreshToken(
     }
     // The MQTT-only "internal" bridge role must never be refreshable into a
     // perpetual REST/MCP credential. Reject it on the non-expired (happy)
-    // path here; the expired-token recovery path below already excludes it
-    // implicitly (its role allowlist doesn't include "internal").
+    // path here; the expired-token recovery path below rejects it explicitly
+    // too (see the matching check there) so a leaked, expired bridge token
+    // can't be revived as "member" via the grace-period path either.
     if (c.role === "internal") {
       throw new Error("'internal' role tokens cannot be refreshed");
     }
@@ -186,6 +189,15 @@ export async function refreshToken(
         }
       }
       if (!payload.sub) throw new Error("Missing sub claim in token");
+      // The MQTT-only "internal" bridge role must never be refreshable into a
+      // perpetual REST/MCP credential, including via this expired-token grace
+      // recovery branch. Reject it explicitly here — it must NOT fall through
+      // the role allowlist below into the "unknown role -> member" default,
+      // which would silently downgrade (and thus resurrect) it as a
+      // refreshable "member" token.
+      if (payload.role === "internal") {
+        throw new Error("'internal' role tokens cannot be refreshed");
+      }
       // Tolerate missing/unknown role on v0.6 tokens. Default to 'member' (LEAST PRIVILEGE).
       const rawRole = payload.role;
       const role: AuthRole =
