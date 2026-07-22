@@ -20,7 +20,16 @@ export function setAuthLogger(logger: Logger): void {
   log = logger;
 }
 
-export type AuthRole = "agent" | "admin" | "member" | "service";
+/**
+ * "internal" is reserved for the coordinator's own MQTT bridge client — the
+ * single process-internal identity minted server-side (see
+ * wireMqtt/serve-http.ts) so it can route every org's MQTT traffic without
+ * being bound to one org's topic prefix. It carries no REST privileges
+ * (verifyToken/refreshToken — the general-purpose auth paths — do NOT accept
+ * it and fall back to "member"); only verifyTokenStrict preserves it, and
+ * only the MQTT authenticate hook (mqtt-broker.ts) acts on it.
+ */
+export type AuthRole = "agent" | "admin" | "member" | "service" | "internal";
 
 export interface AuthClaims {
   sub: string;
@@ -115,9 +124,14 @@ export async function verifyTokenStrict(
   }
   if (!payload.sub) throw new Error("Missing sub claim in token");
   // Tolerate missing/unknown role on v0.6 tokens. Default to 'member' (LEAST PRIVILEGE).
+  // "internal" is preserved here (unlike verifyToken/refreshToken's tolerant
+  // fallback) because this is the only path the MQTT authenticate hook uses
+  // to recover the coordinator-internal bridge's role for its ACL exemption.
   const rawRole = payload.role;
   const role: AuthRole =
-    rawRole === "agent" || rawRole === "admin" || rawRole === "member" ? rawRole : "member";
+    rawRole === "agent" || rawRole === "admin" || rawRole === "member" || rawRole === "internal"
+      ? rawRole
+      : "member";
   // v0.7 detection: BOTH user_id AND org must be present strings.
   const hasV07 = typeof payload.user_id === "string" && typeof payload.org === "string";
   return {

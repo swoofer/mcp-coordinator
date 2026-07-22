@@ -920,7 +920,10 @@ async function wireMqtt(
                 try {
                   const { verifyTokenStrict } = await import("./auth.js");
                   const { claims } = await verifyTokenStrict(password.toString("utf-8"));
-                  return { ok: true as const, org: claims.org };
+                  // Thread the role through so mqtt-broker.ts's ACL hooks can
+                  // recognize and exempt the internal bridge (role "internal",
+                  // minted below) from the org-prefix check.
+                  return { ok: true as const, org: claims.org, role: claims.role };
                 } catch {
                   return { ok: false };
                 }
@@ -931,9 +934,12 @@ async function wireMqtt(
     : undefined;
 
   // B3: when AUTH_ENABLED, the internal coordinator client must authenticate
-  // too. Mint a short-lived admin token for the bridge.
+  // too. Mint a short-lived internal-role token for the bridge: "internal"
+  // (not "admin") is the role mqtt-broker.ts's ACL hooks exempt from the
+  // org-prefix check, so the bridge can route every org's traffic without a
+  // real org-admin's token also implicitly gaining that bypass.
   const internalToken = AUTH_ENABLED
-    ? await createToken("coordinator-internal", "admin", "1h")
+    ? await createToken("coordinator-internal", "internal", "1h")
     : undefined;
   await services.mqttBridge.connect({
     url: MQTT_URL || `mqtt://127.0.0.1:${mqttTcpPort}`,

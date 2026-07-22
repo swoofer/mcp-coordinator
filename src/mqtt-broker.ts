@@ -96,14 +96,29 @@ export interface EmbeddedMqttBroker {
  * When omitted (default), the broker accepts anonymous connections — preserving
  * the existing behavior so essaim and other clients without auth keep working.
  *
- * The internal coordinator client (MqttBridge) bypasses this by passing an
- * internal admin token when AUTH_ENABLED is true.
+ * Internal-bridge ACL exemption: the internal coordinator client (MqttBridge)
+ * authenticates with a token whose role is "internal" (minted in wireMqtt/
+ * serve-http.ts). `role` here is an OPTIONAL, free-form string threaded
+ * through from the verifier to the Aedes client purely so the ACL hooks below
+ * can recognize that one identity — it deliberately is NOT the full
+ * `AuthRole` union, so a verifier is never tempted to hand out a broad
+ * privilege level (e.g. "admin", which real org admins also legitimately
+ * hold) as a cross-org bypass. Only the literal value "internal" is exempted.
  */
-export type MqttAuthResult = { ok: false } | { ok: true; org: string };
+export type MqttAuthResult = { ok: false } | { ok: true; org: string; role?: string };
 export type MqttAuthVerifier = (
   username: string | undefined,
   password: Buffer | undefined,
 ) => Promise<MqttAuthResult>;
+
+/**
+ * Role recognized by authorizeSubscribe/authorizePublish as the trusted,
+ * server-minted internal coordinator bridge — exempt from the per-org
+ * topic-prefix ACL so it can route every org's traffic. Deliberately NOT
+ * "admin": a real org-admin's MQTT token is still confined to its own org's
+ * topics, same as any other tenant.
+ */
+const INTERNAL_BRIDGE_ROLE = "internal";
 
 /** Aedes' raw `authenticate` hook signature (client, username, password, cb). */
 export type AedesAuthenticateHook = (
@@ -132,8 +147,11 @@ export function createAedesAuthenticateHook(
           cb(null, false);
           return;
         }
-        // Attach org to the Aedes client object — survives the connection lifetime.
+        // Attach org (and, when present, role) to the Aedes client object —
+        // both survive the connection lifetime and are read back by the ACL
+        // hooks below (authorizeSubscribe/authorizePublish).
         (client as unknown as { org: string }).org = result.org;
+        (client as unknown as { role?: string }).role = result.role;
         cb(null, true);
       },
       (err) => {
@@ -141,6 +159,66 @@ export function createAedesAuthenticateHook(
         cb(null, false);
       },
     );
+  };
+}
+
+/** Aedes' raw `authorizeSubscribe` hook signature (client, sub, cb). */
+export type AedesAuthorizeSubscribeHook = (
+  client: Client,
+  sub: { topic: string; qos: number },
+  cb: (err: Error | null, sub: { topic: string; qos: number } | null) => void,
+) => void;
+
+/** Aedes' raw `authorizePublish` hook signature (client, packet, cb). */
+export type AedesAuthorizePublishHook = (
+  client: Client,
+  packet: { topic: string },
+  cb: (err: Error | null) => void,
+) => void;
+
+/**
+ * Subscriptions must match `coordinator/<org>/...` — EXCEPT the trusted
+ * internal bridge (role === "internal", attached by
+ * createAedesAuthenticateHook), which is exempt so it can route every org's
+ * traffic instead of being locked to whichever org its own token happens to
+ * carry. Pulled out (mirrors createAedesAuthenticateHook) so tests can
+ * exercise the exact production hook — see tests/unit/mqtt-tenant-isolation.test.ts.
+ */
+export function createAedesAuthorizeSubscribeHook(logger: Logger): AedesAuthorizeSubscribeHook {
+  return (client, sub, cb) => {
+    const c = client as unknown as { id?: string; org?: string; role?: string };
+    if (c.role === INTERNAL_BRIDGE_ROLE) return cb(null, sub);
+    const org = c.org;
+    if (!org) return cb(new Error("MQTT client missing org"), null);
+    const prefix = `coordinator/${org}/`;
+    if (!sub.topic.startsWith(prefix)) {
+      logger.warn({ client_id: c.id, org, topic: sub.topic }, "MQTT subscribe denied (cross-org)");
+      return cb(null, null);
+    }
+    cb(null, sub);
+  };
+}
+
+/**
+ * Publishes must match `coordinator/<org>/...` — EXCEPT the trusted internal
+ * bridge (role === "internal"), exempt for the same reason as
+ * createAedesAuthorizeSubscribeHook above.
+ */
+export function createAedesAuthorizePublishHook(logger: Logger): AedesAuthorizePublishHook {
+  return (client, packet, cb) => {
+    const c = client as unknown as { id?: string; org?: string; role?: string };
+    if (c.role === INTERNAL_BRIDGE_ROLE) return cb(null);
+    const org = c.org;
+    if (!org) return cb(new Error("MQTT client missing org"));
+    const prefix = `coordinator/${org}/`;
+    if (!packet.topic.startsWith(prefix)) {
+      logger.warn(
+        { client_id: c.id, org, topic: packet.topic },
+        "MQTT publish denied (cross-org) — client will be disconnected",
+      );
+      return cb(new Error("Cross-org publish denied"));
+    }
+    cb(null);
   };
 }
 
@@ -181,46 +259,14 @@ export async function startEmbeddedMqttBroker(
     // B3 fix: when AUTH_ENABLED, every CONNECT must present a valid token.
     aedesOpts.authenticate = createAedesAuthenticateHook(authenticate, logger);
 
-    // ACL: subscriptions must match coordinator/<org>/...
-    // cb(null, null) → granted=128 (subscription failure per MQTT 3.1.1)
-    aedesOpts.authorizeSubscribe = (
-      client: Client,
-      sub: { topic: string; qos: number },
-      cb: (err: Error | null, sub: { topic: string; qos: number } | null) => void,
-    ) => {
-      const org = (client as unknown as { org?: string }).org;
-      if (!org) return cb(new Error("MQTT client missing org"), null);
-      const prefix = `coordinator/${org}/`;
-      if (!sub.topic.startsWith(prefix)) {
-        logger.warn(
-          { client_id: client?.id, org, topic: sub.topic },
-          "MQTT subscribe denied (cross-org)",
-        );
-        return cb(null, null);
-      }
-      cb(null, sub);
-    };
-
-    // ACL: publishes must match coordinator/<org>/...
-    // Passing an Error to cb causes Aedes to disconnect the client (intended:
-    // cross-org publish is treated as a protocol violation, not silently dropped).
-    aedesOpts.authorizePublish = (
-      client: Client,
-      packet: { topic: string },
-      cb: (err: Error | null) => void,
-    ) => {
-      const org = (client as unknown as { org?: string }).org;
-      if (!org) return cb(new Error("MQTT client missing org"));
-      const prefix = `coordinator/${org}/`;
-      if (!packet.topic.startsWith(prefix)) {
-        logger.warn(
-          { client_id: client?.id, org, topic: packet.topic },
-          "MQTT publish denied (cross-org) — client will be disconnected",
-        );
-        return cb(new Error("Cross-org publish denied"));
-      }
-      cb(null);
-    };
+    // ACL: subscriptions/publishes must match coordinator/<org>/... — except
+    // the internal bridge (see createAedesAuthorize*Hook above).
+    // cb(null, null) → granted=128 (subscription failure per MQTT 3.1.1).
+    aedesOpts.authorizeSubscribe = createAedesAuthorizeSubscribeHook(logger);
+    // Passing an Error to authorizePublish's cb causes Aedes to disconnect the
+    // client (intended: cross-org publish is treated as a protocol violation,
+    // not silently dropped).
+    aedesOpts.authorizePublish = createAedesAuthorizePublishHook(logger);
 
     logger.info("MQTT auth enabled (token in CONNECT password)");
   }
