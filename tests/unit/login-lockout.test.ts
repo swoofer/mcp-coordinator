@@ -126,9 +126,7 @@ describe("recordFailedLogin concurrency", () => {
     // serializes the bucket map, so we expect exactly DEFAULT_LOCKOUT_THRESHOLD
     // results with locked=false and the rest locked=true.
     const results = await Promise.all(
-      Array.from({ length: 100 }, () =>
-        Promise.resolve(recordFailedLogin(limiter, id)),
-      ),
+      Array.from({ length: 100 }, () => Promise.resolve(recordFailedLogin(limiter, id))),
     );
     const allowed = results.filter((r) => !r.locked).length;
     const locked = results.filter((r) => r.locked).length;

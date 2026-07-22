@@ -182,7 +182,10 @@ async function handleAuth(req: IncomingMessage, res: ServerResponse): Promise<vo
     const ip = req.socket.remoteAddress || "unknown";
     // Phase 5: registerRateLimiter may be reused from bootPhase2's context,
     // which is Redis-backed (async) when COORDINATOR_REDIS_URL is set.
-    const rateResult = await registerRateLimiter.check(`register:${ip}`, REGISTER_RATE_LIMIT_CONFIG);
+    const rateResult = await registerRateLimiter.check(
+      `register:${ip}`,
+      REGISTER_RATE_LIMIT_CONFIG,
+    );
     if (!rateResult.allowed) {
       res.setHeader("Retry-After", String(rateResult.retry_after_seconds));
       authLog.warn({ ip }, "Registration rate limit exceeded");

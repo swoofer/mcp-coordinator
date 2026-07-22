@@ -66,7 +66,9 @@ function publishBump(userId: string, epoch: number): void {
   // single-instance mode (no bus, no floor mutation — test isolation).
   try {
     _bus?.publish(userId, epoch);
-  } catch { /* pub/sub is an accelerator; the DB row is the source of truth */ }
+  } catch {
+    /* pub/sub is an accelerator; the DB row is the source of truth */
+  }
 }
 
 // Bump epoch monotonically — never decreases even under NTP rollback.
