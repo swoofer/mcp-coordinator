@@ -684,3 +684,58 @@ describe("Sweeper — lifecycle", () => {
     }
   });
 });
+
+// ── Phase 5 multi-instance: leader-election gate ────────────────────────────
+//
+// tick() (private) is what start()'s setInterval callback invokes. We call
+// it directly (bypassing the timer) so each branch — leader, non-leader,
+// gate error — is exercised deterministically without fake-timer plumbing.
+type SweeperWithTick = { tick(): Promise<void> };
+
+describe("Sweeper — leader-election gate (Phase 5 multi-instance)", () => {
+  it("leaderGate resolves true: this instance is the leader, so it sweeps", async () => {
+    const gate = vi.fn().mockResolvedValue(true);
+    const leaderSweeper = new Sweeper(db, clock, gate);
+    seedOAuthState("won-lease", clock.now() - 120);
+
+    await (leaderSweeper as unknown as SweeperWithTick).tick();
+
+    expect(gate).toHaveBeenCalledTimes(1);
+    expect(leaderSweeper.metrics.totalRuns).toBe(1);
+    expect(leaderSweeper.metrics.rowsDeletedByTable.oauth_state).toBe(1);
+  });
+
+  it("leaderGate resolves false: another instance holds the lease, so this one skips its pass", async () => {
+    const gate = vi.fn().mockResolvedValue(false);
+    const nonLeaderSweeper = new Sweeper(db, clock, gate);
+    seedOAuthState("lost-lease", clock.now() - 120);
+
+    await (nonLeaderSweeper as unknown as SweeperWithTick).tick();
+
+    expect(gate).toHaveBeenCalledTimes(1);
+    expect(nonLeaderSweeper.metrics.totalRuns).toBe(0);
+    // No pass ran — the expired row is still there.
+    const row = db.prepare("SELECT COUNT(*) AS c FROM oauth_state").get() as { c: number };
+    expect(row.c).toBe(1);
+  });
+
+  it("leaderGate rejects (Redis unreachable): sweeps anyway — duplicate sweeps are harmless, but skipping on every instance would mean nobody sweeps", async () => {
+    const gate = vi.fn().mockRejectedValue(new Error("ECONNREFUSED"));
+    const errorSweeper = new Sweeper(db, clock, gate);
+    seedOAuthState("gate-error", clock.now() - 120);
+
+    await (errorSweeper as unknown as SweeperWithTick).tick();
+
+    expect(gate).toHaveBeenCalledTimes(1);
+    expect(errorSweeper.metrics.totalRuns).toBe(1);
+    expect(errorSweeper.metrics.rowsDeletedByTable.oauth_state).toBe(1);
+  });
+
+  it("without a leaderGate (single-instance default): tick() sweeps unconditionally", async () => {
+    seedOAuthState("no-gate", clock.now() - 120);
+
+    await (sweeper as unknown as SweeperWithTick).tick();
+
+    expect(sweeper.metrics.totalRuns).toBe(1);
+  });
+});

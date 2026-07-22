@@ -10,6 +10,10 @@ import {
   closeDb as closeGlobalDb,
 } from "../../src/database.js";
 import fs from "node:fs";
+import { RateLimiter } from "../../src/auth/rate-limit.js";
+import { RedisRateLimiter } from "../../src/auth/rate-limit-redis.js";
+import type { RedisHandles } from "../../src/infra/redis.js";
+import type { IdPProvider } from "../../src/auth/providers/types.js";
 
 /**
  * T29 boot validation tests.
@@ -1131,5 +1135,135 @@ describe("bootPhase2 — GitHub App wiring (v0.10.0 T54)", () => {
     expect(result!.context.providers.names()).toEqual(["github", "google", "github-app", "oidc"]);
     expect(result!.context.providers.getDefault()!.name).toBe("github");
     void result!.shutdown();
+  });
+});
+
+// ── Phase 5 multi-instance: opts.redis DI wiring ────────────────────────────
+//
+// Hand-mocked node-redis-style client covering exactly the surface bootPhase2
+// (and the components it wires when redis is set) touches: get/set/setEx/
+// expire. No live Redis, no network.
+
+class FakeRedisClient {
+  store = new Map<string, string>();
+
+  async get(key: string): Promise<string | null> {
+    return this.store.has(key) ? this.store.get(key)! : null;
+  }
+
+  async set(
+    key: string,
+    value: string,
+    opts?: { NX?: boolean; EX?: number },
+  ): Promise<string | null> {
+    if (opts?.NX && this.store.has(key)) return null;
+    this.store.set(key, value);
+    return "OK";
+  }
+
+  async setEx(key: string, _ttlSeconds: number, value: string): Promise<string> {
+    this.store.set(key, value);
+    return "OK";
+  }
+
+  async expire(_key: string, _ttlSeconds: number): Promise<boolean> {
+    return true;
+  }
+}
+
+function fakeRedisHandles(): { handles: RedisHandles; client: FakeRedisClient } {
+  const client = new FakeRedisClient();
+  const handles = {
+    client,
+    subscriber: client,
+    url: "redis://fake",
+    close: async () => {},
+  } as unknown as RedisHandles;
+  return { handles, client };
+}
+
+describe("bootPhase2 — Phase 5 multi-instance (opts.redis DI)", () => {
+  it("with opts.redis: composes RedisRateLimiter instead of the in-memory RateLimiter", () => {
+    applyValidEnv();
+    const { handles } = fakeRedisHandles();
+    const result = bootPhase2({ enabled: true, db, clock, redis: handles });
+    expect(result).not.toBeNull();
+    expect(result!.context.rateLimiter).toBeInstanceOf(RedisRateLimiter);
+    expect(result!.context.rateLimiter).not.toBeInstanceOf(RateLimiter);
+    void result!.shutdown();
+  });
+
+  it("without opts.redis: composes the in-memory RateLimiter (unchanged default)", () => {
+    applyValidEnv();
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+    expect(result!.context.rateLimiter).toBeInstanceOf(RateLimiter);
+    void result!.shutdown();
+  });
+
+  it("with opts.redis: membershipCache reads/writes through the shared store under the coordinator:mc: prefix", async () => {
+    applyValidEnv();
+    const { handles, client } = fakeRedisHandles();
+    const result = bootPhase2({ enabled: true, db, clock, redis: handles });
+    expect(result).not.toBeNull();
+
+    const provider: IdPProvider = {
+      name: "github",
+      buildAuthUrl: () => "https://x",
+      exchangeCode: async () => ({
+        user: { idp_user_id: "1", email: "a@x" },
+        accessToken: "tok",
+      }),
+      listMemberships: async () => ["acme"],
+    };
+
+    const memberships = await result!.context.membershipCache.getMemberships(
+      "user-1",
+      provider,
+      "tok",
+    );
+    expect(memberships).toEqual(["acme"]);
+
+    // Write-through is fire-and-forget (`void ...setex(...).catch()`); flush
+    // the microtask queue so the FakeRedisClient.setEx call (the boot-wired
+    // `setex` closure) has landed.
+    await Promise.resolve();
+    const mcKeys = [...client.store.keys()].filter((k) => k.startsWith("coordinator:mc:"));
+    expect(mcKeys.length).toBe(1);
+    // The first getMemberships call also exercised the boot-wired `get`
+    // closure (shared-store consult before the provider call, which
+    // returned null on this empty store — proving the wrapper round-trips
+    // through the `coordinator:mc:${key}` prefix either way).
+
+    void result!.shutdown();
+  });
+
+  it("with opts.redis: sweeper leader-elects via acquireOrRenewLock under coordinator:sweeper:leader", async () => {
+    applyValidEnv();
+    const { handles, client } = fakeRedisHandles();
+    vi.useFakeTimers();
+    try {
+      const result = bootPhase2({ enabled: true, db, clock, redis: handles });
+      expect(result).not.toBeNull();
+
+      await vi.advanceTimersByTimeAsync(60_000); // one sweeper tick
+
+      expect(client.store.has("coordinator:sweeper:leader")).toBe(true);
+      // Prove the leader gate actually returned true and a full sweep ran —
+      // not merely that a key was written to the fake store.
+      expect(result!.sweeper.metrics.totalRuns).toBe(1);
+      expect(result!.sweeper.metrics.circuitOpen).toBe(false);
+      void result!.shutdown();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shutdown(): with a Redis-backed rate limiter, does not attempt stopSweeper() (RedisRateLimiter has none) and completes cleanly", async () => {
+    applyValidEnv();
+    const { handles } = fakeRedisHandles();
+    const result = bootPhase2({ enabled: true, db, clock, redis: handles });
+    expect(result).not.toBeNull();
+    await expect(result!.shutdown()).resolves.toBeUndefined();
   });
 });
