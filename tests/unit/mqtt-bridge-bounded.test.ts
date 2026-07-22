@@ -79,12 +79,12 @@ beforeEach(() => {
 describe("MqttBridge listener queue cap (performance-05)", () => {
   it("caps the backlog: pushing far more than the cap keeps only the newest N (drop-oldest)", async () => {
     const { bridge, client } = await makeConnectedBridge();
-    bridge.registerListener("agent-1");
+    bridge.registerListener("default", "agent-1");
     const CAP = 1000; // mirrors MAX_LISTENER_QUEUE in src/mqtt-bridge.ts
     const TOTAL = CAP + 250;
     for (let i = 0; i < TOTAL; i++) emitBroadcast(client, i);
 
-    const messages = bridge.getQueuedMessages("agent-1");
+    const messages = bridge.getQueuedMessages("default", "agent-1");
     expect(messages.length).toBe(CAP);
     // Oldest 250 were dropped; the retained window is the newest CAP entries.
     expect((messages[0].payload as { seq: number }).seq).toBe(TOTAL - CAP);
@@ -93,17 +93,19 @@ describe("MqttBridge listener queue cap (performance-05)", () => {
 
   it("preserves the most recent messages under sustained overflow (not drop-newest)", async () => {
     const { bridge, client } = await makeConnectedBridge();
-    bridge.registerListener("agent-1");
+    bridge.registerListener("default", "agent-1");
     for (let i = 0; i < 1500; i++) emitBroadcast(client, i);
 
-    const seqs = bridge.getQueuedMessages("agent-1").map((m) => (m.payload as { seq: number }).seq);
+    const seqs = bridge
+      .getQueuedMessages("default", "agent-1")
+      .map((m) => (m.payload as { seq: number }).seq);
     expect(seqs.includes(1499)).toBe(true); // newest survives
     expect(seqs.includes(0)).toBe(false); // oldest dropped
   });
 
   it("does not cap while a waitForMessage call is pending (delivered directly, no queueing)", async () => {
     const { bridge, client } = await makeConnectedBridge();
-    const waitPromise = bridge.waitForMessage("agent-1", 5000);
+    const waitPromise = bridge.waitForMessage("default", "agent-1", 5000);
     emitBroadcast(client, 42);
     const msg = await waitPromise;
     expect(msg).not.toBeNull();
@@ -114,7 +116,7 @@ describe("MqttBridge listener queue cap (performance-05)", () => {
 describe("MqttBridge listener cleanup on agent departure (performance-05)", () => {
   it("an agent going offline removes its listener entry entirely", async () => {
     const { bridge, client } = await makeConnectedBridge();
-    bridge.registerListener("agent-1");
+    bridge.registerListener("default", "agent-1");
     emitBroadcast(client, 1);
     emitBroadcast(client, 2);
     expect(bridge.listenerCount()).toBe(1);
@@ -126,7 +128,7 @@ describe("MqttBridge listener cleanup on agent departure (performance-05)", () =
 
   it("drops the departed agent's backlog (no residual growth across reconnects)", async () => {
     const { bridge, client } = await makeConnectedBridge();
-    bridge.registerListener("agent-1");
+    bridge.registerListener("default", "agent-1");
     emitBroadcast(client, 1);
     emitBroadcast(client, 2);
 
@@ -134,14 +136,14 @@ describe("MqttBridge listener cleanup on agent departure (performance-05)", () =
 
     // A later read re-registers a FRESH listener — old backlog is gone,
     // not silently prepended/merged.
-    expect(bridge.getQueuedMessages("agent-1")).toEqual([]);
+    expect(bridge.getQueuedMessages("default", "agent-1")).toEqual([]);
   });
 
   it("unblocks an in-flight waitForMessage with null when the agent goes offline", async () => {
     vi.useFakeTimers();
     try {
       const { bridge, client } = await makeConnectedBridge();
-      const waitPromise = bridge.waitForMessage("agent-1", 5000);
+      const waitPromise = bridge.waitForMessage("default", "agent-1", 5000);
       emitOffline(client, "agent-1");
       await expect(waitPromise).resolves.toBeNull();
     } finally {
@@ -151,14 +153,14 @@ describe("MqttBridge listener cleanup on agent departure (performance-05)", () =
 
   it("does not affect other agents' listeners", async () => {
     const { bridge, client } = await makeConnectedBridge();
-    bridge.registerListener("agent-1");
-    bridge.registerListener("agent-2");
+    bridge.registerListener("default", "agent-1");
+    bridge.registerListener("default", "agent-2");
     emitBroadcast(client, 1); // fans out to both listeners
 
     emitOffline(client, "agent-1");
 
     expect(bridge.listenerCount()).toBe(1);
-    expect(bridge.getQueuedMessages("agent-2").length).toBe(1);
+    expect(bridge.getQueuedMessages("default", "agent-2").length).toBe(1);
   });
 
   it("still invokes the externally-registered onOffline handler (existing behavior preserved)", async () => {
@@ -168,12 +170,12 @@ describe("MqttBridge listener cleanup on agent departure (performance-05)", () =
 
     emitOffline(client, "agent-1");
 
-    expect(handler).toHaveBeenCalledWith("agent-1");
+    expect(handler).toHaveBeenCalledWith("default", "agent-1");
   });
 
   it("cleans up even when no onOffline handler is registered", async () => {
     const { bridge, client } = await makeConnectedBridge();
-    bridge.registerListener("agent-1");
+    bridge.registerListener("default", "agent-1");
     expect(() => emitOffline(client, "agent-1")).not.toThrow();
     expect(bridge.listenerCount()).toBe(0);
   });
