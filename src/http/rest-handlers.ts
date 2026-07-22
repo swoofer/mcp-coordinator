@@ -130,7 +130,7 @@ export function handleSessionStop(
   const { agent_id } = parsed.data;
   registry.setOffline(ctx.claims.org, agent_id);
   activityTracker.reportOffline(ctx.claims.org, agent_id);
-  consultation.handleAgentDeparture(agent_id);
+  consultation.handleAgentDeparture(ctx.claims.org, agent_id);
   sseEmitter.emit("agent_offline", { agent_id }, { org_id: ctx.claims.org });
   json(res, { ok: true });
 }
