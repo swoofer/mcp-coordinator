@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/swoofer/mcp-coordinator/compare/v1.4.0...v1.5.0) (2026-07-22)
+
+
+### Features
+
+* **mqtt:** external broker + org-scoped bridge (multi-instance) with tenant-isolation hardening ([#224](https://github.com/swoofer/mcp-coordinator/issues/224)) ([3286a1f](https://github.com/swoofer/mcp-coordinator/commit/3286a1f43168596342ec49fbee09cfff862172fe))
+
 ## [1.4.0](https://github.com/swoofer/mcp-coordinator/compare/v1.3.0...v1.4.0) (2026-07-21)
 
 
