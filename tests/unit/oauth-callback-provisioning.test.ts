@@ -181,7 +181,7 @@ describe("finalizeBrowserOAuth — login lockout", () => {
     // Consume all tokens for this identifier so the next peek reports locked.
     const ident = hashIdentifier(USER_ALICE.idp_user_id);
     for (let i = 0; i < DEFAULT_LOCKOUT_THRESHOLD; i++) {
-      recordFailedLogin(rateLimiter, ident);
+      await recordFailedLogin(rateLimiter, ident);
     }
     const res = mockResponse();
     await __finalizeBrowserOAuth(
@@ -720,7 +720,7 @@ describe("finalizeBrowserOAuth — edge cases", () => {
     const ident = hashIdentifier("10.0.0.99");
     // Pre-lock via the IP-based identifier.
     for (let i = 0; i <= DEFAULT_LOCKOUT_THRESHOLD; i++) {
-      recordFailedLogin(rateLimiter, ident);
+      await recordFailedLogin(rateLimiter, ident);
     }
     const res = mockResponse();
     await __finalizeBrowserOAuth(

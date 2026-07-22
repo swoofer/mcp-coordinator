@@ -142,7 +142,7 @@ export async function dispatchAuthRoutes(
     return true;
   }
   if (url === "/api/admin/orgs" && method === "POST") {
-    if (!checkAdminMutationRateLimit(req, res, ctx)) return true;
+    if (!(await checkAdminMutationRateLimit(req, res, ctx))) return true;
     await handleCreateOrg(req, res, ctx);
     return true;
   }
@@ -156,7 +156,7 @@ export async function dispatchAuthRoutes(
   // re-parses :id defensively (see handle-admin-orgs.ts ORG_PATH_RE).
   const orgIdMatch = url.match(ADMIN_ORG_ID_RE);
   if (orgIdMatch && method === "PATCH") {
-    if (!checkAdminMutationRateLimit(req, res, ctx)) return true;
+    if (!(await checkAdminMutationRateLimit(req, res, ctx))) return true;
     await handleUpdateOrg(req, res, ctx);
     return true;
   }
@@ -164,7 +164,7 @@ export async function dispatchAuthRoutes(
   // Parameterized PATCH /api/admin/users/:id. Same pattern as orgs above.
   const userIdMatch = url.match(ADMIN_USER_ID_RE);
   if (userIdMatch && method === "PATCH") {
-    if (!checkAdminMutationRateLimit(req, res, ctx)) return true;
+    if (!(await checkAdminMutationRateLimit(req, res, ctx))) return true;
     await handleUpdateUser(req, res, ctx);
     return true;
   }
@@ -242,13 +242,14 @@ function methodForPath(url: string): string {
  * `device-auth-min:${ip}` / `auth-login:${ip}` / `userinfo:${user_id}` /
  * `logout-all:${user_id}` to avoid cross-contamination between policies.
  */
-function checkAdminMutationRateLimit(
+async function checkAdminMutationRateLimit(
   req: IncomingMessage,
   res: ServerResponse,
   ctx: AuthHandlerContext,
-): boolean {
+): Promise<boolean> {
   const ip = req.socket?.remoteAddress ?? "unknown";
-  const result = ctx.rateLimiter.check(`admin:mut:${ip}`, ADMIN_MUT_RATE_LIMIT);
+  // Phase 5: IRateLimiter may be Redis-backed (async).
+  const result = await ctx.rateLimiter.check(`admin:mut:${ip}`, ADMIN_MUT_RATE_LIMIT);
   if (result.allowed) return true;
   res.writeHead(429, {
     "Content-Type": "application/json; charset=utf-8",

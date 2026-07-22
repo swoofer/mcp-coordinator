@@ -104,14 +104,42 @@ export class Sweeper {
   constructor(
     private readonly db: Database.Database,
     private readonly clock: Clock,
+    /**
+     * Phase 5 multi-instance: optional leader-election gate (Redis
+     * `SET key NX EX` lease per single-instance-constraints.md). When
+     * provided, each tick first asks the gate; non-leaders skip their pass
+     * so only one instance issues the DELETE batches. Absent (default) =
+     * single-instance behavior, unchanged.
+     */
+    private readonly leaderGate?: () => Promise<boolean>,
   ) {}
 
   /** Start the periodic timer. Idempotent. */
   start(): void {
     if (this.timer) return;
-    this.timer = setInterval(() => this.runPass(), SWEEP_INTERVAL_MS);
+    this.timer = setInterval(() => { void this.tick(); }, SWEEP_INTERVAL_MS);
     // Unref so the timer doesn't block process exit (T29 may rely on this).
     if (typeof this.timer.unref === "function") this.timer.unref();
+  }
+
+  /**
+   * One timer tick: consult the leader gate (if any) then run the pass.
+   * On a gate ERROR (Redis unreachable — distinct from "lock held by
+   * another instance") we sweep anyway: duplicate sweeps are idempotent
+   * bounded DELETEs serialized by SQLite's write lock, whereas skipping on
+   * error on every instance would mean nobody sweeps for the outage.
+   */
+  private async tick(): Promise<void> {
+    if (this.leaderGate) {
+      let lead = true;
+      try {
+        lead = await this.leaderGate();
+      } catch {
+        lead = true;
+      }
+      if (!lead) return;
+    }
+    this.runPass();
   }
 
   /** Stop the periodic timer. Safe to call multiple times. */

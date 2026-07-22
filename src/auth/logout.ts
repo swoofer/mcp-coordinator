@@ -131,7 +131,7 @@ export async function handleLogoutAll(
   }
   const claims = authResult.claims;
 
-  const rate = ctx.rateLimiter.check(`logout-all:${claims.user_id}`, LOGOUT_ALL_RATE_LIMIT);
+  const rate = await ctx.rateLimiter.check(`logout-all:${claims.user_id}`, LOGOUT_ALL_RATE_LIMIT);
   if (!rate.allowed) {
     res.writeHead(429, {
       "Content-Type": "application/json; charset=utf-8",

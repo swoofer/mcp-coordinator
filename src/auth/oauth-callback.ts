@@ -264,7 +264,7 @@ async function finalizeBrowserOAuth(
   //    point for the lockout state; recordFailedLogin's locked=true is a dead
   //    branch in practice because peek blocks before the bucket can drain past
   //    threshold within a single request cycle.
-  const lockState = isLocked(ctx.rateLimiter, identifierHash);
+  const lockState = await isLocked(ctx.rateLimiter, identifierHash);
   if (lockState.locked) {
     audit("auth.login.locked", {
       tier: 1,
@@ -344,7 +344,7 @@ async function finalizeBrowserOAuth(
   }
   // strategy === "none": leave allowlistMatch as null -> denied below.
   if (!allowlistMatch) {
-    recordFailedLogin(ctx.rateLimiter, identifierHash);
+    await recordFailedLogin(ctx.rateLimiter, identifierHash);
     audit("auth.login.denied.not_in_org", {
       tier: 1,
       metadata: {

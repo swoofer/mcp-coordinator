@@ -11,6 +11,25 @@ export type RateLimitResult =
   | { allowed: true; remaining: number; reset_at: number }
   | { allowed: false; retry_after_seconds: number };
 
+/**
+ * Rate-limiter seam (Phase 5 multi-instance). Methods return `T | Promise<T>`
+ * so the existing in-memory implementation stays fully synchronous (zero churn
+ * for its tests) while the Redis-backed one is async. Call sites `await` the
+ * result — awaiting a plain value is a no-op.
+ */
+export interface IRateLimiter {
+  /** Check + consume one attempt. */
+  check(key: string, cfg: RateLimitConfig): RateLimitResult | Promise<RateLimitResult>;
+  /** Non-consuming projection of the current state. */
+  peek(key: string, cfg: RateLimitConfig): RateLimitResult | Promise<RateLimitResult>;
+  /** Evict expired state. No-op for stores with native TTL. */
+  sweep(): number | Promise<number>;
+  /** Test helper: number of tracked keys. */
+  size(): number | Promise<number>;
+  /** Test helper: clear all state. */
+  reset(): void | Promise<void>;
+}
+
 interface BucketState {
   tokens: number;
   last_refill: number;
@@ -29,7 +48,7 @@ interface BucketState {
  * Phase 5 multi-instance: swap to Redis-backed limiter via DI; this
  * interface stays unchanged.
  */
-export class RateLimiter {
+export class RateLimiter implements IRateLimiter {
   private buckets = new Map<string, BucketState>();
   private sweeperHandle: ReturnType<typeof setInterval> | null = null;
 

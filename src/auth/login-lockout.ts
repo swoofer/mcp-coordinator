@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { RateLimiter } from "./rate-limit.js";
+import type { IRateLimiter } from "./rate-limit.js";
 
 const LOCKOUT_KEY_PREFIX = "lockout:";
 
@@ -47,16 +47,17 @@ export function hashIdentifier(identifier: string): string {
  * V3 §B-NEW-8 wording ("5 failed auth.login.failure per identifier within
  * 15min → 15min lockout") — 5 failures are tolerated; the 6th locks.
  */
-export function recordFailedLogin(
-  limiter: RateLimiter,
+export async function recordFailedLogin(
+  limiter: IRateLimiter,
   identifierHash: string,
   cfg: LockoutConfig = {
     threshold: DEFAULT_LOCKOUT_THRESHOLD,
     window_seconds: DEFAULT_LOCKOUT_WINDOW_SECONDS,
   },
-): LockoutCheckResult {
+): Promise<LockoutCheckResult> {
   const key = LOCKOUT_KEY_PREFIX + identifierHash;
-  const result = limiter.check(key, {
+  // Phase 5: IRateLimiter may be Redis-backed (async) — await handles both.
+  const result = await limiter.check(key, {
     per: cfg.threshold,
     window_seconds: cfg.window_seconds,
   });
@@ -69,16 +70,16 @@ export function recordFailedLogin(
  * remaining attempts. Use this BEFORE attempting the login flow (T16b)
  * to short-circuit denied attempts without consuming additional tokens.
  */
-export function isLocked(
-  limiter: RateLimiter,
+export async function isLocked(
+  limiter: IRateLimiter,
   identifierHash: string,
   cfg: LockoutConfig = {
     threshold: DEFAULT_LOCKOUT_THRESHOLD,
     window_seconds: DEFAULT_LOCKOUT_WINDOW_SECONDS,
   },
-): LockoutCheckResult {
+): Promise<LockoutCheckResult> {
   const key = LOCKOUT_KEY_PREFIX + identifierHash;
-  const result = limiter.peek(key, {
+  const result = await limiter.peek(key, {
     per: cfg.threshold,
     window_seconds: cfg.window_seconds,
   });
@@ -91,8 +92,8 @@ export function isLocked(
  * limiter — production paths must NOT call this. Tests inject fresh
  * limiters, so blast radius is one test.
  */
-export function resetLockoutForTest(limiter: RateLimiter, identifierHash: string): void {
+export function resetLockoutForTest(limiter: IRateLimiter, identifierHash: string): void {
   const key = LOCKOUT_KEY_PREFIX + identifierHash;
-  limiter.reset();
+  void limiter.reset();
   void key;
 }

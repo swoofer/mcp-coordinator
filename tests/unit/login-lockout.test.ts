@@ -51,71 +51,71 @@ describe("hashIdentifier", () => {
 });
 
 describe("recordFailedLogin", () => {
-  it("default threshold=5: attempts 1..5 are tolerated; 6th locks", () => {
+  it("default threshold=5: attempts 1..5 are tolerated; 6th locks", async () => {
     const id = hashIdentifier("alice");
     for (let i = 1; i <= DEFAULT_LOCKOUT_THRESHOLD; i++) {
-      const r = recordFailedLogin(limiter, id);
+      const r = await recordFailedLogin(limiter, id);
       expect(r.locked).toBe(false);
     }
-    const sixth = recordFailedLogin(limiter, id);
+    const sixth = await recordFailedLogin(limiter, id);
     expect(sixth.locked).toBe(true);
     expect(sixth.retry_after_seconds).toBeGreaterThan(0);
   });
 
-  it("respects custom config: threshold=2, window=30 — 3rd attempt locks", () => {
+  it("respects custom config: threshold=2, window=30 — 3rd attempt locks", async () => {
     const id = hashIdentifier("eve");
     const cfg = { threshold: 2, window_seconds: 30 };
-    expect(recordFailedLogin(limiter, id, cfg).locked).toBe(false);
-    expect(recordFailedLogin(limiter, id, cfg).locked).toBe(false);
-    const r3 = recordFailedLogin(limiter, id, cfg);
+    expect((await recordFailedLogin(limiter, id, cfg)).locked).toBe(false);
+    expect((await recordFailedLogin(limiter, id, cfg)).locked).toBe(false);
+    const r3 = await recordFailedLogin(limiter, id, cfg);
     expect(r3.locked).toBe(true);
     expect(r3.retry_after_seconds).toBeGreaterThan(0);
   });
 });
 
 describe("isLocked", () => {
-  it("returns false on a fresh identifier", () => {
+  it("returns false on a fresh identifier", async () => {
     const id = hashIdentifier("alice");
-    expect(isLocked(limiter, id).locked).toBe(false);
+    expect((await isLocked(limiter, id)).locked).toBe(false);
   });
 
-  it("returns true once threshold is exceeded; peek does not consume", () => {
+  it("returns true once threshold is exceeded; peek does not consume", async () => {
     const id = hashIdentifier("alice");
     for (let i = 0; i < DEFAULT_LOCKOUT_THRESHOLD + 1; i++) {
-      recordFailedLogin(limiter, id);
+      await recordFailedLogin(limiter, id);
     }
-    const r1 = isLocked(limiter, id);
-    const r2 = isLocked(limiter, id);
+    const r1 = await isLocked(limiter, id);
+    const r2 = await isLocked(limiter, id);
     expect(r1.locked).toBe(true);
     expect(r2.locked).toBe(true);
     expect(r1.retry_after_seconds).toBeGreaterThan(0);
   });
 
-  it("returns false again after window passes (TTL expiry)", () => {
+  it("returns false again after window passes (TTL expiry)", async () => {
     const id = hashIdentifier("alice");
     for (let i = 0; i < DEFAULT_LOCKOUT_THRESHOLD + 1; i++) {
-      recordFailedLogin(limiter, id);
+      await recordFailedLogin(limiter, id);
     }
-    expect(isLocked(limiter, id).locked).toBe(true);
+    expect((await isLocked(limiter, id)).locked).toBe(true);
     clock.advance(DEFAULT_LOCKOUT_WINDOW_SECONDS + 1);
-    expect(isLocked(limiter, id).locked).toBe(false);
+    expect((await isLocked(limiter, id)).locked).toBe(false);
   });
 
-  it("uses default config when no cfg passed (covers default-arg branch)", () => {
+  it("uses default config when no cfg passed (covers default-arg branch)", async () => {
     const id = hashIdentifier("alice");
     // First call without cfg arg — exercises default parameter path.
-    const r = isLocked(limiter, id);
+    const r = await isLocked(limiter, id);
     expect(r.locked).toBe(false);
     expect(r.retry_after_seconds).toBeUndefined();
   });
 
-  it("respects custom config (cfg branch)", () => {
+  it("respects custom config (cfg branch)", async () => {
     const id = hashIdentifier("alice");
     const cfg = { threshold: 1, window_seconds: 60 };
     // After 2 failures with threshold=1 we should be locked.
-    recordFailedLogin(limiter, id, cfg);
-    recordFailedLogin(limiter, id, cfg);
-    expect(isLocked(limiter, id, cfg).locked).toBe(true);
+    await recordFailedLogin(limiter, id, cfg);
+    await recordFailedLogin(limiter, id, cfg);
+    expect((await isLocked(limiter, id, cfg)).locked).toBe(true);
   });
 });
 
@@ -126,7 +126,9 @@ describe("recordFailedLogin concurrency", () => {
     // serializes the bucket map, so we expect exactly DEFAULT_LOCKOUT_THRESHOLD
     // results with locked=false and the rest locked=true.
     const results = await Promise.all(
-      Array.from({ length: 100 }, () => Promise.resolve(recordFailedLogin(limiter, id))),
+      Array.from({ length: 100 }, () =>
+        Promise.resolve(recordFailedLogin(limiter, id)),
+      ),
     );
     const allowed = results.filter((r) => !r.locked).length;
     const locked = results.filter((r) => r.locked).length;
@@ -136,13 +138,13 @@ describe("recordFailedLogin concurrency", () => {
 });
 
 describe("resetLockoutForTest", () => {
-  it("clears lockout state (test helper)", () => {
+  it("clears lockout state (test helper)", async () => {
     const id = hashIdentifier("alice");
     for (let i = 0; i < DEFAULT_LOCKOUT_THRESHOLD + 1; i++) {
-      recordFailedLogin(limiter, id);
+      await recordFailedLogin(limiter, id);
     }
-    expect(isLocked(limiter, id).locked).toBe(true);
+    expect((await isLocked(limiter, id)).locked).toBe(true);
     resetLockoutForTest(limiter, id);
-    expect(isLocked(limiter, id).locked).toBe(false);
+    expect((await isLocked(limiter, id)).locked).toBe(false);
   });
 });

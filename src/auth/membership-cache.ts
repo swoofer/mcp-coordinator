@@ -21,6 +21,18 @@ export interface StaleServedEvent {
   ageSeconds: number;
 }
 
+/**
+ * Phase 5 multi-instance: optional shared fresh-entry store (Redis SETEX per
+ * (user_id, provider) — single-instance-constraints.md). Only the POSITIVE
+ * (fresh) path is shared; stale-on-error deliberately stays in-process, per
+ * the maintainer's plan. Errors on the shared store are swallowed — it is a
+ * cross-instance accelerator, never a correctness dependency.
+ */
+export interface SharedMembershipStore {
+  get(key: string): Promise<string | null>;
+  setex(key: string, ttlSeconds: number, value: string): Promise<void>;
+}
+
 // 60s positive TTL: within this window cache is authoritative.
 // 10min absolute LRU lifetime: beyond positive TTL we still keep the entry
 // available so stale-on-error can serve it during transient IdP outages.
@@ -53,6 +65,7 @@ export class MembershipCache {
   constructor(
     private clock: Clock,
     private onStaleServed?: (e: StaleServedEvent) => void,
+    private shared?: SharedMembershipStore,
   ) {
     this.cache = new LRUCache<string, MembershipCacheEntry>({
       max: CACHE_CAPACITY,
@@ -81,6 +94,24 @@ export class MembershipCache {
       return cached.memberships;
     }
 
+    // Phase 5: consult the shared store before hitting the IdP — another
+    // instance may have refreshed this entry within the positive TTL. The
+    // entry is also copied into the local LRU so stale-on-error (which stays
+    // in-process by design) has something to serve later.
+    if (this.shared) {
+      try {
+        const raw = await this.shared.get(key);
+        if (raw !== null) {
+          const entry = JSON.parse(raw) as MembershipCacheEntry;
+          if ((now - entry.ts) < POSITIVE_TTL_S) {
+            this.cache.set(key, entry);
+            this._metrics.hits++;
+            return entry.memberships;
+          }
+        }
+      } catch { /* shared store is best-effort */ }
+    }
+
     if (!provider.listMemberships) {
       throw new ProviderCapabilityError("listMemberships");
     }
@@ -88,7 +119,12 @@ export class MembershipCache {
     try {
       const raw = await provider.listMemberships(accessToken);
       const memberships = raw.map((s) => s.toLowerCase());
-      this.cache.set(key, { memberships, ts: now });
+      const entry: MembershipCacheEntry = { memberships, ts: now };
+      this.cache.set(key, entry);
+      if (this.shared) {
+        // Write-through, fire-and-forget: SETEX bounded by the positive TTL.
+        void this.shared.setex(key, POSITIVE_TTL_S, JSON.stringify(entry)).catch(() => {});
+      }
       this._metrics.misses++;
       return memberships;
     } catch (err) {

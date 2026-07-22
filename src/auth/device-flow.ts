@@ -91,7 +91,7 @@ export async function handleDeviceAuthorization(
 ): Promise<void> {
   // Rate limit (both per-min and per-hour must pass)
   const ip = req.socket?.remoteAddress ?? "unknown";
-  const perMin = ctx.rateLimiter.check(`device-auth-min:${ip}`, RATE_LIMIT_PER_MIN);
+  const perMin = await ctx.rateLimiter.check(`device-auth-min:${ip}`, RATE_LIMIT_PER_MIN);
   if (!perMin.allowed) {
     res.writeHead(429, {
       "Content-Type": "application/json; charset=utf-8",
@@ -100,7 +100,7 @@ export async function handleDeviceAuthorization(
     res.end(JSON.stringify(appError("RATE_LIMITED", "Too many device auth requests (per minute)")));
     return;
   }
-  const perHour = ctx.rateLimiter.check(`device-auth-hour:${ip}`, RATE_LIMIT_PER_HOUR);
+  const perHour = await ctx.rateLimiter.check(`device-auth-hour:${ip}`, RATE_LIMIT_PER_HOUR);
   if (!perHour.allowed) {
     res.writeHead(429, {
       "Content-Type": "application/json; charset=utf-8",
@@ -283,7 +283,7 @@ export async function handleDeviceApprove(
   // can use user_id (rather than IP, which can be shared/NATed for legit
   // approvers); placed before CSRF so an attacker that spams /approve with
   // bogus CSRF tokens still pays the per-user rate-limit cost.
-  const minRate = ctx.rateLimiter.check(
+  const minRate = await ctx.rateLimiter.check(
     `device-approve-min:${claims.user_id}`,
     APPROVE_RATE_PER_MIN,
   );
@@ -297,7 +297,7 @@ export async function handleDeviceApprove(
     );
     return;
   }
-  const hourRate = ctx.rateLimiter.check(
+  const hourRate = await ctx.rateLimiter.check(
     `device-approve-hour:${claims.user_id}`,
     APPROVE_RATE_PER_HOUR,
   );
