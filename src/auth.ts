@@ -24,10 +24,13 @@ export function setAuthLogger(logger: Logger): void {
  * "internal" is reserved for the coordinator's own MQTT bridge client — the
  * single process-internal identity minted server-side (see
  * wireMqtt/serve-http.ts) so it can route every org's MQTT traffic without
- * being bound to one org's topic prefix. It carries no REST privileges
- * (verifyToken/refreshToken — the general-purpose auth paths — do NOT accept
- * it and fall back to "member"); only verifyTokenStrict preserves it, and
- * only the MQTT authenticate hook (mqtt-broker.ts) acts on it.
+ * being bound to one org's topic prefix. It carries no REST privileges:
+ * verifyToken falls back to "member" for it, and although verifyTokenStrict
+ * preserves the literal role (so the MQTT authenticate hook can recover it),
+ * authenticateRequest explicitly rejects claims.role === "internal" as
+ * unauthorized, and refreshToken refuses to re-mint a non-expired
+ * "internal" token. Only the MQTT authenticate hook (mqtt-broker.ts) may
+ * act on this role.
  */
 export type AuthRole = "agent" | "admin" | "member" | "service" | "internal";
 
@@ -159,6 +162,13 @@ export async function refreshToken(
     const { claims: c, wasLegacy } = await verifyTokenStrict(token);
     if (wasLegacy && authEnabled) {
       throw new Error("v0.6 token rejected: upgrade required (AUTH_ENABLED=true)");
+    }
+    // The MQTT-only "internal" bridge role must never be refreshable into a
+    // perpetual REST/MCP credential. Reject it on the non-expired (happy)
+    // path here; the expired-token recovery path below already excludes it
+    // implicitly (its role allowlist doesn't include "internal").
+    if (c.role === "internal") {
+      throw new Error("'internal' role tokens cannot be refreshed");
     }
     claims = c;
   } catch (err) {
@@ -523,6 +533,20 @@ export async function authenticateRequest(
       status: 401,
       error: isExpired ? "Token expired" : "Invalid or expired token",
       wwwAuthenticate: `Bearer realm="mcp-coordinator", error="${isExpired ? "expired_token" : "invalid_token"}"`,
+    };
+  }
+
+  // The "internal" role is valid ONLY for the MQTT authenticate hook
+  // (mqtt-broker.ts, via wireMqtt's verifyTokenStrict call) — never for
+  // REST/MCP. Reject it here with the same shape as an invalid token so a
+  // leaked bridge token (which can now travel a real network via the
+  // external-broker option) carries no REST/MCP privilege.
+  if (claims.role === "internal") {
+    return {
+      ok: false,
+      status: 401,
+      error: "Invalid or expired token",
+      wwwAuthenticate: 'Bearer realm="mcp-coordinator", error="invalid_token"',
     };
   }
 

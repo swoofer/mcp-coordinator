@@ -35,13 +35,16 @@ export class MqttBridge {
   private connected = false;
   private onOfflineHandler: ((orgId: string, agentId: string) => void) | null = null;
   /**
-   * Task 22: listeners are keyed by `listenerKey(orgId, agentId)` so
-   * consultation fan-out never crosses org boundaries. The wildcard
+   * Task 22: listeners are nested `Map<orgId, Map<agentId, AgentListener>>`
+   * so consultation fan-out never crosses org boundaries. The wildcard
    * subscription below means this bridge sees every org's traffic; delivery
    * MUST filter by org or an agent in org A would receive org B's
-   * consultation messages.
+   * consultation messages. Nesting by orgId (rather than a single map keyed
+   * by a joined `orgId+agentId` string) also makes "every listener in this
+   * org" a direct lookup instead of a string-prefix scan, so there is no
+   * delimiter for an unrestricted agentId to collide with.
    */
-  private listeners = new Map<string, AgentListener>();
+  private listeners = new Map<string, Map<string, AgentListener>>();
   private log: Logger;
   private agentId: string = "coordinator-internal";
   /**
@@ -58,13 +61,14 @@ export class MqttBridge {
     this.log = logger ?? silentLogger;
   }
 
-  /**
-   * Task 22: composite key for the per-(org, agent) listener map. Uses a
-   * separator that cannot legally appear inside an orgId/agentId so two
-   * distinct pairs can never collide into the same key.
-   */
-  private listenerKey(orgId: string, agentId: string): string {
-    return `${orgId}::${agentId}`;
+  /** Get (or lazily create) the inner agentId->listener map for one org. */
+  private orgListeners(orgId: string): Map<string, AgentListener> {
+    let inner = this.listeners.get(orgId);
+    if (!inner) {
+      inner = new Map();
+      this.listeners.set(orgId, inner);
+    }
+    return inner;
   }
 
   async connect(config: {
@@ -177,9 +181,7 @@ export class MqttBridge {
             // Task 22: deliver ONLY to listeners of the same org. Without this
             // filter the wildcard subscription would leak org B's consultation
             // traffic into org A's listeners.
-            const prefix = `${orgId}::`;
-            for (const [key, listener] of this.listeners) {
-              if (!key.startsWith(prefix)) continue;
+            for (const listener of this.orgListeners(orgId).values()) {
               if (listener.waitResolve) {
                 const resolveListener = listener.waitResolve;
                 listener.waitResolve = null;
@@ -356,24 +358,26 @@ export class MqttBridge {
   // ── Agent listener methods (for integrated MCP tools) ──
 
   registerListener(orgId: string, agentId: string): void {
-    const key = this.listenerKey(orgId, agentId);
-    if (!this.listeners.has(key)) {
-      this.listeners.set(key, { queue: [], waitResolve: null });
+    const inner = this.orgListeners(orgId);
+    if (!inner.has(agentId)) {
+      inner.set(agentId, { queue: [], waitResolve: null });
     }
   }
 
   removeListener(orgId: string, agentId: string): void {
-    const key = this.listenerKey(orgId, agentId);
-    const listener = this.listeners.get(key);
+    const inner = this.listeners.get(orgId);
+    const listener = inner?.get(agentId);
     if (listener?.waitResolve) {
       listener.waitResolve(null); // unblock any waiting call
     }
-    this.listeners.delete(key);
+    inner?.delete(agentId);
   }
 
   /** Test helper: current listener count (performance-05). */
   listenerCount(): number {
-    return this.listeners.size;
+    let count = 0;
+    for (const inner of this.listeners.values()) count += inner.size;
+    return count;
   }
 
   async waitForMessage(
@@ -382,7 +386,7 @@ export class MqttBridge {
     timeoutMs: number,
   ): Promise<QueuedMessage | null> {
     this.registerListener(orgId, agentId);
-    const listener = this.listeners.get(this.listenerKey(orgId, agentId))!;
+    const listener = this.orgListeners(orgId).get(agentId)!;
 
     // Check queue first
     if (listener.queue.length > 0) {
@@ -403,7 +407,7 @@ export class MqttBridge {
 
   getQueuedMessages(orgId: string, agentId: string): QueuedMessage[] {
     this.registerListener(orgId, agentId);
-    const listener = this.listeners.get(this.listenerKey(orgId, agentId))!;
+    const listener = this.orgListeners(orgId).get(agentId)!;
     const messages = [...listener.queue];
     listener.queue.length = 0;
     return messages;

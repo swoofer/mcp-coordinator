@@ -89,6 +89,11 @@ const REDIS_URL = process.env.COORDINATOR_REDIS_URL || "";
 const INSTANCE_ID = `${os.hostname()}-${process.pid}-${randomUUID().slice(0, 8)}`;
 // External-broker support: run with an external MQTT broker instead of the
 // embedded Aedes one. Default keeps the embedded broker (upstream behavior).
+// NOTE: the per-org MQTT topic ACL (authorizeSubscribe/authorizePublish in
+// mqtt-broker.ts) is enforced only by the embedded Aedes broker. When
+// COORDINATOR_MQTT_EMBEDDED=false, this process does NOT enforce tenant
+// isolation on the wire — operators are responsible for configuring
+// equivalent per-org topic ACLs on the external broker itself.
 const MQTT_EMBEDDED = process.env.COORDINATOR_MQTT_EMBEDDED !== "false";
 const MQTT_URL = process.env.COORDINATOR_MQTT_URL || "";
 const MQTT_USERNAME = process.env.COORDINATOR_MQTT_USERNAME || undefined;
