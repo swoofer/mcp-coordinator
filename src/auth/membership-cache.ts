@@ -103,13 +103,15 @@ export class MembershipCache {
         const raw = await this.shared.get(key);
         if (raw !== null) {
           const entry = JSON.parse(raw) as MembershipCacheEntry;
-          if ((now - entry.ts) < POSITIVE_TTL_S) {
+          if (now - entry.ts < POSITIVE_TTL_S) {
             this.cache.set(key, entry);
             this._metrics.hits++;
             return entry.memberships;
           }
         }
-      } catch { /* shared store is best-effort */ }
+      } catch {
+        /* shared store is best-effort */
+      }
     }
 
     if (!provider.listMemberships) {

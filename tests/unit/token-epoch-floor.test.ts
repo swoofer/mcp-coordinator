@@ -1,10 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import fs from "node:fs";
-import {
-  noteEpochBump,
-  getEpochFloor,
-  resetEpochFloorForTest,
-} from "../../src/auth/token-epoch.js";
+import { noteEpochBump, resetEpochFloorForTest } from "../../src/auth/token-epoch.js";
 import { checkTokenEpoch } from "../../src/auth/refresh-rotation.js";
 import { initDatabase, closeDb } from "../../src/database.js";
 
@@ -32,15 +28,9 @@ describe("token-epoch floor (multi-instance) — refresh grant", () => {
     resetEpochFloorForTest();
   });
 
-  it("effective epoch = max(db, floor) so a pub/sub bump revokes a stale-epoch refresh", () => {
-    noteEpochBump(SUB, 7); // un autre pod a bumpé l'epoch à 7
-    const dbEpoch = 3; // le READ DB local est en retard
-    const effective = Math.max(dbEpoch, getEpochFloor(SUB));
-    expect(effective).toBe(7); // le refresh doit utiliser 7, pas 3
-  });
-
   // Real-code regression coverage: exercises checkTokenEpoch (the actual
-  // refresh-rotation step) end-to-end, not just the pure floor math above.
+  // refresh-rotation step) end-to-end, via noteEpochBump/getEpochFloor
+  // rather than asserting the floor arithmetic in isolation.
   // Without the multi-instance floor fix, this fails (the stale-epoch refresh is wrongly
   // accepted); with the fix, it's rejected.
   describe("checkTokenEpoch — cross-instance floor honored", () => {

@@ -64,8 +64,16 @@ export async function connectRedis(url: string, logger?: MinimalLogger): Promise
     url,
     close: async () => {
       // quit() flushes pending commands then closes; destroy on failure.
-      try { await subscriber.quit(); } catch { subscriber.destroy(); }
-      try { await client.quit(); } catch { client.destroy(); }
+      try {
+        await subscriber.quit();
+      } catch {
+        subscriber.destroy();
+      }
+      try {
+        await client.quit();
+      } catch {
+        client.destroy();
+      }
     },
   };
 }
@@ -89,6 +97,13 @@ export async function acquireLock(
  * this owner (renews the TTL). This is the leader-election gate shape — the
  * incumbent leader keeps leading across ticks; on crash the TTL expires and
  * another instance takes over within ttlSeconds.
+ *
+ * Note: the acquire→get→expire renewal path below is NOT atomic (three
+ * round trips). That's an intentionally accepted trade-off for this
+ * idempotent sweeper lease — a lost race just means a tick is skipped or
+ * double-run, both harmless (see Sweeper.tick's comment). Do not reuse this
+ * helper for a mutual-exclusion critical section; `withLock` deliberately
+ * only uses the atomic `acquireLock` + Lua `releaseLock` path for that.
  */
 export async function acquireOrRenewLock(
   client: RedisClient,
@@ -114,14 +129,12 @@ end
 return 0
 `;
 
-export async function releaseLock(
-  client: RedisClient,
-  key: string,
-  owner: string,
-): Promise<void> {
+export async function releaseLock(client: RedisClient, key: string, owner: string): Promise<void> {
   try {
     await client.eval(RELEASE_LUA, { keys: [key], arguments: [owner] });
-  } catch { /* best-effort: TTL is the backstop */ }
+  } catch {
+    /* best-effort: TTL is the backstop */
+  }
 }
 
 /**

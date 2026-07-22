@@ -91,9 +91,17 @@ export async function isLocked(
  * Test helper: reset lockout state. NOTE: this resets ALL buckets on the
  * limiter — production paths must NOT call this. Tests inject fresh
  * limiters, so blast radius is one test.
+ *
+ * Async because `RedisRateLimiter.reset()` is a SCAN+DEL sequence — callers
+ * must await this before asserting post-reset state, otherwise they race an
+ * unfinished reset (fire-and-forget `void limiter.reset()` previously let
+ * the promise dangle).
  */
-export function resetLockoutForTest(limiter: IRateLimiter, identifierHash: string): void {
+export async function resetLockoutForTest(
+  limiter: IRateLimiter,
+  identifierHash: string,
+): Promise<void> {
   const key = LOCKOUT_KEY_PREFIX + identifierHash;
-  void limiter.reset();
+  await limiter.reset();
   void key;
 }

@@ -117,7 +117,15 @@ export class Sweeper {
   /** Start the periodic timer. Idempotent. */
   start(): void {
     if (this.timer) return;
-    this.timer = setInterval(() => { void this.tick(); }, SWEEP_INTERVAL_MS);
+    // `void this.tick()`: tick() is async (it may await the Redis leader
+    // gate), so wrapping it changes a synchronous throw inside runPass()
+    // from an uncaught exception into an unhandled promise rejection.
+    // runPass() already catches its own errors (circuit breaker below), so
+    // in practice tick() shouldn't reject — this is a latent risk to keep
+    // in mind if that invariant ever changes.
+    this.timer = setInterval(() => {
+      void this.tick();
+    }, SWEEP_INTERVAL_MS);
     // Unref so the timer doesn't block process exit (T29 may rely on this).
     if (typeof this.timer.unref === "function") this.timer.unref();
   }

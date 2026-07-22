@@ -142,7 +142,7 @@ describe("resetLockoutForTest", () => {
       await recordFailedLogin(limiter, id);
     }
     expect((await isLocked(limiter, id)).locked).toBe(true);
-    resetLockoutForTest(limiter, id);
+    await resetLockoutForTest(limiter, id);
     expect((await isLocked(limiter, id)).locked).toBe(false);
   });
 });
