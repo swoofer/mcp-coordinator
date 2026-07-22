@@ -74,10 +74,13 @@ describe("MqttBridge reconnection (tests-06)", () => {
   it("re-subscribes to all 3 topics on the initial connect", async () => {
     const {} = await makeConnectedBridge();
     const topics = subscribeCalls.map((c) => c.topic);
+    // Task 22: subscriptions are org-wildcarded — a single bridge serves
+    // every tenant, and the real org is recovered per-message from the
+    // topic prefix.
     expect(topics).toEqual([
-      "coordinator/default/agents/+/status",
-      "coordinator/default/consultations/#",
-      "coordinator/default/broadcast",
+      "coordinator/+/agents/+/status",
+      "coordinator/+/consultations/#",
+      "coordinator/+/broadcast",
     ]);
   });
 
@@ -93,9 +96,9 @@ describe("MqttBridge reconnection (tests-06)", () => {
     expect(subscribeCalls).toHaveLength(6);
     const secondBatch = subscribeCalls.slice(3).map((c) => c.topic);
     expect(secondBatch).toEqual([
-      "coordinator/default/agents/+/status",
-      "coordinator/default/consultations/#",
-      "coordinator/default/broadcast",
+      "coordinator/+/agents/+/status",
+      "coordinator/+/consultations/#",
+      "coordinator/+/broadcast",
     ]);
     expect(bridge.isConnected()).toBe(true);
   });
@@ -105,7 +108,7 @@ describe("MqttBridge reconnection (tests-06)", () => {
     client.emit("connect"); // reconnect
 
     const publishSpy = vi.spyOn(client, "publish");
-    bridge.publishBroadcast("agent-1", "hello after reconnect");
+    bridge.publishBroadcast("default", "agent-1", "hello after reconnect");
     expect(publishSpy).toHaveBeenCalledWith(
       "coordinator/default/broadcast",
       JSON.stringify({ agent_id: "agent-1", message: "hello after reconnect" }),

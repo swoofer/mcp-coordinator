@@ -174,7 +174,7 @@ describe("Integration: Full Consultation Lifecycle", () => {
       type: "context",
       content: "ok",
     });
-    consultation.handleAgentDeparture("agent-c");
+    consultation.handleAgentDeparture("default", "agent-c");
 
     // Only B needs to approve now
     consultation.proposeResolution("default", thread.id, "agent-a", "My plan");

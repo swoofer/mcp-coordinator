@@ -455,7 +455,7 @@ describe("Consultation", () => {
       target_modules: ["src/auth"],
       target_files: [],
     });
-    consultation.handleAgentDeparture("a2");
+    consultation.handleAgentDeparture("default", "a2");
 
     expect(events).toHaveLength(1);
     expect(events[0].resolution_type).toBe("agent_departure");
@@ -667,7 +667,7 @@ describe("Consultation", () => {
       type: "context",
       content: "noted",
     });
-    consultation.handleAgentDeparture("a3");
+    consultation.handleAgentDeparture("default", "a3");
     // Propose and only a2 needs to approve
     consultation.proposeResolution("default", thread.id, "a1", "Keep compat");
     consultation.approveResolution("default", thread.id, "a2");
@@ -787,7 +787,7 @@ describe("Consultation", () => {
     const midState = consultation.getThread("default", thread.id);
     expect(midState!.status).toBe("resolving");
 
-    consultation.handleAgentDeparture("a3");
+    consultation.handleAgentDeparture("default", "a3");
     const final = consultation.getThread("default", thread.id);
     expect(final!.status).toBe("resolved");
     const departureEvents = events.filter((e) => e.resolution_type === "agent_departure");
@@ -1191,7 +1191,7 @@ describe("consultation corrupted column resilience (qualite-code-07)", () => {
       .prepare("UPDATE threads SET expected_respondents = ? WHERE id = ?")
       .run("TRUNCATED[", thread.id);
 
-    expect(() => consultation.handleAgentDeparture("a2")).not.toThrow();
+    expect(() => consultation.handleAgentDeparture("default", "a2")).not.toThrow();
     const updated = consultation.getThread("default", thread.id);
     // Corrupted column parses to [] — filtering a2 out of [] is still [].
     expect(updated?.expected_respondents).toBe("[]");

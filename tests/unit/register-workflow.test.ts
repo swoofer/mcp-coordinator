@@ -12,7 +12,7 @@ import { runRegisterFlow } from "../../src/register-workflow.js";
 /**
  * architecture-07: REST /api/register and MCP register_agent now share
  * runRegisterFlow (src/register-workflow.ts), which — unlike the old REST
- * path alone — also calls mqttBridge.registerAgent(agentId, name) so an
+ * path alone — also calls mqttBridge.registerAgent(orgId, agentId, name) so an
  * agent registered over REST publishes the same retained MQTT "online"
  * status an MCP-registered agent does.
  */
@@ -92,7 +92,7 @@ describe("runRegisterFlow (architecture-07 shared REST/MCP register flow)", () =
     expect(agent.id).toBe("a1");
     expect(services.registry.get("default", "a1")).toBeTruthy();
     expect(registerSpy).toHaveBeenCalledTimes(1);
-    expect(registerSpy).toHaveBeenCalledWith("a1", "Agent A");
+    expect(registerSpy).toHaveBeenCalledWith("default", "a1", "Agent A");
 
     await flush();
     const onlineEvents = events.filter((t) => t === "agent_online");
@@ -111,7 +111,7 @@ describe("runRegisterFlow (architecture-07 shared REST/MCP register flow)", () =
 
     expect(getStatus()).toBe(200);
     expect(registerSpy).toHaveBeenCalledTimes(1);
-    expect(registerSpy).toHaveBeenCalledWith("a1", "Agent A");
+    expect(registerSpy).toHaveBeenCalledWith("default", "a1", "Agent A");
   });
 
   it("REST /api/register emits agent_online exactly once (no double-emit from the shared flow)", async () => {

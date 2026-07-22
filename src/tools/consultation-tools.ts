@@ -157,7 +157,7 @@ export function registerConsultationTools(
         },
         { org_id: claims.org },
       );
-      mqttBridge.publishConsultation(thread.id, agent_id, subject, target_modules);
+      mqttBridge.publishConsultation(claims.org, thread.id, agent_id, subject, target_modules);
 
       const contextForInitiator = respondents
         .map((rid: string) =>
@@ -236,7 +236,7 @@ export function registerConsultationTools(
         },
         { org_id: claims.org },
       );
-      mqttBridge.publishMessage(thread_id, agent_id, type, content);
+      mqttBridge.publishMessage(claims.org, thread_id, agent_id, type, content);
       return { content: [{ type: "text", text: JSON.stringify(msg) }] };
     },
   );
@@ -263,7 +263,7 @@ export function registerConsultationTools(
         { thread_id, agent_id, summary },
         { org_id: claims.org },
       );
-      mqttBridge.publishResolution(thread_id, "resolving", summary);
+      mqttBridge.publishResolution(claims.org, thread_id, "resolving", summary);
       const thread = consultation.getThread(claims.org, thread_id);
       return { content: [{ type: "text", text: JSON.stringify(thread) }] };
     },

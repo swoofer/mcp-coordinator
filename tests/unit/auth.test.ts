@@ -209,6 +209,15 @@ describe("authenticateRequest guard", () => {
       expect(result.wwwAuthenticate).toMatch(/error="expired_token"/);
     }
   });
+
+  it("rejects a role:'internal' bearer token on a normal API route (MQTT-only role, no REST/MCP privilege)", async () => {
+    const token = await createToken("bridge-internal", "internal");
+    const result = await authenticateRequest(mockRequest({ authorization: `Bearer ${token}` }), {
+      authEnabled: true,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.status).toBe(401);
+  });
 });
 
 describe("Revocation", () => {
@@ -277,6 +286,20 @@ describe("Auth endpoint flows", () => {
     const newToken = await refreshToken(token, { authEnabled: false });
     const claims = await verifyToken(newToken);
     expect(claims.sub).toBe("grace-agent");
+  });
+
+  it("refreshToken refuses a non-expired role:'internal' token (no perpetual bridge credential via refresh)", async () => {
+    const token = await createToken("bridge-internal", "internal");
+    await expect(refreshToken(token, { authEnabled: false })).rejects.toThrow();
+  });
+
+  it("refreshToken refuses an EXPIRED role:'internal' token within the grace period (no downgrade to member)", async () => {
+    // The expired-token recovery branch must reject "internal" explicitly,
+    // not silently fall through its role allowlist into a "member" default.
+    const token = await createToken("bridge-internal-expired", "internal", "1s");
+    await new Promise((r) => setTimeout(r, 1500));
+    await expect(verifyToken(token)).rejects.toThrow();
+    await expect(refreshToken(token, { authEnabled: false })).rejects.toThrow();
   });
 });
 

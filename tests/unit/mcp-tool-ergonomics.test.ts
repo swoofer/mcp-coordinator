@@ -277,7 +277,9 @@ describe("protocole-mcp-10: tool annotations", () => {
 
 describe("protocole-mcp-14: wait_for_* timeout caps", () => {
   it("wait_for_message caps an excessive timeout_seconds before calling the bridge", async () => {
-    const waitForMessage = vi.fn(async (_agentId: string, _timeoutMs: number) => null);
+    const waitForMessage = vi.fn(
+      async (_orgId: string, _agentId: string, _timeoutMs: number) => null,
+    );
     const server = new McpServer({ name: "test", version: "0" });
     registerMqttTools(
       server,
@@ -289,13 +291,15 @@ describe("protocole-mcp-14: wait_for_* timeout caps", () => {
     await callTool(server, "wait_for_message", { agent_id: "a1", timeout_seconds: 10_000_000 });
 
     expect(waitForMessage).toHaveBeenCalledTimes(1);
-    const [, timeoutMsUsed] = waitForMessage.mock.calls[0];
+    const [, , timeoutMsUsed] = waitForMessage.mock.calls[0];
     expect(timeoutMsUsed).toBe(MAX_MQTT_WAIT_SECONDS * 1000);
     expect(timeoutMsUsed).toBeLessThan(10_000_000 * 1000);
   });
 
   it("wait_for_message respects a timeout under the cap", async () => {
-    const waitForMessage = vi.fn(async (_agentId: string, _timeoutMs: number) => null);
+    const waitForMessage = vi.fn(
+      async (_orgId: string, _agentId: string, _timeoutMs: number) => null,
+    );
     const server = new McpServer({ name: "test", version: "0" });
     registerMqttTools(
       server,
@@ -306,7 +310,7 @@ describe("protocole-mcp-14: wait_for_* timeout caps", () => {
 
     await callTool(server, "wait_for_message", { agent_id: "a1", timeout_seconds: 5 });
 
-    expect(waitForMessage.mock.calls[0][1]).toBe(5000);
+    expect(waitForMessage.mock.calls[0][2]).toBe(5000);
   });
 
   it("wait_for_peers returns (does not hang) once the capped timeout elapses, even with an excessive requested timeout", async () => {

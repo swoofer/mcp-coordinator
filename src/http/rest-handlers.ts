@@ -130,7 +130,7 @@ export function handleSessionStop(
   const { agent_id } = parsed.data;
   registry.setOffline(ctx.claims.org, agent_id);
   activityTracker.reportOffline(ctx.claims.org, agent_id);
-  consultation.handleAgentDeparture(agent_id);
+  consultation.handleAgentDeparture(ctx.claims.org, agent_id);
   sseEmitter.emit("agent_offline", { agent_id }, { org_id: ctx.claims.org });
   json(res, { ok: true });
 }
@@ -411,7 +411,7 @@ export function handleClaimTask(
     .run(agent_id, new Date().toISOString(), thread_id, ctx.claims.org, agent_id);
 
   if (result.changes === 1) {
-    mqttBridge.publishTaskClaimed(thread_id, agent_id);
+    mqttBridge.publishTaskClaimed(ctx.claims.org, thread_id, agent_id);
     sseEmitter.emit("task_claimed", { thread_id, agent_id }, { org_id: ctx.claims.org });
     json(res, { success: true });
   } else {
@@ -453,7 +453,7 @@ export function handleProposeResolution(
     { org_id: ctx.claims.org },
   );
   json(res, consultation.getThread(ctx.claims.org, thread_id));
-  mqttBridge.publishTaskCompleted(thread_id, agent_id, summary);
+  mqttBridge.publishTaskCompleted(ctx.claims.org, thread_id, agent_id, summary);
 }
 
 export function handleApproveResolution(

@@ -69,7 +69,8 @@ export class Consultation {
     const db = getDb();
     // emitResolution is called internally after we already know the thread belongs
     // to the right org. We look it up cross-org here intentionally so that
-    // handleAgentDeparture (which is cross-org) can still emit resolution events.
+    // checkTimeouts (which is cross-org by design — see its own doc comment)
+    // can still emit resolution events.
     const thread = this.getThreadCrossOrg(threadId);
     if (!thread) return;
 
@@ -371,33 +372,29 @@ export class Consultation {
   }
 
   /**
-   * Cross-org maintenance sweep — stays at v0.6 signature per Phase 1 plan.
-   * handleAgentDeparture iterates ALL orgs (internal maintenance only).
+   * Org-scoped agent-departure sweep (cross-tenant isolation fix). Was
+   * previously cross-org (no org_id predicate) because the MQTT-bridge
+   * disconnect handler had no org context — an agent going offline in org A
+   * would unclaim/resolve any thread claimed by an agent_id string that
+   * happened to also exist in org B. Task 22 threads the real org from the
+   * MQTT topic prefix through to here, closing that gap: both queries below
+   * are now scoped by org_id, and a bare agent_id collision across two
+   * tenants can no longer cross-contaminate their threads.
    */
-  handleAgentDeparture(agentId: string): void {
+  handleAgentDeparture(orgId: string, agentId: string): void {
     const db = getDb();
-    // Unclaim any tasks claimed by the departing agent.
-    //
-    // INTENTIONALLY cross-org: this method is invoked from the MQTT-bridge
-    // disconnect handler, which has no org context (Phase 1: MQTT topics carry
-    // no org_id yet — see Task 22 follow-up). If two orgs ever happen to
-    // register agents under the same agent_id string, an MQTT disconnect for
-    // that string will release claims in BOTH orgs. Phase 2 multi-org rollout
-    // must thread org from the MQTT topic before this becomes load-bearing.
+    // Unclaim any tasks claimed by the departing agent, scoped to its org.
     db.prepare(
-      "UPDATE threads SET claimed_by = NULL, claimed_at = NULL WHERE claimed_by = ? AND status = 'open'",
-    ).run(agentId);
+      "UPDATE threads SET claimed_by = NULL, claimed_at = NULL WHERE claimed_by = ? AND status = 'open' AND org_id = ?",
+    ).run(agentId, orgId);
 
-    // Remove departed agent from expected_respondents of all open/resolving threads.
-    // We iterate cross-org (no WHERE org_id filter on the SELECT) for the same
-    // reason — agentId is the only key we have from the MQTT bridge — but every
-    // point-update below is scoped by the row's own org_id (read from the SELECT)
-    // as defense in depth against bare id collisions.
+    // Remove departed agent from expected_respondents of open/resolving
+    // threads, scoped to its org.
     const threads = db
       .prepare(
-        "SELECT id, org_id, expected_respondents FROM threads WHERE status IN ('open', 'resolving')",
+        "SELECT id, org_id, expected_respondents FROM threads WHERE status IN ('open', 'resolving') AND org_id = ?",
       )
-      .all() as { id: string; org_id: string; expected_respondents: string | null }[];
+      .all(orgId) as { id: string; org_id: string; expected_respondents: string | null }[];
 
     for (const thread of threads) {
       const respondents: string[] = safeJsonParse<string[]>(

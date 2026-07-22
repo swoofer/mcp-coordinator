@@ -136,7 +136,7 @@ describe("protocole-mcp-06: MQTT tools when the bridge IS connected — nominal 
     const result = await callTool(server, "mqtt_publish", { topic: "t", payload: "p" });
     expect(result.isError).toBeFalsy();
     expect(result.content[0].text).toBe("published");
-    expect(bridge.mqttPublish).toHaveBeenCalledWith("t", "p");
+    expect(bridge.mqttPublish).toHaveBeenCalledWith("org-1", "t", "p");
   });
 
   it("wait_for_message resolves with the message, no isError", async () => {
@@ -173,6 +173,6 @@ describe("protocole-mcp-06: MQTT tools when the bridge IS connected — nominal 
     expect(JSON.parse(result.content[0].text)).toEqual([
       { topic: "t", payload: { a: 1 }, timestamp: 1 },
     ]);
-    expect(bridge.getQueuedMessages).toHaveBeenCalledWith("a1");
+    expect(bridge.getQueuedMessages).toHaveBeenCalledWith("org-1", "a1");
   });
 });
