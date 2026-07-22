@@ -154,7 +154,12 @@ export function createServices(config: CoordinatorConfig): CoordinatorServices {
       { org_id: event.org_id },
     );
     if (event.resolution_type !== "auto_resolved") {
-      mqttBridge.publishResolution(event.org_id, event.thread_id, "resolved", event.resolution_summary || "");
+      mqttBridge.publishResolution(
+        event.org_id,
+        event.thread_id,
+        "resolved",
+        event.resolution_summary || "",
+      );
     }
     // P1 fix: clear the retained `coordinator/consultations/new` event so a
     // coordinator restart doesn't re-broadcast a consultation that's already
