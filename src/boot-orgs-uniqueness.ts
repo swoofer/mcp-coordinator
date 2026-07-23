@@ -1,8 +1,10 @@
 import type { DatabaseAdapter } from "./db-adapter.js";
-import { BootValidationError } from "./boot-encryption.js";
+import { BootValidationError, loadEncryptionKey } from "./boot-encryption.js";
+import { createLogger } from "./observability/logger.js";
 import {
   GENESIS_HASH,
   computeRowHash,
+  configureAuditChainKeyFromMaster,
   getAuditChainKey,
   type AuditChainFields,
 } from "./security/audit-chain.js";
@@ -178,6 +180,52 @@ export function runOrgsUniquenessGuard(deps: OrgsUniquenessGuardDeps): OrgsUniqu
 }
 
 /**
+ * Ensure the audit-chain HMAC key is configured before `initDatabase`
+ * writes its boot-time `emitDuplicatesAcceptedAudit` row, on an encrypted
+ * deployment.
+ *
+ * Background (security review finding): `initDatabase` runs, and can call
+ * `emitDuplicatesAcceptedAudit`, well BEFORE `bootPhase2` gets a chance to
+ * run `configureAuditChainKeyFromMaster` (src/boot.ts step 7b) — bootPhase2
+ * is invoked by the caller strictly AFTER `createServices`/`initDatabase`
+ * returns. Without this, the module-level chain-key singleton
+ * (src/security/audit-chain.ts) is still unset at that call site, so
+ * `getAuditChainKey()` returns null and the row is written as unkeyed
+ * sha256 even when encryption is enabled and every other row in the chain
+ * is HMAC-keyed. Since this row still chains onto the real tip, a boot on
+ * an encrypted deployment then appends an unkeyed row after a keyed one —
+ * which `scripts/verify-audit-chain.ts`'s downgraded-algorithm check
+ * (correctly) treats as a possible forgery signature, false-positiving
+ * `verify-audit-chain` on an otherwise-untampered chain. It re-triggers on
+ * every boot for as long as the duplicate-org condition isn't remediated.
+ *
+ * Fix: derive/configure the chain key here, on demand, right before the
+ * row is written — using the exact same derivation
+ * (`loadEncryptionKey` + `configureAuditChainKeyFromMaster`) `bootPhase2`
+ * itself uses, gated by the identical condition it uses
+ * (COORDINATOR_OAUTH_ENABLED=true — encryption in this codebase only
+ * protects Phase 2 IdP token columns, so a Phase 1-only deployment never
+ * has a master key to derive from regardless of whether
+ * COORDINATOR_ENCRYPTION_KEY happens to be set, and this must not change
+ * that). `bootPhase2` still re-configures the same key later from the same
+ * env — harmless, since deriving twice from an identical master key is
+ * deterministic and idempotent; that redundancy is what keeps bootPhase2
+ * correct when called on its own (e.g. tests that exercise it without
+ * going through `initDatabase` first).
+ *
+ * No-ops (does not re-derive) when a key is already configured, so it
+ * never clobbers a key a caller configured for its own reasons (e.g. test
+ * setup) with a freshly re-derived — but value-identical — one.
+ */
+export function ensureAuditChainKeyForBootAudit(env: NodeJS.ProcessEnv): void {
+  if (env.COORDINATOR_OAUTH_ENABLED !== "true") return;
+  if (getAuditChainKey() !== null) return;
+  const logger = createLogger({ level: "silent" });
+  const masterKey = loadEncryptionKey(env, logger);
+  configureAuditChainKeyFromMaster(masterKey);
+}
+
+/**
  * Append the `admin.orgs.duplicate_names_accepted` Tier 1 audit row for the
  * override-accepted branch. Called by `initDatabase` AFTER SCHEMA + v0.8
  * migrations have run, so the renamed columns (actor_user_id,
@@ -188,6 +236,11 @@ export function runOrgsUniquenessGuard(deps: OrgsUniquenessGuardDeps): OrgsUniqu
  * `audit()` helper's `getDb()` call resolves the still-being-initialized
  * module-level `db` reference, and the audit_queue isn't initialized yet
  * either. Mirrors the audit-chain bookkeeping inline.
+ *
+ * `getAuditChainKey()` below legitimately returns the derived key on an
+ * encrypted deployment — the caller (`initDatabase`) runs
+ * `ensureAuditChainKeyForBootAudit` first so the singleton is populated
+ * before this row's hash is computed; see that function's doc comment.
  */
 export function emitDuplicatesAcceptedAudit(
   db: DatabaseAdapter,

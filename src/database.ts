@@ -3,7 +3,11 @@ import { mkdirSync, chmodSync } from "fs";
 import { createRequire } from "module";
 import type { DatabaseAdapter } from "./db-adapter.js";
 import { GENESIS_HASH, computeRowHash, type AuditChainFields } from "./security/audit-chain.js";
-import { runOrgsUniquenessGuard, emitDuplicatesAcceptedAudit } from "./boot-orgs-uniqueness.js";
+import {
+  runOrgsUniquenessGuard,
+  emitDuplicatesAcceptedAudit,
+  ensureAuditChainKeyForBootAudit,
+} from "./boot-orgs-uniqueness.js";
 
 const require = createRequire(import.meta.url);
 
@@ -1121,6 +1125,14 @@ export function initDatabase(dataDir: string): void {
   // the still-being-initialized module-level reference + the audit queue is
   // not initialized until bootPhase2.
   if (orgsUniquenessResult.pendingDuplicatesAcceptedAudit) {
+    // Security review fix: configure the audit-chain key from the master
+    // key (on an encrypted deployment) BEFORE computing this row's hash —
+    // bootPhase2's own configureAuditChainKeyFromMaster call (src/boot.ts)
+    // hasn't run yet at this point in boot, so without this the row would
+    // be written unkeyed even when every other row is HMAC-keyed. See
+    // ensureAuditChainKeyForBootAudit's doc comment in
+    // src/boot-orgs-uniqueness.ts for the full boot-ordering finding.
+    ensureAuditChainKeyForBootAudit(process.env);
     emitDuplicatesAcceptedAudit(db, orgsUniquenessResult.pendingDuplicatesAcceptedAudit);
   }
 }

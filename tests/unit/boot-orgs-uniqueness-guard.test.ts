@@ -1,12 +1,23 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import Database from "better-sqlite3";
+import { randomBytes } from "node:crypto";
 import type { DatabaseAdapter } from "../../src/db-adapter.js";
 import {
   runOrgsUniquenessGuard,
   emitDuplicatesAcceptedAudit,
+  ensureAuditChainKeyForBootAudit,
   type OrgsUniquenessGuardDeps,
 } from "../../src/boot-orgs-uniqueness.js";
 import { BootValidationError } from "../../src/boot-encryption.js";
+import {
+  ALG_HMAC_V1,
+  algorithmOf,
+  configureAuditChainKey,
+  deriveAuditChainKey,
+  getAuditChainKey,
+  resetAuditChainKey,
+} from "../../src/security/audit-chain.js";
+import { decodeMasterKey } from "../../src/security/master-key.js";
 
 /**
  * T03 (v0.10.6) — pre-flight boot guard for `idx_orgs_name`.
@@ -93,6 +104,12 @@ afterEach(() => {
   } catch {
     /* idempotent */
   }
+  // The audit-chain key is a process-wide singleton (src/security/audit-
+  // chain.ts) — reset it after every test so a key configured by the
+  // boot-ordering-fix tests below can never leak into an unrelated test
+  // (in this file or, since these tests run in-process, a later one) that
+  // assumes an unkeyed chain.
+  resetAuditChainKey();
 });
 
 function deps(env: NodeJS.ProcessEnv = {}): OrgsUniquenessGuardDeps {
@@ -284,4 +301,112 @@ describe("emitDuplicatesAcceptedAudit — writes Tier 1 chain row", () => {
     expect(rows[1].action).toBe("admin.orgs.duplicate_names_accepted");
     expect(rows[1].prev_hash).toBe(priorRowHash);
   });
+});
+
+describe("ensureAuditChainKeyForBootAudit — boot-ordering fix (security review)", () => {
+  // A high-entropy 32-byte master key (base64), same shape decodeMasterKey
+  // accepts elsewhere in the suite (tests/unit/verify-audit-chain.test.ts).
+  const RAW_MASTER_KEY = randomBytes(32).toString("base64");
+  const CHAIN_KEY = deriveAuditChainKey(decodeMasterKey(RAW_MASTER_KEY));
+
+  it("Phase 1 (OAuth disabled): no-op regardless of COORDINATOR_ENCRYPTION_KEY", () => {
+    ensureAuditChainKeyForBootAudit({
+      COORDINATOR_OAUTH_ENABLED: "false",
+      COORDINATOR_ENCRYPTION_KEY: RAW_MASTER_KEY,
+    });
+    expect(getAuditChainKey()).toBeNull();
+  });
+
+  it("OAuth enabled, no encryption key set: stays unkeyed (honest, matches bootPhase2)", () => {
+    ensureAuditChainKeyForBootAudit({ COORDINATOR_OAUTH_ENABLED: "true" });
+    expect(getAuditChainKey()).toBeNull();
+  });
+
+  it("OAuth enabled + encryption key set: configures the same derived key bootPhase2 would", () => {
+    ensureAuditChainKeyForBootAudit({
+      COORDINATOR_OAUTH_ENABLED: "true",
+      COORDINATOR_ENCRYPTION_KEY: RAW_MASTER_KEY,
+    });
+    expect(getAuditChainKey()).toEqual(CHAIN_KEY);
+  });
+
+  it("does not clobber an already-configured key (idempotent / no-reconfigure)", () => {
+    // configureAuditChainKey sets the chain key directly (bypassing HKDF
+    // derivation) -- the test helper documented in security/audit-chain.ts
+    // for exactly this "pre-configured sentinel key" setup.
+    const other = randomBytes(32);
+    configureAuditChainKey(other);
+    ensureAuditChainKeyForBootAudit({
+      COORDINATOR_OAUTH_ENABLED: "true",
+      COORDINATOR_ENCRYPTION_KEY: RAW_MASTER_KEY,
+    });
+    // Still the pre-configured key, not re-derived from RAW_MASTER_KEY.
+    expect(getAuditChainKey()).toEqual(other);
+  });
+
+  it(
+    "RED (pre-fix repro): without calling ensureAuditChainKeyForBootAudit first, " +
+      "the boot-time row is unkeyed even though the tip is keyed (encrypted deployment)",
+    () => {
+      createAuditLogTable(raw);
+      // Simulate a prior real audit() call under encryption (bootPhase2 already
+      // configured the key earlier in a previous, successful boot) — the tip is
+      // an HMAC-keyed row.
+      const keyedTip = `${ALG_HMAC_V1}:${"a".repeat(64)}`;
+      raw
+        .prepare("INSERT INTO audit_log (action, outcome, prev_hash, row_hash) VALUES (?, ?, ?, ?)")
+        .run("config.boot", "success", "0".repeat(64), keyedTip);
+
+      // getAuditChainKey() is unconfigured at this call site — reproduces the
+      // exact defect: initDatabase's emitDuplicatesAcceptedAudit runs before
+      // bootPhase2's configureAuditChainKeyFromMaster call.
+      expect(getAuditChainKey()).toBeNull();
+      emitDuplicatesAcceptedAudit(db, {
+        duplicates: [{ name: "acme", n: 2, ids: "o1,o2" }],
+        totalDuplicateRows: 2,
+      });
+
+      const row = raw
+        .prepare("SELECT row_hash FROM audit_log WHERE action = 'admin.orgs.duplicate_names_accepted'")
+        .get() as { row_hash: string };
+      // Bug reproduced: unkeyed sha256 chained onto a keyed tip — exactly the
+      // shape verify-audit-chain.ts's downgraded_alg check flags.
+      expect(algorithmOf(row.row_hash)).not.toBe(ALG_HMAC_V1);
+    },
+  );
+
+  it(
+    "GREEN (fix): calling ensureAuditChainKeyForBootAudit first keys the boot-time " +
+      "row on an encrypted deployment, chaining cleanly onto a keyed tip (no downgrade)",
+    () => {
+      createAuditLogTable(raw);
+      const keyedTip = `${ALG_HMAC_V1}:${"a".repeat(64)}`;
+      raw
+        .prepare("INSERT INTO audit_log (action, outcome, prev_hash, row_hash) VALUES (?, ?, ?, ?)")
+        .run("config.boot", "success", "0".repeat(64), keyedTip);
+
+      // This is exactly what initDatabase now does (src/database.ts) before
+      // calling emitDuplicatesAcceptedAudit.
+      ensureAuditChainKeyForBootAudit({
+        COORDINATOR_OAUTH_ENABLED: "true",
+        COORDINATOR_ENCRYPTION_KEY: RAW_MASTER_KEY,
+      });
+      emitDuplicatesAcceptedAudit(db, {
+        duplicates: [{ name: "acme", n: 2, ids: "o1,o2" }],
+        totalDuplicateRows: 2,
+      });
+
+      const rows = raw
+        .prepare("SELECT action, prev_hash, row_hash FROM audit_log ORDER BY id")
+        .all() as Array<{ action: string; prev_hash: string; row_hash: string }>;
+      expect(rows).toHaveLength(2);
+      const bootRow = rows[1];
+      expect(bootRow.action).toBe("admin.orgs.duplicate_names_accepted");
+      expect(bootRow.prev_hash).toBe(keyedTip);
+      // Fixed: the row is HMAC-keyed like the tip it chains onto — no
+      // algorithm downgrade for verify-audit-chain.ts to (falsely) flag.
+      expect(algorithmOf(bootRow.row_hash)).toBe(ALG_HMAC_V1);
+      expect(bootRow.row_hash.startsWith(`${ALG_HMAC_V1}:`)).toBe(true);
+    },
+  );
 });

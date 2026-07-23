@@ -10,8 +10,14 @@ import {
   GENESIS_HASH,
   computeRowHash,
   deriveAuditChainKey,
+  resetAuditChainKey,
 } from "../../src/security/audit-chain.js";
 import { decodeMasterKey } from "../../src/security/master-key.js";
+import {
+  emitDuplicatesAcceptedAudit,
+  ensureAuditChainKeyForBootAudit,
+} from "../../src/boot-orgs-uniqueness.js";
+import type { DatabaseAdapter } from "../../src/db-adapter.js";
 
 // A high-entropy 32-byte master key (base64) accepted by decodeMasterKey.
 // The same string is handed to the spawned verifier via env so it derives
@@ -347,5 +353,104 @@ describe("verify-audit-chain script: keyed (HMAC) rows", () => {
     const report = JSON.parse(result.stdout);
     expect(report.ok).toBe(true);
     expect(report.verified_rows).toBe(4);
+  });
+
+  describe("boot-time duplicates-accepted row (security review fix)", () => {
+    // Regression test for the boot-ordering defect: initDatabase's
+    // emitDuplicatesAcceptedAudit (src/boot-orgs-uniqueness.ts) runs before
+    // bootPhase2 configures the audit-chain key (src/boot.ts), so on an
+    // encrypted deployment the boot-time row used to be written unkeyed
+    // even though every other row is HMAC-keyed -- a keyed-tip-then-unkeyed-
+    // row shape that this verifier's downgraded_alg check (correctly)
+    // treats as a possible forgery. The fix
+    // (ensureAuditChainKeyForBootAudit) derives/configures the chain key on
+    // demand right before that row is written. This test builds the chain
+    // with the REAL production functions (not the local insertRow helper)
+    // and runs the shipped verifier against it end to end.
+    afterEach(() => {
+      resetAuditChainKey();
+    });
+
+    it("keyed tip + boot-time row WITHOUT the fix's key config -> exit 1, downgraded_alg (bug repro)", () => {
+      // Keyed tip, simulating a prior real audit() call under encryption.
+      insertRow("config.boot", GENESIS_HASH, { key: CHAIN_KEY });
+      // getAuditChainKey() unconfigured at this call site -- reproduces the
+      // exact defect (emitDuplicatesAcceptedAudit called before bootPhase2's
+      // configureAuditChainKeyFromMaster).
+      emitDuplicatesAcceptedAudit(db as unknown as DatabaseAdapter, {
+        duplicates: [{ name: "acme", n: 2, ids: "o1,o2" }],
+        totalDuplicateRows: 2,
+      });
+
+      const result = runVerifier(["--db", dbPath, "--json"], KEYED_ENV);
+      expect(result.status).toBe(1);
+      const report = JSON.parse(result.stdout);
+      expect(
+        report.findings.some((f: { reason: string }) => f.reason === "downgraded_alg"),
+      ).toBe(true);
+    });
+
+    it("keyed tip + boot-time row WITH the fix's key config -> exit 0, no downgraded_alg", () => {
+      insertRow("config.boot", GENESIS_HASH, { key: CHAIN_KEY });
+      // This is exactly what src/database.ts's initDatabase now does before
+      // calling emitDuplicatesAcceptedAudit.
+      ensureAuditChainKeyForBootAudit({
+        COORDINATOR_OAUTH_ENABLED: "true",
+        COORDINATOR_ENCRYPTION_KEY: RAW_MASTER_KEY,
+      });
+      emitDuplicatesAcceptedAudit(db as unknown as DatabaseAdapter, {
+        duplicates: [{ name: "acme", n: 2, ids: "o1,o2" }],
+        totalDuplicateRows: 2,
+      });
+
+      const result = runVerifier(["--db", dbPath, "--json"], KEYED_ENV);
+      expect(result.status).toBe(0);
+      const report = JSON.parse(result.stdout);
+      expect(report.ok).toBe(true);
+      expect(report.verified_rows).toBe(2);
+      expect(
+        report.findings.some((f: { reason: string }) => f.reason === "downgraded_alg"),
+      ).toBe(false);
+    });
+
+    it("real keyed->unkeyed forge is STILL rejected after the fix (fix does not weaken detection)", () => {
+      const h1 = insertRow("config.boot", GENESIS_HASH, { key: CHAIN_KEY });
+      ensureAuditChainKeyForBootAudit({
+        COORDINATOR_OAUTH_ENABLED: "true",
+        COORDINATOR_ENCRYPTION_KEY: RAW_MASTER_KEY,
+      });
+      emitDuplicatesAcceptedAudit(db as unknown as DatabaseAdapter, {
+        duplicates: [{ name: "acme", n: 2, ids: "o1,o2" }],
+        totalDuplicateRows: 2,
+      });
+      // Attacker with DB-write-only access (no key) rewrites row 2's content
+      // and recomputes a plain unkeyed sha256 (no prefix) -- same forgery
+      // technique as the "keyed row forged with the unkeyed sha256
+      // algorithm" test above, applied to the boot-emitted row specifically.
+      const forged = computeRowHash(
+        h1,
+        {
+          action: "ATTACKER",
+          actor_org_id: null,
+          actor_ip: null,
+          actor_user_agent: null,
+          actor_user_id: null,
+          metadata_json: null,
+          outcome: "success",
+          request_id: null,
+          target: null,
+        },
+        null,
+      );
+      expect(forged.startsWith("hmac-sha256-v1:")).toBe(false);
+      db.prepare("UPDATE audit_log SET action = 'ATTACKER', row_hash = ? WHERE id = 2").run(forged);
+
+      const result = runVerifier(["--db", dbPath, "--json"], KEYED_ENV);
+      expect(result.status).toBe(1);
+      const report = JSON.parse(result.stdout);
+      expect(
+        report.findings.some((f: { reason: string }) => f.reason === "downgraded_alg"),
+      ).toBe(true);
+    });
   });
 });
