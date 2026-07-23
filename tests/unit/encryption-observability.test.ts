@@ -62,6 +62,7 @@ function makeDb(): Database.Database {
   db.exec(`
     CREATE TABLE users (
       id TEXT PRIMARY KEY,
+      primary_org_id TEXT NOT NULL DEFAULT 'org-test',
       idp_access_token TEXT,
       idp_refresh_token TEXT
     );

@@ -25,6 +25,77 @@ export class BootValidationError extends Error {
   }
 }
 
+/**
+ * One-time, idempotent bulk re-encryption of plaintext `idp_access_token` /
+ * `idp_refresh_token` rows. Runs on every boot that resolves a usable master
+ * key (i.e. every successful, non-throwing return of runEncryptionGuards
+ * that carries a key) so pre-existing plaintext rows — from a DB that
+ * predates encryption being turned on, or from a straggler row left behind
+ * by an interrupted prior migration — get swept up automatically instead of
+ * requiring a separate manual step.
+ *
+ * Uses the exact same GLOB detection pattern as hasEncryptedRows above so
+ * "already encrypted" and "needs migration" can never disagree between the
+ * two. Runs inside a single transaction: either every plaintext row in the
+ * scan gets re-encrypted, or (on error) none do — a crash mid-run leaves
+ * the DB exactly as it was, and the next boot's scan simply retries.
+ * Idempotent by construction: once a row is `enc:v...`, the WHERE clause no
+ * longer selects it, so re-running with the same (or a different) key never
+ * touches an already-migrated column.
+ */
+function migratePlaintextIdpTokens(db: Database.Database, key: Buffer): void {
+  const rows = db
+    .prepare(
+      `SELECT id, primary_org_id,
+              CASE WHEN idp_access_token IS NOT NULL
+                     AND idp_access_token NOT GLOB 'enc:v[0-9]*:*'
+                   THEN idp_access_token END AS plain_access,
+              CASE WHEN idp_refresh_token IS NOT NULL
+                     AND idp_refresh_token NOT GLOB 'enc:v[0-9]*:*'
+                   THEN idp_refresh_token END AS plain_refresh
+       FROM users
+       WHERE (idp_access_token IS NOT NULL AND idp_access_token NOT GLOB 'enc:v[0-9]*:*')
+          OR (idp_refresh_token IS NOT NULL AND idp_refresh_token NOT GLOB 'enc:v[0-9]*:*')`,
+    )
+    .all() as Array<{
+    id: string;
+    primary_org_id: string;
+    plain_access: string | null;
+    plain_refresh: string | null;
+  }>;
+  if (rows.length === 0) return;
+
+  const provider = new EnvelopeEncryption(key);
+  const updAccess = db.prepare("UPDATE users SET idp_access_token = ? WHERE id = ?");
+  const updRefresh = db.prepare("UPDATE users SET idp_refresh_token = ? WHERE id = ?");
+
+  const tx = db.transaction((batch: typeof rows) => {
+    for (const row of batch) {
+      if (row.plain_access !== null) {
+        updAccess.run(
+          provider.encrypt(row.plain_access, {
+            org_id: row.primary_org_id,
+            column: "idp_access_token",
+            user_id: row.id,
+          }),
+          row.id,
+        );
+      }
+      if (row.plain_refresh !== null) {
+        updRefresh.run(
+          provider.encrypt(row.plain_refresh, {
+            org_id: row.primary_org_id,
+            column: "idp_refresh_token",
+            user_id: row.id,
+          }),
+          row.id,
+        );
+      }
+    }
+  });
+  tx(rows);
+}
+
 export interface InitEncryptionResult {
   /** EnvelopeEncryption when a key is present, PassthroughEncryption otherwise. */
   rawProvider: EncryptionProvider;
@@ -175,8 +246,16 @@ export function runEncryptionGuards(
     };
   }
 
-  // ── Guard 2: key present, encrypted rows present, fingerprint mismatch. ─
-  if (hasEncryptedRows && key && storedFingerprint && storedFingerprint !== fingerprint) {
+  // ── Guard 2: key present, stored fingerprint present, mismatch. ─────────
+  // NOTE: intentionally NOT gated on hasEncryptedRows — a stored fingerprint
+  // that disagrees with the active key's fingerprint means the DB (or its
+  // system_config row) was last touched by a different key, regardless of
+  // whether any `enc:v...` rows currently remain (they may have been rolled
+  // back to plaintext, purged, or never existed if the prior boot backfilled
+  // the fingerprint before any row was actually encrypted). Gating this on
+  // hasEncryptedRows left plaintext-only databases unable to detect a key
+  // rotation at all.
+  if (key && storedFingerprint && storedFingerprint !== fingerprint) {
     if (env.COORDINATOR_ALLOW_KEY_ROTATION !== "1") {
       throw new BootValidationError(
         `Database was encrypted with a different key (stored fingerprint=${storedFingerprint}, current key fingerprint=${fingerprint}). ` +
@@ -194,6 +273,7 @@ export function runEncryptionGuards(
       });
     }
     db.prepare("DELETE FROM system_config WHERE key = 'encryption.key_fingerprint'").run();
+    migratePlaintextIdpTokens(db, key);
     return {
       rawProvider: new EnvelopeEncryption(key),
       keyFingerprint: fingerprint,
@@ -207,6 +287,7 @@ export function runEncryptionGuards(
       "encryption.key_fingerprint",
       fingerprint,
     );
+    migratePlaintextIdpTokens(db, key);
     return {
       rawProvider: new EnvelopeEncryption(key),
       keyFingerprint: fingerprint,
@@ -216,6 +297,7 @@ export function runEncryptionGuards(
 
   // ── OK paths. ───────────────────────────────────────────────────────────
   if (key) {
+    migratePlaintextIdpTokens(db, key);
     return {
       rawProvider: new EnvelopeEncryption(key),
       keyFingerprint: fingerprint,
