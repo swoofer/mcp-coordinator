@@ -180,24 +180,34 @@ export function runOrgsUniquenessGuard(deps: OrgsUniquenessGuardDeps): OrgsUniqu
 }
 
 /**
- * Ensure the audit-chain HMAC key is configured before `initDatabase`
- * writes its boot-time `emitDuplicatesAcceptedAudit` row, on an encrypted
- * deployment.
+ * Ensure the audit-chain HMAC key is configured before ANY boot-time code
+ * writes an audit row, on an encrypted deployment — before `bootPhase2`
+ * itself gets a chance to run `configureAuditChainKeyFromMaster`
+ * (src/boot.ts step 7b).
  *
- * Background (security review finding): `initDatabase` runs, and can call
- * `emitDuplicatesAcceptedAudit`, well BEFORE `bootPhase2` gets a chance to
- * run `configureAuditChainKeyFromMaster` (src/boot.ts step 7b) — bootPhase2
- * is invoked by the caller strictly AFTER `createServices`/`initDatabase`
- * returns. Without this, the module-level chain-key singleton
- * (src/security/audit-chain.ts) is still unset at that call site, so
+ * Background (security review finding): two call paths write audit_log rows
+ * earlier than step 7b:
+ *
+ *   1. `initDatabase` (src/database.ts) can call `emitDuplicatesAcceptedAudit`
+ *      (this file) — `initDatabase` runs, and can write this row, well
+ *      BEFORE `bootPhase2` is even invoked (the caller runs it strictly
+ *      AFTER `createServices`/`initDatabase` returns).
+ *   2. `performRestoreCheck` (src/boot.ts step 5, NR12 restore detection)
+ *      can call `audit()` directly — "recovery.token_epoch_global_bump" /
+ *      "recovery.completed" on a detected restore — and step 5 runs before
+ *      step 7b within `bootPhase2` itself.
+ *
+ * In both cases the module-level chain-key singleton
+ * (src/security/audit-chain.ts) is still unset at the call site, so
  * `getAuditChainKey()` returns null and the row is written as unkeyed
  * sha256 even when encryption is enabled and every other row in the chain
- * is HMAC-keyed. Since this row still chains onto the real tip, a boot on
+ * is HMAC-keyed. Since each row still chains onto the real tip, a boot on
  * an encrypted deployment then appends an unkeyed row after a keyed one —
  * which `scripts/verify-audit-chain.ts`'s downgraded-algorithm check
  * (correctly) treats as a possible forgery signature, false-positiving
- * `verify-audit-chain` on an otherwise-untampered chain. It re-triggers on
- * every boot for as long as the duplicate-org condition isn't remediated.
+ * `verify-audit-chain` on an otherwise-untampered chain. Path 1 re-triggers
+ * on every boot for as long as the duplicate-org condition isn't
+ * remediated; path 2 triggers on any boot that detects a restore.
  *
  * Fix: derive/configure the chain key here, on demand, right before the
  * row is written — using the exact same derivation
@@ -207,15 +217,23 @@ export function runOrgsUniquenessGuard(deps: OrgsUniquenessGuardDeps): OrgsUniqu
  * protects Phase 2 IdP token columns, so a Phase 1-only deployment never
  * has a master key to derive from regardless of whether
  * COORDINATOR_ENCRYPTION_KEY happens to be set, and this must not change
- * that). `bootPhase2` still re-configures the same key later from the same
- * env — harmless, since deriving twice from an identical master key is
- * deterministic and idempotent; that redundancy is what keeps bootPhase2
- * correct when called on its own (e.g. tests that exercise it without
- * going through `initDatabase` first).
+ * that). Called from two places: `initDatabase` (covers path 1, before
+ * `bootPhase2` runs at all) and `bootPhase2` itself, early — before step 5 —
+ * so it also covers path 2 and any future audit() emission added between
+ * there and step 7b, without having to patch each call site individually.
+ * `bootPhase2`'s own step 7b still re-configures the same key later from the
+ * same env — harmless, since deriving twice from an identical master key is
+ * deterministic and idempotent; that redundancy is what keeps `encKey`
+ * (the raw master key, not just the derived chain key) available there for
+ * `runEncryptionGuards`/`buildWrappedProvider`, and keeps `bootPhase2`
+ * correct when exercised on its own (e.g. tests that call it without going
+ * through `initDatabase` first).
  *
  * No-ops (does not re-derive) when a key is already configured, so it
  * never clobbers a key a caller configured for its own reasons (e.g. test
- * setup) with a freshly re-derived — but value-identical — one.
+ * setup) with a freshly re-derived — but value-identical — one, and so the
+ * two call sites above never do redundant work when both run in the same
+ * boot.
  */
 export function ensureAuditChainKeyForBootAudit(env: NodeJS.ProcessEnv): void {
   if (env.COORDINATOR_OAUTH_ENABLED !== "true") return;
