@@ -60,8 +60,10 @@ jobs:
 
   # Smoke test: a fresh contributor without native build tools (no Rust
   # toolchain, no python-distutils) must still be able to `pnpm build`.
-  # Catches regressions where new code accidentally hard-depends on an
-  # optionalDependency like `tree-sitter`.
+  # This only confirms the sources still type-check/transpile without
+  # native tooling present (tsc never executes import/require at runtime),
+  # so it does not catch a hard runtime dependency on an optionalDependency
+  # like `tree-sitter` — only that such code still compiles.
   build-no-native:
     runs-on: ubuntu-latest
     timeout-minutes: 10
