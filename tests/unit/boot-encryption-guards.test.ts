@@ -57,6 +57,7 @@ function makeDb(): Database.Database {
   db.exec(`
     CREATE TABLE users (
       id TEXT PRIMARY KEY,
+      primary_org_id TEXT NOT NULL DEFAULT 'org-test',
       idp_access_token TEXT,
       idp_refresh_token TEXT
     );
@@ -81,6 +82,18 @@ function seedEncryptedUsers(db: Database.Database, n = 2): void {
       `enc:v1:fakeRefresh${i}`,
     );
   }
+}
+
+function seedPlaintextUser(
+  db: Database.Database,
+  id: string,
+  orgId: string,
+  accessToken: string | null,
+  refreshToken: string | null,
+): void {
+  db.prepare(
+    "INSERT INTO users (id, primary_org_id, idp_access_token, idp_refresh_token) VALUES (?, ?, ?, ?)",
+  ).run(id, orgId, accessToken, refreshToken);
 }
 
 function seedFingerprint(db: Database.Database, fp: string): void {
@@ -271,6 +284,314 @@ describe("runEncryptionGuards — branch matrix", () => {
       .prepare("SELECT value FROM system_config WHERE key = 'encryption.key_fingerprint'")
       .get();
     expect(cleared).toBeUndefined();
+  });
+
+  // ── Finding: fingerprint-mismatch detection must fire even when only
+  //    plaintext rows exist (hasEncryptedRows=false). Previously the guard
+  //    was gated on hasEncryptedRows, so a rotated key with no `enc:v` rows
+  //    left in the table silently passed through the OK path below. ────────
+  it("hasEnc=false, key=present, storedFP=mismatch, ALLOW_KR=unset → throws (plaintext-only rows)", () => {
+    const key = randomBytes(32);
+    const newFp = computeKeyFingerprint(key);
+    const oldFp = "deadbeefdeadbeef";
+    seedPlaintextUser(db, "user-plain-1", "org-a", "plain-access-token", "plain-refresh-token");
+    seedFingerprint(db, oldFp);
+    expect(() => runEncryptionGuards(depsFor({}), key)).toThrow(BootValidationError);
+    try {
+      runEncryptionGuards(depsFor({}), key);
+    } catch (e) {
+      const msg = (e as Error).message;
+      expect(msg).toContain(oldFp);
+      expect(msg).toContain(newFp);
+      expect(msg).toContain("COORDINATOR_ALLOW_KEY_ROTATION=1");
+    }
+    // No side effects from the throwing path — plaintext left untouched.
+    const row = db
+      .prepare("SELECT idp_access_token FROM users WHERE id = 'user-plain-1'")
+      .get() as { idp_access_token: string };
+    expect(row.idp_access_token).toBe("plain-access-token");
+  });
+
+  it("hasEnc=false, key=present, storedFP=mismatch, ALLOW_KR=1 → OK + rotation_begin audit; migration of the plaintext row re-persists the NEW fingerprint atomically (plaintext-only rows)", () => {
+    const key = randomBytes(32);
+    const newFp = computeKeyFingerprint(key);
+    const oldFp = "deadbeefdeadbeef";
+    seedPlaintextUser(db, "user-plain-1", "org-a", "plain-access-token", null);
+    seedFingerprint(db, oldFp);
+    const r = runEncryptionGuards(depsFor({ COORDINATOR_ALLOW_KEY_ROTATION: "1" }), key);
+    expect(r.rawProvider).toBeInstanceOf(EnvelopeEncryption);
+    expect(r.keyFingerprint).toBe(newFp);
+    expect(r.fingerprintAlreadyPersisted).toBe(false);
+
+    expect(audit).toHaveBeenCalledWith(
+      "encryption.key.rotation_begin",
+      expect.objectContaining({
+        tier: 1,
+        metadata: { old_fingerprint: oldFp, new_fingerprint: newFp },
+      }),
+    );
+
+    // Guard 2 deletes the stale fingerprint, but the plaintext row it hands
+    // to migratePlaintextIdpTokens gets migrated in the same call — which
+    // now re-persists the fingerprint (for the NEW key) inside that same
+    // migration transaction, closing the crash-then-wrong-key window on the
+    // rotation path too.
+    const stored = db
+      .prepare("SELECT value FROM system_config WHERE key = 'encryption.key_fingerprint'")
+      .get() as { value: string } | undefined;
+    expect(stored?.value).toBe(newFp);
+  });
+
+  it("hasEnc=false, key=present, storedFP=match (no mismatch) → OK, no throw (regression guard)", () => {
+    const key = randomBytes(32);
+    const fp = computeKeyFingerprint(key);
+    seedPlaintextUser(db, "user-plain-1", "org-a", null, null);
+    seedFingerprint(db, fp);
+    const r = runEncryptionGuards(depsFor({}), key);
+    expect(r.rawProvider).toBeInstanceOf(EnvelopeEncryption);
+    expect(r.keyFingerprint).toBe(fp);
+    expect(audit).not.toHaveBeenCalled();
+  });
+
+  // ── Finding: boot does not bulk-re-encrypt pre-existing PLAINTEXT
+  //    idp_*_token rows when an encryption key is set. Added a one-time,
+  //    transactional, idempotent migration that runs on every successful
+  //    key-present resolution. ─────────────────────────────────────────────
+  describe("plaintext IdP token migration", () => {
+    it("hasEnc=false, key=present (fresh key, fallthrough OK path) → plaintext rows become enc:v... and decrypt correctly", () => {
+      const key = randomBytes(32);
+      seedPlaintextUser(db, "user-1", "org-a", "plain-access", "plain-refresh");
+
+      const r = runEncryptionGuards(depsFor({}), key);
+      expect(r.rawProvider).toBeInstanceOf(EnvelopeEncryption);
+
+      const row = db
+        .prepare("SELECT idp_access_token, idp_refresh_token FROM users WHERE id = 'user-1'")
+        .get() as { idp_access_token: string; idp_refresh_token: string };
+      expect(row.idp_access_token).toMatch(/^enc:v1:/);
+      expect(row.idp_refresh_token).toMatch(/^enc:v1:/);
+
+      const provider = new EnvelopeEncryption(key);
+      expect(
+        provider.decrypt(row.idp_access_token, {
+          org_id: "org-a",
+          column: "idp_access_token",
+          user_id: "user-1",
+        }),
+      ).toBe("plain-access");
+      expect(
+        provider.decrypt(row.idp_refresh_token, {
+          org_id: "org-a",
+          column: "idp_refresh_token",
+          user_id: "user-1",
+        }),
+      ).toBe("plain-refresh");
+    });
+
+    it("hasEnc=true, key=present, storedFP=match (steady-state boot) → any lingering plaintext row is still migrated", () => {
+      const key = randomBytes(32);
+      const fp = computeKeyFingerprint(key);
+      seedEncryptedUsers(db, 1); // establishes hasEncryptedRows=true
+      seedFingerprint(db, fp);
+      seedPlaintextUser(db, "user-straggler", "org-b", "straggler-access", null);
+
+      runEncryptionGuards(depsFor({}), key);
+
+      const row = db
+        .prepare("SELECT idp_access_token FROM users WHERE id = 'user-straggler'")
+        .get() as { idp_access_token: string };
+      expect(row.idp_access_token).toMatch(/^enc:v1:/);
+      const provider = new EnvelopeEncryption(key);
+      expect(
+        provider.decrypt(row.idp_access_token, {
+          org_id: "org-b",
+          column: "idp_access_token",
+          user_id: "user-straggler",
+        }),
+      ).toBe("straggler-access");
+    });
+
+    it("hasEnc=true, key=present, storedFP=null (backfill path) → backfills fingerprint AND migrates plaintext rows", () => {
+      const key = randomBytes(32);
+      seedEncryptedUsers(db, 1);
+      seedPlaintextUser(db, "user-mixed", "org-c", "mixed-access", "mixed-refresh");
+
+      const r = runEncryptionGuards(depsFor({}), key);
+      expect(r.fingerprintAlreadyPersisted).toBe(true);
+
+      const row = db
+        .prepare("SELECT idp_access_token, idp_refresh_token FROM users WHERE id = 'user-mixed'")
+        .get() as { idp_access_token: string; idp_refresh_token: string };
+      expect(row.idp_access_token).toMatch(/^enc:v1:/);
+      expect(row.idp_refresh_token).toMatch(/^enc:v1:/);
+    });
+
+    it("hasEnc=true, key=present, storedFP=mismatch, ALLOW_KR=1 (rotation) → plaintext rows migrated with the NEW key", () => {
+      const key = randomBytes(32);
+      seedEncryptedUsers(db, 1);
+      seedFingerprint(db, "deadbeefdeadbeef");
+      seedPlaintextUser(db, "user-rotated", "org-d", "rotated-access", null);
+
+      runEncryptionGuards(depsFor({ COORDINATOR_ALLOW_KEY_ROTATION: "1" }), key);
+
+      const row = db
+        .prepare("SELECT idp_access_token FROM users WHERE id = 'user-rotated'")
+        .get() as { idp_access_token: string };
+      expect(row.idp_access_token).toMatch(/^enc:v1:/);
+      const provider = new EnvelopeEncryption(key);
+      expect(
+        provider.decrypt(row.idp_access_token, {
+          org_id: "org-d",
+          column: "idp_access_token",
+          user_id: "user-rotated",
+        }),
+      ).toBe("rotated-access");
+    });
+
+    it("is idempotent: a second boot with the same key does not re-touch already-migrated rows", () => {
+      const key = randomBytes(32);
+      seedPlaintextUser(db, "user-1", "org-a", "plain-access", null);
+
+      runEncryptionGuards(depsFor({}), key);
+      const afterFirst = db
+        .prepare("SELECT idp_access_token FROM users WHERE id = 'user-1'")
+        .get() as { idp_access_token: string };
+
+      runEncryptionGuards(depsFor({}), key);
+      const afterSecond = db
+        .prepare("SELECT idp_access_token FROM users WHERE id = 'user-1'")
+        .get() as { idp_access_token: string };
+
+      // Ciphertext is unchanged byte-for-byte — the second run's SELECT
+      // matched zero rows (already `enc:v1:`), so no re-encryption/rewrite
+      // occurred (a fresh encrypt() would produce a different blob, since
+      // nonces are random per call).
+      expect(afterSecond.idp_access_token).toBe(afterFirst.idp_access_token);
+    });
+
+    it("leaves NULL and already-encrypted columns untouched; only migrates the plaintext column on a mixed row", () => {
+      const key = randomBytes(32);
+      const provider = new EnvelopeEncryption(key);
+      const alreadyEnc = provider.encrypt("already-there", {
+        org_id: "org-e",
+        column: "idp_refresh_token",
+        user_id: "user-mixed-col",
+      });
+      seedPlaintextUser(db, "user-mixed-col", "org-e", "needs-migration", alreadyEnc);
+      seedPlaintextUser(db, "user-all-null", "org-e", null, null);
+
+      runEncryptionGuards(depsFor({}), key);
+
+      const mixed = db
+        .prepare(
+          "SELECT idp_access_token, idp_refresh_token FROM users WHERE id = 'user-mixed-col'",
+        )
+        .get() as { idp_access_token: string; idp_refresh_token: string };
+      expect(mixed.idp_access_token).toMatch(/^enc:v1:/);
+      // Refresh token untouched — same ciphertext bytes as originally encrypted.
+      expect(mixed.idp_refresh_token).toBe(alreadyEnc);
+
+      const allNull = db
+        .prepare("SELECT idp_access_token, idp_refresh_token FROM users WHERE id = 'user-all-null'")
+        .get() as { idp_access_token: string | null; idp_refresh_token: string | null };
+      expect(allNull.idp_access_token).toBeNull();
+      expect(allNull.idp_refresh_token).toBeNull();
+    });
+
+    it("migrates a refresh-only plaintext row (access_token NULL)", () => {
+      const key = randomBytes(32);
+      seedPlaintextUser(db, "user-refresh-only", "org-f", null, "refresh-only-plain");
+
+      runEncryptionGuards(depsFor({}), key);
+
+      const row = db
+        .prepare(
+          "SELECT idp_access_token, idp_refresh_token FROM users WHERE id = 'user-refresh-only'",
+        )
+        .get() as { idp_access_token: string | null; idp_refresh_token: string };
+      expect(row.idp_access_token).toBeNull();
+      expect(row.idp_refresh_token).toMatch(/^enc:v1:/);
+      const provider = new EnvelopeEncryption(key);
+      expect(
+        provider.decrypt(row.idp_refresh_token, {
+          org_id: "org-f",
+          column: "idp_refresh_token",
+          user_id: "user-refresh-only",
+        }),
+      ).toBe("refresh-only-plain");
+    });
+
+    // ── Finding: migratePlaintextIdpTokens created enc:v... rows without
+    //    persisting the key fingerprint, widening the crash window between
+    //    "ciphertext exists" and "fingerprint stored" that buildWrappedProvider
+    //    normally closes atomically. A crash after this transaction commits
+    //    but before the first wrapped encrypt() call let a reboot with a
+    //    DIFFERENT key silently backfill the wrong fingerprint via Guard 3,
+    //    permanently orphaning the migrated rows. Fixed by persisting the
+    //    active key's fingerprint inside the same migration transaction. ────
+    it("fresh key, plaintext rows, no stored fingerprint → persists the active key's fingerprint atomically with the migration", () => {
+      const key = randomBytes(32);
+      const fp = computeKeyFingerprint(key);
+      seedPlaintextUser(db, "user-1", "org-a", "plain-access", "plain-refresh");
+
+      runEncryptionGuards(depsFor({}), key);
+
+      const persisted = db
+        .prepare("SELECT value FROM system_config WHERE key = 'encryption.key_fingerprint'")
+        .get() as { value: string } | undefined;
+      expect(persisted?.value).toBe(fp);
+    });
+
+    it("fresh key, plaintext rows, no stored fingerprint → a LATER boot with a DIFFERENT key now throws the Guard-2 mismatch (closes the crash-then-wrong-key window)", () => {
+      const key = randomBytes(32);
+      seedPlaintextUser(db, "user-1", "org-a", "plain-access", "plain-refresh");
+
+      // Simulate: process migrates rows and commits, then is killed before
+      // any wrapped encrypt() runs (irrelevant here — the fingerprint is now
+      // persisted by the migration itself). Reboot with a DIFFERENT key.
+      runEncryptionGuards(depsFor({}), key);
+
+      const wrongKey = randomBytes(32);
+      expect(() => runEncryptionGuards(depsFor({}), wrongKey)).toThrow(BootValidationError);
+      try {
+        runEncryptionGuards(depsFor({}), wrongKey);
+      } catch (e) {
+        expect((e as Error).message).toContain("Database was encrypted with a different key");
+      }
+    });
+
+    it("already-stored (matching) fingerprint is NOT overwritten by a later migration run (regression guard)", () => {
+      const key = randomBytes(32);
+      const fp = computeKeyFingerprint(key);
+      seedEncryptedUsers(db, 1); // hasEncryptedRows=true
+      seedFingerprint(db, fp);
+      seedPlaintextUser(db, "user-straggler", "org-b", "straggler-access", null);
+
+      runEncryptionGuards(depsFor({}), key);
+
+      const rows = db
+        .prepare("SELECT value FROM system_config WHERE key = 'encryption.key_fingerprint'")
+        .all() as Array<{ value: string }>;
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.value).toBe(fp);
+    });
+
+    it("runs inside a single transaction (all-or-nothing per boot)", () => {
+      const key = randomBytes(32);
+      seedPlaintextUser(db, "user-1", "org-a", "plain-1", null);
+      seedPlaintextUser(db, "user-2", "org-a", "plain-2", null);
+
+      runEncryptionGuards(depsFor({}), key);
+
+      const rows = db.prepare("SELECT id, idp_access_token FROM users ORDER BY id").all() as Array<{
+        id: string;
+        idp_access_token: string;
+      }>;
+      expect(rows).toHaveLength(2);
+      for (const row of rows) {
+        expect(row.idp_access_token).toMatch(/^enc:v1:/);
+      }
+    });
   });
 
   // Row 10 — low-entropy key (all 0xaa bytes → entropy = 0)
