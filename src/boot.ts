@@ -13,6 +13,7 @@ import { RedisRateLimiter } from "./auth/rate-limit-redis.js";
 import { acquireOrRenewLock, type RedisHandles } from "./infra/redis.js";
 import { randomUUID } from "node:crypto";
 import { initAuditQueue, getAuditQueue, audit } from "./security/audit.js";
+import { configureAuditChainKeyFromMaster } from "./security/audit-chain.js";
 import { initPhase2Auth } from "./auth.js";
 import { bumpTokenEpochAllUsers } from "./auth/token-epoch.js";
 import { realClock, type Clock } from "./auth/clock.js";
@@ -366,6 +367,11 @@ export function bootPhase2(opts: Phase2BootOptions, deps?: BootPhase2Deps): Phas
   //     provider with first-encrypt fingerprint persistence; T06c adds the
   //     plaintext-bypass reminder. For now we only attach the raw provider.
   const encKey = loadEncryptionKey(env, logger);
+  // Derive the keyed audit-chain HMAC key from the master key so audit
+  // row_hashes cannot be forged by an attacker with DB-write-only access.
+  // Null master key (encryption disabled) → chain stays unkeyed sha256,
+  // recorded honestly. Must run before any audit() emission below.
+  configureAuditChainKeyFromMaster(encKey);
   const encInit = runEncryptionGuards({ db, env, logger, audit }, encKey);
   // T06b: wrap the raw provider so the first encrypt() persists the key
   // fingerprint to system_config (idempotent) + emits encryption.config.loaded.

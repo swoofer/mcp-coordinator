@@ -1,6 +1,11 @@
 import type { DatabaseAdapter } from "./db-adapter.js";
 import { BootValidationError } from "./boot-encryption.js";
-import { GENESIS_HASH, computeRowHash, type AuditChainFields } from "./security/audit-chain.js";
+import {
+  GENESIS_HASH,
+  computeRowHash,
+  getAuditChainKey,
+  type AuditChainFields,
+} from "./security/audit-chain.js";
 
 /**
  * v0.10.6 T03 — pre-flight boot guard for the `orgs.name` UNIQUE INDEX.
@@ -216,7 +221,7 @@ export function emitDuplicatesAcceptedAudit(
     request_id: null,
     target: null,
   };
-  const rowHash = computeRowHash(prevHash, chainRow);
+  const rowHash = computeRowHash(prevHash, chainRow, getAuditChainKey());
 
   db.prepare(
     `INSERT INTO audit_log

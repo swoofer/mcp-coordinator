@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { Clock } from "../auth/clock.js";
 import { realClock } from "../auth/clock.js";
-import { GENESIS_HASH, computeRowHash } from "./audit-chain.js";
+import { GENESIS_HASH, computeRowHash, getAuditChainKey } from "./audit-chain.js";
 
 export interface AuditQueueRow {
   actor_user_id: string | null;
@@ -137,17 +137,21 @@ export class AuditQueue {
         const tip = this.tipStmt.get() as { row_hash: string } | undefined;
         const prevHash = tip?.row_hash ?? GENESIS_HASH;
         const metadata = JSON.stringify({ dropped_count: this._dropped });
-        const rowHash = computeRowHash(prevHash, {
-          action: "system.shutdown.audit_loss",
-          actor_org_id: null,
-          actor_ip: null,
-          actor_user_agent: null,
-          actor_user_id: null,
-          metadata_json: metadata,
-          outcome: "failure",
-          request_id: null,
-          target: null,
-        });
+        const rowHash = computeRowHash(
+          prevHash,
+          {
+            action: "system.shutdown.audit_loss",
+            actor_org_id: null,
+            actor_ip: null,
+            actor_user_agent: null,
+            actor_user_id: null,
+            metadata_json: metadata,
+            outcome: "failure",
+            request_id: null,
+            target: null,
+          },
+          getAuditChainKey(),
+        );
         this.shutdownStmt.run("system.shutdown.audit_loss", "failure", metadata, prevHash, rowHash);
       } catch (err) {
         // Final-row write failure is itself unrecoverable telemetry loss;
@@ -212,21 +216,26 @@ export class AuditQueue {
     // statement onward.
     const insertStmt = this.insertStmt;
     const tipStmt = this.tipStmt;
+    const chainKey = getAuditChainKey();
     const tx = this.db.transaction((batch: AuditQueueRow[]) => {
       const tip = tipStmt.get() as { row_hash: string } | undefined;
       let prevHash = tip?.row_hash ?? GENESIS_HASH;
       for (const r of batch) {
-        const rowHash = computeRowHash(prevHash, {
-          action: r.action,
-          actor_org_id: r.actor_org_id,
-          actor_ip: r.actor_ip,
-          actor_user_agent: r.actor_user_agent,
-          actor_user_id: r.actor_user_id,
-          metadata_json: r.metadata_json,
-          outcome: r.outcome,
-          request_id: r.request_id,
-          target: r.target,
-        });
+        const rowHash = computeRowHash(
+          prevHash,
+          {
+            action: r.action,
+            actor_org_id: r.actor_org_id,
+            actor_ip: r.actor_ip,
+            actor_user_agent: r.actor_user_agent,
+            actor_user_id: r.actor_user_id,
+            metadata_json: r.metadata_json,
+            outcome: r.outcome,
+            request_id: r.request_id,
+            target: r.target,
+          },
+          chainKey,
+        );
         insertStmt.run(
           r.actor_user_id,
           r.actor_org_id,

@@ -2,7 +2,7 @@ import { getDb } from "../database.js";
 import { getRequestId } from "../auth/request-id.js";
 import { getCurrentActor, getCurrentRequest } from "../auth/audit-context.js";
 import { AuditQueue, type AuditQueueRow } from "./audit-queue.js";
-import { GENESIS_HASH, computeRowHash } from "./audit-chain.js";
+import { GENESIS_HASH, computeRowHash, getAuditChainKey } from "./audit-chain.js";
 
 let _auditQueue: AuditQueue | null = null;
 
@@ -148,7 +148,10 @@ function insertAuditRowWithChain(
     request_id: row.request_id ?? null,
     target: row.target,
   };
-  const rowHash = computeRowHash(prevHash, chainRow);
+  // getAuditChainKey() returns the master-derived HMAC key (keyed, forge-
+  // resistant against DB-write-only attackers) or null when encryption is
+  // disabled (unkeyed sha256 fallback, recorded honestly).
+  const rowHash = computeRowHash(prevHash, chainRow, getAuditChainKey());
 
   if (hasOutcomeAndRequestId) {
     db.prepare(

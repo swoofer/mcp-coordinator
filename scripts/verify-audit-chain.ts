@@ -12,12 +12,23 @@
  *   1  one or more rows fail verification
  *   2  could not open the database / malformed CLI args
  *
+ * Keyed vs unkeyed rows: each row records its own hashing algorithm (a
+ * "hmac-sha256-v1:" prefix marks an HMAC-keyed row; a bare 64-hex digest is a
+ * legacy/unkeyed sha256 row). Keyed rows are recomputed with the audit-chain
+ * key derived (via HKDF) from COORDINATOR_ENCRYPTION_KEY — set the same env
+ * var this verifier runs against, or keyed rows cannot be validated. Legacy
+ * unkeyed rows verify without a key. Once the chain has gone keyed, a later
+ * unkeyed row is treated as a downgrade (an attacker without the key
+ * recomputing a forged row with the public algorithm) and fails verification.
+ *
  * What this script proves when it exits 0:
  *   - No row's content has been mutated in place (action, actor fields,
  *     target, request_id, outcome, metadata_json). Re-hashing produces
  *     the stored row_hash byte-for-byte.
  *   - No row has been inserted out of order. Each row's prev_hash
  *     matches the previous row's row_hash.
+ *   - No keyed row has been downgraded to (or forged with) the unkeyed
+ *     algorithm, provided the audit-chain key is available.
  *
  * What this script does NOT prove on exit 0:
  *   - That `created_at` is correct -- it is intentionally outside the
@@ -37,10 +48,14 @@
 import { createRequire } from "node:module";
 import path from "node:path";
 import {
+  ALG_HMAC_V1,
   GENESIS_HASH,
+  algorithmOf,
   computeRowHash,
+  deriveAuditChainKey,
   type AuditChainFields,
 } from "../src/security/audit-chain.js";
+import { decodeMasterKey } from "../src/security/master-key.js";
 
 const require = createRequire(import.meta.url);
 
@@ -61,7 +76,9 @@ interface RowFinding {
     | "missing_hash"
     | "wrong_row_hash"
     | "wrong_prev_hash"
-    | "id_gap_before";
+    | "id_gap_before"
+    | "no_key_for_hmac"
+    | "downgraded_alg";
   expected?: string;
   actual?: string | null;
   /** When reason === "id_gap_before", the gap size (rows missing
@@ -106,7 +123,7 @@ function printUsage(): void {
   );
 }
 
-function verify(rows: AuditRow[]): RowFinding[] {
+function verify(rows: AuditRow[], chainKey: Buffer | null): RowFinding[] {
   const findings: RowFinding[] = [];
   // prevHash = null until the first row sets it; this makes the
   // verifier robust to legitimate front-deletion by the retention
@@ -120,6 +137,11 @@ function verify(rows: AuditRow[]): RowFinding[] {
   // of the previous attestation's tip.
   let prevHash: string | null = null;
   let prevId: number | null = null;
+  // Tracks whether the chain has gone keyed. A genuine keyed deployment
+  // never reverts to unkeyed, so a bare sha256 row appearing after a keyed
+  // row is the signature of an attacker who lacks the key recomputing a
+  // forged row with the public unkeyed algorithm.
+  let sawHmac = false;
 
   for (const row of rows) {
     if (prevId !== null && row.id !== prevId + 1) {
@@ -148,17 +170,38 @@ function verify(rows: AuditRow[]): RowFinding[] {
       });
     }
 
-    const recomputed = computeRowHash(row.prev_hash, {
-      action: row.action,
-      actor_org_id: row.actor_org_id,
-      actor_ip: row.actor_ip,
-      actor_user_agent: row.actor_user_agent,
-      actor_user_id: row.actor_user_id,
-      metadata_json: row.metadata_json,
-      outcome: row.outcome,
-      request_id: row.request_id,
-      target: row.target,
-    });
+    const alg = algorithmOf(row.row_hash);
+    if (alg === ALG_HMAC_V1) {
+      if (!chainKey) {
+        // Keyed row but no key available to this verifier: we cannot
+        // validate it. Advance the chain pointers so downstream prev_hash
+        // checks stay meaningful, but flag it as unverifiable.
+        findings.push({ id: row.id, reason: "no_key_for_hmac" });
+        prevHash = row.row_hash;
+        prevId = row.id;
+        sawHmac = true;
+        continue;
+      }
+      sawHmac = true;
+    } else if (sawHmac) {
+      findings.push({ id: row.id, reason: "downgraded_alg" });
+    }
+
+    const recomputed = computeRowHash(
+      row.prev_hash,
+      {
+        action: row.action,
+        actor_org_id: row.actor_org_id,
+        actor_ip: row.actor_ip,
+        actor_user_agent: row.actor_user_agent,
+        actor_user_id: row.actor_user_id,
+        metadata_json: row.metadata_json,
+        outcome: row.outcome,
+        request_id: row.request_id,
+        target: row.target,
+      },
+      alg === ALG_HMAC_V1 ? chainKey : null,
+    );
 
     if (recomputed !== row.row_hash) {
       findings.push({
@@ -174,6 +217,17 @@ function verify(rows: AuditRow[]): RowFinding[] {
   }
 
   return findings;
+}
+
+/**
+ * Derive the audit-chain HMAC key from COORDINATOR_ENCRYPTION_KEY, or null
+ * when the env var is unset (unkeyed/legacy deployment). Uses the same HKDF
+ * derivation the server uses at boot, so keyed rows recompute identically.
+ */
+function loadChainKey(env: NodeJS.ProcessEnv): Buffer | null {
+  const raw = env.COORDINATOR_ENCRYPTION_KEY;
+  if (!raw) return null;
+  return deriveAuditChainKey(decodeMasterKey(raw));
 }
 
 function loadRows(dbPath: string): AuditRow[] {
@@ -229,6 +283,16 @@ function printHuman(report: Report): void {
             `  id=${f.id}  id-gap of ${f.gap_size} before this row (sweeper deletion or tampering)`,
           );
           break;
+        case "no_key_for_hmac":
+          out.push(
+            `  id=${f.id}  keyed (hmac-sha256-v1) row but no COORDINATOR_ENCRYPTION_KEY available to verify it`,
+          );
+          break;
+        case "downgraded_alg":
+          out.push(
+            `  id=${f.id}  unkeyed sha256 row after a keyed row (algorithm downgrade -- possible forgery)`,
+          );
+          break;
       }
     }
   }
@@ -253,7 +317,15 @@ function main(): void {
     process.exit(2);
   }
 
-  const findings = verify(rows);
+  let chainKey: Buffer | null;
+  try {
+    chainKey = loadChainKey(process.env);
+  } catch (err) {
+    process.stderr.write(`Invalid COORDINATOR_ENCRYPTION_KEY: ${(err as Error).message}\n`);
+    process.exit(2);
+  }
+
+  const findings = verify(rows, chainKey);
   const tip = rows.length > 0 ? rows[rows.length - 1].row_hash : null;
   // Findings of reason "id_gap_before" alone do NOT fail verification
   // -- legitimate sweeper deletions look the same. Real failures are

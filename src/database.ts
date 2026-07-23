@@ -67,7 +67,11 @@ function backfillAuditChain(mdb: MigrationDb): void {
   mdb.prepare("BEGIN IMMEDIATE").run();
   try {
     for (const row of rows) {
-      const rowHash = computeRowHash(prevHash, row);
+      // Backfill hashes rows that predate the chain: keep them unkeyed
+      // sha256 (explicit null key) so they stay verifiable as legacy rows.
+      // The keyed HMAC algorithm only applies to rows written after a key
+      // is configured — see audit-chain.ts.
+      const rowHash = computeRowHash(prevHash, row, null);
       updateStmt.run(prevHash, rowHash, row.id);
       prevHash = rowHash;
     }

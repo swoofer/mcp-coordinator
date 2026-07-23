@@ -5,7 +5,16 @@ import fs from "node:fs";
 import type Database from "better-sqlite3";
 import { audit, initAuditQueue, resetAuditQueue, getAuditQueue } from "../../src/security/audit.js";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
-import { GENESIS_HASH, computeRowHash } from "../../src/security/audit-chain.js";
+import {
+  ALG_HMAC_V1,
+  ALG_SHA256,
+  GENESIS_HASH,
+  algorithmOf,
+  computeRowHash,
+  configureAuditChainKey,
+  deriveAuditChainKey,
+  resetAuditChainKey,
+} from "../../src/security/audit-chain.js";
 import { withAuditContext } from "../../src/auth/audit-context.js";
 import { withRequestId } from "../../src/auth/request-id.js";
 
@@ -62,8 +71,63 @@ afterEach(() => {
   const queue = getAuditQueue();
   if (queue) queue.drain(0);
   resetAuditQueue();
+  resetAuditChainKey();
   closeDb();
   clearDataDir();
+});
+
+describe("audit hash chain -- keyed HMAC vs unkeyed fallback", () => {
+  const MASTER = Buffer.alloc(32, 0x5a);
+
+  it("with no chain key configured, rows are recorded as unkeyed sha256", () => {
+    audit("test.event.nokey", { tier: 1 });
+    const [row] = readChain();
+    expect(algorithmOf(row.row_hash)).toBe(ALG_SHA256);
+    expect(row.row_hash).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("with a chain key configured, rows are recorded as keyed hmac-sha256-v1", () => {
+    const key = deriveAuditChainKey(MASTER);
+    configureAuditChainKey(key);
+    audit("test.event.keyed", { tier: 1, metadata: { foo: "bar" } });
+    const [row] = readChain();
+    expect(algorithmOf(row.row_hash)).toBe(ALG_HMAC_V1);
+    // Recomputes with the key...
+    const expected = computeRowHash(
+      row.prev_hash,
+      {
+        action: row.action,
+        actor_org_id: row.actor_org_id,
+        actor_ip: row.actor_ip,
+        actor_user_agent: row.actor_user_agent,
+        actor_user_id: row.actor_user_id,
+        metadata_json: row.metadata_json,
+        outcome: row.outcome,
+        request_id: row.request_id,
+        target: row.target,
+      },
+      key,
+    );
+    expect(row.row_hash).toBe(expected);
+    // ...but an attacker without the key cannot reproduce it with the
+    // unkeyed algorithm.
+    const unkeyedForge = computeRowHash(
+      row.prev_hash,
+      {
+        action: row.action,
+        actor_org_id: row.actor_org_id,
+        actor_ip: row.actor_ip,
+        actor_user_agent: row.actor_user_agent,
+        actor_user_id: row.actor_user_id,
+        metadata_json: row.metadata_json,
+        outcome: row.outcome,
+        request_id: row.request_id,
+        target: row.target,
+      },
+      null,
+    );
+    expect(unkeyedForge).not.toBe(row.row_hash);
+  });
 });
 
 describe("audit hash chain -- end-to-end through audit() Tier 1", () => {
