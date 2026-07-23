@@ -312,7 +312,7 @@ describe("runEncryptionGuards — branch matrix", () => {
     expect(row.idp_access_token).toBe("plain-access-token");
   });
 
-  it("hasEnc=false, key=present, storedFP=mismatch, ALLOW_KR=1 → OK + rotation_begin audit + clears storedFingerprint (plaintext-only rows)", () => {
+  it("hasEnc=false, key=present, storedFP=mismatch, ALLOW_KR=1 → OK + rotation_begin audit; migration of the plaintext row re-persists the NEW fingerprint atomically (plaintext-only rows)", () => {
     const key = randomBytes(32);
     const newFp = computeKeyFingerprint(key);
     const oldFp = "deadbeefdeadbeef";
@@ -331,10 +331,15 @@ describe("runEncryptionGuards — branch matrix", () => {
       }),
     );
 
-    const cleared = db
+    // Guard 2 deletes the stale fingerprint, but the plaintext row it hands
+    // to migratePlaintextIdpTokens gets migrated in the same call — which
+    // now re-persists the fingerprint (for the NEW key) inside that same
+    // migration transaction, closing the crash-then-wrong-key window on the
+    // rotation path too.
+    const stored = db
       .prepare("SELECT value FROM system_config WHERE key = 'encryption.key_fingerprint'")
-      .get();
-    expect(cleared).toBeUndefined();
+      .get() as { value: string } | undefined;
+    expect(stored?.value).toBe(newFp);
   });
 
   it("hasEnc=false, key=present, storedFP=match (no mismatch) → OK, no throw (regression guard)", () => {
@@ -514,6 +519,61 @@ describe("runEncryptionGuards — branch matrix", () => {
           user_id: "user-refresh-only",
         }),
       ).toBe("refresh-only-plain");
+    });
+
+    // ── Finding: migratePlaintextIdpTokens created enc:v... rows without
+    //    persisting the key fingerprint, widening the crash window between
+    //    "ciphertext exists" and "fingerprint stored" that buildWrappedProvider
+    //    normally closes atomically. A crash after this transaction commits
+    //    but before the first wrapped encrypt() call let a reboot with a
+    //    DIFFERENT key silently backfill the wrong fingerprint via Guard 3,
+    //    permanently orphaning the migrated rows. Fixed by persisting the
+    //    active key's fingerprint inside the same migration transaction. ────
+    it("fresh key, plaintext rows, no stored fingerprint → persists the active key's fingerprint atomically with the migration", () => {
+      const key = randomBytes(32);
+      const fp = computeKeyFingerprint(key);
+      seedPlaintextUser(db, "user-1", "org-a", "plain-access", "plain-refresh");
+
+      runEncryptionGuards(depsFor({}), key);
+
+      const persisted = db
+        .prepare("SELECT value FROM system_config WHERE key = 'encryption.key_fingerprint'")
+        .get() as { value: string } | undefined;
+      expect(persisted?.value).toBe(fp);
+    });
+
+    it("fresh key, plaintext rows, no stored fingerprint → a LATER boot with a DIFFERENT key now throws the Guard-2 mismatch (closes the crash-then-wrong-key window)", () => {
+      const key = randomBytes(32);
+      seedPlaintextUser(db, "user-1", "org-a", "plain-access", "plain-refresh");
+
+      // Simulate: process migrates rows and commits, then is killed before
+      // any wrapped encrypt() runs (irrelevant here — the fingerprint is now
+      // persisted by the migration itself). Reboot with a DIFFERENT key.
+      runEncryptionGuards(depsFor({}), key);
+
+      const wrongKey = randomBytes(32);
+      expect(() => runEncryptionGuards(depsFor({}), wrongKey)).toThrow(BootValidationError);
+      try {
+        runEncryptionGuards(depsFor({}), wrongKey);
+      } catch (e) {
+        expect((e as Error).message).toContain("Database was encrypted with a different key");
+      }
+    });
+
+    it("already-stored (matching) fingerprint is NOT overwritten by a later migration run (regression guard)", () => {
+      const key = randomBytes(32);
+      const fp = computeKeyFingerprint(key);
+      seedEncryptedUsers(db, 1); // hasEncryptedRows=true
+      seedFingerprint(db, fp);
+      seedPlaintextUser(db, "user-straggler", "org-b", "straggler-access", null);
+
+      runEncryptionGuards(depsFor({}), key);
+
+      const rows = db
+        .prepare("SELECT value FROM system_config WHERE key = 'encryption.key_fingerprint'")
+        .all() as Array<{ value: string }>;
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.value).toBe(fp);
     });
 
     it("runs inside a single transaction (all-or-nothing per boot)", () => {

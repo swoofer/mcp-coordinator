@@ -68,6 +68,22 @@ function migratePlaintextIdpTokens(db: Database.Database, key: Buffer): void {
   const provider = new EnvelopeEncryption(key);
   const updAccess = db.prepare("UPDATE users SET idp_access_token = ? WHERE id = ?");
   const updRefresh = db.prepare("UPDATE users SET idp_refresh_token = ? WHERE id = ?");
+  // Restore the "ciphertext-exists ⇒ fingerprint-stored" invariant that
+  // buildWrappedProvider's wrapped encrypt() normally guarantees atomically
+  // for every other enc:v... row. Without this, a crash between this
+  // transaction committing and the first wrapped encrypt() call would leave
+  // freshly-migrated enc:v... rows on disk with no stored fingerprint; a
+  // reboot with a *different* key would then hit Guard 3 (backfill) and
+  // silently adopt the wrong fingerprint, permanently orphaning the rows
+  // just migrated here. Persisting it in the same transaction as the
+  // UPDATEs makes ciphertext + fingerprint commit atomically — same
+  // INSERT OR IGNORE semantics, same config key/value shape as
+  // buildWrappedProvider, so an already-stored (matching) fingerprint from
+  // any caller (Guard 3's backfill runs before this) is never clobbered.
+  const fingerprint = computeKeyFingerprint(key);
+  const insertFingerprint = db.prepare(
+    "INSERT OR IGNORE INTO system_config (key, value) VALUES (?, ?)",
+  );
 
   const tx = db.transaction((batch: typeof rows) => {
     for (const row of batch) {
@@ -92,6 +108,7 @@ function migratePlaintextIdpTokens(db: Database.Database, key: Buffer): void {
         );
       }
     }
+    insertFingerprint.run("encryption.key_fingerprint", fingerprint);
   });
   tx(rows);
 }
