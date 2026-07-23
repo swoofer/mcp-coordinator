@@ -467,6 +467,56 @@ describe("cross-tenant isolation defense-in-depth", () => {
     expect(rowsForB).toHaveLength(1);
   });
 
+  // ── /api/scoring-stats ────────────────────────────────────────────────────
+  it("/api/scoring-stats: org A cannot see org B's layer firings or outcomes", async () => {
+    const db = getDb();
+    // Same thread_id reused across both orgs on purpose — proves the join
+    // is scoped by org_id, not just accidentally non-colliding ids.
+    db.prepare(
+      "INSERT INTO layer_firings (org_id, thread_id, layer, score, agent_id) VALUES (?, ?, ?, ?, ?)",
+    ).run("org-a", "t-shared", "L1", 100, "agent-a");
+    db.prepare(
+      "INSERT INTO layer_firings (org_id, thread_id, layer, score, agent_id) VALUES (?, ?, ?, ?, ?)",
+    ).run("org-b", "t-shared", "L1", 50, "agent-b");
+    db.prepare("INSERT INTO events (org_id, type, payload) VALUES (?, ?, ?)").run(
+      "org-a",
+      "thread_resolved",
+      JSON.stringify({ thread_id: "t-shared", resolution_type: "auto_resolved" }),
+    );
+    db.prepare("INSERT INTO events (org_id, type, payload) VALUES (?, ?, ?)").run(
+      "org-b",
+      "thread_resolved",
+      JSON.stringify({ thread_id: "t-shared", resolution_type: "consensus" }),
+    );
+
+    const statsA = (await getAs("/api/scoring-stats?since=24h", tokenA)) as {
+      status: number;
+      data: {
+        layers: Array<{ layer: string; fire_count: number; outcomes: Record<string, number> }>;
+      };
+    };
+    expect(statsA.status).toBe(200);
+    const l1A = statsA.data.layers.find((l) => l.layer === "L1");
+    expect(l1A).toBeDefined();
+    // Org A sees ONLY its own firing (fire_count 1, not 2) and its own outcome.
+    expect(l1A!.fire_count).toBe(1);
+    expect(l1A!.outcomes.auto_resolved).toBe(1);
+    expect(l1A!.outcomes.consensus).toBe(0);
+
+    const statsB = (await getAs("/api/scoring-stats?since=24h", tokenB)) as {
+      status: number;
+      data: {
+        layers: Array<{ layer: string; fire_count: number; outcomes: Record<string, number> }>;
+      };
+    };
+    expect(statsB.status).toBe(200);
+    const l1B = statsB.data.layers.find((l) => l.layer === "L1");
+    expect(l1B).toBeDefined();
+    expect(l1B!.fire_count).toBe(1);
+    expect(l1B!.outcomes.consensus).toBe(1);
+    expect(l1B!.outcomes.auto_resolved).toBe(0);
+  });
+
   // ── Edge case: empty-string org claim returns no rows ────────────────────
   it("empty-string org claim returns no rows", async () => {
     // Seed some data in org-a and org-b

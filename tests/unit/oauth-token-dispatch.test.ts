@@ -7,6 +7,7 @@ import { handleOAuthToken } from "../../src/auth/oauth-token.js";
 import type { AuthHandlerContext } from "../../src/auth/context.js";
 import { FakeClock } from "../helpers/clock.js";
 import { singleProviderRegistry } from "../helpers/index.js";
+import { ProviderRegistry } from "../../src/auth/providers/registry.js";
 import { RateLimiter } from "../../src/auth/rate-limit.js";
 import { buildJwtKeyRegistry } from "../../src/auth/jwt-keys.js";
 import { MembershipCache } from "../../src/auth/membership-cache.js";
@@ -16,6 +17,11 @@ import { IdPTokenRevoked, IdPTransientError } from "../../src/auth/providers/err
 import { findAuditRows } from "../helpers/audit.js";
 import { hashIdpUserId } from "../../src/auth/audit-helpers.js";
 import { PassthroughEncryption } from "../../src/security/encryption.js";
+import {
+  hashIdentifier,
+  recordFailedLogin,
+  DEFAULT_LOCKOUT_THRESHOLD,
+} from "../../src/auth/login-lockout.js";
 
 /**
  * T18 — POST /api/auth/oauth/token unified grant dispatcher.
@@ -309,6 +315,67 @@ describe("handleOAuthToken — dispatch validation", () => {
     );
     expect(res.statusCode).toBe(400);
     expect(JSON.parse(res.body!).error).toBe("invalid_request");
+  });
+});
+
+// ===========================================================================
+// authorization_code provider selection (T46)
+// ===========================================================================
+describe("handleOAuthToken — authorization_code provider selection", () => {
+  it("unknown provider name in body → 400 invalid_request naming the provider", async () => {
+    const req = mockRequest({
+      grant_type: "authorization_code",
+      code: "c",
+      redirect_uri: "http://localhost/cb",
+      provider: "not-registered",
+    });
+    const res = mockResponse();
+    await handleOAuthToken(req, res as unknown as ServerResponse, makeCtx());
+    expect(res.statusCode).toBe(400);
+    const body = JSON.parse(res.body!);
+    expect(body.error).toBe("invalid_request");
+    expect(body.error_description).toBe("Unknown provider: not-registered");
+  });
+
+  it("no provider in body and no default registered → 400 invalid_request", async () => {
+    const req = mockRequest({
+      grant_type: "authorization_code",
+      code: "c",
+      redirect_uri: "http://localhost/cb",
+    });
+    const res = mockResponse();
+    await handleOAuthToken(
+      req,
+      res as unknown as ServerResponse,
+      makeCtx({ providers: new ProviderRegistry() }),
+    );
+    expect(res.statusCode).toBe(400);
+    const body = JSON.parse(res.body!);
+    expect(body.error).toBe("invalid_request");
+    expect(body.error_description).toBe("No IdP provider is registered");
+  });
+
+  it("explicit provider name matching a registered provider → dispatches normally (200)", async () => {
+    seedOrg();
+    const provider = makeProvider({
+      exchangeCode: async () => ({
+        user: { idp_user_id: "gh-explicit", email: "explicit@example.com" },
+        accessToken: "tok",
+      }),
+    });
+    const req = mockRequest({
+      grant_type: "authorization_code",
+      code: "c",
+      redirect_uri: "http://localhost/cb",
+      provider: "github",
+    });
+    const res = mockResponse();
+    await handleOAuthToken(
+      req,
+      res as unknown as ServerResponse,
+      makeCtx({ providers: singleProviderRegistry(provider) }),
+    );
+    expect(res.statusCode).toBe(200);
   });
 });
 
@@ -641,6 +708,355 @@ describe("handleOAuthToken — authorization_code allowlist", () => {
         makeCtx({ providers: singleProviderRegistry(provider) }),
       ),
     ).rejects.toThrow(/network unrest/);
+  });
+});
+
+// ===========================================================================
+// authorization_code allowlist strategy idp_org_id / id_token_groups (T56/T58)
+// ===========================================================================
+describe("handleOAuthToken — authorization_code allowlist strategy idp_org_id (T56)", () => {
+  function seedIdpOrgAllowlist(orgId = "org-google", idpOrgId = "example.com"): void {
+    getDb()
+      .prepare("INSERT INTO orgs (id, name, allowlist_idp_org_id) VALUES (?, ?, ?)")
+      .run(orgId, "Example", idpOrgId);
+  }
+
+  it("idp_org_id matches allowlist_idp_org_id → 200 provisioned in that org", async () => {
+    seedIdpOrgAllowlist("org-google", "example.com");
+    const provider = {
+      ...makeProvider(),
+      name: "google",
+      allowlistStrategy: "idp_org_id" as const,
+      exchangeCode: async () => ({
+        user: { idp_user_id: "google-1", email: "u@example.com", idp_org_id: "example.com" },
+        accessToken: "tok",
+      }),
+    };
+    const req = mockRequest({
+      grant_type: "authorization_code",
+      code: "c",
+      redirect_uri: "http://localhost/cb",
+    });
+    const res = mockResponse();
+    await handleOAuthToken(
+      req,
+      res as unknown as ServerResponse,
+      makeCtx({ providers: singleProviderRegistry(provider) }),
+    );
+    expect(res.statusCode).toBe(200);
+    const row = getDb()
+      .prepare("SELECT primary_org_id FROM users WHERE idp_user_id = ?")
+      .get("google-1") as { primary_org_id: string };
+    expect(row.primary_org_id).toBe("org-google");
+  });
+
+  it("no idp_org_id on the IdP user → 403 access_denied, no lookup attempted", async () => {
+    seedIdpOrgAllowlist("org-google", "example.com");
+    const provider = {
+      ...makeProvider(),
+      name: "google",
+      allowlistStrategy: "idp_org_id" as const,
+      exchangeCode: async () => ({
+        user: { idp_user_id: "google-2", email: "u2@example.com" },
+        accessToken: "tok",
+      }),
+    };
+    const req = mockRequest({
+      grant_type: "authorization_code",
+      code: "c",
+      redirect_uri: "http://localhost/cb",
+    });
+    const res = mockResponse();
+    await handleOAuthToken(
+      req,
+      res as unknown as ServerResponse,
+      makeCtx({ providers: singleProviderRegistry(provider) }),
+    );
+    expect(res.statusCode).toBe(403);
+    expect(JSON.parse(res.body!).error).toBe("access_denied");
+  });
+});
+
+describe("handleOAuthToken — authorization_code allowlist strategy id_token_groups (T58)", () => {
+  it("id_token groups match allowlist_github_org (case-insensitive) → 200 provisioned", async () => {
+    seedOrg("org-acme", "acme");
+    const provider = {
+      ...makeProvider(),
+      name: "generic-oidc",
+      allowlistStrategy: "id_token_groups" as const,
+      exchangeCode: async () => ({
+        user: { idp_user_id: "oidc-1", email: "u@example.com", groups: ["Acme"] },
+        accessToken: "tok",
+      }),
+    };
+    const req = mockRequest({
+      grant_type: "authorization_code",
+      code: "c",
+      redirect_uri: "http://localhost/cb",
+    });
+    const res = mockResponse();
+    await handleOAuthToken(
+      req,
+      res as unknown as ServerResponse,
+      makeCtx({ providers: singleProviderRegistry(provider) }),
+    );
+    expect(res.statusCode).toBe(200);
+    const row = getDb()
+      .prepare("SELECT primary_org_id FROM users WHERE idp_user_id = ?")
+      .get("oidc-1") as { primary_org_id: string };
+    expect(row.primary_org_id).toBe("org-acme");
+  });
+
+  it("empty groups on the id_token → 403 access_denied, no lookup attempted", async () => {
+    seedOrg("org-acme", "acme");
+    const provider = {
+      ...makeProvider(),
+      name: "generic-oidc",
+      allowlistStrategy: "id_token_groups" as const,
+      exchangeCode: async () => ({
+        user: { idp_user_id: "oidc-2", email: "u2@example.com", groups: [] },
+        accessToken: "tok",
+      }),
+    };
+    const req = mockRequest({
+      grant_type: "authorization_code",
+      code: "c",
+      redirect_uri: "http://localhost/cb",
+    });
+    const res = mockResponse();
+    await handleOAuthToken(
+      req,
+      res as unknown as ServerResponse,
+      makeCtx({ providers: singleProviderRegistry(provider) }),
+    );
+    expect(res.statusCode).toBe(403);
+    expect(JSON.parse(res.body!).error).toBe("access_denied");
+  });
+});
+
+// ===========================================================================
+// authorization_code login lockout
+// ===========================================================================
+describe("handleOAuthToken — authorization_code login lockout", () => {
+  it("pre-locked identifier → 429 + Retry-After + Tier 1 audit auth.login.locked (no IdP call)", async () => {
+    seedOrg();
+    const ident = hashIdentifier("gh-cli-locked");
+    for (let i = 0; i < DEFAULT_LOCKOUT_THRESHOLD; i++) {
+      await recordFailedLogin(rateLimiter, ident);
+    }
+    const provider = makeProvider({
+      exchangeCode: async () => ({
+        user: { idp_user_id: "gh-cli-locked", email: "locked@example.com" },
+        accessToken: "tok",
+      }),
+    });
+    const req = mockRequest({
+      grant_type: "authorization_code",
+      code: "c",
+      redirect_uri: "http://localhost/cb",
+    });
+    const res = mockResponse();
+    await handleOAuthToken(
+      req,
+      res as unknown as ServerResponse,
+      makeCtx({ providers: singleProviderRegistry(provider) }),
+    );
+    expect(res.statusCode).toBe(429);
+    expect(res.headers["Retry-After"]).toBeDefined();
+    const audits = findAuditRows("auth.login.locked");
+    expect(audits).toHaveLength(1);
+    expect(JSON.parse(audits[0].metadata_json as string).identifier_hash).toBe(ident);
+  });
+
+  it("after DEFAULT_LOCKOUT_THRESHOLD not-in-org denials, the next attempt is locked out (429)", async () => {
+    // No org seeded → every attempt is denied as not-in-allowlist, which
+    // records a failed login against the identifier.
+    const provider = makeProvider({
+      exchangeCode: async () => ({
+        user: { idp_user_id: "gh-cli-repeat", email: "repeat@example.com" },
+        accessToken: "tok",
+      }),
+      listMemberships: async () => ["unrelated-org"],
+    });
+    for (let i = 0; i < DEFAULT_LOCKOUT_THRESHOLD; i++) {
+      const res = mockResponse();
+      await handleOAuthToken(
+        mockRequest({
+          grant_type: "authorization_code",
+          code: "c",
+          redirect_uri: "http://localhost/cb",
+        }),
+        res as unknown as ServerResponse,
+        makeCtx({ providers: singleProviderRegistry(provider) }),
+      );
+      expect(res.statusCode).toBe(403);
+    }
+    expect(findAuditRows("auth.login.locked")).toHaveLength(0);
+
+    const res = mockResponse();
+    await handleOAuthToken(
+      mockRequest({
+        grant_type: "authorization_code",
+        code: "c",
+        redirect_uri: "http://localhost/cb",
+      }),
+      res as unknown as ServerResponse,
+      makeCtx({ providers: singleProviderRegistry(provider) }),
+    );
+    expect(res.statusCode).toBe(429);
+    expect(findAuditRows("auth.login.locked")).toHaveLength(1);
+  });
+
+  it("not-locked identifier → proceeds normally (200)", async () => {
+    seedOrg();
+    const provider = makeProvider({
+      exchangeCode: async () => ({
+        user: { idp_user_id: "gh-cli-fresh", email: "fresh@example.com" },
+        accessToken: "tok",
+      }),
+    });
+    const req = mockRequest({
+      grant_type: "authorization_code",
+      code: "c",
+      redirect_uri: "http://localhost/cb",
+    });
+    const res = mockResponse();
+    await handleOAuthToken(
+      req,
+      res as unknown as ServerResponse,
+      makeCtx({ providers: singleProviderRegistry(provider) }),
+    );
+    expect(res.statusCode).toBe(200);
+  });
+});
+
+// ===========================================================================
+// authorization_code AUTO_PROVISION gate
+// ===========================================================================
+describe("handleOAuthToken — authorization_code AUTO_PROVISION gate", () => {
+  beforeEach(() => {
+    delete process.env.COORDINATOR_AUTO_PROVISION;
+  });
+  afterAll(() => {
+    delete process.env.COORDINATOR_AUTO_PROVISION;
+  });
+
+  it("AUTO_PROVISION='false' + new user → 403 + no user row created (mirrors the browser callback gate)", async () => {
+    seedOrg();
+    process.env.COORDINATOR_AUTO_PROVISION = "false";
+    const provider = makeProvider({
+      exchangeCode: async () => ({
+        user: { idp_user_id: "gh-cli-new", email: "cli-new@example.com" },
+        accessToken: "tok",
+      }),
+    });
+    const req = mockRequest({
+      grant_type: "authorization_code",
+      code: "c",
+      redirect_uri: "http://localhost/cb",
+    });
+    const res = mockResponse();
+    await handleOAuthToken(
+      req,
+      res as unknown as ServerResponse,
+      makeCtx({ providers: singleProviderRegistry(provider) }),
+    );
+    expect(res.statusCode).toBe(403);
+    const row = getDb().prepare("SELECT id FROM users WHERE idp_user_id = ?").get("gh-cli-new");
+    expect(row).toBeUndefined();
+    expect(findAuditRows("auth.user.created")).toHaveLength(0);
+  });
+
+  it("unknown error from provisionUserWithAutoProvisionGate → re-thrown to caller (not swallowed as a 403)", async () => {
+    seedOrg();
+    const provider = makeProvider({
+      exchangeCode: async () => ({
+        user: { idp_user_id: "gh-cli-tx-boom", email: "tx-boom@example.com" },
+        accessToken: "tok",
+      }),
+    });
+    const realDb = getDb();
+    const wrappedDb = new Proxy(realDb, {
+      get(target, prop) {
+        if (prop === "transaction") {
+          return (_fn: () => unknown) => {
+            const t = () => {
+              throw new Error("tx-boom");
+            };
+            t.default = t;
+            t.deferred = t;
+            t.immediate = t;
+            t.exclusive = t;
+            return t;
+          };
+        }
+        const value = Reflect.get(target, prop);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    const req = mockRequest({
+      grant_type: "authorization_code",
+      code: "c",
+      redirect_uri: "http://localhost/cb",
+    });
+    const res = mockResponse();
+    await expect(
+      handleOAuthToken(
+        req,
+        res as unknown as ServerResponse,
+        makeCtx({
+          providers: singleProviderRegistry(provider),
+          db: wrappedDb as unknown as AuthHandlerContext["db"],
+        }),
+      ),
+    ).rejects.toThrow("tx-boom");
+  });
+
+  it("AUTO_PROVISION='false' + existing user → 200 (existing-user path is unaffected)", async () => {
+    seedOrg();
+    seedUser({ role: "admin" });
+    process.env.COORDINATOR_AUTO_PROVISION = "false";
+    const provider = makeProvider({
+      exchangeCode: async () => ({
+        user: { idp_user_id: "gh-100", email: "alice@example.com" }, // matches seedUser
+        accessToken: "tok",
+      }),
+    });
+    const req = mockRequest({
+      grant_type: "authorization_code",
+      code: "c",
+      redirect_uri: "http://localhost/cb",
+    });
+    const res = mockResponse();
+    await handleOAuthToken(
+      req,
+      res as unknown as ServerResponse,
+      makeCtx({ providers: singleProviderRegistry(provider) }),
+    );
+    expect(res.statusCode).toBe(200);
+  });
+
+  it("AUTO_PROVISION unset (default 'true') + new user → 200 (unchanged happy path)", async () => {
+    seedOrg();
+    expect(process.env.COORDINATOR_AUTO_PROVISION).toBeUndefined();
+    const provider = makeProvider({
+      exchangeCode: async () => ({
+        user: { idp_user_id: "gh-cli-default", email: "cli-default@example.com" },
+        accessToken: "tok",
+      }),
+    });
+    const req = mockRequest({
+      grant_type: "authorization_code",
+      code: "c",
+      redirect_uri: "http://localhost/cb",
+    });
+    const res = mockResponse();
+    await handleOAuthToken(
+      req,
+      res as unknown as ServerResponse,
+      makeCtx({ providers: singleProviderRegistry(provider) }),
+    );
+    expect(res.statusCode).toBe(200);
   });
 });
 

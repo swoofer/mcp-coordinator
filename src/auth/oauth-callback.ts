@@ -8,15 +8,15 @@ import { parseCookies } from "./cookies.js";
 import { hashIdentifier, isLocked, recordFailedLogin } from "./login-lockout.js";
 import { resolveOrgFromMemberships, resolveOrgFromIdpOrgId } from "./allowlist.js";
 import {
-  provisionUser,
   mintTokenPair,
   computeFingerprint,
   setSessionCookies,
+  provisionUserWithAutoProvisionGate,
+  ProvisioningDeniedError,
   type ProvisionedUser,
   type ProvisionResult,
 } from "./oauth-finalize.js";
 import { generateCsrfToken } from "./csrf.js";
-import { getOrgSetting } from "./org-settings.js";
 import { hashIdpUserId } from "./audit-helpers.js";
 import { audit } from "../security/audit.js";
 import { appError, bearerAuthHeader } from "../http/response-contract.js";
@@ -204,20 +204,6 @@ export async function handleOAuthCallback(
 }
 
 /**
- * Sentinel raised inside the provisioning transaction when AUTO_PROVISION
- * is "false" and the user has no existing row. Aborts the TX so the
- * find-or-create + bootstrap-admin path never runs, and lets the caller
- * emit the Tier 2 audit + 403 response after rollback (V4 FIX 23: only
- * audit after the security action commits — here it's the lack of one).
- */
-class ProvisioningDeniedError extends Error {
-  constructor(public readonly code: string) {
-    super(code);
-    this.name = "ProvisioningDeniedError";
-  }
-}
-
-/**
  * T16b: callback provisioning transaction body.
  *
  * Flow (V2 §A.8 + V4 FIX 16/23):
@@ -234,12 +220,14 @@ class ProvisioningDeniedError extends Error {
  *      Tier 1 audit. IdPTransientError → 503.
  *   3. resolveOrgFromMemberships (T09). No match → recordFailedLogin +
  *      403 + Tier 1 audit auth.login.denied.not_in_org.
- *   4. AUTO_PROVISION via T44 getOrgSetting (default "true"). "false"
- *      + new user → 403 USER_NOT_PROVISIONED + Tier 2 audit
+ *   4-5. provisionUserWithAutoProvisionGate (T16helpers, shared with the
+ *      CLI token grant in oauth-token.ts): resolves the auto_provision
+ *      org setting (T44 getOrgSetting, default "true") and runs the
+ *      user-exists check + provisionUser inside one BEGIN IMMEDIATE TX,
+ *      so AUTO_PROVISION=false can't race a concurrent provisioning
+ *      attempt. "false" + new user → ProvisioningDeniedError → 403
+ *      USER_NOT_PROVISIONED + Tier 2 audit
  *      auth.login.failure(reason=user_not_provisioned).
- *   5. BEGIN IMMEDIATE TX: provisionUser (T16helpers). User-exists
- *      check is inside the TX so AUTO_PROVISION=false races with a
- *      concurrent provisioning attempt cleanly.
  *   6. COMMIT, then emit Tier 2 auth.user.created (new users) and
  *      Tier 1 auth.admin.bootstrapped (bootstrap path). Post-TX so
  *      audits never fire when the TX rolled back (V4 FIX 23).
@@ -358,42 +346,26 @@ async function finalizeBrowserOAuth(
     return;
   }
 
-  // 4. AUTO_PROVISION mode via T44 (orgId=null: pre-provisioning lookup, falls
-  //    back to env then default "true"). Normalize to lowercase so operators
-  //    setting COORDINATOR_AUTO_PROVISION=False/FALSE all route correctly.
-  const autoProvision = String(getOrgSetting(ctx.db, null, "auto_provision", "true")).toLowerCase();
-
-  // 5-6. BEGIN IMMEDIATE TX. The user-existence check for AUTO_PROVISION=false
-  //      lives INSIDE the TX so it's atomic with the INSERT — a concurrent
-  //      callback can't sneak in between SELECT and INSERT.
+  // 4-6. AUTO_PROVISION gate + provisionUser inside one BEGIN IMMEDIATE TX
+  //      (T16helpers, shared with the CLI token grant — see the doc comment
+  //      on provisionUserWithAutoProvisionGate).
   let provisionResult: ProvisionResult;
   try {
-    const tx = ctx.db.transaction((): ProvisionResult => {
-      if (autoProvision === "false") {
-        const existing = ctx.db
-          .prepare("SELECT id FROM users WHERE idp_provider = ? AND idp_user_id = ?")
-          .get(provider.name, exchange.user.idp_user_id);
-        if (!existing) {
-          throw new ProvisioningDeniedError("USER_NOT_PROVISIONED");
-        }
-      }
-      return provisionUser({
-        db: ctx.db,
-        clock: ctx.clock,
-        idpUser: exchange.user,
-        accessToken: exchange.accessToken,
-        allowlistOrg: {
-          org_id: allowlistMatch.org_id,
-          org_name: allowlistMatch.org_name,
-        },
-        providerName: provider.name,
-        idpRefreshToken: exchange.refreshToken,
-        // T08: ctx.encryptionProvider is optional on the type only to
-        // accommodate pre-T06b test fixtures; bootPhase2 always sets it.
-        encryption: ctx.encryptionProvider!,
-      });
+    provisionResult = provisionUserWithAutoProvisionGate({
+      db: ctx.db,
+      clock: ctx.clock,
+      idpUser: exchange.user,
+      accessToken: exchange.accessToken,
+      allowlistOrg: {
+        org_id: allowlistMatch.org_id,
+        org_name: allowlistMatch.org_name,
+      },
+      providerName: provider.name,
+      idpRefreshToken: exchange.refreshToken,
+      // T08: ctx.encryptionProvider is optional on the type only to
+      // accommodate pre-T06b test fixtures; bootPhase2 always sets it.
+      encryption: ctx.encryptionProvider!,
     });
-    provisionResult = tx.immediate();
   } catch (err) {
     if (err instanceof ProvisioningDeniedError) {
       audit("auth.login.failure", {

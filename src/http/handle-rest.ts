@@ -84,6 +84,30 @@ const ROUTES: Record<string, RestHandler> = {
   "/api/status": handleStatus,
 };
 
+// State-changing routes: any method other than POST is rejected with 405,
+// so a GET (no CSRF protection, cacheable/prefetchable/logged in plaintext
+// URLs) can't be used to trigger a mutation. Read-only routes (status,
+// quota, threads-active, hot-files, check-conflict, check-interrupt, ...)
+// are intentionally NOT in this set — they stay reachable via GET, matching
+// existing dashboard/CLI polling behavior. /api/run-config is also excluded:
+// its handler already branches on req.method internally (GET reads the
+// config, POST sets it), so no blanket restriction applies there.
+const MUTATING_ROUTES = new Set<string>([
+  "/api/register",
+  "/api/session-stop",
+  "/api/log-file",
+  "/api/announce",
+  "/api/post-to-thread",
+  "/api/token-usage",
+  "/api/unclaim-task",
+  "/api/claim-task",
+  "/api/propose-resolution",
+  "/api/approve-resolution",
+  "/api/quota/refresh",
+  "/api/introspection-response",
+  "/api/reset",
+]);
+
 // Exact url matches that also require a specific req.method — original code
 // used `url === "..." && req.method === "POST"`, so a wrong method must fall
 // through to the generic 404 exactly like before.
@@ -150,9 +174,19 @@ export async function handleRest(
     httpLog.info({ method: req.method, url: logUrl, agent_id: agentId }, "REST request");
   }
 
-  const handler = ROUTES[url] || (req.method ? METHOD_ROUTES[`${req.method} ${url}`] : undefined);
-  if (handler) {
-    await handler(req, res, ctx, body);
+  const exactHandler = ROUTES[url];
+  if (exactHandler) {
+    if (MUTATING_ROUTES.has(url) && req.method !== "POST") {
+      res.setHeader("Allow", "POST");
+      json(res, { error: "method not allowed" }, 405);
+      return;
+    }
+    await exactHandler(req, res, ctx, body);
+    return;
+  }
+  const methodHandler = req.method ? METHOD_ROUTES[`${req.method} ${url}`] : undefined;
+  if (methodHandler) {
+    await methodHandler(req, res, ctx, body);
     return;
   }
   for (const route of PREFIX_ROUTES) {

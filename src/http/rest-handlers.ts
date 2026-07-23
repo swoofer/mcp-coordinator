@@ -933,11 +933,13 @@ export function handleScoringStats(
      LEFT JOIN events e
        ON e.type = 'thread_resolved'
        AND json_extract(e.payload, '$.thread_id') = lf.thread_id
-     WHERE lf.fired_at > datetime('now', '-' || ? || ' minutes')
+       AND e.org_id = lf.org_id
+     WHERE lf.org_id = ?
+       AND lf.fired_at > datetime('now', '-' || ? || ' minutes')
      GROUP BY lf.layer
      ORDER BY fire_count DESC`,
     )
-    .all(sinceMin) as Array<{
+    .all(ctx.claims.org, sinceMin) as Array<{
     layer: string;
     fire_count: number;
     avg_score: number;
