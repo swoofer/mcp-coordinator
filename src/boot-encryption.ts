@@ -5,7 +5,6 @@ import {
   type EncryptionContext,
 } from "./security/encryption.js";
 import { EnvelopeEncryption } from "./security/envelope-encryption.js";
-import { pseudonym } from "./security/audit-pseudonym.js";
 import { encryptionEnabledGauge } from "./observability/metrics.js";
 import { setEncryptionStatus } from "./observability/encryption-status.js";
 import type Database from "better-sqlite3";
@@ -243,10 +242,15 @@ export function runEncryptionGuards(
       }
       nullify.run(r.id);
       if (audit) {
+        // Record the real user id. This is an accountability record;
+        // the same id is already stored in cleartext in
+        // encryption_invalidated_tokens.user_id (stashed just above) for the
+        // same event, so a pseudonym here gave false privacy, not real
+        // confidentiality.
         audit("encryption.token.invalidated", {
           tier: 1,
           metadata: {
-            user_id_hash: pseudonym(r.id),
+            user_id: r.id,
             reason: "key_absent_token_loss_allowed",
           },
         });

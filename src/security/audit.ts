@@ -87,6 +87,16 @@ export interface AuditOptions {
  * Storage shape: id and created_at use SQL DEFAULTs from the audit_log
  * schema (AUTOINCREMENT id, default timestamp). No `tier` column stored —
  * retention queries (T28) classify by action name, not by stored tier.
+ *
+ * Threat model — accountability over pseudonymity: the audit log records the
+ * REAL actor id (`actor_user_id`) in the clear. An audit trail exists for
+ * imputability — proving who did what — so identifying the actor is its
+ * purpose, not a leak. Callers must NOT pseudonymize the id in metadata while
+ * this column carries it in cleartext on the same row: that gives false
+ * privacy (the pseudonym is trivially reversible by anyone with read access to
+ * the table) without any real confidentiality benefit. If a deployment needs
+ * confidentiality of actor ids, restrict read access to audit_log — do not
+ * rely on per-field pseudonymization here.
  */
 export function audit(action: string, options: AuditOptions = {}): void {
   const tier = options.tier ?? 2;
