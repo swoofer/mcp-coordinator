@@ -385,9 +385,9 @@ describe("verify-audit-chain script: keyed (HMAC) rows", () => {
       const result = runVerifier(["--db", dbPath, "--json"], KEYED_ENV);
       expect(result.status).toBe(1);
       const report = JSON.parse(result.stdout);
-      expect(
-        report.findings.some((f: { reason: string }) => f.reason === "downgraded_alg"),
-      ).toBe(true);
+      expect(report.findings.some((f: { reason: string }) => f.reason === "downgraded_alg")).toBe(
+        true,
+      );
     });
 
     it("keyed tip + boot-time row WITH the fix's key config -> exit 0, no downgraded_alg", () => {
@@ -408,9 +408,9 @@ describe("verify-audit-chain script: keyed (HMAC) rows", () => {
       const report = JSON.parse(result.stdout);
       expect(report.ok).toBe(true);
       expect(report.verified_rows).toBe(2);
-      expect(
-        report.findings.some((f: { reason: string }) => f.reason === "downgraded_alg"),
-      ).toBe(false);
+      expect(report.findings.some((f: { reason: string }) => f.reason === "downgraded_alg")).toBe(
+        false,
+      );
     });
 
     it("real keyed->unkeyed forge is STILL rejected after the fix (fix does not weaken detection)", () => {
@@ -448,9 +448,9 @@ describe("verify-audit-chain script: keyed (HMAC) rows", () => {
       const result = runVerifier(["--db", dbPath, "--json"], KEYED_ENV);
       expect(result.status).toBe(1);
       const report = JSON.parse(result.stdout);
-      expect(
-        report.findings.some((f: { reason: string }) => f.reason === "downgraded_alg"),
-      ).toBe(true);
+      expect(report.findings.some((f: { reason: string }) => f.reason === "downgraded_alg")).toBe(
+        true,
+      );
     });
   });
 });

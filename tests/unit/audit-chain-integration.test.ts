@@ -395,7 +395,10 @@ describe("audit hash chain -- restore-triggered boot audit rows (security review
   const RAW_MASTER_KEY = randomBytes(32).toString("base64");
   const CHAIN_KEY = deriveAuditChainKey(decodeMasterKey(RAW_MASTER_KEY));
   const KEYED_ENV = { COORDINATOR_ENCRYPTION_KEY: RAW_MASTER_KEY };
-  const BOOT_ENV = { COORDINATOR_OAUTH_ENABLED: "true", COORDINATOR_ENCRYPTION_KEY: RAW_MASTER_KEY };
+  const BOOT_ENV = {
+    COORDINATOR_OAUTH_ENABLED: "true",
+    COORDINATOR_ENCRYPTION_KEY: RAW_MASTER_KEY,
+  };
 
   function emitKeyedTip(): void {
     // Simulates a prior real audit() call under encryption (e.g. an earlier
@@ -429,9 +432,9 @@ describe("audit hash chain -- restore-triggered boot audit rows (security review
     const result = runVerifyScript(path.join(TEST_DIR, "coordinator.db"), KEYED_ENV);
     expect(result.status).toBe(1);
     const report = JSON.parse(result.stdout);
-    expect(
-      report.findings.some((f: { reason: string }) => f.reason === "downgraded_alg"),
-    ).toBe(true);
+    expect(report.findings.some((f: { reason: string }) => f.reason === "downgraded_alg")).toBe(
+      true,
+    );
   });
 
   it("GREEN (fix): ensureAuditChainKeyForBootAudit before the restore-path audit() calls keys them", () => {
@@ -452,9 +455,9 @@ describe("audit hash chain -- restore-triggered boot audit rows (security review
     expect(result.status).toBe(0);
     const report = JSON.parse(result.stdout);
     expect(report.ok).toBe(true);
-    expect(
-      report.findings.some((f: { reason: string }) => f.reason === "downgraded_alg"),
-    ).toBe(false);
+    expect(report.findings.some((f: { reason: string }) => f.reason === "downgraded_alg")).toBe(
+      false,
+    );
   });
 
   it("a real keyed->unkeyed forge of a restore-path row is STILL rejected after the fix", () => {
@@ -492,8 +495,8 @@ describe("audit hash chain -- restore-triggered boot audit rows (security review
     const result = runVerifyScript(path.join(TEST_DIR, "coordinator.db"), KEYED_ENV);
     expect(result.status).toBe(1);
     const report = JSON.parse(result.stdout);
-    expect(
-      report.findings.some((f: { reason: string }) => f.reason === "downgraded_alg"),
-    ).toBe(true);
+    expect(report.findings.some((f: { reason: string }) => f.reason === "downgraded_alg")).toBe(
+      true,
+    );
   });
 });

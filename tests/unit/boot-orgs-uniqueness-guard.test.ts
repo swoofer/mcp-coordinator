@@ -367,7 +367,9 @@ describe("ensureAuditChainKeyForBootAudit — boot-ordering fix (security review
       });
 
       const row = raw
-        .prepare("SELECT row_hash FROM audit_log WHERE action = 'admin.orgs.duplicate_names_accepted'")
+        .prepare(
+          "SELECT row_hash FROM audit_log WHERE action = 'admin.orgs.duplicate_names_accepted'",
+        )
         .get() as { row_hash: string };
       // Bug reproduced: unkeyed sha256 chained onto a keyed tip — exactly the
       // shape verify-audit-chain.ts's downgraded_alg check flags.
