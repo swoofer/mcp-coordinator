@@ -691,6 +691,20 @@ function createHttpHandler(
           handleDiscovery(req, res, ctx.phase2Bootstrap.context.publicUrl);
           services.metrics.recordHttpRequest("/.well-known/oauth-authorization-server", 200);
         } else if (url === "/metrics" && req.method === "GET") {
+          // Unlike /api/* and /mcp, this route used to be dispatched before
+          // the shared authenticateRequest gate below and carried no
+          // AUTH_ENABLED check of its own — reachable without a token even
+          // with auth turned on. Gate it the same way: skip entirely when
+          // auth is disabled (unchanged open behavior), otherwise require a
+          // valid token before serving the Prometheus text exposition.
+          if (AUTH_ENABLED) {
+            const authResult = await authenticateRequest(req, { authEnabled: AUTH_ENABLED });
+            if (!authResult.ok) {
+              jsonAuthError(res, authResult);
+              services.metrics.recordHttpRequest("/metrics", authResult.status);
+              return;
+            }
+          }
           await serveMetrics(req, res, services, services.metrics);
           services.metrics.recordHttpRequest("/metrics", 200);
         } else if (url === "/metrics/auth" && req.method === "GET" && ctx.phase2Bootstrap) {
