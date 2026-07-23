@@ -4,6 +4,7 @@ import {
   decodeMasterKey,
   shannonEntropyBitsPerByte,
   computeKeyFingerprint,
+  detectWeakKeyPattern,
 } from "../../src/security/master-key.js";
 
 // A minimal logger stub matching the subset of the pino Logger interface that
@@ -98,6 +99,76 @@ describe("decodeMasterKey", () => {
     expect(logger.warn).not.toHaveBeenCalled();
   });
 
+  it("rejects a sequential ascending key (0x00..0x1F) despite high Shannon entropy", () => {
+    // Every byte value is distinct, so shannonEntropyBitsPerByte reports the
+    // maximum possible 5.0 bits/byte for a 32-symbol alphabet (order-blind
+    // metric) -- yet this is one of the least random 32-byte strings
+    // possible. Must be rejected by the pattern check, not silently accepted.
+    const sequential = Buffer.from(Array.from({ length: 32 }, (_, i) => i));
+    expect(shannonEntropyBitsPerByte(sequential)).toBeCloseTo(5.0, 10);
+    const b64 = sequential.toString("base64");
+    expect(() => decodeMasterKey(b64)).toThrow(/catastrophically low entropy/);
+  });
+
+  it("rejects a sequential descending key with wraparound", () => {
+    const sequential = Buffer.from(Array.from({ length: 32 }, (_, i) => (255 - i) % 256));
+    const b64 = sequential.toString("base64");
+    expect(() => decodeMasterKey(b64)).toThrow(/catastrophically low entropy/);
+  });
+
+  it("rejects a low-alphabet key that would otherwise only warn (medium Shannon entropy)", () => {
+    // 11 distinct byte values spread across 32 bytes: Shannon entropy is
+    // roughly log2(11) ~= 3.46 bits/byte, which falls in the old [3.0, 4.5)
+    // "warn but accept" band -- yet 11 distinct values in 32 bytes is a
+    // strong low-effective-alphabet signal a real CSPRNG key won't produce.
+    const buf = Buffer.alloc(32);
+    for (let i = 0; i < 32; i++) buf[i] = i % 11;
+    const entropy = shannonEntropyBitsPerByte(buf);
+    expect(entropy).toBeGreaterThanOrEqual(3.0);
+    expect(entropy).toBeLessThan(4.5);
+    const b64 = buf.toString("base64");
+    expect(() => decodeMasterKey(b64)).toThrow(/catastrophically low entropy/);
+  });
+
+  it("still warns (does not reject) a medium-entropy 16-distinct-value key", () => {
+    // Regression guard: the new low-alphabet check must not tighten the
+    // existing warn-band behavior for a 16-distinct-value key.
+    const buf = Buffer.alloc(32);
+    for (let i = 0; i < 32; i++) buf[i] = i % 16;
+    const b64 = buf.toString("base64");
+    const logger = makeLogger();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(() => decodeMasterKey(b64, logger as any)).not.toThrow();
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it("still throws via the Shannon check for a skewed low-entropy key that evades the pattern checks", () => {
+    // 12 distinct byte values (at the low-alphabet floor, so the alphabet
+    // check does NOT fire) but heavily skewed toward one dominant value:
+    // Shannon entropy is well under 3.0 despite clearing the distinct-value
+    // floor, and the byte order is not a constant-step sequence. This must
+    // still be rejected -- via the original Shannon-based message, since
+    // detectWeakKeyPattern legitimately returns null for it.
+    const buf = Buffer.alloc(32);
+    for (let i = 0; i < 21; i++) buf[i] = 0;
+    for (let i = 0; i < 11; i++) buf[21 + i] = i + 1;
+    expect(detectWeakKeyPattern(buf)).toBeNull();
+    const entropy = shannonEntropyBitsPerByte(buf);
+    expect(entropy).toBeLessThan(3.0);
+    const b64 = buf.toString("base64");
+    expect(() => decodeMasterKey(b64)).toThrow(/catastrophically low entropy/);
+    expect(() => decodeMasterKey(b64)).toThrow(/bits\/byte/);
+  });
+
+  it("accepts many independent random keys (no false-positive pattern rejection)", () => {
+    // Conservativeness check: run several independent CSPRNG draws through
+    // decodeMasterKey and confirm none trip the new pattern checks.
+    for (let i = 0; i < 25; i++) {
+      const key = randomBytes(32);
+      expect(() => decodeMasterKey(key.toString("base64"))).not.toThrow();
+    }
+  });
+
   it("throws on unrecognized format", () => {
     expect(() => decodeMasterKey("not-a-valid-format-string")).toThrow(/format unrecognized/);
   });
@@ -112,6 +183,41 @@ describe("decodeMasterKey", () => {
       expect(msg).toMatch(/44-char base64/);
       expect(msg).toMatch(/43-char base64url/);
     }
+  });
+});
+
+describe("detectWeakKeyPattern", () => {
+  it("flags an all-identical-byte buffer", () => {
+    expect(detectWeakKeyPattern(Buffer.alloc(32, 0x42))).toMatch(/all bytes identical/);
+  });
+
+  it("flags a constant-step ascending sequence", () => {
+    const buf = Buffer.from(Array.from({ length: 32 }, (_, i) => i));
+    expect(detectWeakKeyPattern(buf)).toMatch(/sequential\/arithmetic byte progression/);
+  });
+
+  it("flags a constant-step descending sequence with wraparound", () => {
+    const buf = Buffer.from(Array.from({ length: 32 }, (_, i) => (255 - i * 3) % 256));
+    expect(detectWeakKeyPattern(buf)).toMatch(/sequential\/arithmetic byte progression/);
+  });
+
+  it("flags a very small effective alphabet", () => {
+    const buf = Buffer.alloc(32);
+    for (let i = 0; i < 32; i++) buf[i] = i % 5;
+    expect(detectWeakKeyPattern(buf)).toMatch(/low effective alphabet/);
+  });
+
+  it("returns null for a uniformly-random buffer", () => {
+    expect(detectWeakKeyPattern(randomBytes(32))).toBeNull();
+  });
+
+  it("returns null for a non-arithmetic, non-small-alphabet buffer with one broken step", () => {
+    // Mostly-sequential but one deliberately broken step must NOT be flagged
+    // as arithmetic (constant-step requires EVERY consecutive gap to match),
+    // and has enough distinct values to clear the alphabet floor.
+    const buf = Buffer.from(Array.from({ length: 32 }, (_, i) => i));
+    buf[17] = 250; // breaks the constant +1 step at a single point
+    expect(detectWeakKeyPattern(buf)).toBeNull();
   });
 });
 
