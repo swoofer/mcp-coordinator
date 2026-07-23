@@ -381,8 +381,11 @@ describe("refreshTokenGrant — encrypted IdP tokens (T09)", () => {
     expect(decryptCalls).toHaveLength(1);
     const decryptMeta = decryptCalls[0]![1]?.metadata as Record<string, unknown>;
     expect(decryptMeta.error_class).toBe("DEKUnwrapFailed");
-    expect(typeof decryptMeta.user_id_hash).toBe("string");
-    expect((decryptMeta.user_id_hash as string).length).toBe(16);
+    // Record the real actor id consistently (accountability). The
+    // sibling auth.idp.token_revoked row already carries the same id in
+    // cleartext, so pseudonymizing this field bought no privacy.
+    expect(decryptMeta.user_id).toBe("u-alice");
+    expect(decryptMeta).not.toHaveProperty("user_id_hash");
 
     const revokedAudits = findAuditRows("auth.idp.token_revoked");
     expect(revokedAudits).toHaveLength(1);

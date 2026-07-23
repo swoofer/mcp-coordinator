@@ -5,7 +5,25 @@ import { tmpdir } from "os";
 import path from "node:path";
 import { createRequire } from "node:module";
 import type Database from "better-sqlite3";
-import { GENESIS_HASH, computeRowHash } from "../../src/security/audit-chain.js";
+import { randomBytes } from "node:crypto";
+import {
+  GENESIS_HASH,
+  computeRowHash,
+  deriveAuditChainKey,
+  resetAuditChainKey,
+} from "../../src/security/audit-chain.js";
+import { decodeMasterKey } from "../../src/security/master-key.js";
+import {
+  emitDuplicatesAcceptedAudit,
+  ensureAuditChainKeyForBootAudit,
+} from "../../src/boot-orgs-uniqueness.js";
+import type { DatabaseAdapter } from "../../src/db-adapter.js";
+
+// A high-entropy 32-byte master key (base64) accepted by decodeMasterKey.
+// The same string is handed to the spawned verifier via env so it derives
+// the identical chain key.
+const RAW_MASTER_KEY = randomBytes(32).toString("base64");
+const CHAIN_KEY = deriveAuditChainKey(decodeMasterKey(RAW_MASTER_KEY));
 
 const require = createRequire(import.meta.url);
 const DatabaseCtor = require("better-sqlite3") as new (path: string) => Database.Database;
@@ -39,17 +57,23 @@ interface ScriptResult {
   stderr: string;
 }
 
-function runVerifier(args: string[]): ScriptResult {
+function runVerifier(args: string[], env?: Record<string, string>): ScriptResult {
   // spawnSync (not execFileSync) so we get stdout + stderr regardless
   // of exit code -- the verifier exits 1 on findings and 2 on
   // bad-args / DB-open errors, and we need to inspect the JSON
   // payload either way.
   // Use shell: true on Windows so `npx` (a .cmd shim) resolves
   // through cmd.exe; POSIX systems are unaffected.
+  // The spawned process inherits a clean env plus any overrides; we drop
+  // COORDINATOR_ENCRYPTION_KEY unless the test explicitly sets one so a
+  // stray ambient key can't mask a "no key" assertion.
+  const baseEnv = { ...process.env };
+  delete baseEnv.COORDINATOR_ENCRYPTION_KEY;
   const result = spawnSync("npx", ["tsx", SCRIPT_PATH, ...args], {
     cwd: REPO_ROOT,
     encoding: "utf-8",
     shell: process.platform === "win32",
+    env: { ...baseEnv, ...(env ?? {}) },
   });
   return {
     status: result.status ?? 1,
@@ -77,21 +101,25 @@ afterEach(() => {
 function insertRow(
   action: string,
   prevHash: string,
-  options: { tamperContent?: boolean; nullHash?: boolean } = {},
+  options: { tamperContent?: boolean; nullHash?: boolean; key?: Buffer | null } = {},
 ): string {
   const rowHash = options.nullHash
     ? null
-    : computeRowHash(prevHash, {
-        action,
-        actor_org_id: null,
-        actor_ip: null,
-        actor_user_agent: null,
-        actor_user_id: null,
-        metadata_json: null,
-        outcome: "success",
-        request_id: null,
-        target: null,
-      });
+    : computeRowHash(
+        prevHash,
+        {
+          action,
+          actor_org_id: null,
+          actor_ip: null,
+          actor_user_agent: null,
+          actor_user_id: null,
+          metadata_json: null,
+          outcome: "success",
+          request_id: null,
+          target: null,
+        },
+        options.key ?? null,
+      );
   const finalAction = options.tamperContent ? `${action}.tampered` : action;
   db.prepare(
     "INSERT INTO audit_log (action, outcome, prev_hash, row_hash) " + "VALUES (?, ?, ?, ?)",
@@ -225,5 +253,204 @@ describe("verify-audit-chain script", () => {
     expect(result.status).toBe(1);
     expect(result.stdout).toMatch(/Audit chain verification/);
     expect(result.stdout).toMatch(/row_hash mismatch/);
+  });
+});
+
+describe("verify-audit-chain script: keyed (HMAC) rows", () => {
+  const KEYED_ENV = { COORDINATOR_ENCRYPTION_KEY: RAW_MASTER_KEY };
+
+  it("valid keyed 3-row chain verifies with the key in env -> exit 0", () => {
+    const h1 = insertRow("event.a", GENESIS_HASH, { key: CHAIN_KEY });
+    const h2 = insertRow("event.b", h1, { key: CHAIN_KEY });
+    const h3 = insertRow("event.c", h2, { key: CHAIN_KEY });
+    expect(h1.startsWith("hmac-sha256-v1:")).toBe(true);
+
+    const result = runVerifier(["--db", dbPath, "--json"], KEYED_ENV);
+    expect(result.status).toBe(0);
+    const report = JSON.parse(result.stdout);
+    expect(report.verified_rows).toBe(3);
+    expect(report.tip_row_hash).toBe(h3);
+    expect(report.ok).toBe(true);
+  });
+
+  it("keyed chain WITHOUT a key in env -> exit 1, no_key_for_hmac findings", () => {
+    const h1 = insertRow("event.a", GENESIS_HASH, { key: CHAIN_KEY });
+    insertRow("event.b", h1, { key: CHAIN_KEY });
+
+    const result = runVerifier(["--db", dbPath, "--json"]);
+    expect(result.status).toBe(1);
+    const report = JSON.parse(result.stdout);
+    expect(report.findings.some((f: { reason: string }) => f.reason === "no_key_for_hmac")).toBe(
+      true,
+    );
+  });
+
+  it("tampered keyed row (content changed, hash stale) -> exit 1, wrong_row_hash", () => {
+    const h1 = insertRow("event.a", GENESIS_HASH, { key: CHAIN_KEY });
+    insertRow("event.b", h1, { key: CHAIN_KEY });
+    db.prepare("UPDATE audit_log SET action = 'ATTACKER' WHERE id = 2").run();
+
+    const result = runVerifier(["--db", dbPath, "--json"], KEYED_ENV);
+    expect(result.status).toBe(1);
+    const report = JSON.parse(result.stdout);
+    expect(report.findings.some((f: { reason: string }) => f.reason === "wrong_row_hash")).toBe(
+      true,
+    );
+  });
+
+  it("keyed row forged with the unkeyed sha256 algorithm no longer verifies -> exit 1", () => {
+    // Attacker with DB write access but WITHOUT the key rewrites row 2's
+    // content and recomputes a plain unkeyed sha256 (bare, no prefix) --
+    // the pre-migration forgery technique. The verifier rejects it as an
+    // algorithm downgrade: a keyed chain never reverts to unkeyed.
+    const h1 = insertRow("event.a", GENESIS_HASH, { key: CHAIN_KEY });
+    insertRow("event.b", h1, { key: CHAIN_KEY });
+    const forged = computeRowHash(
+      h1,
+      {
+        action: "ATTACKER",
+        actor_org_id: null,
+        actor_ip: null,
+        actor_user_agent: null,
+        actor_user_id: null,
+        metadata_json: null,
+        outcome: "success",
+        request_id: null,
+        target: null,
+      },
+      null,
+    );
+    expect(forged.startsWith("hmac-sha256-v1:")).toBe(false);
+    db.prepare("UPDATE audit_log SET action = 'ATTACKER', row_hash = ? WHERE id = 2").run(forged);
+
+    const result = runVerifier(["--db", dbPath, "--json"], KEYED_ENV);
+    expect(result.status).toBe(1);
+    const report = JSON.parse(result.stdout);
+    expect(report.findings.some((f: { reason: string }) => f.reason === "downgraded_alg")).toBe(
+      true,
+    );
+  });
+
+  it("legacy unkeyed sha256 rows still verify even when a key is present -> exit 0", () => {
+    const h1 = insertRow("event.a", GENESIS_HASH);
+    const h2 = insertRow("event.b", h1);
+    insertRow("event.c", h2);
+
+    const result = runVerifier(["--db", dbPath, "--json"], KEYED_ENV);
+    expect(result.status).toBe(0);
+    const report = JSON.parse(result.stdout);
+    expect(report.ok).toBe(true);
+  });
+
+  it("legit migration boundary (sha256 rows then keyed rows) verifies -> exit 0", () => {
+    const h1 = insertRow("legacy.a", GENESIS_HASH);
+    const h2 = insertRow("legacy.b", h1);
+    const h3 = insertRow("keyed.c", h2, { key: CHAIN_KEY });
+    insertRow("keyed.d", h3, { key: CHAIN_KEY });
+
+    const result = runVerifier(["--db", dbPath, "--json"], KEYED_ENV);
+    expect(result.status).toBe(0);
+    const report = JSON.parse(result.stdout);
+    expect(report.ok).toBe(true);
+    expect(report.verified_rows).toBe(4);
+  });
+
+  describe("boot-time duplicates-accepted row (security review fix)", () => {
+    // Regression test for the boot-ordering defect: initDatabase's
+    // emitDuplicatesAcceptedAudit (src/boot-orgs-uniqueness.ts) runs before
+    // bootPhase2 configures the audit-chain key (src/boot.ts), so on an
+    // encrypted deployment the boot-time row used to be written unkeyed
+    // even though every other row is HMAC-keyed -- a keyed-tip-then-unkeyed-
+    // row shape that this verifier's downgraded_alg check (correctly)
+    // treats as a possible forgery. The fix
+    // (ensureAuditChainKeyForBootAudit) derives/configures the chain key on
+    // demand right before that row is written. This test builds the chain
+    // with the REAL production functions (not the local insertRow helper)
+    // and runs the shipped verifier against it end to end.
+    afterEach(() => {
+      resetAuditChainKey();
+    });
+
+    it("keyed tip + boot-time row WITHOUT the fix's key config -> exit 1, downgraded_alg (bug repro)", () => {
+      // Keyed tip, simulating a prior real audit() call under encryption.
+      insertRow("config.boot", GENESIS_HASH, { key: CHAIN_KEY });
+      // getAuditChainKey() unconfigured at this call site -- reproduces the
+      // exact defect (emitDuplicatesAcceptedAudit called before bootPhase2's
+      // configureAuditChainKeyFromMaster).
+      emitDuplicatesAcceptedAudit(db as unknown as DatabaseAdapter, {
+        duplicates: [{ name: "acme", n: 2, ids: "o1,o2" }],
+        totalDuplicateRows: 2,
+      });
+
+      const result = runVerifier(["--db", dbPath, "--json"], KEYED_ENV);
+      expect(result.status).toBe(1);
+      const report = JSON.parse(result.stdout);
+      expect(report.findings.some((f: { reason: string }) => f.reason === "downgraded_alg")).toBe(
+        true,
+      );
+    });
+
+    it("keyed tip + boot-time row WITH the fix's key config -> exit 0, no downgraded_alg", () => {
+      insertRow("config.boot", GENESIS_HASH, { key: CHAIN_KEY });
+      // This is exactly what src/database.ts's initDatabase now does before
+      // calling emitDuplicatesAcceptedAudit.
+      ensureAuditChainKeyForBootAudit({
+        COORDINATOR_OAUTH_ENABLED: "true",
+        COORDINATOR_ENCRYPTION_KEY: RAW_MASTER_KEY,
+      });
+      emitDuplicatesAcceptedAudit(db as unknown as DatabaseAdapter, {
+        duplicates: [{ name: "acme", n: 2, ids: "o1,o2" }],
+        totalDuplicateRows: 2,
+      });
+
+      const result = runVerifier(["--db", dbPath, "--json"], KEYED_ENV);
+      expect(result.status).toBe(0);
+      const report = JSON.parse(result.stdout);
+      expect(report.ok).toBe(true);
+      expect(report.verified_rows).toBe(2);
+      expect(report.findings.some((f: { reason: string }) => f.reason === "downgraded_alg")).toBe(
+        false,
+      );
+    });
+
+    it("real keyed->unkeyed forge is STILL rejected after the fix (fix does not weaken detection)", () => {
+      const h1 = insertRow("config.boot", GENESIS_HASH, { key: CHAIN_KEY });
+      ensureAuditChainKeyForBootAudit({
+        COORDINATOR_OAUTH_ENABLED: "true",
+        COORDINATOR_ENCRYPTION_KEY: RAW_MASTER_KEY,
+      });
+      emitDuplicatesAcceptedAudit(db as unknown as DatabaseAdapter, {
+        duplicates: [{ name: "acme", n: 2, ids: "o1,o2" }],
+        totalDuplicateRows: 2,
+      });
+      // Attacker with DB-write-only access (no key) rewrites row 2's content
+      // and recomputes a plain unkeyed sha256 (no prefix) -- same forgery
+      // technique as the "keyed row forged with the unkeyed sha256
+      // algorithm" test above, applied to the boot-emitted row specifically.
+      const forged = computeRowHash(
+        h1,
+        {
+          action: "ATTACKER",
+          actor_org_id: null,
+          actor_ip: null,
+          actor_user_agent: null,
+          actor_user_id: null,
+          metadata_json: null,
+          outcome: "success",
+          request_id: null,
+          target: null,
+        },
+        null,
+      );
+      expect(forged.startsWith("hmac-sha256-v1:")).toBe(false);
+      db.prepare("UPDATE audit_log SET action = 'ATTACKER', row_hash = ? WHERE id = 2").run(forged);
+
+      const result = runVerifier(["--db", dbPath, "--json"], KEYED_ENV);
+      expect(result.status).toBe(1);
+      const report = JSON.parse(result.stdout);
+      expect(report.findings.some((f: { reason: string }) => f.reason === "downgraded_alg")).toBe(
+        true,
+      );
+    });
   });
 });

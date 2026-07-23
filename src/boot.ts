@@ -13,6 +13,8 @@ import { RedisRateLimiter } from "./auth/rate-limit-redis.js";
 import { acquireOrRenewLock, type RedisHandles } from "./infra/redis.js";
 import { randomUUID } from "node:crypto";
 import { initAuditQueue, getAuditQueue, audit } from "./security/audit.js";
+import { configureAuditChainKeyFromMaster } from "./security/audit-chain.js";
+import { ensureAuditChainKeyForBootAudit } from "./boot-orgs-uniqueness.js";
 import { initPhase2Auth } from "./auth.js";
 import { bumpTokenEpochAllUsers } from "./auth/token-epoch.js";
 import { realClock, type Clock } from "./auth/clock.js";
@@ -153,6 +155,29 @@ export function bootPhase2(opts: Phase2BootOptions, deps?: BootPhase2Deps): Phas
   // 4. Bootstrap orgs row(s) are seeded later (step 6b), once we know which
   //    providers are configured — GitHub seeds allowlist_github_org, Google
   //    seeds allowlist_idp_org_id. See ensureBootstrapOrg below.
+
+  // 4b. Security review fix: configure the audit-chain key (on an encrypted
+  //     deployment) BEFORE the first audit() call this function can make.
+  //     performRestoreCheck (step 5, right below) can itself call audit()
+  //     — "recovery.token_epoch_global_bump" / "recovery.completed" on a
+  //     detected restore — and that used to run before step 7b's own
+  //     configureAuditChainKeyFromMaster call, so a restore-triggered boot
+  //     on an encrypted deployment wrote those rows unkeyed even though the
+  //     rest of the chain is HMAC-keyed: an unkeyed row chained onto a keyed
+  //     tip, which scripts/verify-audit-chain.ts's downgraded_alg check
+  //     (correctly) treats as a possible forgery. Placed here — as early as
+  //     this function can reach after env/logger are resolved — rather than
+  //     patched into performRestoreCheck specifically, so it covers EVERY
+  //     audit() emission between here and step 7b, present or future, not
+  //     just this one call site. ensureAuditChainKeyForBootAudit is
+  //     idempotent (no-ops if a key is already configured) and uses the
+  //     identical COORDINATOR_OAUTH_ENABLED gate + derivation step 7b's own
+  //     configureAuditChainKeyFromMaster call uses, so that call staying in
+  //     place below is intentional, harmless redundancy (re-deriving from an
+  //     identical master key is deterministic) — it's what keeps `encKey`
+  //     available there for runEncryptionGuards/buildWrappedProvider, which
+  //     need the raw master key, not just the derived chain key.
+  ensureAuditChainKeyForBootAudit(env);
 
   // 5. NR12 restore detection — refuse boot if audit_log is more than
   //    5 minutes stale relative to wall clock, unless explicitly overridden.
@@ -366,6 +391,11 @@ export function bootPhase2(opts: Phase2BootOptions, deps?: BootPhase2Deps): Phas
   //     provider with first-encrypt fingerprint persistence; T06c adds the
   //     plaintext-bypass reminder. For now we only attach the raw provider.
   const encKey = loadEncryptionKey(env, logger);
+  // Derive the keyed audit-chain HMAC key from the master key so audit
+  // row_hashes cannot be forged by an attacker with DB-write-only access.
+  // Null master key (encryption disabled) → chain stays unkeyed sha256,
+  // recorded honestly. Must run before any audit() emission below.
+  configureAuditChainKeyFromMaster(encKey);
   const encInit = runEncryptionGuards({ db, env, logger, audit }, encKey);
   // T06b: wrap the raw provider so the first encrypt() persists the key
   // fingerprint to system_config (idempotent) + emits encryption.config.loaded.

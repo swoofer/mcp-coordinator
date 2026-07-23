@@ -14,7 +14,6 @@ import { IdPTokenRevoked, IdPTransientError } from "./providers/errors.js";
 import { getOrgSetting } from "./org-settings.js";
 import { DecryptionError, UnknownCipherVersion } from "../security/encryption.js";
 import { decryptNullable, encryptNullable } from "../security/encrypt-nullable.js";
-import { pseudonym } from "../security/audit-pseudonym.js";
 import { decryptFailuresCounter } from "../observability/metrics.js";
 
 /**
@@ -654,11 +653,15 @@ async function refreshIdpMembershipAndAllowlist(
       });
     } catch (err) {
       if (err instanceof DecryptionError || err instanceof UnknownCipherVersion) {
-        // Hash user_id for audit (defense in depth — same approach as PATCH 17).
+        // Record the real actor id. An audit log exists for
+        // accountability (imputability) — it must identify who did what.
+        // The sibling auth.idp.token_revoked row emitted below already
+        // carries the same user_id in cleartext, so a pseudonym here gave
+        // false privacy, not real confidentiality.
         audit("encryption.decrypt.failed", {
           tier: 1,
           metadata: {
-            user_id_hash: pseudonym(row.user_id),
+            user_id: row.user_id,
             error_class: err.name,
           },
         });

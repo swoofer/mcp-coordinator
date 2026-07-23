@@ -1,11 +1,24 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createRequire } from "node:module";
+import { spawnSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import path from "node:path";
 import fs from "node:fs";
 import type Database from "better-sqlite3";
 import { audit, initAuditQueue, resetAuditQueue, getAuditQueue } from "../../src/security/audit.js";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
-import { GENESIS_HASH, computeRowHash } from "../../src/security/audit-chain.js";
+import {
+  ALG_HMAC_V1,
+  ALG_SHA256,
+  GENESIS_HASH,
+  algorithmOf,
+  computeRowHash,
+  configureAuditChainKey,
+  deriveAuditChainKey,
+  resetAuditChainKey,
+} from "../../src/security/audit-chain.js";
+import { decodeMasterKey } from "../../src/security/master-key.js";
+import { ensureAuditChainKeyForBootAudit } from "../../src/boot-orgs-uniqueness.js";
 import { withAuditContext } from "../../src/auth/audit-context.js";
 import { withRequestId } from "../../src/auth/request-id.js";
 
@@ -13,6 +26,38 @@ const require = createRequire(import.meta.url);
 const DatabaseCtor = require("better-sqlite3") as new (path: string) => Database.Database;
 
 const TEST_DIR = "data-test-audit-chain-integration";
+const REPO_ROOT = path.resolve(__dirname, "..", "..");
+const VERIFY_SCRIPT_PATH = path.join(REPO_ROOT, "scripts", "verify-audit-chain.ts");
+
+interface VerifierResult {
+  status: number;
+  stdout: string;
+  stderr: string;
+}
+
+/** Spawn the real scripts/verify-audit-chain.ts against a DB file — same
+ * pattern as tests/unit/verify-audit-chain.test.ts's runVerifier. Used here
+ * to prove end to end (not just via algorithmOf()) that a fix/regression in
+ * this file's audit()-level tests actually satisfies (or trips) the shipped
+ * verifier. */
+function runVerifyScript(dbPath: string, env: Record<string, string>): VerifierResult {
+  // Drop any ambient COORDINATOR_ENCRYPTION_KEY so a stray value in this
+  // process's own env can't mask a "no key" assertion — mirrors
+  // tests/unit/verify-audit-chain.test.ts's runVerifier.
+  const baseEnv = { ...process.env };
+  delete baseEnv.COORDINATOR_ENCRYPTION_KEY;
+  const result = spawnSync("npx", ["tsx", VERIFY_SCRIPT_PATH, "--db", dbPath, "--json"], {
+    cwd: REPO_ROOT,
+    encoding: "utf-8",
+    shell: process.platform === "win32",
+    env: { ...baseEnv, ...env },
+  });
+  return {
+    status: result.status ?? 1,
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
+  };
+}
 
 interface AuditRow {
   id: number;
@@ -62,8 +107,63 @@ afterEach(() => {
   const queue = getAuditQueue();
   if (queue) queue.drain(0);
   resetAuditQueue();
+  resetAuditChainKey();
   closeDb();
   clearDataDir();
+});
+
+describe("audit hash chain -- keyed HMAC vs unkeyed fallback", () => {
+  const MASTER = Buffer.alloc(32, 0x5a);
+
+  it("with no chain key configured, rows are recorded as unkeyed sha256", () => {
+    audit("test.event.nokey", { tier: 1 });
+    const [row] = readChain();
+    expect(algorithmOf(row.row_hash)).toBe(ALG_SHA256);
+    expect(row.row_hash).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("with a chain key configured, rows are recorded as keyed hmac-sha256-v1", () => {
+    const key = deriveAuditChainKey(MASTER);
+    configureAuditChainKey(key);
+    audit("test.event.keyed", { tier: 1, metadata: { foo: "bar" } });
+    const [row] = readChain();
+    expect(algorithmOf(row.row_hash)).toBe(ALG_HMAC_V1);
+    // Recomputes with the key...
+    const expected = computeRowHash(
+      row.prev_hash,
+      {
+        action: row.action,
+        actor_org_id: row.actor_org_id,
+        actor_ip: row.actor_ip,
+        actor_user_agent: row.actor_user_agent,
+        actor_user_id: row.actor_user_id,
+        metadata_json: row.metadata_json,
+        outcome: row.outcome,
+        request_id: row.request_id,
+        target: row.target,
+      },
+      key,
+    );
+    expect(row.row_hash).toBe(expected);
+    // ...but an attacker without the key cannot reproduce it with the
+    // unkeyed algorithm.
+    const unkeyedForge = computeRowHash(
+      row.prev_hash,
+      {
+        action: row.action,
+        actor_org_id: row.actor_org_id,
+        actor_ip: row.actor_ip,
+        actor_user_agent: row.actor_user_agent,
+        actor_user_id: row.actor_user_id,
+        metadata_json: row.metadata_json,
+        outcome: row.outcome,
+        request_id: row.request_id,
+        target: row.target,
+      },
+      null,
+    );
+    expect(unkeyedForge).not.toBe(row.row_hash);
+  });
 });
 
 describe("audit hash chain -- end-to-end through audit() Tier 1", () => {
@@ -275,5 +375,128 @@ describe("audit hash chain -- tamper detection", () => {
       target: tampered.target,
     });
     expect(recomputed).not.toBe(tampered.row_hash);
+  });
+});
+
+describe("audit hash chain -- restore-triggered boot audit rows (security review fix)", () => {
+  // Regression test for the boot-ordering defect: performRestoreCheck
+  // (src/boot.ts step 5, NR12 restore detection) can call audit() directly
+  // -- "recovery.token_epoch_global_bump" / "recovery.completed" -- and step
+  // 5 used to run before step 7b's configureAuditChainKeyFromMaster call, so
+  // on an encrypted deployment a restore-triggered boot wrote those rows
+  // unkeyed even though the rest of the chain is HMAC-keyed. The fix calls
+  // the same ensureAuditChainKeyForBootAudit helper used for the
+  // duplicates-accepted boot row (src/boot-orgs-uniqueness.ts), early in
+  // bootPhase2, before performRestoreCheck runs. These tests reproduce
+  // performRestoreCheck's exact two audit() calls directly (it isn't
+  // exported) against the real production audit()/database.ts stack, and
+  // verify both via algorithmOf() and by spawning the actual shipped
+  // scripts/verify-audit-chain.ts.
+  const RAW_MASTER_KEY = randomBytes(32).toString("base64");
+  const CHAIN_KEY = deriveAuditChainKey(decodeMasterKey(RAW_MASTER_KEY));
+  const KEYED_ENV = { COORDINATOR_ENCRYPTION_KEY: RAW_MASTER_KEY };
+  const BOOT_ENV = {
+    COORDINATOR_OAUTH_ENABLED: "true",
+    COORDINATOR_ENCRYPTION_KEY: RAW_MASTER_KEY,
+  };
+
+  function emitKeyedTip(): void {
+    // Simulates a prior real audit() call under encryption (e.g. an earlier
+    // boot's config.boot row) -- the tip is HMAC-keyed.
+    configureAuditChainKey(CHAIN_KEY);
+    audit("config.boot", { tier: 1 });
+    // Simulates the exact pre-fix state at the moment performRestoreCheck
+    // used to run: the chain-key singleton is unconfigured.
+    resetAuditChainKey();
+  }
+
+  function emitRestoreAudits(): void {
+    // The exact two calls performRestoreCheck (src/boot.ts) makes.
+    audit("recovery.token_epoch_global_bump", { tier: 1, metadata: { stale_seconds: 999 } });
+    audit("recovery.completed", {
+      tier: 1,
+      metadata: { stale_seconds: 999, threshold_seconds: 300 },
+    });
+  }
+
+  it("RED (pre-fix repro): restore-path audit() rows are unkeyed even though the tip is keyed", () => {
+    emitKeyedTip();
+    emitRestoreAudits();
+
+    const recoveryRows = readChain().filter((r) => r.action.startsWith("recovery."));
+    expect(recoveryRows).toHaveLength(2);
+    for (const row of recoveryRows) {
+      expect(algorithmOf(row.row_hash)).toBe(ALG_SHA256);
+    }
+
+    const result = runVerifyScript(path.join(TEST_DIR, "coordinator.db"), KEYED_ENV);
+    expect(result.status).toBe(1);
+    const report = JSON.parse(result.stdout);
+    expect(report.findings.some((f: { reason: string }) => f.reason === "downgraded_alg")).toBe(
+      true,
+    );
+  });
+
+  it("GREEN (fix): ensureAuditChainKeyForBootAudit before the restore-path audit() calls keys them", () => {
+    emitKeyedTip();
+    // This is exactly what src/boot.ts's bootPhase2 now does before calling
+    // performRestoreCheck.
+    ensureAuditChainKeyForBootAudit(BOOT_ENV);
+    emitRestoreAudits();
+
+    const recoveryRows = readChain().filter((r) => r.action.startsWith("recovery."));
+    expect(recoveryRows).toHaveLength(2);
+    for (const row of recoveryRows) {
+      expect(algorithmOf(row.row_hash)).toBe(ALG_HMAC_V1);
+      expect(row.row_hash.startsWith("hmac-sha256-v1:")).toBe(true);
+    }
+
+    const result = runVerifyScript(path.join(TEST_DIR, "coordinator.db"), KEYED_ENV);
+    expect(result.status).toBe(0);
+    const report = JSON.parse(result.stdout);
+    expect(report.ok).toBe(true);
+    expect(report.findings.some((f: { reason: string }) => f.reason === "downgraded_alg")).toBe(
+      false,
+    );
+  });
+
+  it("a real keyed->unkeyed forge of a restore-path row is STILL rejected after the fix", () => {
+    emitKeyedTip();
+    ensureAuditChainKeyForBootAudit(BOOT_ENV);
+    emitRestoreAudits();
+
+    // Attacker with DB-write-only access (no key) rewrites the
+    // recovery.completed row's content and recomputes a plain unkeyed
+    // sha256 (no prefix) -- same forgery technique used elsewhere in this
+    // suite, applied to a restore-path row specifically.
+    const db = getDb();
+    const victim = readChain().find((r) => r.action === "recovery.completed")!;
+    const forged = computeRowHash(
+      victim.prev_hash,
+      {
+        action: "ATTACKER",
+        actor_org_id: null,
+        actor_ip: null,
+        actor_user_agent: null,
+        actor_user_id: null,
+        metadata_json: null,
+        outcome: victim.outcome,
+        request_id: null,
+        target: null,
+      },
+      null,
+    );
+    expect(forged.startsWith("hmac-sha256-v1:")).toBe(false);
+    db.prepare("UPDATE audit_log SET action = 'ATTACKER', row_hash = ? WHERE id = ?").run(
+      forged,
+      victim.id,
+    );
+
+    const result = runVerifyScript(path.join(TEST_DIR, "coordinator.db"), KEYED_ENV);
+    expect(result.status).toBe(1);
+    const report = JSON.parse(result.stdout);
+    expect(report.findings.some((f: { reason: string }) => f.reason === "downgraded_alg")).toBe(
+      true,
+    );
   });
 });

@@ -15,7 +15,6 @@ import {
   registry,
   resetMetricsForTest,
 } from "../../src/observability/metrics.js";
-import { pseudonym } from "../../src/security/audit-pseudonym.js";
 import type { Logger } from "pino";
 
 /**
@@ -28,9 +27,8 @@ import type { Logger } from "pino";
  *     (wrong-key EnvelopeEncryption.decrypt of a real ciphertext).
  *  3. encryptionEnabledGauge flips between 0 (passthrough) and 1
  *     (envelope) based on whether boot wired a master key.
- *  4. Audit emissions from boot-encryption + the migration of the
- *     inline HMAC to pseudonym() carry the correct tier + metadata
- *     shape.
+ *  4. Audit emissions from boot-encryption carry the correct tier +
+ *     metadata shape, recording the real actor id (accountability).
  */
 
 // ── shared fixtures ─────────────────────────────────────────────────────
@@ -211,11 +209,14 @@ describe("encryptionEnabledGauge: reflects boot-time encryption mode", () => {
 // ── 4. Audit emissions: tier + metadata shape ───────────────────────────
 
 describe("boot-encryption audit emissions: tier + metadata shape", () => {
-  it("encryption.token.invalidated carries Tier 1 + user_id_hash via pseudonym(), not user_id_prefix", () => {
+  it("encryption.token.invalidated carries Tier 1 + the real user_id (accountability)", () => {
     // Seed 1 encrypted row, then run guard 1 (no key + ALLOW_TOKEN_LOSS=1
     // + matching confirm) so per-user invalidated audit fires.
+    // The audit log records the real actor id for imputability. A
+    // pseudonym here bought no privacy — the same id is stored in cleartext
+    // in encryption_invalidated_tokens.user_id for the very same event.
     db.prepare("INSERT INTO users (id, idp_access_token, idp_refresh_token) VALUES (?, ?, ?)").run(
-      "user-pseudonymized",
+      "user-real-id",
       "enc:v1:fakeAccess",
       "enc:v1:fakeRefresh",
     );
@@ -233,15 +234,16 @@ describe("boot-encryption audit emissions: tier + metadata shape", () => {
       expect.objectContaining({
         tier: 1,
         metadata: expect.objectContaining({
-          user_id_hash: pseudonym("user-pseudonymized"),
+          user_id: "user-real-id",
           reason: "key_absent_token_loss_allowed",
         }),
       }),
     );
-    // Guard against regression: the old key MUST NOT appear in metadata.
+    // The misleading pseudonymized field MUST NOT appear.
     const call = audit.mock.calls.find((c) => c[0] === "encryption.token.invalidated");
     expect(call).toBeDefined();
     const meta = (call![1] as { metadata: Record<string, unknown> }).metadata;
+    expect(meta).not.toHaveProperty("user_id_hash");
     expect(meta).not.toHaveProperty("user_id_prefix");
   });
 

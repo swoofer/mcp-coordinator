@@ -87,7 +87,6 @@ export default defineConfig({
         "tests/helpers/encryption.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "tests/helpers/admin-session.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "src/boot-encryption.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
-        "src/security/audit-pseudonym.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "cli/lib/pid-lock.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "cli/encryption/index.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
         "cli/encryption/migrate.ts": { branches: 100, lines: 100, statements: 100, functions: 100 },
