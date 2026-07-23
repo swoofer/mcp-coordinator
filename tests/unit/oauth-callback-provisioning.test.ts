@@ -405,6 +405,154 @@ describe("finalizeBrowserOAuth — allowlist", () => {
   });
 });
 
+// -- Allowlist strategy: idp_org_id / id_token_groups (T56/T58) -------------
+//
+// The "memberships" strategy above is GitHub's default. GoogleProvider
+// (idp_org_id) and the generic OIDC provider configured with a groups
+// claim (id_token_groups) take two other branches through the same
+// allowlist-resolution switch; exercise both here.
+
+function seedIdpOrgAllowlist(orgId = "org-google", idpOrgId = "example.com"): void {
+  getDb()
+    .prepare("INSERT INTO orgs (id, name, allowlist_idp_org_id) VALUES (?, ?, ?)")
+    .run(orgId, "Example", idpOrgId);
+}
+
+describe("finalizeBrowserOAuth — allowlist strategy idp_org_id (T56)", () => {
+  it("idp_org_id matches allowlist_idp_org_id → 302 provisioned in that org", async () => {
+    seedIdpOrgAllowlist("org-google", "example.com");
+    const provider: IdPProvider = {
+      ...stubProvider(),
+      name: "google",
+      allowlistStrategy: "idp_org_id",
+    };
+    const res = mockResponse();
+    await __finalizeBrowserOAuth(
+      res as unknown as ServerResponse,
+      makeCtx({ provider }),
+      provider,
+      makeExchange({ ...USER_ALICE, idp_org_id: "example.com" }),
+      "10.0.0.1",
+      "ua/1.0",
+    );
+    expect(res.statusCode).toBe(302);
+    const row = getDb()
+      .prepare("SELECT primary_org_id FROM users WHERE idp_user_id = ?")
+      .get(USER_ALICE.idp_user_id) as { primary_org_id: string };
+    expect(row.primary_org_id).toBe("org-google");
+  });
+
+  it("no idp_org_id on the IdP user (consumer account) → 403 NOT_IN_ALLOWLIST, no lookup attempted", async () => {
+    seedIdpOrgAllowlist("org-google", "example.com");
+    const provider: IdPProvider = {
+      ...stubProvider(),
+      name: "google",
+      allowlistStrategy: "idp_org_id",
+    };
+    const res = mockResponse();
+    await __finalizeBrowserOAuth(
+      res as unknown as ServerResponse,
+      makeCtx({ provider }),
+      provider,
+      makeExchange({ ...USER_ALICE, idp_org_id: undefined }),
+      "10.0.0.1",
+      "ua/1.0",
+    );
+    expect(res.statusCode).toBe(403);
+    expect(JSON.parse(res.body!).code).toBe("NOT_IN_ALLOWLIST");
+    const rows = findAuditRows("auth.login.denied.not_in_org");
+    expect(rows).toHaveLength(1);
+    // memberships stays empty for this strategy — informative, not a bug.
+    expect(JSON.parse(rows[0].metadata_json as string).memberships_count).toBe(0);
+  });
+
+  it("idp_org_id set but no org allowlists it → 403 NOT_IN_ALLOWLIST", async () => {
+    seedIdpOrgAllowlist("org-google", "example.com");
+    const provider: IdPProvider = {
+      ...stubProvider(),
+      name: "google",
+      allowlistStrategy: "idp_org_id",
+    };
+    const res = mockResponse();
+    await __finalizeBrowserOAuth(
+      res as unknown as ServerResponse,
+      makeCtx({ provider }),
+      provider,
+      makeExchange({ ...USER_ALICE, idp_org_id: "unrelated.com" }),
+      "10.0.0.1",
+      "ua/1.0",
+    );
+    expect(res.statusCode).toBe(403);
+    expect(JSON.parse(res.body!).code).toBe("NOT_IN_ALLOWLIST");
+  });
+});
+
+describe("finalizeBrowserOAuth — allowlist strategy id_token_groups (T58)", () => {
+  it("id_token groups match allowlist_github_org (case-insensitive) → 302 provisioned", async () => {
+    seedAcmeOrg("org-acme", "acme");
+    const provider: IdPProvider = {
+      ...stubProvider(),
+      name: "generic-oidc",
+      allowlistStrategy: "id_token_groups",
+    };
+    const res = mockResponse();
+    await __finalizeBrowserOAuth(
+      res as unknown as ServerResponse,
+      makeCtx({ provider }),
+      provider,
+      // Mixed-case group name — the handler lowercases before matching.
+      makeExchange({ ...USER_ALICE, groups: ["Acme"] }),
+      "10.0.0.1",
+      "ua/1.0",
+    );
+    expect(res.statusCode).toBe(302);
+    const row = getDb()
+      .prepare("SELECT primary_org_id FROM users WHERE idp_user_id = ?")
+      .get(USER_ALICE.idp_user_id) as { primary_org_id: string };
+    expect(row.primary_org_id).toBe("org-acme");
+  });
+
+  it("no groups on the id_token → 403 NOT_IN_ALLOWLIST, no lookup attempted", async () => {
+    seedAcmeOrg("org-acme", "acme");
+    const provider: IdPProvider = {
+      ...stubProvider(),
+      name: "generic-oidc",
+      allowlistStrategy: "id_token_groups",
+    };
+    const res = mockResponse();
+    await __finalizeBrowserOAuth(
+      res as unknown as ServerResponse,
+      makeCtx({ provider }),
+      provider,
+      makeExchange({ ...USER_ALICE, groups: undefined }),
+      "10.0.0.1",
+      "ua/1.0",
+    );
+    expect(res.statusCode).toBe(403);
+    expect(JSON.parse(res.body!).code).toBe("NOT_IN_ALLOWLIST");
+  });
+
+  it("empty groups array on the id_token → 403 NOT_IN_ALLOWLIST", async () => {
+    seedAcmeOrg("org-acme", "acme");
+    const provider: IdPProvider = {
+      ...stubProvider(),
+      name: "generic-oidc",
+      allowlistStrategy: "id_token_groups",
+    };
+    const res = mockResponse();
+    await __finalizeBrowserOAuth(
+      res as unknown as ServerResponse,
+      makeCtx({ provider }),
+      provider,
+      makeExchange({ ...USER_ALICE, groups: [] }),
+      "10.0.0.1",
+      "ua/1.0",
+    );
+    expect(res.statusCode).toBe(403);
+    expect(JSON.parse(res.body!).code).toBe("NOT_IN_ALLOWLIST");
+  });
+});
+
 // -- AUTO_PROVISION (3 cases) -----------------------------------------------
 
 describe("finalizeBrowserOAuth — AUTO_PROVISION mode", () => {

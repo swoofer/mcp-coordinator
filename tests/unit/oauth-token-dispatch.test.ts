@@ -7,6 +7,7 @@ import { handleOAuthToken } from "../../src/auth/oauth-token.js";
 import type { AuthHandlerContext } from "../../src/auth/context.js";
 import { FakeClock } from "../helpers/clock.js";
 import { singleProviderRegistry } from "../helpers/index.js";
+import { ProviderRegistry } from "../../src/auth/providers/registry.js";
 import { RateLimiter } from "../../src/auth/rate-limit.js";
 import { buildJwtKeyRegistry } from "../../src/auth/jwt-keys.js";
 import { MembershipCache } from "../../src/auth/membership-cache.js";
@@ -314,6 +315,67 @@ describe("handleOAuthToken — dispatch validation", () => {
     );
     expect(res.statusCode).toBe(400);
     expect(JSON.parse(res.body!).error).toBe("invalid_request");
+  });
+});
+
+// ===========================================================================
+// authorization_code provider selection (T46)
+// ===========================================================================
+describe("handleOAuthToken — authorization_code provider selection", () => {
+  it("unknown provider name in body → 400 invalid_request naming the provider", async () => {
+    const req = mockRequest({
+      grant_type: "authorization_code",
+      code: "c",
+      redirect_uri: "http://localhost/cb",
+      provider: "not-registered",
+    });
+    const res = mockResponse();
+    await handleOAuthToken(req, res as unknown as ServerResponse, makeCtx());
+    expect(res.statusCode).toBe(400);
+    const body = JSON.parse(res.body!);
+    expect(body.error).toBe("invalid_request");
+    expect(body.error_description).toBe("Unknown provider: not-registered");
+  });
+
+  it("no provider in body and no default registered → 400 invalid_request", async () => {
+    const req = mockRequest({
+      grant_type: "authorization_code",
+      code: "c",
+      redirect_uri: "http://localhost/cb",
+    });
+    const res = mockResponse();
+    await handleOAuthToken(
+      req,
+      res as unknown as ServerResponse,
+      makeCtx({ providers: new ProviderRegistry() }),
+    );
+    expect(res.statusCode).toBe(400);
+    const body = JSON.parse(res.body!);
+    expect(body.error).toBe("invalid_request");
+    expect(body.error_description).toBe("No IdP provider is registered");
+  });
+
+  it("explicit provider name matching a registered provider → dispatches normally (200)", async () => {
+    seedOrg();
+    const provider = makeProvider({
+      exchangeCode: async () => ({
+        user: { idp_user_id: "gh-explicit", email: "explicit@example.com" },
+        accessToken: "tok",
+      }),
+    });
+    const req = mockRequest({
+      grant_type: "authorization_code",
+      code: "c",
+      redirect_uri: "http://localhost/cb",
+      provider: "github",
+    });
+    const res = mockResponse();
+    await handleOAuthToken(
+      req,
+      res as unknown as ServerResponse,
+      makeCtx({ providers: singleProviderRegistry(provider) }),
+    );
+    expect(res.statusCode).toBe(200);
   });
 });
 
@@ -646,6 +708,129 @@ describe("handleOAuthToken — authorization_code allowlist", () => {
         makeCtx({ providers: singleProviderRegistry(provider) }),
       ),
     ).rejects.toThrow(/network unrest/);
+  });
+});
+
+// ===========================================================================
+// authorization_code allowlist strategy idp_org_id / id_token_groups (T56/T58)
+// ===========================================================================
+describe("handleOAuthToken — authorization_code allowlist strategy idp_org_id (T56)", () => {
+  function seedIdpOrgAllowlist(orgId = "org-google", idpOrgId = "example.com"): void {
+    getDb()
+      .prepare("INSERT INTO orgs (id, name, allowlist_idp_org_id) VALUES (?, ?, ?)")
+      .run(orgId, "Example", idpOrgId);
+  }
+
+  it("idp_org_id matches allowlist_idp_org_id → 200 provisioned in that org", async () => {
+    seedIdpOrgAllowlist("org-google", "example.com");
+    const provider = {
+      ...makeProvider(),
+      name: "google",
+      allowlistStrategy: "idp_org_id" as const,
+      exchangeCode: async () => ({
+        user: { idp_user_id: "google-1", email: "u@example.com", idp_org_id: "example.com" },
+        accessToken: "tok",
+      }),
+    };
+    const req = mockRequest({
+      grant_type: "authorization_code",
+      code: "c",
+      redirect_uri: "http://localhost/cb",
+    });
+    const res = mockResponse();
+    await handleOAuthToken(
+      req,
+      res as unknown as ServerResponse,
+      makeCtx({ providers: singleProviderRegistry(provider) }),
+    );
+    expect(res.statusCode).toBe(200);
+    const row = getDb()
+      .prepare("SELECT primary_org_id FROM users WHERE idp_user_id = ?")
+      .get("google-1") as { primary_org_id: string };
+    expect(row.primary_org_id).toBe("org-google");
+  });
+
+  it("no idp_org_id on the IdP user → 403 access_denied, no lookup attempted", async () => {
+    seedIdpOrgAllowlist("org-google", "example.com");
+    const provider = {
+      ...makeProvider(),
+      name: "google",
+      allowlistStrategy: "idp_org_id" as const,
+      exchangeCode: async () => ({
+        user: { idp_user_id: "google-2", email: "u2@example.com" },
+        accessToken: "tok",
+      }),
+    };
+    const req = mockRequest({
+      grant_type: "authorization_code",
+      code: "c",
+      redirect_uri: "http://localhost/cb",
+    });
+    const res = mockResponse();
+    await handleOAuthToken(
+      req,
+      res as unknown as ServerResponse,
+      makeCtx({ providers: singleProviderRegistry(provider) }),
+    );
+    expect(res.statusCode).toBe(403);
+    expect(JSON.parse(res.body!).error).toBe("access_denied");
+  });
+});
+
+describe("handleOAuthToken — authorization_code allowlist strategy id_token_groups (T58)", () => {
+  it("id_token groups match allowlist_github_org (case-insensitive) → 200 provisioned", async () => {
+    seedOrg("org-acme", "acme");
+    const provider = {
+      ...makeProvider(),
+      name: "generic-oidc",
+      allowlistStrategy: "id_token_groups" as const,
+      exchangeCode: async () => ({
+        user: { idp_user_id: "oidc-1", email: "u@example.com", groups: ["Acme"] },
+        accessToken: "tok",
+      }),
+    };
+    const req = mockRequest({
+      grant_type: "authorization_code",
+      code: "c",
+      redirect_uri: "http://localhost/cb",
+    });
+    const res = mockResponse();
+    await handleOAuthToken(
+      req,
+      res as unknown as ServerResponse,
+      makeCtx({ providers: singleProviderRegistry(provider) }),
+    );
+    expect(res.statusCode).toBe(200);
+    const row = getDb()
+      .prepare("SELECT primary_org_id FROM users WHERE idp_user_id = ?")
+      .get("oidc-1") as { primary_org_id: string };
+    expect(row.primary_org_id).toBe("org-acme");
+  });
+
+  it("empty groups on the id_token → 403 access_denied, no lookup attempted", async () => {
+    seedOrg("org-acme", "acme");
+    const provider = {
+      ...makeProvider(),
+      name: "generic-oidc",
+      allowlistStrategy: "id_token_groups" as const,
+      exchangeCode: async () => ({
+        user: { idp_user_id: "oidc-2", email: "u2@example.com", groups: [] },
+        accessToken: "tok",
+      }),
+    };
+    const req = mockRequest({
+      grant_type: "authorization_code",
+      code: "c",
+      redirect_uri: "http://localhost/cb",
+    });
+    const res = mockResponse();
+    await handleOAuthToken(
+      req,
+      res as unknown as ServerResponse,
+      makeCtx({ providers: singleProviderRegistry(provider) }),
+    );
+    expect(res.statusCode).toBe(403);
+    expect(JSON.parse(res.body!).error).toBe("access_denied");
   });
 });
 
