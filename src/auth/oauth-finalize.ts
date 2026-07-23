@@ -8,6 +8,7 @@ import { mintAccessJWT, mintRefreshJWT } from "./jwt-mint.js";
 import type { IdpUserInfo } from "./providers/types.js";
 import type { EncryptionProvider } from "../security/encryption.js";
 import { encryptNullable } from "../security/encrypt-nullable.js";
+import { getOrgSetting } from "./org-settings.js";
 
 /**
  * Shared OAuth-finalize helpers — consumed by:
@@ -196,6 +197,55 @@ export function provisionUser(args: ProvisionUserArgs): ProvisionResult {
     isNew: true,
     bootstrapAdmin,
   };
+}
+
+/**
+ * Raised inside the provisioning transaction when the `auto_provision`
+ * org setting is disabled and the caller has no existing user row for
+ * this IdP identity. Callers catch this after the transaction rolls back
+ * and turn it into a 403 response — the account is never created.
+ */
+export class ProvisioningDeniedError extends Error {
+  constructor(public readonly code: string) {
+    super(code);
+    this.name = "ProvisioningDeniedError";
+  }
+}
+
+/**
+ * Find-or-create a user, gated by the `auto_provision` org setting
+ * (resolved via {@link getOrgSetting}, org-scope-less lookup — see that
+ * module for the resolution order).
+ *
+ * When auto_provision is "false" and no user row exists yet for
+ * (idp_provider, idp_user_id), the transaction aborts with
+ * {@link ProvisioningDeniedError} instead of creating the account, so an
+ * org can require an admin to provision users out-of-band before they can
+ * sign in. The existence check runs INSIDE the same BEGIN IMMEDIATE
+ * transaction as the insert so a concurrent provisioning attempt can't
+ * race between the check and the write.
+ *
+ * Shared by both OAuth entry points — the browser callback
+ * (oauth-callback.ts) and the CLI authorization_code token grant
+ * (oauth-token.ts) — so the gate applies uniformly regardless of which
+ * flow a client uses.
+ */
+export function provisionUserWithAutoProvisionGate(args: ProvisionUserArgs): ProvisionResult {
+  const autoProvision = String(
+    getOrgSetting(args.db, null, "auto_provision", "true"),
+  ).toLowerCase();
+  const tx = args.db.transaction((): ProvisionResult => {
+    if (autoProvision === "false") {
+      const existing = args.db
+        .prepare("SELECT id FROM users WHERE idp_provider = ? AND idp_user_id = ?")
+        .get(args.providerName, args.idpUser.idp_user_id);
+      if (!existing) {
+        throw new ProvisioningDeniedError("USER_NOT_PROVISIONED");
+      }
+    }
+    return provisionUser(args);
+  });
+  return tx.immediate();
 }
 
 export interface MintTokenPairOptions {

@@ -3,18 +3,26 @@ import type { AuthHandlerContext } from "./context.js";
 import { oauthError } from "../http/response-contract.js";
 import { audit } from "../security/audit.js";
 import { refreshTokenGrant } from "./refresh-rotation.js";
-import { provisionUser, mintTokenPair, computeFingerprint } from "./oauth-finalize.js";
+import {
+  mintTokenPair,
+  computeFingerprint,
+  provisionUserWithAutoProvisionGate,
+  ProvisioningDeniedError,
+  type ProvisionResult,
+} from "./oauth-finalize.js";
 import { resolveOrgFromMemberships, resolveOrgFromIdpOrgId } from "./allowlist.js";
 import { IdPTokenRevoked, IdPTransientError } from "./providers/errors.js";
 import { hashIdpUserId } from "./audit-helpers.js";
+import { hashIdentifier, isLocked, recordFailedLogin } from "./login-lockout.js";
 
 /**
  * POST /api/auth/oauth/token — RFC 6749 §6 unified token endpoint.
  *
  * Form-encoded body. Dispatches on `grant_type`:
  *   - authorization_code: CLI/code-grant — exchange code at GitHub,
- *     allowlist-check via T04 cache + T09, provisionUser inside TX
- *     (T16helpers), mintTokenPair, RFC 6749 §5.1 JSON response.
+ *     allowlist-check via T04 cache + T09, provisionUserWithAutoProvisionGate
+ *     inside TX (T16helpers — same auto_provision + lockout gates as the
+ *     browser callback), mintTokenPair, RFC 6749 §5.1 JSON response.
  *   - refresh_token: delegates to T19 refreshTokenGrant. We forward the
  *     already-parsed body via the optional preParsedBody param so we
  *     don't try to re-stream a consumed request.
@@ -58,10 +66,12 @@ function emitOAuthError(
   status: number,
   error: string,
   description: string,
+  extraHeaders?: Record<string, string>,
 ): void {
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
+    ...extraHeaders,
   });
   res.end(JSON.stringify(oauthError(error, description)));
 }
@@ -84,8 +94,9 @@ function emitTokenResponse(res: ServerResponse, accessJwt: string, refreshJwt: s
 /**
  * grant_type=authorization_code (RFC 6749 §4.1.3) — CLI alternative to
  * the browser callback. Exchanges code at GitHub, runs the same
- * allowlist + provision + mint pipeline as T16c, then returns a JSON
- * token response (no cookies — CLI clients store tokens directly).
+ * lockout + allowlist + provision + mint pipeline as T16b/T16c (login
+ * lockout pre-check, auto_provision gate), then returns a JSON token
+ * response (no cookies — CLI clients store tokens directly).
  */
 async function handleAuthorizationCodeGrant(
   req: IncomingMessage,
@@ -136,6 +147,26 @@ async function handleAuthorizationCodeGrant(
     throw err;
   }
 
+  const ip = req.socket?.remoteAddress ?? null;
+
+  // 1b. Login lockout pre-check — mirrors the browser callback's gate
+  //     (oauth-callback.ts finalizeBrowserOAuth) so the CLI grant can't be
+  //     used to dodge lockout by avoiding the browser flow. Same identifier
+  //     construction: idp_user_id, falling back to ip, then "unknown".
+  const lockoutIdentifier = exchange.user.idp_user_id || ip || "unknown";
+  const identifierHash = hashIdentifier(lockoutIdentifier);
+  const lockState = await isLocked(ctx.rateLimiter, identifierHash);
+  if (lockState.locked) {
+    audit("auth.login.locked", {
+      tier: 1,
+      metadata: { identifier_hash: identifierHash },
+    });
+    emitOAuthError(res, 429, "access_denied", "Too many failed login attempts", {
+      "Retry-After": String(lockState.retry_after_seconds ?? 900),
+    });
+    return;
+  }
+
   // 2. Resolve allowlist match. T56: per-provider strategy
   //    (see oauth-callback.ts for the rationale).
   const strategy = provider.allowlistStrategy ?? "memberships";
@@ -177,10 +208,12 @@ async function handleAuthorizationCodeGrant(
   }
   // strategy === "none": allowlistMatch stays null -> denied below.
   if (!allowlistMatch) {
+    await recordFailedLogin(ctx.rateLimiter, identifierHash);
     audit("auth.login.denied.not_in_org", {
       tier: 1,
       metadata: {
         idp_user_id_hash: hashIdpUserId(exchange.user.idp_user_id),
+        identifier_hash: identifierHash,
         phase: "auth_code_grant",
       },
     });
@@ -188,9 +221,13 @@ async function handleAuthorizationCodeGrant(
     return;
   }
 
-  // 3. Find-or-create user inside a TX.
-  const tx = ctx.db.transaction(() => {
-    return provisionUser({
+  // 3. Find-or-create user inside a TX, gated by the auto_provision org
+  //    setting — the same gate the browser callback enforces (T16helpers'
+  //    provisionUserWithAutoProvisionGate), so this CLI grant can't be used
+  //    to bypass AUTO_PROVISION=false.
+  let provisionResult: ProvisionResult;
+  try {
+    provisionResult = provisionUserWithAutoProvisionGate({
       db: ctx.db,
       clock: ctx.clock,
       idpUser: exchange.user,
@@ -205,8 +242,25 @@ async function handleAuthorizationCodeGrant(
       // accommodate pre-T06b test fixtures; bootPhase2 always sets it.
       encryption: ctx.encryptionProvider!,
     });
-  });
-  const provisionResult = tx();
+  } catch (err) {
+    if (err instanceof ProvisioningDeniedError) {
+      audit("auth.login.failure", {
+        tier: 2,
+        metadata: {
+          reason: "user_not_provisioned",
+          idp_user_id_hash: hashIdpUserId(exchange.user.idp_user_id),
+        },
+      });
+      emitOAuthError(
+        res,
+        403,
+        "access_denied",
+        "User must be provisioned by an admin before signing in",
+      );
+      return;
+    }
+    throw err;
+  }
 
   if (provisionResult.isNew) {
     audit("auth.user.created", {
@@ -228,8 +282,8 @@ async function handleAuthorizationCodeGrant(
     });
   }
 
-  // 4. Mint access + refresh pair. Fingerprint derived from request socket.
-  const ip = req.socket?.remoteAddress ?? null;
+  // 4. Mint access + refresh pair. Fingerprint derived from request socket
+  //    (ip was already read above for the lockout identifier).
   const ua = (req.headers["user-agent"] as string | undefined) ?? null;
   const fingerprint = computeFingerprint(ip, ua);
   const pair = await mintTokenPair(ctx.db, ctx.clock, {
