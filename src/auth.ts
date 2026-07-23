@@ -246,6 +246,32 @@ export type AuthResult =
   | { ok: true; claims: AuthClaims }
   | { ok: false; status: 401 | 403; error: string; wwwAuthenticate?: string };
 
+/**
+ * Post-authentication route guards: revocation + admin-only routes.
+ *
+ * Every path through authenticateRequest that produces a successful
+ * AuthResult (cookie, Bearer→Phase2 fallback, Bearer principal) MUST run its
+ * claims through this helper before returning them. Applying the guards
+ * inline in each branch let them drift apart — the cookie branch shipped
+ * without either check, so a valid (or even revoked) session cookie could
+ * call admin-only routes like /api/auth/revoke or /api/reset. Routing all
+ * three paths through one function makes that divergence impossible to
+ * reintroduce.
+ */
+function applyRouteGuards(result: AuthResult, req: IncomingMessage): AuthResult {
+  if (!result.ok) return result;
+  if (isRevoked(result.claims.sub)) {
+    return { ok: false, status: 403, error: "Agent has been revoked" };
+  }
+  const url = req.url || "";
+  // Strip query string and hash before matching — "/api/reset?x=1" must hit the check
+  const pathOnly = url.split(/[?#]/)[0];
+  if (ADMIN_ONLY_ROUTES.some((r) => pathOnly === r) && result.claims.role !== "admin") {
+    return { ok: false, status: 403, error: "Admin access required" };
+  }
+  return result;
+}
+
 // ---------------------------------------------------------------------------
 // Phase 2 cookie-based JWT auth (Scenario 5, spec §9.5)
 // ---------------------------------------------------------------------------
@@ -484,7 +510,7 @@ export async function authenticateRequest(
     const cookies = parseCookies(req);
     const sessionCookie = cookies[SESSION_COOKIE_NAME];
     if (sessionCookie) {
-      return await verifyPhase2SessionCookie(sessionCookie, phase2Ctx);
+      return applyRouteGuards(await verifyPhase2SessionCookie(sessionCookie, phase2Ctx), req);
     }
   }
 
@@ -527,15 +553,7 @@ export async function authenticateRequest(
     if (phase2Ctx) {
       const ph2 = await verifyPhase2SessionCookie(token, phase2Ctx);
       if (ph2.ok) {
-        if (isRevoked(ph2.claims.sub)) {
-          return { ok: false, status: 403, error: "Agent has been revoked" };
-        }
-        const url = req.url || "";
-        const pathOnly = url.split(/[?#]/)[0];
-        if (ADMIN_ONLY_ROUTES.some((r) => pathOnly === r) && ph2.claims.role !== "admin") {
-          return { ok: false, status: 403, error: "Admin access required" };
-        }
-        return ph2;
+        return applyRouteGuards(ph2, req);
       }
     }
     log.error({ err }, "JWT verification error");
@@ -573,16 +591,5 @@ export async function authenticateRequest(
   }
 
   // Scenario (c) AUTH_ENABLED=false or Scenario (d): proceed with claims
-  if (isRevoked(claims.sub)) {
-    return { ok: false, status: 403, error: "Agent has been revoked" };
-  }
-
-  const url = req.url || "";
-  // Strip query string and hash before matching — "/api/reset?x=1" must hit the check
-  const pathOnly = url.split(/[?#]/)[0];
-  if (ADMIN_ONLY_ROUTES.some((r) => pathOnly === r) && claims.role !== "admin") {
-    return { ok: false, status: 403, error: "Admin access required" };
-  }
-
-  return { ok: true, claims };
+  return applyRouteGuards({ ok: true, claims }, req);
 }

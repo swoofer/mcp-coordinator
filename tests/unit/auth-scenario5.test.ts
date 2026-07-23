@@ -8,6 +8,7 @@ import {
   authenticateRequest,
   initPhase2Auth,
   resetPhase2Auth,
+  revokeAgent,
 } from "../../src/auth.js";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
 import { buildJwtKeyRegistry } from "../../src/auth/jwt-keys.js";
@@ -121,8 +122,10 @@ beforeEach(() => {
   // DELETE FROM users.
   getDb().exec("DELETE FROM refresh_tokens");
   getDb().exec("DELETE FROM users");
-  getDb().exec("DELETE FROM orgs");
+  // revoked_agents FKs to orgs — clear it first so `DELETE FROM orgs` below
+  // doesn't fail once a test has revoked an agent against a seeded org.
   getDb().exec("DELETE FROM revoked_agents");
+  getDb().exec("DELETE FROM orgs");
   resetPhase2Auth();
   // Default wiring for the bulk of cases. Cases that need "not wired"
   // semantics explicitly call resetPhase2Auth() AFTER the beforeEach.
@@ -395,10 +398,101 @@ describe("Scenario 5 — claim shape variations", () => {
       mockReq({ cookie: sessionCookie(token), url: "/api/reset", method: "POST" }),
       { authEnabled: true },
     );
-    // Note: the cookie path returns claims directly and bypasses the
-    // ADMIN_ONLY_ROUTES check (which lives on the Bearer branch). T20
-    // /device/approve handlers do their own role guard. Verify success.
+    // The cookie path applies the same ADMIN_ONLY_ROUTES guard as the
+    // Bearer paths, so an admin-role cookie is allowed through.
     expect(result.ok).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Route guards — cookie path must apply the same revocation + admin-route
+// checks as the Bearer paths (previously the cookie branch returned early,
+// before either guard ran).
+// ---------------------------------------------------------------------------
+describe("Scenario 5 — route guards (cookie path parity with Bearer)", () => {
+  it("non-admin cookie on /api/auth/revoke → 403 Admin access required", async () => {
+    seedOrg();
+    seedUser();
+    const token = await mintSessionJWT({ role: "member" });
+    const result = await authenticateRequest(
+      mockReq({ cookie: sessionCookie(token), url: "/api/auth/revoke", method: "POST" }),
+      { authEnabled: true },
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(403);
+      expect(result.error).toMatch(/Admin access required/);
+    }
+  });
+
+  it("non-admin cookie on /api/reset → 403 Admin access required", async () => {
+    seedOrg();
+    seedUser();
+    const token = await mintSessionJWT({ role: "member" });
+    const result = await authenticateRequest(
+      mockReq({ cookie: sessionCookie(token), url: "/api/reset", method: "POST" }),
+      { authEnabled: true },
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(403);
+      expect(result.error).toMatch(/Admin access required/);
+    }
+  });
+
+  it("non-admin cookie on a non-admin route → still allowed (no false-positive lockout)", async () => {
+    seedOrg();
+    seedUser();
+    const token = await mintSessionJWT({ role: "member" });
+    const result = await authenticateRequest(
+      mockReq({ cookie: sessionCookie(token), url: "/api/something", method: "POST" }),
+      { authEnabled: true },
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("revoked sub cookie → 403 Agent has been revoked, even on a non-admin route", async () => {
+    seedOrg();
+    seedUser();
+    // revokeAgent() inserts with org_id defaulting to 'default' (it isn't
+    // org-scoped for this check); the 'default' org row was cleared by
+    // beforeEach's `DELETE FROM orgs`, so re-seed it to satisfy the FK.
+    getDb()
+      .prepare("INSERT INTO orgs (id, name, allowlist_github_org) VALUES (?, ?, ?)")
+      .run("default", "Default Organization", "default-org");
+    revokeAgent("u-alice", "admin-1");
+    const token = await mintSessionJWT();
+    const result = await authenticateRequest(
+      mockReq({ cookie: sessionCookie(token), url: "/api/something", method: "POST" }),
+      { authEnabled: true },
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(403);
+      expect(result.error).toMatch(/Agent has been revoked/);
+    }
+  });
+
+  it("revoked admin sub cookie → 403 Agent has been revoked, even on an admin route", async () => {
+    seedOrg();
+    seedUser();
+    // revokeAgent() inserts with org_id defaulting to 'default' (it isn't
+    // org-scoped for this check); the 'default' org row was cleared by
+    // beforeEach's `DELETE FROM orgs`, so re-seed it to satisfy the FK.
+    getDb()
+      .prepare("INSERT INTO orgs (id, name, allowlist_github_org) VALUES (?, ?, ?)")
+      .run("default", "Default Organization", "default-org");
+    revokeAgent("u-alice", "admin-1");
+    const token = await mintSessionJWT({ role: "admin" });
+    const result = await authenticateRequest(
+      mockReq({ cookie: sessionCookie(token), url: "/api/reset", method: "POST" }),
+      { authEnabled: true },
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(403);
+      expect(result.error).toMatch(/Agent has been revoked/);
+    }
   });
 });
 
