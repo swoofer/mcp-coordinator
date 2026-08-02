@@ -4,6 +4,7 @@ import type { CoordinatorServices } from "../server-setup.js";
 import type { Logger } from "../logger.js";
 import type { AuthClaims } from "../auth.js";
 import { runRegisterFlow } from "../register-workflow.js";
+import { unauthorizedError } from "./session-claims-error.js";
 
 /**
  * S1: agent registry MCP tools (4 tools).
@@ -30,7 +31,7 @@ export function registerAgentTools(
     { readOnlyHint: false, destructiveHint: false, idempotentHint: true, title: "Register agent" },
     async ({ agent_id, name, modules }, extra) => {
       const claims = getSessionClaims(extra.sessionId ?? "");
-      if (!claims) throw new Error("Session has no captured claims (auth bug)");
+      if (!claims) throw unauthorizedError();
       mcpLog.info(
         { tool: "register_agent", agent_id, name, module_count: modules.length },
         "Tool called",
@@ -54,7 +55,7 @@ export function registerAgentTools(
     { readOnlyHint: true, title: "List agents" },
     async ({ online_only }, extra) => {
       const claims = getSessionClaims(extra.sessionId ?? "");
-      if (!claims) throw new Error("Session has no captured claims (auth bug)");
+      if (!claims) throw unauthorizedError();
       const agents = online_only ? registry.listOnline(claims.org) : registry.listAll(claims.org);
       return { content: [{ type: "text", text: JSON.stringify(agents) }] };
     },
@@ -77,7 +78,7 @@ export function registerAgentTools(
     { readOnlyHint: false, destructiveHint: false, idempotentHint: true, title: "Heartbeat" },
     async ({ agent_id, current_file, current_thread }, extra) => {
       const claims = getSessionClaims(extra.sessionId ?? "");
-      if (!claims) throw new Error("Session has no captured claims (auth bug)");
+      if (!claims) throw unauthorizedError();
       registry.heartbeat(claims.org, agent_id);
       activityTracker.heartbeat(claims.org, agent_id, {
         currentFile: current_file || null,
@@ -105,7 +106,7 @@ export function registerAgentTools(
     { readOnlyHint: true, title: "Get agent activity" },
     async (_args, extra) => {
       const claims = getSessionClaims(extra.sessionId ?? "");
-      if (!claims) throw new Error("Session has no captured claims (auth bug)");
+      if (!claims) throw unauthorizedError();
       const activities = activityTracker.listAll(claims.org, { idleAfterMinutes: 5 });
       return { content: [{ type: "text", text: JSON.stringify(activities) }] };
     },

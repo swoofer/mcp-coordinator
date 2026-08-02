@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { CoordinatorServices } from "../server-setup.js";
 import type { Logger } from "../logger.js";
 import type { AuthClaims } from "../auth.js";
+import { unauthorizedError } from "./session-claims-error.js";
 
 /**
  * S1: file tracking MCP tools (3 tools).
@@ -25,7 +26,7 @@ export function registerFilesTools(
     { readOnlyHint: true, title: "List hot files" },
     async ({ since_minutes }, extra) => {
       const claims = getSessionClaims(extra.sessionId ?? "");
-      if (!claims) throw new Error("Session has no captured claims (auth bug)");
+      if (!claims) throw unauthorizedError();
       const files = fileTracker.getHotFiles(claims.org, since_minutes || 30);
       return { content: [{ type: "text", text: JSON.stringify(files) }] };
     },
@@ -40,7 +41,7 @@ export function registerFilesTools(
     { readOnlyHint: true, title: "Get session files" },
     async ({ session_id }, extra) => {
       const claims = getSessionClaims(extra.sessionId ?? "");
-      if (!claims) throw new Error("Session has no captured claims (auth bug)");
+      if (!claims) throw unauthorizedError();
       const files = fileTracker.getBySession(claims.org, session_id);
       return { content: [{ type: "text", text: JSON.stringify(files) }] };
     },
@@ -62,7 +63,7 @@ export function registerFilesTools(
     { readOnlyHint: true, title: "Check file conflict" },
     async ({ file_path, agent_id, within_minutes }, extra) => {
       const claims = getSessionClaims(extra.sessionId ?? "");
-      if (!claims) throw new Error("Session has no captured claims (auth bug)");
+      if (!claims) throw unauthorizedError();
       const result = fileTracker.checkFileConflict(
         claims.org,
         file_path,

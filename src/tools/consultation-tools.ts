@@ -6,6 +6,7 @@ import type { AgentContext } from "../types.js";
 import { getDb } from "../database.js";
 import { runCommonAnnounceFlow } from "../announce-workflow.js";
 import type { AuthClaims } from "../auth.js";
+import { unauthorizedError } from "./session-claims-error.js";
 
 /**
  * S1 fix (partial): consultation domain tools extracted from server-setup.ts.
@@ -96,7 +97,7 @@ export function registerConsultationTools(
       extra,
     ) => {
       const claims = getSessionClaims(extra.sessionId ?? "");
-      if (!claims) throw new Error("Session has no captured claims (auth bug)");
+      if (!claims) throw unauthorizedError();
       mcpLog.info(
         { tool: "announce_work", agent_id, subject, target_modules, target_files, assigned_to },
         "Tool called",
@@ -211,7 +212,7 @@ export function registerConsultationTools(
       extra,
     ) => {
       const claims = getSessionClaims(extra.sessionId ?? "");
-      if (!claims) throw new Error("Session has no captured claims (auth bug)");
+      if (!claims) throw unauthorizedError();
       mcpLog.info({ tool: "post_to_thread", thread_id, agent_id, type }, "Tool called");
       const msg = consultation.postToThread(claims.org, {
         thread_id,
@@ -255,7 +256,7 @@ export function registerConsultationTools(
     { readOnlyHint: false, destructiveHint: false, title: "Propose resolution" },
     async ({ thread_id, agent_id, summary }, extra) => {
       const claims = getSessionClaims(extra.sessionId ?? "");
-      if (!claims) throw new Error("Session has no captured claims (auth bug)");
+      if (!claims) throw unauthorizedError();
       mcpLog.info({ tool: "propose_resolution", thread_id, agent_id }, "Tool called");
       consultation.proposeResolution(claims.org, thread_id, agent_id, summary);
       sseEmitter.emit(
@@ -279,7 +280,7 @@ export function registerConsultationTools(
     { readOnlyHint: false, destructiveHint: false, title: "Approve resolution" },
     async ({ thread_id, agent_id }, extra) => {
       const claims = getSessionClaims(extra.sessionId ?? "");
-      if (!claims) throw new Error("Session has no captured claims (auth bug)");
+      if (!claims) throw unauthorizedError();
       mcpLog.info({ tool: "approve_resolution", thread_id, agent_id }, "Tool called");
       const agentInfo = registry.get(claims.org, agent_id);
       consultation.approveResolution(claims.org, thread_id, agent_id, agentInfo?.name ?? undefined);
@@ -299,7 +300,7 @@ export function registerConsultationTools(
     { readOnlyHint: false, destructiveHint: false, title: "Contest resolution" },
     async ({ thread_id, agent_id, reason }, extra) => {
       const claims = getSessionClaims(extra.sessionId ?? "");
-      if (!claims) throw new Error("Session has no captured claims (auth bug)");
+      if (!claims) throw unauthorizedError();
       mcpLog.info({ tool: "contest_resolution", thread_id, agent_id }, "Tool called");
       consultation.contestResolution(claims.org, thread_id, agent_id, reason);
       const thread = consultation.getThread(claims.org, thread_id);
@@ -320,7 +321,7 @@ export function registerConsultationTools(
     { readOnlyHint: false, destructiveHint: true, title: "Close thread" },
     async ({ thread_id, agent_id, summary }, extra) => {
       const claims = getSessionClaims(extra.sessionId ?? "");
-      if (!claims) throw new Error("Session has no captured claims (auth bug)");
+      if (!claims) throw unauthorizedError();
       mcpLog.info({ tool: "close_thread", thread_id, agent_id }, "Tool called");
       consultation.closeThread(claims.org, thread_id, agent_id, summary);
       return { content: [{ type: "text", text: "closed" }] };
@@ -338,7 +339,7 @@ export function registerConsultationTools(
     { readOnlyHint: false, destructiveHint: true, title: "Cancel thread" },
     async ({ thread_id, agent_id, reason }, extra) => {
       const claims = getSessionClaims(extra.sessionId ?? "");
-      if (!claims) throw new Error("Session has no captured claims (auth bug)");
+      if (!claims) throw unauthorizedError();
       mcpLog.info({ tool: "cancel_thread", thread_id, agent_id }, "Tool called");
       consultation.cancelThread(claims.org, thread_id, agent_id, reason ?? undefined);
       sseEmitter.emit("thread_cancelled", { thread_id, reason }, { org_id: claims.org });
@@ -355,7 +356,7 @@ export function registerConsultationTools(
     { readOnlyHint: true, title: "Get thread" },
     async ({ thread_id }, extra) => {
       const claims = getSessionClaims(extra.sessionId ?? "");
-      if (!claims) throw new Error("Session has no captured claims (auth bug)");
+      if (!claims) throw unauthorizedError();
       const result = consultation.getThreadWithMessages(claims.org, thread_id);
       mcpLog.debug(
         { tool: "get_thread", thread_id, message_count: result?.messages.length },
@@ -386,7 +387,7 @@ export function registerConsultationTools(
     { readOnlyHint: true, title: "Get thread updates" },
     async ({ agent_id, since }, extra) => {
       const claims = getSessionClaims(extra.sessionId ?? "");
-      if (!claims) throw new Error("Session has no captured claims (auth bug)");
+      if (!claims) throw unauthorizedError();
       const updates = consultation.getThreadUpdates(claims.org, agent_id, since ?? undefined);
       return { content: [{ type: "text", text: JSON.stringify(updates) }] };
     },
@@ -412,7 +413,7 @@ export function registerConsultationTools(
     { readOnlyHint: true, title: "List threads" },
     async ({ status, agent_id, module, assigned_to_me }, extra) => {
       const claims = getSessionClaims(extra.sessionId ?? "");
-      if (!claims) throw new Error("Session has no captured claims (auth bug)");
+      if (!claims) throw unauthorizedError();
       const threads = consultation.listThreads(claims.org, {
         status,
         agent_id,
@@ -446,7 +447,7 @@ export function registerConsultationTools(
     { readOnlyHint: false, destructiveHint: false, title: "Log action summary" },
     async ({ session_id, agent_id, file_path, summary }, extra) => {
       const claims = getSessionClaims(extra.sessionId ?? "");
-      if (!claims) throw new Error("Session has no captured claims (auth bug)");
+      if (!claims) throw unauthorizedError();
       const result = consultation.logActionSummary(claims.org, {
         session_id,
         agent_id,

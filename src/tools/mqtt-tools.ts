@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { CoordinatorServices } from "../server-setup.js";
 import type { Logger } from "../logger.js";
 import type { AuthClaims } from "../auth.js";
+import { unauthorizedError } from "./session-claims-error.js";
 
 /**
  * S1: MQTT listener MCP tools (3 tools).
@@ -64,7 +65,7 @@ export function registerMqttTools(
     { readOnlyHint: true, title: "Wait for MQTT message" },
     async ({ agent_id, timeout_seconds }, extra) => {
       const claims = getSessionClaims(extra.sessionId ?? "");
-      if (!claims) throw new Error("Session has no captured claims (auth bug)");
+      if (!claims) throw unauthorizedError();
       if (!mqttBridge.isConnected()) return mqttNotConnectedResult();
       const cappedSeconds = Math.min(timeout_seconds || 15, MAX_WAIT_TIMEOUT_SECONDS);
       const timeoutMs = cappedSeconds * 1000;
@@ -85,7 +86,7 @@ export function registerMqttTools(
     { readOnlyHint: true, title: "Get queued MQTT messages" },
     async ({ agent_id }, extra) => {
       const claims = getSessionClaims(extra.sessionId ?? "");
-      if (!claims) throw new Error("Session has no captured claims (auth bug)");
+      if (!claims) throw unauthorizedError();
       if (!mqttBridge.isConnected()) return mqttNotConnectedResult();
       const messages = mqttBridge.getQueuedMessages(claims.org, agent_id);
       return { content: [{ type: "text", text: JSON.stringify(messages) }] };
@@ -107,7 +108,7 @@ export function registerMqttTools(
     },
     async ({ topic, payload }, extra) => {
       const claims = getSessionClaims(extra.sessionId ?? "");
-      if (!claims) throw new Error("Session has no captured claims (auth bug)");
+      if (!claims) throw unauthorizedError();
       if (!mqttBridge.isConnected()) return mqttNotConnectedResult();
       mqttBridge.mqttPublish(claims.org, topic, payload);
       return { content: [{ type: "text", text: "published" }] };
