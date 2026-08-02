@@ -197,7 +197,7 @@ describe("status-tools: coordinator_status", () => {
     const handler = getHandler(server, "coordinator_status");
     // extra.sessionId is undefined — the exact shape of bug #133 (stdio transport).
     await expect(handler({}, fakeExtra(undefined))).rejects.toThrow(
-      "Session has no captured claims (auth bug)",
+      "Session is missing user claims. This usually means your token expired or was issued before a JWT rotation. Try re-authenticating with: mcp-coordinator login",
     );
   });
 });
@@ -246,7 +246,7 @@ describe("status-tools: wait_for_peers", () => {
     const start = Date.now();
     await expect(
       handler({ agent_id: "waiter", timeout_seconds: 30 }, fakeExtra(undefined)),
-    ).rejects.toThrow("Session has no captured claims (auth bug)");
+    ).rejects.toThrow("Session is missing user claims. This usually means your token expired or was issued before a JWT rotation. Try re-authenticating with: mcp-coordinator login");
     // Must fail fast — the auth check happens before the (capped-30s) poll loop.
     expect(Date.now() - start).toBeLessThan(500);
   });
@@ -300,7 +300,7 @@ describe("consultation-tools: announce_work", () => {
         { agent_id: "init-1", subject: "x", target_modules: [], target_files: [] },
         fakeExtra(undefined),
       ),
-    ).rejects.toThrow("Session has no captured claims (auth bug)");
+    ).rejects.toThrow("Session is missing user claims. This usually means your token expired or was issued before a JWT rotation. Try re-authenticating with: mcp-coordinator login");
     expect(services.consultation.listThreads("org-cons", {})).toEqual([]);
   });
 });
@@ -353,7 +353,7 @@ describe("consultation-tools: post_to_thread", () => {
         { thread_id: thread.id, agent_id: "init-1", type: "context", content: "hello" },
         fakeExtra(undefined),
       ),
-    ).rejects.toThrow("Session has no captured claims (auth bug)");
+    ).rejects.toThrow("Session is missing user claims. This usually means your token expired or was issued before a JWT rotation. Try re-authenticating with: mcp-coordinator login");
     const withMessages = services.consultation.getThreadWithMessages("org-cons", thread.id);
     expect(withMessages!.messages).toEqual([]);
   });
@@ -406,7 +406,7 @@ describe("consultation-tools: propose_resolution / approve_resolution / contest_
     const handler = getHandler(server, "propose_resolution");
     await expect(
       handler({ thread_id: thread.id, agent_id: "init-1", summary: "done" }, fakeExtra(undefined)),
-    ).rejects.toThrow("Session has no captured claims (auth bug)");
+    ).rejects.toThrow("Session is missing user claims. This usually means your token expired or was issued before a JWT rotation. Try re-authenticating with: mcp-coordinator login");
     expect(services.consultation.getThread("org-cons", thread.id)!.status).toBe("open");
   });
 
@@ -455,7 +455,7 @@ describe("consultation-tools: propose_resolution / approve_resolution / contest_
     const handler = getHandler(server, "approve_resolution");
     await expect(
       handler({ thread_id: thread.id, agent_id: "init-1" }, fakeExtra(undefined)),
-    ).rejects.toThrow("Session has no captured claims (auth bug)");
+    ).rejects.toThrow("Session is missing user claims. This usually means your token expired or was issued before a JWT rotation. Try re-authenticating with: mcp-coordinator login");
     expect(services.consultation.getThread("org-cons", thread.id)!.status).toBe("resolving");
   });
 
@@ -496,7 +496,7 @@ describe("consultation-tools: propose_resolution / approve_resolution / contest_
     const handler = getHandler(server, "contest_resolution");
     await expect(
       handler({ thread_id: thread.id, agent_id: "init-1", reason: "no" }, fakeExtra(undefined)),
-    ).rejects.toThrow("Session has no captured claims (auth bug)");
+    ).rejects.toThrow("Session is missing user claims. This usually means your token expired or was issued before a JWT rotation. Try re-authenticating with: mcp-coordinator login");
     expect(services.consultation.getThread("org-cons", thread.id)!.status).toBe("resolving");
   });
 });
@@ -545,7 +545,7 @@ describe("consultation-tools: close_thread / cancel_thread", () => {
     const handler = getHandler(server, "close_thread");
     await expect(
       handler({ thread_id: thread.id, agent_id: "init-1", summary: "x" }, fakeExtra(undefined)),
-    ).rejects.toThrow("Session has no captured claims (auth bug)");
+    ).rejects.toThrow("Session is missing user claims. This usually means your token expired or was issued before a JWT rotation. Try re-authenticating with: mcp-coordinator login");
     expect(services.consultation.getThread("org-cons", thread.id)!.status).toBe("open");
   });
 
@@ -581,7 +581,7 @@ describe("consultation-tools: close_thread / cancel_thread", () => {
     const handler = getHandler(server, "cancel_thread");
     await expect(
       handler({ thread_id: thread.id, agent_id: "init-1" }, fakeExtra(undefined)),
-    ).rejects.toThrow("Session has no captured claims (auth bug)");
+    ).rejects.toThrow("Session is missing user claims. This usually means your token expired or was issued before a JWT rotation. Try re-authenticating with: mcp-coordinator login");
     expect(services.consultation.getThread("org-cons", thread.id)!.status).toBe("open");
   });
 });
@@ -637,7 +637,7 @@ describe("consultation-tools: get_thread", () => {
     registerConsultationTools(server, services, silentLogger, NO_CLAIMS_GETTER);
     const handler = getHandler(server, "get_thread");
     await expect(handler({ thread_id: "whatever" }, fakeExtra(undefined))).rejects.toThrow(
-      "Session has no captured claims (auth bug)",
+      "Session is missing user claims. This usually means your token expired or was issued before a JWT rotation. Try re-authenticating with: mcp-coordinator login",
     );
   });
 });
@@ -691,7 +691,7 @@ describe("consultation-tools: get_thread_updates", () => {
     registerConsultationTools(server, services, silentLogger, NO_CLAIMS_GETTER);
     const handler = getHandler(server, "get_thread_updates");
     await expect(handler({ agent_id: "resp-1" }, fakeExtra(undefined))).rejects.toThrow(
-      "Session has no captured claims (auth bug)",
+      "Session is missing user claims. This usually means your token expired or was issued before a JWT rotation. Try re-authenticating with: mcp-coordinator login",
     );
   });
 });
@@ -741,7 +741,7 @@ describe("consultation-tools: list_threads", () => {
     registerConsultationTools(server, services, silentLogger, NO_CLAIMS_GETTER);
     const handler = getHandler(server, "list_threads");
     await expect(handler({}, fakeExtra(undefined))).rejects.toThrow(
-      "Session has no captured claims (auth bug)",
+      "Session is missing user claims. This usually means your token expired or was issued before a JWT rotation. Try re-authenticating with: mcp-coordinator login",
     );
   });
 });
@@ -776,7 +776,7 @@ describe("consultation-tools: log_action_summary", () => {
     const handler = getHandler(server, "log_action_summary");
     await expect(
       handler({ session_id: "s1", agent_id: "init-1", summary: "x" }, fakeExtra(undefined)),
-    ).rejects.toThrow("Session has no captured claims (auth bug)");
+    ).rejects.toThrow("Session is missing user claims. This usually means your token expired or was issued before a JWT rotation. Try re-authenticating with: mcp-coordinator login");
     expect(services.consultation.getActionSummariesBySession("org-cons", "s1")).toEqual([]);
   });
 });

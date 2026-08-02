@@ -11,7 +11,7 @@
  * This avoids spinning up a real HTTP server and verifies:
  *  1. Tool reads extra.sessionId and looks up claims.
  *  2. Tool throws "MCP tool requires a session" when sessionId is absent.
- *  3. Tool throws "Session has no captured claims (auth bug)" when claims are missing.
+ *  3. Tool throws "Session is missing user claims. This usually means your token expired or was issued before a JWT rotation. Try re-authenticating with: mcp-coordinator login" when claims are missing.
  *  4. Tool scopes underlying service calls to claims.org (not literal "default").
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
@@ -177,7 +177,7 @@ describe("agents-tools: register_agent", () => {
     const handler = getHandler(server, "register_agent");
     await expect(
       handler({ agent_id: "a1", name: "Agent1", modules: [] }, fakeExtra("sess-42")),
-    ).rejects.toThrow("Session has no captured claims (auth bug)");
+    ).rejects.toThrow("Session is missing user claims. This usually means your token expired or was issued before a JWT rotation. Try re-authenticating with: mcp-coordinator login");
   });
 
   it("registers agent under claims.org (not 'default')", async () => {
@@ -250,7 +250,7 @@ describe("files-tools: hot_files", () => {
     registerFilesTools(server, services, silentLogger, () => null);
     const handler = getHandler(server, "hot_files");
     await expect(handler({ since_minutes: 30 }, fakeExtra("sess-x"))).rejects.toThrow(
-      "Session has no captured claims (auth bug)",
+      "Session is missing user claims. This usually means your token expired or was issued before a JWT rotation. Try re-authenticating with: mcp-coordinator login",
     );
   });
 

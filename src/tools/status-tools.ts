@@ -4,6 +4,7 @@ import type { CoordinatorServices } from "../server-setup.js";
 import type { Logger } from "../logger.js";
 import type { AuthClaims } from "../auth.js";
 import { safeJsonParse } from "../json-utils.js";
+import { unauthorizedError } from "./session-claims-error.js";
 
 /**
  * S1: status + coordination helper MCP tools (2 tools).
@@ -36,7 +37,7 @@ export function registerStatusTools(
     { readOnlyHint: true, title: "Coordinator status" },
     async (_args, extra) => {
       const claims = getSessionClaims(extra.sessionId ?? "");
-      if (!claims) throw new Error("Session has no captured claims (auth bug)");
+      if (!claims) throw unauthorizedError();
       const online = registry.listOnline(claims.org);
       const openThreads = consultation.listThreads(claims.org, { status: "open" });
       const resolvingThreads = consultation.listThreads(claims.org, { status: "resolving" });
@@ -91,7 +92,7 @@ export function registerStatusTools(
     { readOnlyHint: true, title: "Wait for peers" },
     async ({ agent_id, min_peers, timeout_seconds }, extra) => {
       const claims = getSessionClaims(extra.sessionId ?? "");
-      if (!claims) throw new Error("Session has no captured claims (auth bug)");
+      if (!claims) throw unauthorizedError();
       const targetPeers = min_peers ?? 1;
       const cappedSeconds = Math.min(timeout_seconds ?? 30, MAX_WAIT_TIMEOUT_SECONDS);
       const timeoutMs = cappedSeconds * 1000;

@@ -4,6 +4,7 @@ import type { CoordinatorServices } from "../server-setup.js";
 import type { Logger } from "../logger.js";
 import type { AuthClaims } from "../auth.js";
 import type { DependencyMap } from "../types.js";
+import { unauthorizedError } from "./session-claims-error.js";
 
 /**
  * S1: dependency map MCP tools (3 tools).
@@ -32,7 +33,7 @@ export function registerDependenciesTools(
     { readOnlyHint: false, destructiveHint: true, title: "Set dependency map" },
     async ({ modules }, extra) => {
       const claims = getSessionClaims(extra.sessionId ?? "");
-      if (!claims) throw new Error("Session has no captured claims (auth bug)");
+      if (!claims) throw unauthorizedError();
 
       let parsed: unknown;
       try {
@@ -81,7 +82,7 @@ export function registerDependenciesTools(
     { readOnlyHint: true, title: "Get blast radius" },
     async ({ module_id }, extra) => {
       const claims = getSessionClaims(extra.sessionId ?? "");
-      if (!claims) throw new Error("Session has no captured claims (auth bug)");
+      if (!claims) throw unauthorizedError();
       const radius = depMap.getBlastRadius(claims.org, module_id);
       return { content: [{ type: "text", text: JSON.stringify(radius) }] };
     },
@@ -96,7 +97,7 @@ export function registerDependenciesTools(
     { readOnlyHint: true, title: "Get module info" },
     async ({ module_id }, extra) => {
       const claims = getSessionClaims(extra.sessionId ?? "");
-      if (!claims) throw new Error("Session has no captured claims (auth bug)");
+      if (!claims) throw unauthorizedError();
       const info = depMap.getModuleInfo(claims.org, module_id);
       return { content: [{ type: "text", text: JSON.stringify(info) }] };
     },
