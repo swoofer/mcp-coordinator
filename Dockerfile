@@ -9,7 +9,7 @@
 # ---- Stage 1: builder ------------------------------------------------------
 # Compiles TypeScript -> dist/ using the full devDependency set. This stage
 # never ships; only its dist/ + production node_modules are copied forward.
-FROM node:26-alpine@sha256:e88a35be04478413b7c71c455cd9865de9b9360e1f43456be5951032d7ac1a66 AS builder
+FROM node:26-alpine@sha256:aadf416b2cdce311a8811ba3f0608a61b77dbf997500e2eafe781b51f6a0b019 AS builder
 
 # Node 25+ no longer bundles Corepack, so install it explicitly, then enable
 # it so the `packageManager` field in package.json (pnpm@<version>) drives the
@@ -46,7 +46,7 @@ RUN pnpm prune --prod
 # ---- Stage 2: runtime ------------------------------------------------------
 # Minimal alpine + a non-root user. Only the compiled output, prod modules,
 # dashboard assets, and package metadata land here.
-FROM node:26-alpine@sha256:e88a35be04478413b7c71c455cd9865de9b9360e1f43456be5951032d7ac1a66 AS runtime
+FROM node:26-alpine@sha256:aadf416b2cdce311a8811ba3f0608a61b77dbf997500e2eafe781b51f6a0b019 AS runtime
 
 # wget is used by HEALTHCHECK below; busybox in alpine ships it but we make
 # it explicit so the probe still works if the base image is swapped.
