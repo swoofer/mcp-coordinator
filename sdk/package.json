@@ -16,7 +16,7 @@
     "build": "tsc",
     "test": "vitest run"
   },
-  "engines": { "node": ">=20" },
+  "engines": { "node": ">=22" },
   "devDependencies": {
     "typescript": "^5.7.0",
     "vitest": "^4.1.0"

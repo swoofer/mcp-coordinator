@@ -10,11 +10,26 @@
 // (sweeper leader election, boot migration), INCR+EXPIRE (rate limiter),
 // SETEX (membership cache), pub/sub (token-epoch bump). No client library is
 // mandated upstream ("Redis or compatible"); we use the official `redis`
-// (node-redis v5) client.
+// (node-redis v6) client.
 
 import { createClient } from "redis";
 
-export type RedisClient = ReturnType<typeof createClient>;
+/**
+ * `createClient` is generic. `ReturnType<typeof createClient>` instantiates
+ * those generics with their CONSTRAINTS — RESP widens to `2 | 3` — whereas the
+ * actual `createClient({ url })` call below infers them, giving RESP `3`.
+ * node-redis v6 made RedisClientType invariant in RESP, so the two stopped
+ * being assignable to each other (TS2322). Deriving the alias from a real call
+ * expression keeps it exactly in sync with the client we construct.
+ *
+ * The named helper (rather than `typeof createClient<...>`) also keeps the
+ * inferred type nameable for declaration emit.
+ */
+function makeClient(url: string) {
+  return createClient({ url });
+}
+
+export type RedisClient = ReturnType<typeof makeClient>;
 
 export interface RedisHandles {
   /** Main client: commands, locks, publishes. */
@@ -47,7 +62,7 @@ export async function connectRedis(url: string, logger?: MinimalLogger): Promise
     warn: (o, m) => console.warn(m ?? o, o),
     error: (o, m) => console.error(m ?? o, o),
   };
-  const client = createClient({ url });
+  const client = makeClient(url);
   // node-redis emits 'error' events on connection loss; without a listener
   // they become uncaught exceptions. Reconnection is automatic.
   client.on("error", (err) => log.error({ err }, "Redis client error"));

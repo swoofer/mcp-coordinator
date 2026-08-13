@@ -29,8 +29,9 @@ After completing this guide you will have:
 
 ## Prerequisites
 
-- **Node.js >=20** (the codebase uses `AbortSignal.timeout`, `crypto.timingSafeEqual`,
-  and other Node 20+ primitives; older versions will not boot)
+- **Node.js >=22** (the codebase uses `AbortSignal.timeout`, `crypto.timingSafeEqual`,
+  and other modern primitives; `better-sqlite3` 13 additionally requires Node 22+,
+  so older versions will not boot)
 - **A GitHub organization** (free tier is fine; the read:org scope works
   on any plan)
 - **A public hostname** for production OR a localhost URL for development
@@ -39,7 +40,7 @@ After completing this guide you will have:
 
 ### OS-specific notes
 
-The coordinator is pure Node and runs anywhere Node 20+ runs.
+The coordinator is pure Node and runs anywhere Node 22+ runs.
 
 - **Linux / macOS**: install Node via `nvm` or your package manager. SQLite
   is bundled (`better-sqlite3` native module). The DB file is `chmod 0600`
@@ -48,7 +49,7 @@ The coordinator is pure Node and runs anywhere Node 20+ runs.
   POSIX chmod is skipped silently -- secure the data directory via NTFS
   ACLs instead.
 - **Windows (Docker)**: see the `Dockerfile` at the repo root. The image
-  runs Node 20 on Debian slim; mount `./data` as a volume.
+  runs Node 26 on Alpine; mount `./data` as a volume.
 
 ## 1. Install
 
