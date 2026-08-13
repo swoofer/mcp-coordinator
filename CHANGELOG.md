@@ -1,5 +1,31 @@
 # Changelog
 
+## [2.0.0](https://github.com/swoofer/mcp-coordinator/compare/v1.5.0...v2.0.0) (2026-08-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* **deps:** minimum supported Node is now 22. better-sqlite3@13 declares engines node >=22 and Node 20 reached EOL on 2026-04-30. engines updated in package.json and sdk/package.json; CI matrix moved from 20/22 to 22/24.
+
+### Features
+
+* **audit:** key the hash chain with HMAC, record real actor ids, and key boot-time audit rows ([#238](https://github.com/swoofer/mcp-coordinator/issues/238)) ([7da8cb9](https://github.com/swoofer/mcp-coordinator/commit/7da8cb9fa6cd32bd70eccde73e8d8c2f078b3baf))
+
+
+### Bug Fixes
+
+* auth/route hardening (AUTO_PROVISION + lockout on CLI grant, scoring-stats org scope, method allowlist, /metrics auth) ([#232](https://github.com/swoofer/mcp-coordinator/issues/232)) ([c9c05a5](https://github.com/swoofer/mcp-coordinator/commit/c9c05a54228feca13cc8875ee6436c8ddd69cf66))
+* **auth:** apply revocation and admin-route guards to the cookie auth path ([#229](https://github.com/swoofer/mcp-coordinator/issues/229)) ([6d6712a](https://github.com/swoofer/mcp-coordinator/commit/6d6712a7de02a0dbd6331311cd4620732c2117f0))
+* **ci:** correct build-no-native comment, remove dead bun_target matrix field ([#237](https://github.com/swoofer/mcp-coordinator/issues/237)) ([7748d40](https://github.com/swoofer/mcp-coordinator/commit/7748d40a16630b0333666ca9232a39b75bb2f9c4))
+* **security:** encrypt lingering plaintext IdP tokens at boot & detect key rotation with plaintext-only rows ([#235](https://github.com/swoofer/mcp-coordinator/issues/235)) ([607e245](https://github.com/swoofer/mcp-coordinator/commit/607e245f2192b1545a69b1f837a5f2d14e2b8dad))
+* **security:** reject low-complexity master keys that evade Shannon entropy ([#234](https://github.com/swoofer/mcp-coordinator/issues/234)) ([d3d266c](https://github.com/swoofer/mcp-coordinator/commit/d3d266cdfb99ad176be42cce62ef886a05be344a))
+* **serve-http:** report the actually-bound port so tests can stop racing for one ([#250](https://github.com/swoofer/mcp-coordinator/issues/250)) ([8b337f0](https://github.com/swoofer/mcp-coordinator/commit/8b337f0a081d0d0e0c3724890b9cc847b6c5dd6f))
+
+
+### Maintenance
+
+* **deps:** dependencies group (12 updates), node-redis v6 types, and Node floor &gt;=22 ([#251](https://github.com/swoofer/mcp-coordinator/issues/251)) ([830f716](https://github.com/swoofer/mcp-coordinator/commit/830f716867f0dd2a4edf0e18f059c239fa09a149))
+
 ## [1.5.0](https://github.com/swoofer/mcp-coordinator/compare/v1.4.0...v1.5.0) (2026-07-22)
 
 
