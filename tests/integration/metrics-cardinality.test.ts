@@ -48,7 +48,7 @@ async function hitAllBatched(baseUrl: string, paths: string[], batchSize = 50): 
 }
 
 describe("Prometheus route-label cardinality is bounded (performance-03)", () => {
-  let harness: Awaited<ReturnType<typeof createHttpHarness>>;
+  let harness: Awaited<ReturnType<typeof createHttpHarness>> | undefined;
   let baseUrl: string;
 
   beforeAll(async () => {
@@ -57,7 +57,11 @@ describe("Prometheus route-label cardinality is bounded (performance-03)", () =>
   }, 30_000);
 
   afterAll(async () => {
-    await harness.cleanup();
+    // Guarded: if beforeAll's createHttpHarness() threw, `harness` is
+    // undefined and an unguarded cleanup() throws a TypeError that REPLACES
+    // the real setup error in the report — which is how a port collision here
+    // surfaced as "Cannot read properties of undefined (reading 'cleanup')".
+    await harness?.cleanup();
   });
 
   it("R1/R4: many distinct 404 paths collapse into ONE <unmatched> series, not one per path", async () => {
