@@ -24,7 +24,6 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import http from "node:http";
 import { fileURLToPath } from "node:url";
 import { startServer, type ServerHandle } from "../../src/serve-http.js";
 
@@ -38,22 +37,6 @@ export interface McpHarness {
 
 const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(__filename), "..", "..");
-
-function getFreePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const s = http.createServer().listen(0, "127.0.0.1", () => {
-      const addr = s.address();
-      if (addr === null || typeof addr === "string") {
-        s.close();
-        reject(new Error("getFreePort: could not resolve port"));
-        return;
-      }
-      const p = addr.port;
-      s.close(() => resolve(p));
-    });
-    s.on("error", reject);
-  });
-}
 
 /**
  * Spawn `src/index.ts` over stdio and connect a client to it.
@@ -127,14 +110,18 @@ export async function createHttpHarness(opts?: {
   mqttTcpPort?: number;
 }): Promise<McpHarness & { server: ServerHandle; httpPort: number }> {
   const dataDir = opts?.dataDir ?? mkdtempSync(path.join(tmpdir(), "mcp-http-harness-"));
-  const port = opts?.port ?? (await getFreePort());
-  const mqttTcpPort = opts?.mqttTcpPort ?? (await getFreePort());
 
+  // Port 0 = "OS, pick a free port as you bind it". We used to probe for a
+  // free port by binding :0, closing, and handing the number to startServer —
+  // which left a window where a parallel vitest worker doing the same dance
+  // could be handed the same port and win the re-bind, so one of us died with
+  // EADDRINUSE. Binding once removes the window entirely.
   const server = await startServer({
-    port,
+    port: opts?.port ?? 0,
     dataDir,
-    mqttTcpPort,
+    mqttTcpPort: opts?.mqttTcpPort ?? 0,
   });
+  const port = server.port;
 
   const transport = new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`));
   const client = new Client(

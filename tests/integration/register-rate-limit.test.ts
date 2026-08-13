@@ -81,15 +81,6 @@ afterEach(async () => {
   }
 });
 
-function getFreePort(): Promise<number> {
-  return new Promise((resolve) => {
-    const s = http.createServer().listen(0, "127.0.0.1", () => {
-      const p = (s.address() as { port: number }).port;
-      s.close(() => resolve(p));
-    });
-  });
-}
-
 interface RegisterResp {
   status: number;
   headers: http.IncomingHttpHeaders;
@@ -135,10 +126,15 @@ function postRegister(
 
 async function bootServer(prefix: string): Promise<{ port: number }> {
   dataDir = mkdtempSync(path.join(tmpdir(), prefix));
-  const port = await getFreePort();
-  const mqttTcpPort = await getFreePort();
-  handle = await startServer({ port, dataDir, mqttTcpPort, registerSignalHandlers: false });
-  return { port };
+  // Port 0 = bound-once, OS-assigned. Probing for a free port and re-binding
+  // it left a window for a parallel vitest worker to steal it (EADDRINUSE).
+  handle = await startServer({
+    port: 0,
+    dataDir,
+    mqttTcpPort: 0,
+    registerSignalHandlers: false,
+  });
+  return { port: handle.port };
 }
 
 describe("POST /api/auth/register — per-IP rate limit (securite-surface-05)", () => {

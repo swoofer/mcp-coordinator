@@ -435,9 +435,12 @@ export interface ServerOptions {
   dataDir?: string;
   /**
    * MQTT TCP listener port. Defaults to COORDINATOR_MQTT_TCP_PORT env or 1883.
-   * Pass an OS-ephemeral free port (see net.createServer().listen(0)) to run
-   * multiple coordinator PROCESSES side by side (e.g. parallel test workers)
-   * without port collision. Does NOT enable multiple concurrent coordinators
+   * Pass 0 to run multiple coordinator PROCESSES side by side (e.g. parallel
+   * test workers) without port collision: the OS assigns a free port as the
+   * broker binds, and the internal bridge follows it. Do NOT pre-probe a free
+   * port and pass the number — closing the probe socket before we re-bind
+   * leaves a window for another process to take it (EADDRINUSE).
+   * Does NOT enable multiple concurrent coordinators
    * within the same process — see architecture-02 note above serverRunning:
    * this module holds mono-instance-per-process state, so only one
    * startServer() may be live at a time in a given process.
@@ -469,6 +472,12 @@ export interface ServerOptions {
  * additive.
  */
 export interface ServerHandle {
+  /**
+   * The port actually bound — not necessarily the one passed in. Callers that
+   * pass `port: 0` (the race-free way to get an ephemeral port: let the OS
+   * pick it *while* binding, rather than probing for a free one and racing to
+   * re-bind it) read the real port back from here.
+   */
   port: number;
   httpServer: import("node:http").Server;
   stop: () => Promise<void>;
@@ -906,9 +915,10 @@ interface MqttWiring {
   redis?: RedisHandles;
 }
 
-async function wireMqtt(
-  opts: MqttWiring,
-): Promise<{ broker: Awaited<ReturnType<typeof startEmbeddedMqttBroker>> | undefined }> {
+async function wireMqtt(opts: MqttWiring): Promise<{
+  broker: Awaited<ReturnType<typeof startEmbeddedMqttBroker>> | undefined;
+  resolvedMqttTcpPort: number;
+}> {
   const { mqttTcpPort, mqttWsPath, httpServer, log, redis } = opts;
   // External-broker support: when COORDINATOR_MQTT_EMBEDDED=false, skip
   // starting the embedded Aedes broker and connect the internal bridge to
@@ -960,8 +970,12 @@ async function wireMqtt(
   const internalToken = AUTH_ENABLED
     ? await createToken("coordinator-internal", "internal", "1h")
     : undefined;
+  // The broker reports the port it actually bound; `mqttTcpPort` may be the
+  // 0 sentinel meaning "OS, pick one". Connecting the bridge to `:0` would
+  // send mqtt.js to its 1883 default and fail with ECONNREFUSED.
+  const resolvedMqttTcpPort = broker?.tcpPort ?? mqttTcpPort;
   await services.mqttBridge.connect({
-    url: MQTT_URL || `mqtt://127.0.0.1:${mqttTcpPort}`,
+    url: MQTT_URL || `mqtt://127.0.0.1:${resolvedMqttTcpPort}`,
     username: AUTH_ENABLED ? "coordinator-internal" : MQTT_USERNAME,
     password: AUTH_ENABLED ? internalToken : MQTT_PASSWORD,
     // P1 fix: stable agent identity for LWT topic
@@ -999,7 +1013,7 @@ async function wireMqtt(
       })
       .catch(() => processDeparture());
   });
-  return { broker };
+  return { broker, resolvedMqttTcpPort };
 }
 
 /**
@@ -1354,36 +1368,56 @@ async function startServerInner(opts?: ServerOptions): Promise<ServerHandle> {
   }, MCP_SESSION_SWEEP_INTERVAL_MS);
   if (typeof mcpSessionSweepHandle.unref === "function") mcpSessionSweepHandle.unref();
 
-  const httpServer = createServer(
-    createHttpHandler({ phase2Bootstrap, port, sessions, sessionClaims, sessionLastActivity }),
-  );
+  const handlerCtx: HttpHandlerCtx = {
+    phase2Bootstrap,
+    port,
+    sessions,
+    sessionClaims,
+    sessionLastActivity,
+  };
+  const httpServer = createServer(createHttpHandler(handlerCtx));
 
-  const { broker } = await wireMqtt({ mqttTcpPort, mqttWsPath, httpServer, log, redis });
+  const { broker, resolvedMqttTcpPort } = await wireMqtt({
+    mqttTcpPort,
+    mqttWsPath,
+    httpServer,
+    log,
+    redis,
+  });
 
   // Wait for the HTTP server to be actually listening before resolving the
   // returned handle. Otherwise callers (tests, essaim) may try to connect
   // before the port is bound.
   const bindHost = process.env.COORDINATOR_BIND?.trim() || "127.0.0.1";
-  await new Promise<void>((resolve, reject) => {
+  const boundPort = await new Promise<number>((resolve, reject) => {
     const onError = (err: Error) => reject(err);
     httpServer.once("error", onError);
     httpServer.listen(port, bindHost, () => {
       httpServer.off("error", onError);
+      // `port: 0` asks the OS for an ephemeral port, so the number we were
+      // called with is a sentinel, not the port we ended up on. Read the real
+      // one back and use it everywhere downstream: the returned handle, the
+      // startup banner, and — importantly — the handler ctx, whose
+      // DNS-rebinding allowlist would otherwise be built from `:0` and match
+      // no real Origin.
+      const addr = httpServer.address();
+      const actualPort = addr !== null && typeof addr !== "string" ? addr.port : port;
+      handlerCtx.port = actualPort;
       log.info(
         {
-          port,
+          port: actualPort,
           host: bindHost,
-          mcp: `POST http://localhost:${port}/mcp`,
-          rest: `POST http://localhost:${port}/api/*`,
-          sse: `GET http://localhost:${port}/api/events`,
-          mqtt_tcp: MQTT_URL || `mqtt://127.0.0.1:${mqttTcpPort}`,
+          mcp: `POST http://localhost:${actualPort}/mcp`,
+          rest: `POST http://localhost:${actualPort}/api/*`,
+          sse: `GET http://localhost:${actualPort}/api/events`,
+          mqtt_tcp: MQTT_URL || `mqtt://127.0.0.1:${resolvedMqttTcpPort}`,
           mqtt_ws: MQTT_EMBEDDED
-            ? `ws://localhost:${port}${mqttWsPath}`
+            ? `ws://localhost:${actualPort}${mqttWsPath}`
             : "(embedded broker disabled)",
         },
         "Coordinator v3 started",
       );
-      resolve();
+      resolve(actualPort);
     });
   });
 
@@ -1404,7 +1438,7 @@ async function startServerInner(opts?: ServerOptions): Promise<ServerHandle> {
   });
 
   return {
-    port,
+    port: boundPort,
     httpServer,
     stop,
     sweeper: retentionSweeper,
