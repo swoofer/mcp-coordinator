@@ -11,6 +11,11 @@ on:
         description: "Git tag to build from (e.g. v0.10.9)"
         required: true
         type: string
+      promote_latest:
+        description: "Also move :latest to this tag. Leave off when retrying an OLD release — it would shift :latest backwards."
+        required: false
+        default: false
+        type: boolean
   # Called from release.yml after release-please tags + npm publish
   # complete, so the GHCR push runs in the same workflow run as the
   # release. (GitHub's anti-recursive policy means a tag push from
@@ -22,6 +27,11 @@ on:
         description: "Git tag to build from"
         required: true
         type: string
+      promote_latest:
+        description: "Also move :latest to this tag. release.yml passes true — its docker job is gated on release_created, so the tag is always the newest one."
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -68,11 +78,29 @@ jobs:
       # `push`), not `workflow_call`. Asking the input directly is the
       # only reliable signal.
       #
-      # `:latest` is intentionally NOT promoted on workflow_dispatch /
-      # workflow_call — that protects against accidentally shifting
-      # `:latest` backwards when retrying a publish of an older release.
-      # The chained release-please path passes the new release tag via
-      # workflow_call, so :latest still updates on real tag pushes.
+      # `:latest` promotion — see the `promote_latest` input.
+      #
+      # This gate used to be `github.event_name == 'push' && startsWith(
+      # github.ref, 'refs/tags/v')` alone, on the assumption that ":latest
+      # still updates on real tag pushes". There ARE no real tag pushes: a
+      # tag pushed by release-please's GITHUB_TOKEN does not trigger the
+      # `push: tags` path above (the very anti-recursion policy that made
+      # the workflow_call hook necessary). So the only path that ever runs
+      # on a release could never promote `:latest`, and it silently sat on
+      # v0.13.0 — the last release published while a tag-push path still
+      # existed — for nine releases, through v2.0.0.
+      #
+      # The backwards-shift concern behind the old gate is real but applies
+      # only to the manual retry path, so it stays opt-in there. The chained
+      # `docker:` job in release.yml is gated on `release_created == 'true'`,
+      # which makes its `inputs.tag` structurally the newest tag, so it
+      # passes promote_latest: true.
+      #
+      # Written as `a || b` rather than `a == true`: GitHub coerces mixed-type
+      # `==` operands to numbers, so a string 'true' would compare false. The
+      # `||` form is truthy-correct whether the input arrives as a boolean or
+      # a string, and yields the untouched `b` when inputs are absent
+      # entirely (the push-tag path, where the `inputs` context is empty).
       - name: Derive image tags
         id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302  # v6.2.0
@@ -85,12 +113,19 @@ jobs:
           # `:latest`.
           flavor: |
             latest=false
+          # Order matters, and `latest` MUST stay last. metadata-action takes
+          # `version.main` — and with it the org.opencontainers.image.version
+          # label — from the FIRST enabled entry. On the workflow_call path
+          # github.ref is refs/heads/main, so both semver matchers are inert;
+          # a leading raw `latest` would win and label every release image
+          # `version=latest` instead of the real version. Order does not change
+          # the pushed tag set (main + all partials are pushed either way).
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
             type=match,pattern=v(\d+\.\d+\.\d+),group=1,value=${{ inputs.tag }},enable=${{ inputs.tag != '' }}
             type=match,pattern=v(\d+\.\d+),group=1,value=${{ inputs.tag }},enable=${{ inputs.tag != '' }}
+            type=raw,value=latest,enable=${{ inputs.promote_latest || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) }}
 
       - name: Build and push (linux/amd64, linux/arm64)
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a  # v7.3.0

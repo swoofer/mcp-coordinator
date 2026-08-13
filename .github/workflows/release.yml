@@ -82,6 +82,10 @@ jobs:
     uses: ./.github/workflows/docker-publish.yml
     with:
       tag: ${{ needs.release.outputs.tag_name }}
+      # Safe because this job is gated on `release_created == 'true'` above:
+      # tag_name is always the release just cut, never an older one, so
+      # `:latest` can only move forward from here.
+      promote_latest: true
 
   # Chained binary release on every release-please cut. Same anti-recursive
   # rationale as `docker` above: a tag push from release-please's
