@@ -78,13 +78,16 @@ describe("Sweeper — Phase-1-only wiring (performance-01)", () => {
     for (const k of ENV_KEYS) envSnapshot[k] = process.env[k];
     for (const k of ENV_KEYS) delete process.env[k]; // Phase-1-only: OAUTH_ENABLED unset
 
-    const port = await getFreePort();
-    const mqttTcpPort = await getFreePort();
     dataDir = mkdtempSync(path.join(tmpdir(), "sweeper-phase1-"));
 
     const startSpy = vi.spyOn(Sweeper.prototype, "start");
     try {
-      handle = await startServer({ port, dataDir, mqttTcpPort, registerSignalHandlers: false });
+      handle = await startServer({
+        port: 0,
+        dataDir,
+        mqttTcpPort: 0,
+        registerSignalHandlers: false,
+      });
       expect(startSpy).toHaveBeenCalledTimes(1);
     } finally {
       startSpy.mockRestore();
@@ -98,11 +101,14 @@ describe("Sweeper — Phase-1-only wiring (performance-01)", () => {
     for (const k of ENV_KEYS) envSnapshot[k] = process.env[k];
     for (const k of ENV_KEYS) delete process.env[k];
 
-    const port = await getFreePort();
-    const mqttTcpPort = await getFreePort();
     dataDir = mkdtempSync(path.join(tmpdir(), "sweeper-phase1-e2e-"));
 
-    handle = await startServer({ port, dataDir, mqttTcpPort, registerSignalHandlers: false });
+    handle = await startServer({
+      port: 0,
+      dataDir,
+      mqttTcpPort: 0,
+      registerSignalHandlers: false,
+    });
 
     const db = getDb();
     // Parent rows required by FK constraints (thread_messages -> agents/threads,
@@ -163,8 +169,10 @@ describe("Sweeper — Phase-1-only wiring (performance-01)", () => {
     envSnapshot = {};
     for (const k of ENV_KEYS) envSnapshot[k] = process.env[k];
 
+    // This one keeps the pre-probe: COORDINATOR_PUBLIC_URL must carry the
+    // port and is read by startServer at boot, so the number has to exist
+    // before the server binds. mqttTcpPort has no such constraint.
     const port = await getFreePort();
-    const mqttTcpPort = await getFreePort();
     dataDir = mkdtempSync(path.join(tmpdir(), "sweeper-phase2-"));
 
     process.env.COORDINATOR_OAUTH_ENABLED = "true";
@@ -183,7 +191,12 @@ describe("Sweeper — Phase-1-only wiring (performance-01)", () => {
     // instance when Phase 2 is active.
     const startSpy = vi.spyOn(Sweeper.prototype, "start");
     try {
-      handle = await startServer({ port, dataDir, mqttTcpPort, registerSignalHandlers: false });
+      handle = await startServer({
+        port,
+        dataDir,
+        mqttTcpPort: 0,
+        registerSignalHandlers: false,
+      });
       expect(startSpy).toHaveBeenCalledTimes(1);
     } finally {
       startSpy.mockRestore();

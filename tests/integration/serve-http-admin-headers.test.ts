@@ -54,15 +54,6 @@ const FIXTURES: Array<[string, string]> = [
   // /dashboard/admin/orgs.html — needs an "admin" subdir. Created separately.
 ];
 
-function getFreePort(): Promise<number> {
-  return new Promise((resolve) => {
-    const s = http.createServer().listen(0, () => {
-      const p = (s.address() as { port: number }).port;
-      s.close(() => resolve(p));
-    });
-  });
-}
-
 interface Resp {
   status: number;
   headers: http.IncomingHttpHeaders;
@@ -100,9 +91,6 @@ let createdSubdir: string | null = null;
 
 beforeAll(async () => {
   dataDir = mkdtempSync(path.join(tmpdir(), "admin-headers-"));
-  port = await getFreePort();
-  const mqttTcpPort = await getFreePort();
-
   // Materialise fixtures under dashboard/public/. Refuse to overwrite any
   // file that already exists — bail out loudly rather than corrupting source.
   for (const [name, body] of FIXTURES) {
@@ -129,11 +117,12 @@ beforeAll(async () => {
   createdPaths.push(subFile);
 
   handle = await startServer({
-    port,
+    port: 0,
     dataDir,
-    mqttTcpPort,
+    mqttTcpPort: 0,
     registerSignalHandlers: false,
   });
+  port = handle.port;
 });
 
 afterAll(async () => {

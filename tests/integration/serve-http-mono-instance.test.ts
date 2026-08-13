@@ -24,15 +24,6 @@ import path from "path";
 import http from "http";
 import { startServer, type ServerHandle } from "../../src/serve-http.js";
 
-function getFreePort(): Promise<number> {
-  return new Promise((resolve) => {
-    const s = http.createServer().listen(0, () => {
-      const p = (s.address() as { port: number }).port;
-      s.close(() => resolve(p));
-    });
-  });
-}
-
 function get(p: number, urlPath: string): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
     const req = http.request(
@@ -58,12 +49,10 @@ function mkDataDir(prefix: string): string {
 }
 
 async function boot(prefix: string): Promise<ServerHandle> {
-  const port = await getFreePort();
-  const mqttTcpPort = await getFreePort();
   const handle = await startServer({
-    port,
+    port: 0,
     dataDir: mkDataDir(prefix),
-    mqttTcpPort,
+    mqttTcpPort: 0,
     registerSignalHandlers: false,
   });
   handles.push(handle);
@@ -92,13 +81,11 @@ describe("architecture-02: mono-instance-per-process fail-closed guard", () => {
   it("a 2nd startServer() without an intervening stop() throws, and does not disturb the 1st instance", async () => {
     const first = await boot("arch02-first-");
 
-    const secondPort = await getFreePort();
-    const secondMqttPort = await getFreePort();
     await expect(
       startServer({
-        port: secondPort,
+        port: 0,
         dataDir: mkDataDir("arch02-second-"),
-        mqttTcpPort: secondMqttPort,
+        mqttTcpPort: 0,
         registerSignalHandlers: false,
       }),
     ).rejects.toThrow(/already running in this process/);
@@ -130,9 +117,9 @@ describe("architecture-02: mono-instance-per-process fail-closed guard", () => {
 
     await expect(
       startServer({
-        port: await getFreePort(),
+        port: 0,
         dataDir: mkDataDir("arch02-unblock2-"),
-        mqttTcpPort: await getFreePort(),
+        mqttTcpPort: 0,
         registerSignalHandlers: false,
       }),
     ).rejects.toThrow(/already running in this process/);

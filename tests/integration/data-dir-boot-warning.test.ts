@@ -39,6 +39,11 @@ const spawn: (
 // stable across src/serve-http.ts and src/index.ts.
 const WARNING_SUBSTRING = "COORDINATOR_DATA_DIR not set — using cwd-relative ./data";
 
+// In-process suites pass `port: 0` and read handle.port back (no race). Here
+// the server runs as a SUBPROCESS and we poll its /health from the parent, so
+// the parent has to know the port up front to build the URL — `PORT=0` would
+// leave it discoverable only by scraping the child's stdout banner. Keeping
+// the pre-probe, with its small window for another process to take the port.
 function getFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const s = http.createServer().listen(0, "127.0.0.1", () => {

@@ -20,26 +20,9 @@ import { describe, it, expect, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import http from "node:http";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { startServer, type ServerHandle } from "../../src/serve-http.js";
-
-function getFreePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const s = http.createServer().listen(0, "127.0.0.1", () => {
-      const addr = s.address();
-      if (addr === null || typeof addr === "string") {
-        s.close();
-        reject(new Error("getFreePort: could not resolve port"));
-        return;
-      }
-      const p = addr.port;
-      s.close(() => resolve(p));
-    });
-    s.on("error", reject);
-  });
-}
 
 async function openSession(port: number): Promise<{ client: Client; sessionId: string }> {
   const transport = new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`));
@@ -101,11 +84,15 @@ function setTestTtl(ms: string): void {
 describe("MCP HTTP idle session eviction (performance-07, protocole-mcp-07)", () => {
   it("a session left open (never DELETEd) is evicted after the TTL once the sweep runs", async () => {
     setTestTtl("20"); // 20ms — short TTL, exercised for real (not faked timers)
-    const port = await getFreePort();
-    const mqttTcpPort = await getFreePort();
     dataDir = mkdtempSync(path.join(tmpdir(), "mcp-session-ttl-"));
 
-    handle = await startServer({ port, dataDir, mqttTcpPort, registerSignalHandlers: false });
+    handle = await startServer({
+      port: 0,
+      dataDir,
+      mqttTcpPort: 0,
+      registerSignalHandlers: false,
+    });
+    const port = handle.port;
 
     const { client, sessionId } = await openSession(port);
     expect(await sessionStillKnown(port, sessionId)).toBe(true);
@@ -123,11 +110,15 @@ describe("MCP HTTP idle session eviction (performance-07, protocole-mcp-07)", ()
 
   it("an active session (recent request) survives the sweep — no premature eviction", async () => {
     setTestTtl("5000"); // long enough to outlive this test's real-time duration
-    const port = await getFreePort();
-    const mqttTcpPort = await getFreePort();
     dataDir = mkdtempSync(path.join(tmpdir(), "mcp-session-ttl-active-"));
 
-    handle = await startServer({ port, dataDir, mqttTcpPort, registerSignalHandlers: false });
+    handle = await startServer({
+      port: 0,
+      dataDir,
+      mqttTcpPort: 0,
+      registerSignalHandlers: false,
+    });
+    const port = handle.port;
 
     const { client, sessionId } = await openSession(port);
     await client.listTools(); // real activity — refreshes sessionLastActivity
@@ -141,11 +132,15 @@ describe("MCP HTTP idle session eviction (performance-07, protocole-mcp-07)", ()
 
   it("N zombie sessions are all evicted in one sweep pass (no lingering leaks)", async () => {
     setTestTtl("20");
-    const port = await getFreePort();
-    const mqttTcpPort = await getFreePort();
     dataDir = mkdtempSync(path.join(tmpdir(), "mcp-session-ttl-n-"));
 
-    handle = await startServer({ port, dataDir, mqttTcpPort, registerSignalHandlers: false });
+    handle = await startServer({
+      port: 0,
+      dataDir,
+      mqttTcpPort: 0,
+      registerSignalHandlers: false,
+    });
+    const port = handle.port;
 
     const N = 3;
     const opened = await Promise.all(Array.from({ length: N }, () => openSession(port)));
