@@ -9,15 +9,6 @@ import http from "http";
 let handle: ServerHandle, dataDir: string, port: number;
 const FAKE_REPO_ROOT = "/abs/path";
 
-async function getFreePort(): Promise<number> {
-  return new Promise((r) => {
-    const s = http.createServer().listen(0, () => {
-      const p = (s.address() as any).port;
-      s.close(() => r(p));
-    });
-  });
-}
-
 function postJson(
   p: number,
   urlPath: string,
@@ -49,13 +40,13 @@ describe("repo-relative path contract", () => {
   beforeAll(async () => {
     dataDir = mkdtempSync(path.join(tmpdir(), "path-contract-"));
     process.env.COORDINATOR_REPO_ROOT = FAKE_REPO_ROOT;
-    port = await getFreePort();
     handle = await startServer({
-      port,
+      port: 0,
       dataDir,
-      mqttTcpPort: await getFreePort(),
+      mqttTcpPort: 0,
       registerSignalHandlers: false,
     });
+    port = handle.port;
   });
   afterAll(async () => {
     delete process.env.COORDINATOR_REPO_ROOT;

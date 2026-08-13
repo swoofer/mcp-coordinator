@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import http from "http";
-import net from "net";
 import path from "path";
 import { tmpdir } from "os";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "fs";
@@ -19,22 +18,6 @@ afterEach(async () => {
     dataDir = null;
   }
 });
-
-function getRandomPort(): number {
-  return 31100 + Math.floor(Math.random() * 200);
-}
-
-function getFreePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const srv = net.createServer();
-    srv.once("error", reject);
-    srv.listen(0, "127.0.0.1", () => {
-      const addr = srv.address();
-      const port = typeof addr === "object" && addr ? addr.port : 0;
-      srv.close(() => resolve(port));
-    });
-  });
-}
 
 interface HttpResponse {
   status: number;
@@ -89,9 +72,13 @@ function httpRequest(opts: {
 describe("S3 - HTTP integration tests for B4 (reset guard) end-to-end", () => {
   it("/health returns 200 OK with version", async () => {
     dataDir = mkdtempSync(path.join(tmpdir(), "s3-health-"));
-    const port = getRandomPort();
-    const mqttTcpPort = await getFreePort();
-    handle = await startServer({ port, dataDir, mqttTcpPort, registerSignalHandlers: false });
+    handle = await startServer({
+      port: 0,
+      dataDir,
+      mqttTcpPort: 0,
+      registerSignalHandlers: false,
+    });
+    const port = handle.port;
 
     const res = await httpRequest({ port, method: "GET", path: "/health" });
     expect(res.status).toBe(200);
@@ -103,9 +90,13 @@ describe("S3 - HTTP integration tests for B4 (reset guard) end-to-end", () => {
 
   it("POST /api/reset accepted in NODE_ENV=test (vitest default)", async () => {
     dataDir = mkdtempSync(path.join(tmpdir(), "s3-reset-test-"));
-    const port = getRandomPort();
-    const mqttTcpPort = await getFreePort();
-    handle = await startServer({ port, dataDir, mqttTcpPort, registerSignalHandlers: false });
+    handle = await startServer({
+      port: 0,
+      dataDir,
+      mqttTcpPort: 0,
+      registerSignalHandlers: false,
+    });
+    const port = handle.port;
 
     // NODE_ENV is "test" under vitest by default — canResetDb returns true.
     expect(process.env.NODE_ENV).toBe("test");
@@ -116,9 +107,13 @@ describe("S3 - HTTP integration tests for B4 (reset guard) end-to-end", () => {
 
   it("POST /api/reset rejected with 403 when NODE_ENV is forced to production (B4 end-to-end)", async () => {
     dataDir = mkdtempSync(path.join(tmpdir(), "s3-reset-prod-"));
-    const port = getRandomPort();
-    const mqttTcpPort = await getFreePort();
-    handle = await startServer({ port, dataDir, mqttTcpPort, registerSignalHandlers: false });
+    handle = await startServer({
+      port: 0,
+      dataDir,
+      mqttTcpPort: 0,
+      registerSignalHandlers: false,
+    });
+    const port = handle.port;
 
     const prevEnv = process.env.NODE_ENV;
     process.env.NODE_ENV = "production";
@@ -136,9 +131,13 @@ describe("S3 - HTTP integration tests for B4 (reset guard) end-to-end", () => {
 describe("S3 - HTTP integration tests for B5 (path traversal guard) end-to-end", () => {
   it("GET /dashboard/../package.json rejects with 404 (no escape from dashboard root)", async () => {
     dataDir = mkdtempSync(path.join(tmpdir(), "s3-traversal-"));
-    const port = getRandomPort();
-    const mqttTcpPort = await getFreePort();
-    handle = await startServer({ port, dataDir, mqttTcpPort, registerSignalHandlers: false });
+    handle = await startServer({
+      port: 0,
+      dataDir,
+      mqttTcpPort: 0,
+      registerSignalHandlers: false,
+    });
+    const port = handle.port;
 
     const res = await httpRequest({ port, method: "GET", path: "/dashboard/../package.json" });
     expect(res.status).toBe(404);
@@ -148,9 +147,13 @@ describe("S3 - HTTP integration tests for B5 (path traversal guard) end-to-end",
 
   it("GET /dashboard/%2e%2e/package.json (URL-encoded) rejects with 404", async () => {
     dataDir = mkdtempSync(path.join(tmpdir(), "s3-traversal2-"));
-    const port = getRandomPort();
-    const mqttTcpPort = await getFreePort();
-    handle = await startServer({ port, dataDir, mqttTcpPort, registerSignalHandlers: false });
+    handle = await startServer({
+      port: 0,
+      dataDir,
+      mqttTcpPort: 0,
+      registerSignalHandlers: false,
+    });
+    const port = handle.port;
 
     const res = await httpRequest({ port, method: "GET", path: "/dashboard/%2e%2e/package.json" });
     expect(res.status).toBe(404);
@@ -161,9 +164,13 @@ describe("S3 - HTTP integration tests for B5 (path traversal guard) end-to-end",
 describe("S3 - HTTP integration tests for B1 (concurrent announceWork) end-to-end", () => {
   it("two concurrent /api/announce on overlapping files produce two consistent threads", async () => {
     dataDir = mkdtempSync(path.join(tmpdir(), "s3-concurrent-"));
-    const port = getRandomPort();
-    const mqttTcpPort = await getFreePort();
-    handle = await startServer({ port, dataDir, mqttTcpPort, registerSignalHandlers: false });
+    handle = await startServer({
+      port: 0,
+      dataDir,
+      mqttTcpPort: 0,
+      registerSignalHandlers: false,
+    });
+    const port = handle.port;
 
     // Register 2 agents
     await httpRequest({

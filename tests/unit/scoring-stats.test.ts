@@ -8,25 +8,16 @@ import http from "http";
 
 let handle: ServerHandle, dataDir: string, port: number;
 
-async function getFreePort(): Promise<number> {
-  return new Promise((r) => {
-    const s = http.createServer().listen(0, () => {
-      const p = (s.address() as any).port;
-      s.close(() => r(p));
-    });
-  });
-}
-
 describe("/api/scoring-stats", () => {
   beforeAll(async () => {
     dataDir = mkdtempSync(path.join(tmpdir(), "ss-"));
-    port = await getFreePort();
     handle = await startServer({
-      port,
+      port: 0,
       dataDir,
-      mqttTcpPort: await getFreePort(),
+      mqttTcpPort: 0,
       registerSignalHandlers: false,
     });
+    port = handle.port;
     // Seed a few firings
     const db = getDb();
     db.prepare(
