@@ -8,15 +8,6 @@ import http from "http";
 
 let handle: ServerHandle, dataDir: string, port: number;
 
-async function getFreePort(): Promise<number> {
-  return new Promise((r) => {
-    const s = http.createServer().listen(0, () => {
-      const p = (s.address() as any).port;
-      s.close(() => r(p));
-    });
-  });
-}
-
 function postJson(
   p: number,
   urlPath: string,
@@ -47,13 +38,13 @@ function postJson(
 describe("/api/file-activity content+symbols", () => {
   beforeAll(async () => {
     dataDir = mkdtempSync(path.join(tmpdir(), "fa-content-"));
-    port = await getFreePort();
     handle = await startServer({
-      port,
+      port: 0,
       dataDir,
-      mqttTcpPort: await getFreePort(),
+      mqttTcpPort: 0,
       registerSignalHandlers: false,
     });
+    port = handle.port;
     // Give tree-sitter time to load grammars
     await new Promise((r) => setTimeout(r, 1500));
   });

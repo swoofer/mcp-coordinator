@@ -68,15 +68,6 @@ afterEach(async () => {
   }
 });
 
-function getFreePort(): Promise<number> {
-  return new Promise((resolve) => {
-    const s = http.createServer().listen(0, "127.0.0.1", () => {
-      const p = (s.address() as { port: number }).port;
-      s.close(() => resolve(p));
-    });
-  });
-}
-
 interface Resp {
   status: number;
   body: string;
@@ -102,10 +93,13 @@ function getMetrics(port: number, token?: string): Promise<Resp> {
 
 async function bootServer(prefix: string): Promise<{ port: number }> {
   dataDir = mkdtempSync(path.join(tmpdir(), prefix));
-  const port = await getFreePort();
-  const mqttTcpPort = await getFreePort();
-  handle = await startServer({ port, dataDir, mqttTcpPort, registerSignalHandlers: false });
-  return { port };
+  handle = await startServer({
+    port: 0,
+    dataDir,
+    mqttTcpPort: 0,
+    registerSignalHandlers: false,
+  });
+  return { port: handle.port };
 }
 
 describe("GET /metrics — gated by AUTH_ENABLED", () => {

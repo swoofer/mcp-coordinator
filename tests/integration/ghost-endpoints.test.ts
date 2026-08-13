@@ -21,6 +21,12 @@ import path from "node:path";
 import { startServer, type ServerHandle } from "../../src/serve-http.js";
 import { handleMetrics } from "../../src/http/metrics.js";
 
+// Everything that CAN pass `port: 0` does (the OS assigns as it binds, and
+// handle.port reports back — no race). This helper survives only for the
+// Phase 2 tests below, which must set COORDINATOR_PUBLIC_URL to
+// `http://localhost:<port>` BEFORE startServer reads it at boot. Those
+// genuinely need the number up front, so they keep the pre-probe — and with
+// it the small chance another process grabs the port before we re-bind.
 function getFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const s = http.createServer().listen(0, "127.0.0.1", () => {
@@ -72,14 +78,14 @@ describe("ghost-endpoint routing (architecture-01, protocole-mcp-03)", () => {
 
   describe("Phase 1 only (no OAuth) — /healthz and /health/ready", () => {
     it("GET /healthz returns 200 with the same alive body shape as /livez", async () => {
-      const port = await getFreePort();
       dataDir = mkdtempSync(path.join(tmpdir(), "ghost-endpoints-"));
       handle = await startServer({
-        port,
+        port: 0,
         dataDir,
-        mqttTcpPort: await getFreePort(),
+        mqttTcpPort: 0,
         mqttWsPath: "/mqtt",
       });
+      const port = handle.port;
 
       const [healthzRes, livezRes] = await Promise.all([
         fetch(`http://127.0.0.1:${port}/healthz`),
@@ -96,14 +102,14 @@ describe("ghost-endpoint routing (architecture-01, protocole-mcp-03)", () => {
     });
 
     it("GET /health/ready returns 200 with checks.db/audit_queue/sweeper/draining (Phase 2 readiness shape)", async () => {
-      const port = await getFreePort();
       dataDir = mkdtempSync(path.join(tmpdir(), "ghost-endpoints-"));
       handle = await startServer({
-        port,
+        port: 0,
         dataDir,
-        mqttTcpPort: await getFreePort(),
+        mqttTcpPort: 0,
         mqttWsPath: "/mqtt",
       });
+      const port = handle.port;
 
       const res = await fetch(`http://127.0.0.1:${port}/health/ready`);
       expect(res.status).toBe(200);
@@ -143,7 +149,7 @@ describe("ghost-endpoint routing (architecture-01, protocole-mcp-03)", () => {
       handle = await startServer({
         port,
         dataDir,
-        mqttTcpPort: await getFreePort(),
+        mqttTcpPort: 0,
         mqttWsPath: "/mqtt",
       });
 
@@ -159,15 +165,15 @@ describe("ghost-endpoint routing (architecture-01, protocole-mcp-03)", () => {
     });
 
     it("negative: without Phase 2 (OAuth off), discovery 404s — no OAuth metadata leak", async () => {
-      const port = await getFreePort();
       dataDir = mkdtempSync(path.join(tmpdir(), "ghost-endpoints-"));
       // COORDINATOR_OAUTH_ENABLED intentionally left unset.
       handle = await startServer({
-        port,
+        port: 0,
         dataDir,
-        mqttTcpPort: await getFreePort(),
+        mqttTcpPort: 0,
         mqttWsPath: "/mqtt",
       });
+      const port = handle.port;
 
       const res = await fetch(`http://127.0.0.1:${port}/.well-known/oauth-authorization-server`);
       expect(res.status).toBe(404);
@@ -204,7 +210,7 @@ describe("ghost-endpoint routing (architecture-01, protocole-mcp-03)", () => {
       handle = await startServer({
         port,
         dataDir,
-        mqttTcpPort: await getFreePort(),
+        mqttTcpPort: 0,
         mqttWsPath: "/mqtt",
       });
 
@@ -225,7 +231,7 @@ describe("ghost-endpoint routing (architecture-01, protocole-mcp-03)", () => {
       handle = await startServer({
         port,
         dataDir,
-        mqttTcpPort: await getFreePort(),
+        mqttTcpPort: 0,
         mqttWsPath: "/mqtt",
       });
 
@@ -250,7 +256,7 @@ describe("ghost-endpoint routing (architecture-01, protocole-mcp-03)", () => {
       handle = await startServer({
         port,
         dataDir,
-        mqttTcpPort: await getFreePort(),
+        mqttTcpPort: 0,
         mqttWsPath: "/mqtt",
       });
 
@@ -280,15 +286,15 @@ describe("ghost-endpoint routing (architecture-01, protocole-mcp-03)", () => {
     });
 
     it("negative: without Phase 2 (OAuth off), /metrics/auth 404s — matches docs/ops/feature-flag-rollout.md:229", async () => {
-      const port = await getFreePort();
       dataDir = mkdtempSync(path.join(tmpdir(), "ghost-endpoints-"));
       // COORDINATOR_OAUTH_ENABLED intentionally left unset.
       handle = await startServer({
-        port,
+        port: 0,
         dataDir,
-        mqttTcpPort: await getFreePort(),
+        mqttTcpPort: 0,
         mqttWsPath: "/mqtt",
       });
+      const port = handle.port;
 
       const res = await fetch(`http://127.0.0.1:${port}/metrics/auth`);
       expect(res.status).toBe(404);

@@ -12,7 +12,6 @@ import {
   type MqttAuthVerifier,
 } from "../../src/mqtt-broker.js";
 import { silentLogger } from "../../src/logger.js";
-import { createServer } from "net";
 import type { Client } from "aedes";
 
 let dataDir: string;
@@ -80,27 +79,15 @@ afterEach(async () => {
   initAuth("test-secret-at-least-32-characters-long!");
 });
 
-function getFreePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const srv = createServer();
-    srv.once("error", reject);
-    srv.listen(0, "127.0.0.1", () => {
-      const addr = srv.address();
-      const port = typeof addr === "object" && addr ? addr.port : 0;
-      srv.close(() => resolve(port));
-    });
-  });
-}
-
 describe("B3 fix - opt-in MQTT JWT auth", () => {
   it("broker without authenticate option accepts any connection (default — essaim compat)", async () => {
-    const port = await getFreePort();
     broker = await startEmbeddedMqttBroker({
-      tcpPort: port,
+      tcpPort: 0,
       logger: silentLogger,
       // authenticate: undefined → anonymous mode
     });
-    expect(broker.tcpPort).toBe(port);
+    // tcpPort 0 = OS-assigned; the broker reports back what it bound.
+    expect(broker.tcpPort).toBeGreaterThan(0);
     // Backward-compat: no authenticate hook means broker.authenticate is the
     // aedes default (always allow). We don't actually connect a client here
     // to keep the test fast and decoupled from mqtt.connect quirks; the
@@ -164,16 +151,16 @@ describe("B3 fix - opt-in MQTT JWT auth", () => {
   });
 
   it("broker with authenticate option starts and enforces it end-to-end over a real MQTT CONNECT (accept + reject)", async () => {
-    const port = await getFreePort();
     broker = await startEmbeddedMqttBroker({
-      tcpPort: port,
+      tcpPort: 0,
       logger: silentLogger,
       // This is production wiring: startEmbeddedMqttBroker installs
       // createAedesAuthenticateHook(jwtVerifier, logger) as the real Aedes
       // `authenticate` hook — no test-side reimplementation.
       authenticate: jwtVerifier,
     });
-    expect(broker.tcpPort).toBe(port);
+    expect(broker.tcpPort).toBeGreaterThan(0);
+    const port = broker.tcpPort as number;
 
     const goodToken = await createToken("good-agent", "agent");
     const good = await new Promise<{ connected: boolean }>((resolve) => {

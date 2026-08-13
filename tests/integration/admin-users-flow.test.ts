@@ -145,8 +145,11 @@ beforeAll(async () => {
   envSnapshot = {};
   for (const k of ENV_KEYS) envSnapshot[k] = process.env[k];
 
+  // Keeps the pre-probe: COORDINATOR_PUBLIC_URL below must carry the port and
+  // startServer reads it at boot, so the number has to exist before we bind.
+  // Everywhere without that constraint passes `port: 0` instead and reads
+  // handle.port back — see tests/integration/bind-host.test.ts.
   port = await getFreePort();
-  const mqttTcpPort = await getFreePort();
   dataDir = mkdtempSync(path.join(tmpdir(), "admin-users-flow-"));
 
   process.env.COORDINATOR_OAUTH_ENABLED = "true";
@@ -164,7 +167,7 @@ beforeAll(async () => {
   handle = await startServer({
     port,
     dataDir,
-    mqttTcpPort,
+    mqttTcpPort: 0,
     registerSignalHandlers: false,
   });
 

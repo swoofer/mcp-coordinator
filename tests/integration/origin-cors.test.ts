@@ -10,7 +10,6 @@
  * stays correct.
  */
 import { describe, it, expect, afterEach } from "vitest";
-import http from "node:http";
 import { startServer, type ServerHandle } from "../../src/serve-http.js";
 import { createHttpHarness } from "../helpers/mcp-client-harness.js";
 import { isAllowedOrigin } from "../../src/http/origin.js";
@@ -58,22 +57,6 @@ describe("isAllowedOrigin (pure helper — 100% branch coverage)", () => {
   });
 });
 
-function getFreePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const s = http.createServer().listen(0, "127.0.0.1", () => {
-      const addr = s.address();
-      if (addr === null || typeof addr === "string") {
-        s.close();
-        reject(new Error("getFreePort: could not resolve port"));
-        return;
-      }
-      const p = addr.port;
-      s.close(() => resolve(p));
-    });
-    s.on("error", reject);
-  });
-}
-
 describe("Origin validation + CORS restriction on /mcp", () => {
   let handle: ServerHandle | undefined;
 
@@ -83,8 +66,8 @@ describe("Origin validation + CORS restriction on /mcp", () => {
   });
 
   it("rejects cross-site Origin on /mcp preflight (never reflects '*')", async () => {
-    const port = await getFreePort();
-    handle = await startServer({ port, mqttTcpPort: await getFreePort(), mqttWsPath: "/mqtt" });
+    handle = await startServer({ port: 0, mqttTcpPort: 0, mqttWsPath: "/mqtt" });
+    const port = handle.port;
     const res = await fetch(`http://127.0.0.1:${port}/mcp`, {
       method: "OPTIONS",
       headers: { Origin: "https://evil.example" },
@@ -94,8 +77,8 @@ describe("Origin validation + CORS restriction on /mcp", () => {
   });
 
   it("allows a same-host localhost Origin on preflight, reflecting it (not '*')", async () => {
-    const port = await getFreePort();
-    handle = await startServer({ port, mqttTcpPort: await getFreePort(), mqttWsPath: "/mqtt" });
+    handle = await startServer({ port: 0, mqttTcpPort: 0, mqttWsPath: "/mqtt" });
+    const port = handle.port;
     const origin = `http://localhost:${port}`;
     const res = await fetch(`http://127.0.0.1:${port}/mcp`, {
       method: "OPTIONS",
@@ -107,16 +90,16 @@ describe("Origin validation + CORS restriction on /mcp", () => {
   });
 
   it("preflight with no Origin header at all still succeeds (non-browser callers)", async () => {
-    const port = await getFreePort();
-    handle = await startServer({ port, mqttTcpPort: await getFreePort(), mqttWsPath: "/mqtt" });
+    handle = await startServer({ port: 0, mqttTcpPort: 0, mqttWsPath: "/mqtt" });
+    const port = handle.port;
     const res = await fetch(`http://127.0.0.1:${port}/mcp`, { method: "OPTIONS" });
     expect(res.status).toBe(204);
     expect(res.headers.get("access-control-allow-origin")).toBe("*");
   });
 
   it("rejects a cross-site Origin on an actual /mcp request (not just preflight)", async () => {
-    const port = await getFreePort();
-    handle = await startServer({ port, mqttTcpPort: await getFreePort(), mqttWsPath: "/mqtt" });
+    handle = await startServer({ port: 0, mqttTcpPort: 0, mqttWsPath: "/mqtt" });
+    const port = handle.port;
     const res = await fetch(`http://127.0.0.1:${port}/mcp`, {
       method: "POST",
       headers: {

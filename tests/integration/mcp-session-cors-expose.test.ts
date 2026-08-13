@@ -17,24 +17,7 @@
  * pure isAllowedOrigin helper.
  */
 import { describe, it, expect, afterEach } from "vitest";
-import http from "node:http";
 import { startServer, type ServerHandle } from "../../src/serve-http.js";
-
-function getFreePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const s = http.createServer().listen(0, "127.0.0.1", () => {
-      const addr = s.address();
-      if (addr === null || typeof addr === "string") {
-        s.close();
-        reject(new Error("getFreePort: could not resolve port"));
-        return;
-      }
-      const p = addr.port;
-      s.close(() => resolve(p));
-    });
-    s.on("error", reject);
-  });
-}
 
 describe("Access-Control-Expose-Headers: mcp-session-id on /mcp (protocole-mcp-11)", () => {
   let handle: ServerHandle | undefined;
@@ -45,8 +28,8 @@ describe("Access-Control-Expose-Headers: mcp-session-id on /mcp (protocole-mcp-1
   });
 
   it("OPTIONS /mcp preflight exposes mcp-session-id", async () => {
-    const port = await getFreePort();
-    handle = await startServer({ port, mqttTcpPort: await getFreePort(), mqttWsPath: "/mqtt" });
+    handle = await startServer({ port: 0, mqttTcpPort: 0, mqttWsPath: "/mqtt" });
+    const port = handle.port;
     const origin = `http://localhost:${port}`;
     const res = await fetch(`http://127.0.0.1:${port}/mcp`, {
       method: "OPTIONS",
@@ -57,8 +40,8 @@ describe("Access-Control-Expose-Headers: mcp-session-id on /mcp (protocole-mcp-1
   });
 
   it("POST /mcp initialize (new session) exposes mcp-session-id alongside the actual header", async () => {
-    const port = await getFreePort();
-    handle = await startServer({ port, mqttTcpPort: await getFreePort(), mqttWsPath: "/mqtt" });
+    handle = await startServer({ port: 0, mqttTcpPort: 0, mqttWsPath: "/mqtt" });
+    const port = handle.port;
     const origin = `http://localhost:${port}`;
     const res = await fetch(`http://127.0.0.1:${port}/mcp`, {
       method: "POST",

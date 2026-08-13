@@ -14,24 +14,7 @@
  * deterministic in-process regression test for it.
  */
 import { describe, it, expect, afterEach } from "vitest";
-import http from "node:http";
 import { startServer, type ServerHandle } from "../../src/serve-http.js";
-
-function getFreePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const s = http.createServer().listen(0, "127.0.0.1", () => {
-      const addr = s.address();
-      if (addr === null || typeof addr === "string") {
-        s.close();
-        reject(new Error("getFreePort: could not resolve port"));
-        return;
-      }
-      const p = addr.port;
-      s.close(() => resolve(p));
-    });
-    s.on("error", reject);
-  });
-}
 
 describe("SSE /api/events flushes headers immediately (quiet org)", () => {
   let handle: ServerHandle | undefined;
@@ -42,8 +25,8 @@ describe("SSE /api/events flushes headers immediately (quiet org)", () => {
   });
 
   it("response headers arrive well before any heartbeat, even with no buffered events", async () => {
-    const port = await getFreePort();
-    handle = await startServer({ port, mqttTcpPort: await getFreePort(), mqttWsPath: "/mqtt" });
+    handle = await startServer({ port: 0, mqttTcpPort: 0, mqttWsPath: "/mqtt" });
+    const port = handle.port;
 
     const ac = new AbortController();
     // Abort well under the heartbeat interval. If flushHeaders() were missing,

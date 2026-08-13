@@ -1,6 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
 import http from "http";
-import net from "net";
 import path from "path";
 import { tmpdir } from "os";
 import { mkdtempSync, rmSync } from "fs";
@@ -38,22 +37,6 @@ afterEach(async () => {
   }
 });
 
-function getRandomPort(): number {
-  return 31400 + Math.floor(Math.random() * 200);
-}
-
-function getFreePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const srv = net.createServer();
-    srv.once("error", reject);
-    srv.listen(0, "127.0.0.1", () => {
-      const addr = srv.address();
-      const port = typeof addr === "object" && addr ? addr.port : 0;
-      srv.close(() => resolve(port));
-    });
-  });
-}
-
 function httpRequest(opts: {
   port: number;
   method: string;
@@ -89,9 +72,13 @@ function httpRequest(opts: {
 describe("qualite-code-08 - generic 500, no internal detail leak", () => {
   it("500 response body has no SQLite/db-internal detail and carries a request_id", async () => {
     dataDir = mkdtempSync(path.join(tmpdir(), "s08-500-"));
-    const port = getRandomPort();
-    const mqttTcpPort = await getFreePort();
-    handle = await startServer({ port, dataDir, mqttTcpPort, registerSignalHandlers: false });
+    handle = await startServer({
+      port: 0,
+      dataDir,
+      mqttTcpPort: 0,
+      registerSignalHandlers: false,
+    });
+    const port = handle.port;
 
     // Force the next DB access inside the server to throw.
     closeDb();

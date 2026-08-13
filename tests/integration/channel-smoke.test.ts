@@ -20,7 +20,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createServer } from "node:net";
 import type { Stream } from "node:stream";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -31,18 +30,6 @@ import { silentLogger } from "../../src/logger.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(__filename), "..", "..");
-
-function getFreePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const srv = createServer();
-    srv.once("error", reject);
-    srv.listen(0, "127.0.0.1", () => {
-      const addr = srv.address();
-      const port = typeof addr === "object" && addr ? addr.port : 0;
-      srv.close(() => resolve(port));
-    });
-  });
-}
 
 /**
  * Marker the `channel` CLI prints on stderr once its MQTT subscriptions are
@@ -103,12 +90,15 @@ describe("channel CLI — smoke (MQTT → notifications/claude/channel)", () => 
   const receivedNotifications: Array<{ method: string; params: unknown }> = [];
 
   beforeAll(async () => {
-    brokerPort = await getFreePort();
+    // tcpPort 0 = the OS assigns one as the broker binds; it reports back what
+    // it got. Probing for a free port and handing over the number leaves a
+    // window for another process to take it first.
     broker = await startEmbeddedMqttBroker({
-      tcpPort: brokerPort,
+      tcpPort: 0,
       logger: silentLogger,
       // No authenticate hook → anonymous mode, matches default daemon flow.
     });
+    brokerPort = broker.tcpPort as number;
 
     // Spawn `mcp-coordinator channel` over stdio. We invoke node-modules tsx
     // directly (not via `npx`) — on Windows, the npx.cmd shim breaks signal

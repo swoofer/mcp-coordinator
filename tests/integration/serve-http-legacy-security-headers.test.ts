@@ -28,15 +28,6 @@ import path from "path";
 import http from "http";
 import { startServer, type ServerHandle } from "../../src/serve-http.js";
 
-function getFreePort(): Promise<number> {
-  return new Promise((resolve) => {
-    const s = http.createServer().listen(0, () => {
-      const p = (s.address() as { port: number }).port;
-      s.close(() => resolve(p));
-    });
-  });
-}
-
 interface Resp {
   status: number;
   headers: http.IncomingHttpHeaders;
@@ -66,14 +57,13 @@ let port: number;
 
 beforeAll(async () => {
   dataDir = mkdtempSync(path.join(tmpdir(), "legacy-sec-headers-"));
-  port = await getFreePort();
-  const mqttTcpPort = await getFreePort();
   handle = await startServer({
-    port,
+    port: 0,
     dataDir,
-    mqttTcpPort,
+    mqttTcpPort: 0,
     registerSignalHandlers: false,
   });
+  port = handle.port;
 });
 
 afterAll(async () => {

@@ -9,19 +9,6 @@ let handle: ServerHandle;
 let dataDir: string;
 let port: number;
 
-function getRandomPort(): number {
-  return 4000 + Math.floor(Math.random() * 1000);
-}
-
-async function getFreePort(): Promise<number> {
-  return new Promise((resolve) => {
-    const s = http.createServer().listen(0, () => {
-      const p = (s.address() as any).port;
-      s.close(() => resolve(p));
-    });
-  });
-}
-
 function postJson(
   p: number,
   urlPath: string,
@@ -52,9 +39,13 @@ function postJson(
 describe("working-files HTTP", () => {
   beforeAll(async () => {
     dataDir = mkdtempSync(path.join(tmpdir(), "wf-http-"));
-    port = await getFreePort();
-    const mqttTcpPort = await getFreePort();
-    handle = await startServer({ port, dataDir, mqttTcpPort, registerSignalHandlers: false });
+    handle = await startServer({
+      port: 0,
+      dataDir,
+      mqttTcpPort: 0,
+      registerSignalHandlers: false,
+    });
+    port = handle.port;
   });
   afterAll(async () => {
     await handle?.stop();
