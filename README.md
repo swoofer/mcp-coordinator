@@ -69,7 +69,7 @@ mcp-coordinator server status
 mcp-coordinator dashboard      # opens http://localhost:3100/dashboard
 ```
 
-Requires Node.js 20+ (Node 22+ recommended — Node 20 reaches EOL on 2026-04-30). Step 2 is idempotent — re-running `init` won't overwrite an existing config. The snippet it prints goes into your MCP client's config (e.g., `~/.claude/.mcp.json` for Claude Code). If you'd rather not copy-paste, run `mcp-coordinator init --write-mcp-config <project-path>` and the snippet is written to `<project-path>/.mcp.json` (merging if the file already exists).
+Requires Node.js 22+ (Node 20 reached EOL on 2026-04-30 and is no longer supported). Step 2 is idempotent — re-running `init` won't overwrite an existing config. The snippet it prints goes into your MCP client's config (e.g., `~/.claude/.mcp.json` for Claude Code). If you'd rather not copy-paste, run `mcp-coordinator init --write-mcp-config <project-path>` and the snippet is written to `<project-path>/.mcp.json` (merging if the file already exists).
 
 After step 4, every Claude Code (or other MCP-compatible) session connected to this coordinator can call all 26 tools (`register_agent`, `announce_work`, `post_to_thread`, `coordinator_status`, ...). For the full multi-Claude or team setup, see the [usage guide](./docs/usage.md).
 

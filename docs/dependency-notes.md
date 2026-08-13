@@ -49,10 +49,15 @@ Deliberately not migrated in this pass — YAGNI until one of these actually blo
 | `commander` | 14.0.3 | 15.x | CLI-parsing library; low churn, low risk, but a major bump warrants its own smoke pass across every `cli/` subcommand rather than folding into a dependency-hygiene PR. |
 | `cookie` | 1.1.1 | 2.x | Used in the OIDC/session-cookie path; a security-sensitive surface where a major bump deserves isolated review of any signature/parsing behavior changes, not a drive-by bump. |
 | `fast-check` | 3.23.2 (dev) | 4.x | Property-based test generator; dev-only blast radius, but v4's API changes would touch every property test file — worth batching into one deliberate pass instead of scattering across unrelated PRs. |
-| `@types/node` | 22.20.1 (dev) | 26.x | Types-only; tracks the `engines.node` floor by convention. Bumping past the current `>=20` floor before `engines` itself moves would create a confusing mismatch — see the Node 22+ note below. |
+
+> **Stale rows:** `commander`, `cookie` and `@types/node` have since been migrated (`package.json` pins `^15.0.0`, `^2.0.1` and `^26.1.1`). This table has not been pruned to match.
 
 `aedes` was flagged in an earlier pass as lagging (1.0.2 → 1.1.1); `package.json` already pins `^1.1.1` and `pnpm outdated` shows no newer release, so this item is closed — no action needed.
 
-## Node 20 EOL
+## Node 20 EOL — floor raised to >=22
 
-`package.json` declares `"engines": { "node": ">=20" }`. Node 20 reaches end-of-life on **2026-04-30**. Bumping the floor to `>=22` is a breaking change under semver (it changes what counts as a valid install target), so it's deferred to the next major/`v1.0` release rather than folded into a routine dependency-hygiene change. Until then: the README recommends Node 22+ for new installs, and CI already runs the matrix on both Node 20 and Node 22 (`.github/workflows/test.yml`) to keep the `>=20` floor honest in the meantime.
+`package.json` now declares `"engines": { "node": ">=22" }` (and `sdk/package.json` matches). Node 20 reached end-of-life on **2026-04-30**.
+
+This was deferred as a semver-breaking change until `better-sqlite3@13` forced the issue: it declares `engines: { "node": ">=22" }`, so holding the `>=20` floor meant either pinning better-sqlite3 to 12.x indefinitely or shipping a dependency that does not support our own stated minimum. Raising the floor was the deliberate choice.
+
+CI runs the matrix on Node 22 and 24 (`.github/workflows/test.yml`); `sdk-test` runs on 22, the new floor.
