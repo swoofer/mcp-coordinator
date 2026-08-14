@@ -25,9 +25,18 @@ jobs:
     timeout-minutes: 15
     # Surface release-please outputs to the docker job below so it can decide
     # whether a release was actually cut and which tag to push to GHCR.
+    #
+    # `publish_only` skips release-please entirely, so release_created and
+    # tag_name are BOTH empty on that path. The chained jobs used to key off
+    # release_created directly, which meant a publish_only run pushed to npm and
+    # silently published nothing to GHCR and attached no binaries. The two
+    # derived outputs below are what the chained jobs gate on instead, so both
+    # paths behave the same.
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
+      publish: ${{ steps.release.outputs.release_created == 'true' || inputs.publish_only == 'true' }}
+      publish_tag: ${{ steps.release.outputs.tag_name || steps.version.outputs.tag }}
     steps:
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7  # v5.0.0
         id: release
@@ -49,6 +58,38 @@ jobs:
           registry-url: "https://registry.npmjs.org"
           cache: "pnpm"
 
+      # On the publish_only path there is no release-please tag_name, so derive
+      # the tag from the version in the checked-out package.json.
+      #
+      # The guard is the load-bearing part. This job publishes to npm from
+      # whatever ref was dispatched — the checkout above pins no `ref:` — while
+      # the chained jobs check out `inputs.tag` (docker-publish.yml,
+      # release-binaries.yml). If the derived tag is not the commit being
+      # published, npm gets one build of version X and GHCR plus the tarballs get
+      # another: same version number, different code, and `promote_latest: true`
+      # moves `:latest` onto the tag's build. main is routinely several commits
+      # ahead of the last tag, so this is the normal case, not an edge case.
+      #
+      # Failing here also catches a version that was never tagged, and does it
+      # BEFORE anything is published — which keeps the `--provenance` attestation
+      # honest, since it binds to github.sha.
+      #
+      # Recovery when main has moved on: re-run this workflow with the ref set to
+      # the tag itself.
+      - id: version
+        if: ${{ inputs.publish_only == 'true' }}
+        run: |
+          TAG="v$(node -p "require('./package.json').version")"
+          git fetch --depth=1 origin "refs/tags/$TAG" || {
+            echo "::error::no git tag $TAG — no release was ever cut for this version"
+            exit 1
+          }
+          if [ "$(git rev-parse "FETCH_HEAD^{commit}")" != "$(git rev-parse HEAD)" ]; then
+            echo "::error::$TAG points at $(git rev-parse --short "FETCH_HEAD^{commit}") but this run is publishing $(git rev-parse --short HEAD). Re-run with the ref set to $TAG."
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
       - run: pnpm install --frozen-lockfile
         if: ${{ steps.release.outputs.release_created || inputs.publish_only == 'true' }}
 
@@ -69,22 +110,24 @@ jobs:
   # docker-publish.yml as a reusable workflow runs it in the same overall
   # run as `release`, so no token gymnastics are needed.
   #
-  # Gated on `release_created` so this is a no-op on every push that
-  # ONLY moves the release-please tracking PR — we only build+push when
-  # there's a real release.
+  # Gated on `publish` so this is a no-op on every push that ONLY moves the
+  # release-please tracking PR — we build+push on a real release cut, and on a
+  # publish_only re-run (which exists precisely to redo a publish that failed
+  # partway, and previously redid the npm half only).
   docker:
     needs: release
-    if: ${{ needs.release.outputs.release_created == 'true' }}
+    if: ${{ needs.release.outputs.publish == 'true' }}
     permissions:
       contents: read
       packages: write
       id-token: write
     uses: ./.github/workflows/docker-publish.yml
     with:
-      tag: ${{ needs.release.outputs.tag_name }}
-      # Safe because this job is gated on `release_created == 'true'` above:
-      # tag_name is always the release just cut, never an older one, so
-      # `:latest` can only move forward from here.
+      tag: ${{ needs.release.outputs.publish_tag }}
+      # Safe on both paths: on a cut, publish_tag is the release just made; on
+      # publish_only the guard in the `version` step above refuses to proceed
+      # unless the derived tag IS the commit being published. Either way
+      # `:latest` can only land on the version this run actually published.
       promote_latest: true
 
   # Chained binary release on every release-please cut. Same anti-recursive
@@ -93,9 +136,9 @@ jobs:
   # so without this hook no binaries get attached to the GitHub release.
   binaries:
     needs: release
-    if: ${{ needs.release.outputs.release_created == 'true' }}
+    if: ${{ needs.release.outputs.publish == 'true' }}
     permissions:
       contents: write
     uses: ./.github/workflows/release-binaries.yml
     with:
-      tag: ${{ needs.release.outputs.tag_name }}
+      tag: ${{ needs.release.outputs.publish_tag }}

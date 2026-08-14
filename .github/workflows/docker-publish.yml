@@ -28,7 +28,7 @@ on:
         required: true
         type: string
       promote_latest:
-        description: "Also move :latest to this tag. release.yml passes true — its docker job is gated on release_created, so the tag is always the newest one."
+        description: "Also move :latest to this tag. release.yml passes true — it only reaches this job for a version it is publishing in the same run, so the tag is never an older one."
         required: false
         default: false
         type: boolean
@@ -92,9 +92,11 @@ jobs:
       #
       # The backwards-shift concern behind the old gate is real but applies
       # only to the manual retry path, so it stays opt-in there. The chained
-      # `docker:` job in release.yml is gated on `release_created == 'true'`,
-      # which makes its `inputs.tag` structurally the newest tag, so it
-      # passes promote_latest: true.
+      # `docker:` job in release.yml only runs for a version being published in
+      # that same run — either the release just cut, or a publish_only re-run
+      # whose `version` step refuses to proceed unless the derived tag is the
+      # exact commit being published. So its `inputs.tag` is never an older
+      # release, and it passes promote_latest: true.
       #
       # Written as `a || b` rather than `a == true`: GitHub coerces mixed-type
       # `==` operands to numbers, so a string 'true' would compare false. The
