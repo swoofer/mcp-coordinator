@@ -1,4 +1,4 @@
-﻿import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
 import { AgentRegistry } from "../../src/agent-registry.js";
 import { seedTestOrgs } from "../helpers/orgs.js";
@@ -157,5 +157,29 @@ describe("agent-registry org_id scoping", () => {
     registry.heartbeat("org-a", "agent-b-1");
     const afterB2 = registry.get("org-b", "agent-b-1")?.last_seen_at;
     expect(afterB2).toBe(beforeB);
+  });
+  // Issue #231: agents.id carries a global UNIQUE index (idx_agents_id), which
+  // is load-bearing for the FKs that still target agents(id). So the same agent
+  // id genuinely cannot exist in two orgs yet. Until the schema migration lands,
+  // the failure must at least be legible: name the owning org and say the
+  // constraint is global, instead of surfacing a raw SQLite constraint string.
+  it("register: a duplicate agent id from another org fails with an actionable message (#231)", () => {
+    registry.register("org-a", "shared-id", "A", []);
+    let err: Error | undefined;
+    try {
+      registry.register("org-b", "shared-id", "B", []);
+    } catch (e) {
+      err = e as Error;
+    }
+    expect(err).toBeDefined();
+    // Names the id, the org that already holds it, and why.
+    expect(err!.message).toContain("shared-id");
+    expect(err!.message).toContain("org-a");
+    expect(err!.message).toMatch(/global/i);
+    // The raw driver text must not leak through.
+    expect(err!.message).not.toMatch(/SQLITE_CONSTRAINT/);
+    // And the first org's row is untouched.
+    expect(registry.get("org-a", "shared-id")?.name).toBe("A");
+    expect(registry.get("org-b", "shared-id")).toBeUndefined();
   });
 });

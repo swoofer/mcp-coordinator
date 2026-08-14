@@ -21,7 +21,11 @@ export function registerAgentTools(
     "register_agent",
     "Register agent as online with module list",
     {
-      agent_id: z.string().describe("Unique ID for this agent within the org."),
+      agent_id: z
+        .string()
+        .describe(
+          "ID for this agent. Must be unique across ALL orgs, not just yours — re-registering an id another org already holds is rejected.",
+        ),
       name: z.string().describe("Display name for this agent."),
       modules: z
         .array(z.string())
