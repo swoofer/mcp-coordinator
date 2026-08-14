@@ -96,8 +96,16 @@ export function registerMqttTools(
     "mqtt_publish",
     "Publish a message to an MQTT topic",
     {
-      topic: z.string().describe("MQTT topic to publish to."),
-      payload: z.string().describe("Message payload to publish."),
+      topic: z
+        .string()
+        .describe(
+          "MQTT topic. Rewritten into your org namespace (coordinator/<your-org>/...) — you cannot publish outside your tenant. Only 'broadcast' and 'consultations/*' reach other agents' listeners; any other topic is published but consumed by nobody.",
+        ),
+      payload: z
+        .string()
+        .describe(
+          "Message payload. Must be valid JSON to be delivered to listeners — a non-JSON payload on a broadcast/consultations topic is discarded on receipt.",
+        ),
     },
     {
       readOnlyHint: false,
