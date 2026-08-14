@@ -51,7 +51,7 @@ export function registerMqttTools(
 
   server.tool(
     "wait_for_message",
-    "Block until an MQTT consultation message arrives or timeout",
+    "Block until an MQTT consultation message arrives, or time out. Best-effort push: nothing is buffered before this call registers a listener, so a message published earlier is already gone. Use get_thread_updates for delivery you can rely on.",
     {
       agent_id: z.string().describe("ID of the agent waiting for a message."),
       timeout_seconds: z
@@ -78,7 +78,7 @@ export function registerMqttTools(
 
   server.tool(
     "get_queued_messages",
-    "Get all queued MQTT messages without blocking",
+    "Drain queued MQTT messages without blocking. DESTRUCTIVE: messages are removed as they are returned, so a second call gets nothing and a crash mid-processing loses them. Nothing is buffered while no listener is registered, and the queue drops oldest-first when full. For delivery you can rely on, use get_thread_updates instead.",
     {
       agent_id: z.string().describe("ID of the agent whose queued messages to fetch."),
     },
