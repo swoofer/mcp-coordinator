@@ -410,3 +410,88 @@ describe("POST /api/reset — guard branches", () => {
     expect(services.registry.get("org-hr", "agent-a")).toBeUndefined();
   });
 });
+
+/**
+ * issue #258 — the claim CAS predicates on thread id only.
+ *
+ * The single-statement UPDATE correctly serializes two agents racing for the
+ * SAME thread, but says nothing about what those threads touch. Two agents
+ * claiming two DIFFERENT threads whose target_files overlap both got
+ * success:true and both started editing the same file.
+ *
+ * The client cannot close this: essaim only refetches its busy-file set on
+ * success:false, which is exactly the branch that never fired.
+ */
+describe("POST /api/claim-task — file overlap across different threads (#258)", () => {
+  async function claim(threadId: string, agentId: string) {
+    const r = mockRes();
+    await handleRest(
+      mockReq({ thread_id: threadId, agent_id: agentId }, "/api/claim-task"),
+      r.res,
+      makeCtx(),
+    );
+    return r.getBody() as {
+      success: boolean;
+      claimed_by: string | null;
+      conflict?: { thread_id: string; files: string[] };
+    };
+  }
+
+  function announce(agentId: string, subject: string, files: string[]) {
+    // announceWork has an FK on the initiator, and beforeEach clears agents.
+    services.registry.register("org-hr", agentId, agentId, []);
+    return services.consultation.announceWork("org-hr", {
+      agent_id: agentId,
+      subject,
+      target_modules: [],
+      target_files: files,
+      keep_open: true,
+    });
+  }
+
+  it("refuses a second claim whose target_files overlap an already-claimed thread", async () => {
+    const t1 = announce("agent-a", "one", ["src/shared.ts", "src/a.ts"]);
+    const t2 = announce("agent-b", "two", ["src/shared.ts", "src/b.ts"]);
+
+    expect((await claim(t1.id, "agent-a")).success).toBe(true);
+
+    const second = await claim(t2.id, "agent-b");
+    expect(second.success).toBe(false);
+    // Says WHICH thread and WHICH file, so the client can log something useful.
+    expect(second.conflict?.thread_id).toBe(t1.id);
+    expect(second.conflict?.files).toContain("src/shared.ts");
+    // Not a "already claimed" report — t2 itself is still unclaimed.
+    expect(second.claimed_by).toBeNull();
+  });
+
+  it("allows two claims whose target_files are disjoint", async () => {
+    const t1 = announce("agent-a", "one", ["src/a.ts"]);
+    const t2 = announce("agent-b", "two", ["src/b.ts"]);
+
+    expect((await claim(t1.id, "agent-a")).success).toBe(true);
+    expect((await claim(t2.id, "agent-b")).success).toBe(true);
+  });
+
+  it("lets the SAME agent hold two overlapping threads — one worker serializes itself", async () => {
+    const t1 = announce("agent-a", "one", ["src/shared.ts"]);
+    const t2 = announce("agent-a", "two", ["src/shared.ts"]);
+
+    expect((await claim(t1.id, "agent-a")).success).toBe(true);
+    expect((await claim(t2.id, "agent-a")).success).toBe(true);
+  });
+
+  it("an overlapping thread that is merely OPEN (never claimed) does not block", async () => {
+    announce("agent-a", "unclaimed", ["src/shared.ts"]);
+    const t2 = announce("agent-b", "two", ["src/shared.ts"]);
+
+    expect((await claim(t2.id, "agent-b")).success).toBe(true);
+  });
+
+  it("threads with no target_files never collide", async () => {
+    const t1 = announce("agent-a", "one", []);
+    const t2 = announce("agent-b", "two", []);
+
+    expect((await claim(t1.id, "agent-a")).success).toBe(true);
+    expect((await claim(t2.id, "agent-b")).success).toBe(true);
+  });
+});

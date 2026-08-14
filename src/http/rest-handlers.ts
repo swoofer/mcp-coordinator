@@ -389,6 +389,54 @@ export function handleUnclaimTask(
   json(res, { success: result.changes === 1, poisoned });
 }
 
+/**
+ * Why a claim was refused because of file overlap (issue #258): the thread
+ * already holding those files, and which files collided.
+ */
+interface ClaimConflict {
+  thread_id: string;
+  files: string[];
+}
+
+/**
+ * Explain a claim that the overlap guard refused (issue #258): which
+ * already-claimed thread holds the colliding files, and which files they are.
+ *
+ * Diagnostic only — runs after the UPDATE decided, so it is a plain read.
+ * Returns null when the refusal had some other cause (already claimed,
+ * reserved for another agent, not open), leaving the existing fields to
+ * explain it.
+ */
+function findClaimFileConflict(
+  orgId: string,
+  threadId: string,
+  agentId: string,
+): ClaimConflict | null {
+  const db = getDb();
+  const candidate = db
+    .prepare("SELECT target_files FROM threads WHERE id = ? AND org_id = ?")
+    .get(threadId, orgId) as { target_files: string } | undefined;
+  if (!candidate) return null;
+  const wanted = safeJsonParse<string[]>(candidate.target_files, []);
+  if (wanted.length === 0) return null;
+
+  const held = db
+    .prepare(
+      `SELECT id, target_files FROM threads
+       WHERE org_id = ? AND id != ? AND status = 'open'
+         AND claimed_by IS NOT NULL AND claimed_by != ?`,
+    )
+    .all(orgId, threadId, agentId) as { id: string; target_files: string }[];
+
+  for (const other of held) {
+    const overlap = wanted.filter((f) =>
+      safeJsonParse<string[]>(other.target_files, []).includes(f),
+    );
+    if (overlap.length > 0) return { thread_id: other.id, files: overlap };
+  }
+  return null;
+}
+
 export function handleClaimTask(
   req: IncomingMessage,
   res: ServerResponse,
@@ -403,15 +451,49 @@ export function handleClaimTask(
   }
   const { thread_id, agent_id } = parsed.data;
   const db = getDb();
+
   // Only claim threads with status='open' — poisoned threads are filtered out
   // automatically because the status filter excludes them.
   // Directed-dispatch constraint: if assigned_to is set, only that specific
   // agent can claim; NULL keeps the original open-pool semantics.
+  //
+  // issue #258: the id predicate serializes two agents racing for the SAME
+  // thread, but says nothing about what those threads touch. Two agents
+  // claiming two DIFFERENT threads with overlapping target_files both got
+  // success:true and both started editing the same file. The client cannot
+  // close this — essaim only refetches its busy-file set on success:false, the
+  // branch that never fired.
+  //
+  // The overlap test is a NOT EXISTS in the same statement rather than a
+  // read-then-write in a transaction. That matters twice over: it keeps the
+  // claim a single atomic UPDATE (same guarantee the original CAS had, with no
+  // window between checking and writing), and it avoids needing
+  // `transaction.immediate()`, which the portable DatabaseAdapter deliberately
+  // does not expose because bun:sqlite has to satisfy the same interface.
+  //
+  // target_files is JSON TEXT, so the intersection uses json_each rather than a
+  // column comparison. Only threads held by SOMEONE ELSE block: one agent
+  // holding two overlapping threads serializes itself.
   const result = db
     .prepare(
-      "UPDATE threads SET claimed_by = ?, claimed_at = ? WHERE id = ? AND org_id = ? AND claimed_by IS NULL AND status = 'open' AND (assigned_to IS NULL OR assigned_to = ?)",
+      `UPDATE threads SET claimed_by = ?, claimed_at = ?
+       WHERE id = ? AND org_id = ? AND claimed_by IS NULL AND status = 'open'
+         AND (assigned_to IS NULL OR assigned_to = ?)
+         AND NOT EXISTS (
+           SELECT 1 FROM threads other
+           WHERE other.org_id = threads.org_id
+             AND other.id != threads.id
+             AND other.status = 'open'
+             AND other.claimed_by IS NOT NULL
+             AND other.claimed_by != ?
+             AND EXISTS (
+               SELECT 1
+               FROM json_each(threads.target_files) mine
+               JOIN json_each(other.target_files) theirs ON mine.value = theirs.value
+             )
+         )`,
     )
-    .run(agent_id, new Date().toISOString(), thread_id, ctx.claims.org, agent_id);
+    .run(agent_id, new Date().toISOString(), thread_id, ctx.claims.org, agent_id, agent_id);
 
   if (result.changes === 1) {
     mqttBridge.publishTaskClaimed(ctx.claims.org, thread_id, agent_id);
@@ -419,6 +501,13 @@ export function handleClaimTask(
     json(res, { success: true });
   } else {
     const thread = consultation.getThread(ctx.claims.org, thread_id);
+    // Diagnostic only, and deliberately AFTER the update: it explains a refusal
+    // that already happened, so it needs no atomicity of its own.
+    //
+    // Without it the #258 case reads as "nothing is wrong" — the thread is
+    // still unclaimed, so claimed_by/assigned_to/status all look fine and the
+    // client has no idea why it was turned away.
+    const conflict = findClaimFileConflict(ctx.claims.org, thread_id, agent_id);
     // Surface the assigned_to in the 'why not' response so clients can
     // distinguish "already claimed by X" from "reserved for Y".
     json(res, {
@@ -426,6 +515,7 @@ export function handleClaimTask(
       claimed_by: thread?.claimed_by || null,
       assigned_to: thread?.assigned_to || null,
       status: thread?.status,
+      ...(conflict ? { conflict } : {}),
     });
   }
 }
