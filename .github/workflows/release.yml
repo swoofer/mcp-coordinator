@@ -59,14 +59,36 @@ jobs:
           cache: "pnpm"
 
       # On the publish_only path there is no release-please tag_name, so derive
-      # the tag from the version on main. That version is whatever release-please
-      # last wrote, i.e. the most recent release actually cut — which is also why
-      # promoting `:latest` from this path cannot move it backwards. If the
-      # matching git tag does not exist, docker-publish's checkout fails loudly
-      # rather than publishing something mislabelled.
+      # the tag from the version in the checked-out package.json.
+      #
+      # The guard is the load-bearing part. This job publishes to npm from
+      # whatever ref was dispatched — the checkout above pins no `ref:` — while
+      # the chained jobs check out `inputs.tag` (docker-publish.yml,
+      # release-binaries.yml). If the derived tag is not the commit being
+      # published, npm gets one build of version X and GHCR plus the tarballs get
+      # another: same version number, different code, and `promote_latest: true`
+      # moves `:latest` onto the tag's build. main is routinely several commits
+      # ahead of the last tag, so this is the normal case, not an edge case.
+      #
+      # Failing here also catches a version that was never tagged, and does it
+      # BEFORE anything is published — which keeps the `--provenance` attestation
+      # honest, since it binds to github.sha.
+      #
+      # Recovery when main has moved on: re-run this workflow with the ref set to
+      # the tag itself.
       - id: version
         if: ${{ inputs.publish_only == 'true' }}
-        run: echo "tag=v$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+        run: |
+          TAG="v$(node -p "require('./package.json').version")"
+          git fetch --depth=1 origin "refs/tags/$TAG" || {
+            echo "::error::no git tag $TAG — no release was ever cut for this version"
+            exit 1
+          }
+          if [ "$(git rev-parse "FETCH_HEAD^{commit}")" != "$(git rev-parse HEAD)" ]; then
+            echo "::error::$TAG points at $(git rev-parse --short "FETCH_HEAD^{commit}") but this run is publishing $(git rev-parse --short HEAD). Re-run with the ref set to $TAG."
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - run: pnpm install --frozen-lockfile
         if: ${{ steps.release.outputs.release_created || inputs.publish_only == 'true' }}
@@ -103,8 +125,9 @@ jobs:
     with:
       tag: ${{ needs.release.outputs.publish_tag }}
       # Safe on both paths: on a cut, publish_tag is the release just made; on
-      # publish_only it is derived from main's package.json, which release-please
-      # only ever moves forward. Either way `:latest` cannot go backwards.
+      # publish_only the guard in the `version` step above refuses to proceed
+      # unless the derived tag IS the commit being published. Either way
+      # `:latest` can only land on the version this run actually published.
       promote_latest: true
 
   # Chained binary release on every release-please cut. Same anti-recursive
