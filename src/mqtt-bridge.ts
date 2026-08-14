@@ -56,9 +56,33 @@ export class MqttBridge {
    */
   private lastRetainedConsultationThreadId = new Map<string, string>();
 
+  /**
+   * issue #236: notified whenever an inbound message is discarded. Kept as an
+   * optional callback rather than a metrics dependency so the bridge stays
+   * decoupled from prom-client; serve-http wires it to a counter.
+   */
+  private onDropHandler: ((reason: string) => void) | null = null;
+
   constructor(homeOrgId: string, logger?: Logger) {
     this.homeOrgId = homeOrgId;
     this.log = logger ?? silentLogger;
+  }
+
+  /** Register a sink for discarded-message reasons (issue #236). */
+  onDrop(handler: (reason: string) => void): void {
+    this.onDropHandler = handler;
+  }
+
+  /**
+   * Record a dropped inbound message: one warn line plus the counter.
+   *
+   * Warn, not error: a drop is usually a misconfigured publisher rather than a
+   * coordinator fault, and it must not drown a busy log — so the topic is
+   * included but the payload never is (it can carry consultation content).
+   */
+  private recordDrop(reason: string, topic: string, extra?: Record<string, unknown>): void {
+    this.log.warn({ reason, topic, ...extra }, "MQTT message dropped");
+    this.onDropHandler?.(reason);
   }
 
   /** Get (or lazily create) the inner agentId->listener map for one org. */
@@ -178,6 +202,11 @@ export class MqttBridge {
           try {
             const payload = JSON.parse(message.toString());
             const msg: QueuedMessage = { topic, payload, timestamp: Date.now() };
+            // Nobody is listening for this org: the message is accepted off the
+            // wire and then goes nowhere. Silent until #236.
+            if (this.orgListeners(orgId).size === 0) {
+              this.recordDrop("no_listener", topic, { org: orgId });
+            }
             // Task 22: deliver ONLY to listeners of the same org. Without this
             // filter the wildcard subscription would leak org B's consultation
             // traffic into org A's listeners.
@@ -191,12 +220,20 @@ export class MqttBridge {
                 // freshest MAX_LISTENER_QUEUE messages, not the stalest.
                 if (listener.queue.length >= MAX_LISTENER_QUEUE) {
                   listener.queue.shift();
+                  this.recordDrop("queue_full", topic, {
+                    org: orgId,
+                    cap: MAX_LISTENER_QUEUE,
+                  });
                 }
                 listener.queue.push(msg);
               }
             }
           } catch {
-            /* ignore malformed */
+            // Non-JSON payload on a consultations/broadcast topic. Previously
+            // swallowed entirely, so a publisher sending the wrong shape got a
+            // "published" acknowledgement and no delivery, with nothing in the
+            // log to explain it.
+            this.recordDrop("malformed_payload", topic, { org: orgId });
           }
         }
       });
@@ -426,7 +463,22 @@ export class MqttBridge {
       } else {
         scopedTopic = `${orgPrefix}${topic.replace(/^coordinator\/[^/]+\//, "").replace(/^coordinator\//, "")}`;
       }
-      this.client.publish(scopedTopic, payload);
+      // issue #236: the bridge only subscribes to three patterns —
+      // agents/+/status, consultations/#, broadcast. A topic outside those is
+      // published to the broker and then received by nobody, while the caller
+      // gets an unconditional "published". Nothing arrives at the message
+      // handler, so this is the only place the dead end is knowable.
+      const rest = scopedTopic.slice(orgPrefix.length);
+      const routable =
+        rest === "broadcast" ||
+        rest.startsWith("consultations/") ||
+        /^agents\/[^/]+\/status$/.test(rest);
+      if (!routable) {
+        this.recordDrop("unroutable_topic", scopedTopic, { org: orgId });
+      }
+      // QoS 1 to match the other coordination publishers: at-least-once, so a
+      // reconnecting subscriber does not miss the event outright.
+      this.client.publish(scopedTopic, payload, { qos: 1 });
     }
   }
 

@@ -42,6 +42,13 @@ export class Metrics {
   readonly announces: Counter<"result">;
   readonly threadsResolved: Counter<"type">;
   readonly mqttPublishes: Counter<string>;
+  /**
+   * issue #236: messages the bridge accepted but never delivered. Every drop
+   * used to be silent, so a topic outside consultations/broadcast, a non-JSON
+   * payload, or a full listener queue vanished with no log line and no counter
+   * while `mqtt_publish` still answered "published".
+   */
+  readonly mqttMessagesDropped: Counter<"reason">;
   readonly httpRequests: Counter<"route" | "status">;
   readonly authRejected: Counter<string>;
 
@@ -83,6 +90,13 @@ export class Metrics {
     this.mqttPublishes = new Counter({
       name: "mcp_coordinator_mqtt_publishes_total",
       help: "Total MQTT publishes by the coordinator bridge",
+      registers: [this.registry],
+    });
+
+    this.mqttMessagesDropped = new Counter({
+      name: "mcp_coordinator_mqtt_messages_dropped_total",
+      help: "Inbound MQTT messages the bridge discarded, by reason",
+      labelNames: ["reason"] as const,
       registers: [this.registry],
     });
 

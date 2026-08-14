@@ -982,6 +982,12 @@ async function wireMqtt(opts: MqttWiring): Promise<{
     // (`coordinator/agents/coordinator-internal/status`).
     agentId: "coordinator-internal",
   });
+  // issue #236: surface discarded messages as a counter alongside the warn
+  // line the bridge already emits, so a steady drip of drops is visible on
+  // /metrics rather than only in the log.
+  services.mqttBridge.onDrop((reason) => {
+    services.metrics.mqttMessagesDropped.inc({ reason });
+  });
   services.mqttBridge.onOffline((orgId, agentId) => {
     // Task 22: the org is recovered from the MQTT topic prefix
     // (`coordinator/<org>/agents/<id>/status`) and threaded through here, so
