@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.0.1](https://github.com/swoofer/mcp-coordinator/compare/v2.0.0...v2.0.1) (2026-08-14)
+
+
+### Bug Fixes
+
+* **ci:** chain Docker and binaries on the publish_only path too ([#257](https://github.com/swoofer/mcp-coordinator/issues/257)) ([7c5f894](https://github.com/swoofer/mcp-coordinator/commit/7c5f894e51236d774c2d3be4fddcf48a50cee7b6))
+* **ci:** promote :latest on the chained release path ([#253](https://github.com/swoofer/mcp-coordinator/issues/253)) ([a79b60b](https://github.com/swoofer/mcp-coordinator/commit/a79b60b276d3c03a3f785367a25841d7f7a22027))
+
+
+### Documentation
+
+* **site:** bring the landing page up to date with v2.0.0 ([#255](https://github.com/swoofer/mcp-coordinator/issues/255)) ([9b432d1](https://github.com/swoofer/mcp-coordinator/commit/9b432d15d6e400b65c47f3ab724b175e0def469c))
+* **site:** prune dead i18n keys, end markup/dictionary drift, state the Node floor ([#256](https://github.com/swoofer/mcp-coordinator/issues/256)) ([abe6d4d](https://github.com/swoofer/mcp-coordinator/commit/abe6d4de2975f0159d1881a766f338b7d1ca545d))
+
 ## [2.0.0](https://github.com/swoofer/mcp-coordinator/compare/v1.5.0...v2.0.0) (2026-08-13)
 
 
