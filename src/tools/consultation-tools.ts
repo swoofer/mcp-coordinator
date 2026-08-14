@@ -213,6 +213,9 @@ export function registerConsultationTools(
       const claims = getSessionClaims(extra.sessionId ?? "");
       if (!claims) throw new Error("Session has no captured claims (auth bug)");
       mcpLog.info({ tool: "post_to_thread", thread_id, agent_id, type }, "Tool called");
+      // issue #233: posting to a thread proves the agent is alive, so it
+      // refreshes last_seen_at the same way an explicit heartbeat would.
+      services.registry.heartbeat(claims.org, agent_id);
       const msg = consultation.postToThread(claims.org, {
         thread_id,
         agent_id,

@@ -64,6 +64,12 @@ export function runCommonAnnounceFlow(
 ): CommonFlowResult {
   const { registry, consultation, impactScorer, introspection, sseEmitter, logger } = services;
 
+  // issue #233: announcing work proves the announcer is alive. Refresh
+  // last_seen_at BEFORE the listOnline call below, which now applies a
+  // staleness TTL — otherwise an agent that works steadily without ever calling
+  // the explicit `heartbeat` tool would age out of its own announce.
+  registry.heartbeat(params.org_id, params.agent_id);
+
   // 1. Score impact: categorize all online agents into concerned / gray_zone / pass.
   const categorized = impactScorer.categorize({
     org_id: params.org_id,

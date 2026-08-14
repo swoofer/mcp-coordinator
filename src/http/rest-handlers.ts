@@ -281,7 +281,7 @@ export function handlePostToThread(
   ctx: RestContext,
   body: Record<string, unknown>,
 ): void {
-  const { consultation, sseEmitter } = ctx.services;
+  const { consultation, sseEmitter, registry } = ctx.services;
   const parsed = PostToThreadBodySchema.safeParse(body);
   if (!parsed.success) {
     sendValidationError(res, parsed.error);
@@ -300,6 +300,9 @@ export function handlePostToThread(
     json(res, { error: "thread_cancelled", thread_id }, 410);
     return;
   }
+  // issue #233: posting to a thread proves the agent is alive, so it refreshes
+  // last_seen_at the same way an explicit heartbeat would.
+  registry.heartbeat(ctx.claims.org, agent_id);
   const msg = consultation.postToThread(ctx.claims.org, {
     thread_id,
     agent_id,
