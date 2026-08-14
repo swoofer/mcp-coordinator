@@ -106,11 +106,16 @@ export function createServerRestoreCommand(): Command {
         console.error(`Extraction failed: ${(err as Error).message}`);
         // Try to roll back the snapshot if we made one.
         if (snapshotPath !== null && existsSync(snapshotPath)) {
-          // Best-effort: only roll back if extraction created an empty dir.
+          // Best-effort, and unconditional: whatever the half-finished
+          // extraction left behind is moved aside rather than inspected.
+          const failedPath = `${configDir}.failed-${timestampSlug()}`;
           try {
-            renameSync(configDir, `${configDir}.failed-${timestampSlug()}`);
+            renameSync(configDir, failedPath);
             renameSync(snapshotPath, configDir);
+            // Name the quarantined directory — it holds the partial extraction,
+            // and without the path there is no way to inspect or delete it.
             console.error("Rolled back to previous config dir.");
+            console.error(`  partial extraction moved to: ${failedPath}`);
           } catch {
             console.error(`Manual recovery required — snapshot at: ${snapshotPath}`);
           }
