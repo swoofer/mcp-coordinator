@@ -151,6 +151,19 @@ entrée explicite dans `sandbox.network.allowedDomains`. L'utilisateur ne voit p
 il voit un coordinateur qui ne répond pas. `cli/doctor.ts` devrait détecter le cas et dire exactement quelle
 ligne ajouter. → [C09](C09-bash-sandbox-egress.md)
 
+> 🛠 **Tranché le 2026-08-15 — ce paragraphe est faux sur ses trois affirmations.** (1) *« en silence »* : la
+> doc dit que Claude Code **prompt** à la première connexion vers un hôte inconnu ; le refus muet exige
+> `strictAllowlist` (settings user/managed/CLI) ou `allowManagedDomainsOnly` (managed) — une organisation
+> durcie, pas un auto-hébergeur. (2) *« le daemon n'est pas joignable »* : le sandbox **ne couvre que Bash**.
+> `sandbox-environments` écrit *« MCP servers and hooks are separate processes that run unconstrained on the
+> host »* — le chemin MCP, donc tout le produit, n'est pas concerné. (3) *« dire quelle ligne ajouter »* : la
+> ligne en question est **rapportée inopérante** ([#28018](https://github.com/anthropics/claude-code/issues/28018),
+> OPEN — loopback refusé même listé dans `allowedDomains`). Un seul des trois échecs annoncés par la fiche est
+> confirmé (`.mcp.json` est un chemin protégé). **Le vrai défaut est ailleurs et n'a rien à voir avec le
+> sandbox :** `server start --daemon` écrit le PID et sort `0` sans vérifier que le daemon écoute, et `doctor`
+> conseille ensuite de démarrer un serveur dont il vient d'afficher le PID. Détail en §6.4 et §7.4 de
+> [C09](C09-bash-sandbox-egress.md).
+
 ---
 
 ## 5. Où se trouve le levier, par rapport à l'effort
