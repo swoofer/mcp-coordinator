@@ -144,7 +144,17 @@ export function createServerBackupCommand(): Command {
       }
 
       if (entries.length === 0 && customDataEntries.length === 0) {
+        // Name both paths. A typo'd COORDINATOR_DATA_DIR produces output
+        // identical to a genuinely empty install, and without the resolved
+        // paths there is nothing to tell the two apart.
         console.error("Nothing to back up: no config.json and no data directory found.");
+        console.error(`  config dir: ${configDir}`);
+        console.error(
+          `  data dir:   ${dataDir}${dataIsCustom ? " (from COORDINATOR_DATA_DIR)" : " (default)"}`,
+        );
+        console.error(
+          "Check those paths exist, or set COORDINATOR_DATA_DIR to the right location.",
+        );
         process.exit(1);
       }
 
