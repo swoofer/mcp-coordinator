@@ -257,6 +257,34 @@ Linux/Windows the quota endpoint returns 503 fail-open).
 
 ---
 
+## 8b. An agent shows as online after it died — or disappears while still working
+
+`list_agents(online_only: true)`, `coordinator_status` and `wait_for_peers` all
+report agents that are flagged online **and** have been seen recently.
+
+"Seen" is refreshed by real work, not only by the explicit `heartbeat` tool:
+`announce_work` and `post_to_thread` both count. An agent that has done none of
+those for longer than the TTL drops out of the online list.
+
+The TTL defaults to **900 seconds (15 minutes)** and is tunable:
+
+```bash
+COORDINATOR_AGENT_ONLINE_TTL_SECONDS=1800   # more patient
+```
+
+Two things this deliberately does *not* do:
+
+- It never deletes or rewrites the row. `list_agents` without `online_only`,
+  and the dashboard's agent list, still show the agent — this is a liveness
+  filter, not a cull.
+- It does not run a background sweeper, so there is nothing to coordinate in a
+  multi-instance deployment. The filter is applied when you read.
+
+If an agent vanishes mid-task, it is idle longer than the TTL between
+coordination calls: raise the value, or have it call `heartbeat` periodically.
+
+---
+
 ## 9. Windows notes
 
 - **`EBUSY` during tests.** A handful of Windows file-handle teardown flakes

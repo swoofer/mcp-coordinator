@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
 import { AgentRegistry } from "../../src/agent-registry.js";
 import { seedTestOrgs } from "../helpers/orgs.js";
@@ -181,5 +181,65 @@ describe("agent-registry org_id scoping", () => {
     // And the first org's row is untouched.
     expect(registry.get("org-a", "shared-id")?.name).toBe("A");
     expect(registry.get("org-b", "shared-id")).toBeUndefined();
+  });
+
+  // Issue #233: listOnline used to filter on `status` alone. `status` only ever
+  // becomes 'offline' via an opt-in REST call or an MQTT LWT that real agents
+  // do not register, so a crashed agent stayed "online" forever and
+  // wait_for_peers happily reported readiness against a corpse.
+  describe("online staleness (#233)", () => {
+    const TTL_ENV = "COORDINATOR_AGENT_ONLINE_TTL_SECONDS";
+    afterEach(() => {
+      delete process.env[TTL_ENV];
+    });
+
+    function backdate(orgId: string, agentId: string, seconds: number): void {
+      getDb()
+        .prepare("UPDATE agents SET last_seen_at = datetime('now', ?) WHERE org_id = ? AND id = ?")
+        .run(`-${seconds} seconds`, orgId, agentId);
+    }
+
+    it("drops an agent whose last_seen_at is older than the TTL", () => {
+      process.env[TTL_ENV] = "60";
+      registry.register("org-a", "stale", "Stale", []);
+      registry.register("org-a", "fresh", "Fresh", []);
+      backdate("org-a", "stale", 600);
+
+      const online = registry.listOnline("org-a").map((a) => a.id);
+      expect(online).toContain("fresh");
+      expect(online).not.toContain("stale");
+    });
+
+    it("listAll still reports the stale agent — this is a liveness filter, not a delete", () => {
+      process.env[TTL_ENV] = "60";
+      registry.register("org-a", "stale", "Stale", []);
+      backdate("org-a", "stale", 600);
+
+      expect(registry.listAll("org-a").map((a) => a.id)).toContain("stale");
+      expect(registry.get("org-a", "stale")).toBeDefined();
+    });
+
+    it("a heartbeat brings a stale agent back", () => {
+      process.env[TTL_ENV] = "60";
+      registry.register("org-a", "back", "Back", []);
+      backdate("org-a", "back", 600);
+      expect(registry.listOnline("org-a").map((a) => a.id)).not.toContain("back");
+
+      registry.heartbeat("org-a", "back");
+      expect(registry.listOnline("org-a").map((a) => a.id)).toContain("back");
+    });
+
+    it("an explicitly offline agent stays out regardless of freshness", () => {
+      process.env[TTL_ENV] = "60";
+      registry.register("org-a", "gone", "Gone", []);
+      registry.setOffline("org-a", "gone");
+      expect(registry.listOnline("org-a").map((a) => a.id)).not.toContain("gone");
+    });
+
+    it("the TTL is generous by default so a quiet-but-live agent is not culled", () => {
+      registry.register("org-a", "quiet", "Quiet", []);
+      backdate("org-a", "quiet", 120); // 2 min idle, well under the default
+      expect(registry.listOnline("org-a").map((a) => a.id)).toContain("quiet");
+    });
   });
 });
