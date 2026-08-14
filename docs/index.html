@@ -38,7 +38,7 @@
     "applicationCategory": "DeveloperApplication",
     "applicationSubCategory": "AI Agent Coordination",
     "operatingSystem": "Linux, macOS, Windows",
-    "softwareVersion": "1.0.0",
+    "softwareVersion": "2.0.0",
     "license": "https://opensource.org/licenses/MIT",
     "codeRepository": "https://github.com/swoofer/mcp-coordinator",
     "programmingLanguage": ["JavaScript", "Node.js"],
@@ -1635,7 +1635,7 @@
 <section id="hero">
   <div class="container">
     <div class="hero-eyebrow">
-      <span data-i18n="hero.eyebrow">Open Source &middot; MIT &middot; v0.13.0</span>
+      <span data-i18n="hero.eyebrow">Open Source &middot; MIT &middot; v2.0.0</span>
     </div>
     <h1 data-i18n="hero.h1">Zero conflicts. Every agent aligned.</h1>
     <p class="hero-subtitle" data-i18n="hero.subtitle">5 agents, 1 codebase, 0 merge conflicts. The MCP server that keeps parallel Claude Code, Cursor, and Cline agents aligned.</p>
@@ -1812,7 +1812,7 @@
       </div>
       <div class="card">
         <h3><span data-i18n="mechanism.v05.symbol.title">Symbol-aware scoring</span><span class="version-badge">v0.3+</span></h3>
-        <p data-i18n="mechanism.v05.symbol.body">tree-sitter parses 15 languages (TS/TSX/JS/JSX/Python/Go/Rust/Java/C#/C/C++/Ruby/PHP/Kotlin/Swift/Bash). Two agents editing the same file but different functions get an annotated reason — not a silent block.</p>
+        <p data-i18n="mechanism.v05.symbol.body">tree-sitter parses 15 languages (TS/TSX/JS/Python/Go/Rust/Java/C#/C/C++/Ruby/PHP/Kotlin/Swift/Bash). Two agents editing the same file but different functions get an annotated reason — not a silent block.</p>
       </div>
       <div class="card">
         <h3><span data-i18n="mechanism.v05.cochange.title">Git co-change scoring</span><span class="version-badge">v0.5</span></h3>
@@ -2259,7 +2259,7 @@
         <div class="code-block">mcp-coordinator doctor &amp;&amp; mcp-coordinator dashboard</div>
       </div>
     </div>
-    <p class="install-alt text-center" data-i18n="start.alt"><strong>Prefer Docker?</strong> Pull the multi-arch image instead: <code>docker pull ghcr.io/swoofer/mcp-coordinator:0.13.0</code>. A working compose stack with Caddy auto-TLS ships at <a href="https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose">examples/docker-compose/</a>.</p>
+    <p class="install-alt text-center" data-i18n="start.alt"><strong>Prefer Docker?</strong> Pull the multi-arch image instead: <code>docker pull ghcr.io/swoofer/mcp-coordinator:2.0.0</code>. A working compose stack with Caddy auto-TLS ships at <a href="https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose">examples/docker-compose/</a>.</p>
     <p class="install-alt text-center" data-i18n="start.modes"><strong>Want real-time push instead of polling?</strong> Add the Channels sidecar (v0.12+ research preview) so coordination events arrive as <code>&lt;channel&gt;</code> tags in your Claude Code session between turns. See the <a href="https://github.com/swoofer/mcp-coordinator/blob/main/docs/operating-modes.md">polling-vs-push decision guide</a> and the <a href="https://github.com/swoofer/mcp-coordinator/tree/main/examples/channels-quickstart">channels-quickstart example</a>.</p>
     <p class="install-note text-center" data-i18n="start.note"><code>git worktree add ../feature-x main</code> and run each agent in its own worktree &mdash; mcp-coordinator handles "who's editing types.ts"; worktrees handle "no two agents fighting the same inode."</p>
 
@@ -2271,7 +2271,7 @@
         <div class="agent-status"><span class="dot dot-green" aria-hidden="true"></span> Beta &mdash; idle</div>
         <div class="agent-status"><span class="dot dot-yellow" aria-hidden="true"></span> Gamma &mdash; waiting</div>
         <div class="agent-status"><span class="dot dot-red" aria-hidden="true"></span> Delta &mdash; offline</div>
-        <div class="agent-status" style="margin-left: auto; color: var(--muted); font-size: 0.8rem;" data-i18n="start.dash.meta">mcp-coordinator v0.13.0 &middot; quota 62%</div>
+        <div class="agent-status" style="margin-left: auto; color: var(--muted); font-size: 0.8rem;" data-i18n="start.dash.meta">mcp-coordinator v2.0.0 &middot; quota 62%</div>
       </div>
       <div class="dash-timeline">
         <div><span class="tl-time">09:41:02</span> <span class="tl-blue">Alpha</span> announced: "Add updated_at to User" &rarr; types.ts, user.service.ts</div>
@@ -2346,7 +2346,7 @@
         <span class="perf-sep">&middot;</span>
         <span class="perf-item"><strong data-i18n="results.perf.label.consensus">Full consensus</strong> <span data-i18n="results.perf.value.consensus">30-45s</span></span>
         <span class="perf-sep">&middot;</span>
-        <span class="perf-item"><strong data-i18n="results.perf.label.tests">Test suite</strong> <span data-i18n="results.perf.value.tests">546 unit tests across 65 files</span></span>
+        <span class="perf-item"><strong data-i18n="results.perf.label.tests">Test suite</strong> <span data-i18n="results.perf.value.tests">2941 tests across 216 files</span></span>
       </div>
       <p class="perf-metrics-link">
         <a href="https://github.com/swoofer/mcp-coordinator/tree/main/tests" rel="noopener noreferrer" data-i18n="results.perf.link">Browse the test suite on GitHub →</a>
@@ -2359,7 +2359,7 @@
   <div class="container">
     <div class="text-center">
       <h2 class="section-title" data-i18n="compliance.title">Enterprise &amp; Compliance</h2>
-      <p class="section-sub" data-i18n="compliance.intro">Built for compliance from the foundation up. v0.11.0 ships full Phase 2 OAuth 2.1, multi-IdP SSO, and SHA-256 audit log tamper-evidence — the capabilities regulated-industry and SOC 2 Type II deployments actually need to assemble an audit dossier.</p>
+      <p class="section-sub" data-i18n="compliance.intro">Built for compliance from the foundation up. v2.0.0 ships full Phase 2 OAuth 2.1, multi-IdP SSO, and an HMAC-keyed hash-chained audit log — the capabilities regulated-industry and SOC 2 Type II deployments actually need to assemble an audit dossier.</p>
     </div>
 
     <div class="compliance-table-wrap fade-in">
@@ -2388,7 +2388,7 @@
             <td data-i18n="compliance.row.multiidp.aligned">SOC 2 CC6.1 &middot; centralized identity</td>
           </tr>
           <tr>
-            <td data-i18n="compliance.row.audit.cap">Audit log table (append-only data layer) + 35 event types Tier 1/Tier 2</td>
+            <td data-i18n="compliance.row.audit.cap">Audit log table (append-only data layer) + 39 event types Tier 1/Tier 2</td>
             <td><span class="badge-done" data-i18n="compliance.row.audit.status">Shipped v0.7 &rarr; v0.8</span></td>
             <td data-i18n="compliance.row.audit.aligned">SOC 2 CC7.2 &middot; CC7.3</td>
           </tr>
@@ -2458,7 +2458,7 @@
 
       <details class="faq-item">
         <summary class="faq-q" data-i18n="faq.q2">Is it production-ready?</summary>
-        <div class="faq-a" data-i18n="faq.a2">Stable for solo and team use; v1.0 freezes the public API. 546 unit tests across 65 files cover 6 scoring layers, cross-org isolation, and 4 conflict scenarios. MIT-licensed, <code>doctor</code> command, structured Pino logs.</div>
+        <div class="faq-a" data-i18n="faq.a2">Stable for solo and team use; v1.0 freezes the public API. 2941 tests across 216 files cover 6 scoring layers, cross-org isolation, and 4 conflict scenarios. MIT-licensed, <code>doctor</code> command, structured Pino logs.</div>
       </details>
 
       <details class="faq-item">
@@ -2473,7 +2473,7 @@
 
       <details class="faq-item">
         <summary class="faq-q" data-i18n="faq.q5">Can multiple repos share one coordinator?</summary>
-        <div class="faq-a" data-i18n="faq.a5">Yes via shared LAN or self-hosted cloud deployment. Cross-repo first-class support is on the roadmap (v1.0).</div>
+        <div class="faq-a" data-i18n="faq.a5">Yes via shared LAN or self-hosted cloud deployment. Cross-repo first-class support is on the roadmap (beyond v2.0).</div>
       </details>
 
       <details class="faq-item">
@@ -2488,7 +2488,7 @@
 
       <details class="faq-item">
         <summary class="faq-q" data-i18n="faq.q8">Yet another tool to maintain?</summary>
-        <div class="faq-a" data-i18n="faq.a8">One <code>npm install -g</code>, or pull the published image <code>ghcr.io/swoofer/mcp-coordinator:0.13.0</code> if you prefer Docker. Embedded MQTT broker, SQLite, and dashboard ship in the package. Zero sidecar. Symmetric <code>uninstall</code> reverses the <code>init</code> actions; <code>--purge</code> wipes the data dir.</div>
+        <div class="faq-a" data-i18n="faq.a8">One <code>npm install -g</code>, or pull the published image <code>ghcr.io/swoofer/mcp-coordinator:2.0.0</code> if you prefer Docker. Embedded MQTT broker, SQLite, and dashboard ship in the package. Zero sidecar. Symmetric <code>uninstall</code> reverses the <code>init</code> actions; <code>--purge</code> wipes the data dir.</div>
       </details>
 
       <details class="faq-item">
@@ -2503,7 +2503,7 @@
 
       <details class="faq-item">
         <summary class="faq-q" data-i18n="faq.q11">Which programming languages does conflict detection support?</summary>
-        <div class="faq-a" data-i18n="faq.a11">v0.5.0 ships with 15 languages via tree-sitter: TypeScript, TSX, JavaScript, JSX, Python, Go, Rust, Java, C#, C, C++, Ruby, PHP, Kotlin, and Swift. A strategy-registry pattern makes adding more languages a one-file contribution. Bash is supported for script-level awareness.</div>
+        <div class="faq-a" data-i18n="faq.a11">15 languages via tree-sitter: TypeScript, TSX, JavaScript, Python, Go, Rust, Java, C#, C, C++, Ruby, PHP, Kotlin, Swift, and Bash. <code>.jsx</code>, <code>.mjs</code>, and <code>.cjs</code> map onto the JavaScript grammar. A strategy-registry pattern makes adding more languages a one-file contribution.</div>
       </details>
 
       <details class="faq-item">
@@ -2532,7 +2532,7 @@
         "name": "Is it production-ready?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Stable for solo and team use; v1.0 freezes the public API. 392 unit tests across 6 scoring layers and 4 conflict scenarios, MIT-licensed, doctor command, structured Pino logs."
+          "text": "Stable for solo and team use; v1.0 freezes the public API. 2941 tests across 216 files cover 6 scoring layers, cross-org isolation, and 4 conflict scenarios. MIT-licensed, doctor command, structured Pino logs."
         }
       },
       {
@@ -2556,7 +2556,7 @@
         "name": "Can multiple repos share one coordinator?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Yes via shared LAN or self-hosted cloud deployment. Cross-repo first-class support is on the roadmap (v1.0)."
+          "text": "Yes via shared LAN or self-hosted cloud deployment. Cross-repo first-class support is on the roadmap (beyond v2.0)."
         }
       },
       {
@@ -2580,7 +2580,7 @@
         "name": "Yet another tool to maintain?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "One npm install -g, or pull the published image ghcr.io/swoofer/mcp-coordinator:0.13.0 if you prefer Docker. Embedded MQTT broker, SQLite, and dashboard ship in the package. Zero sidecar. Symmetric uninstall reverses the init actions; --purge wipes the data dir."
+          "text": "One npm install -g, or pull the published image ghcr.io/swoofer/mcp-coordinator:2.0.0 if you prefer Docker. Embedded MQTT broker, SQLite, and dashboard ship in the package. Zero sidecar. Symmetric uninstall reverses the init actions; --purge wipes the data dir."
         }
       },
       {
@@ -2640,7 +2640,7 @@
         <div class="timeline-dot dot-done" aria-hidden="true"></div>
         <div class="timeline-badge badge-done" data-i18n="roadmap.badge.done">Shipped</div>
         <h4 data-i18n="roadmap.v03.title">v0.3 — Semantic conflict detection</h4>
-        <p data-i18n="roadmap.v03.desc">AST-level analysis on top of filename scoring via tree-sitter. Detects API contract changes and interface incompatibilities before a thread opens. Symbol-aware scoring: same file, different functions = annotated reason, not a silent block. 15 languages supported (TS/TSX/JS/JSX/Python/Go/Rust/Java/C#/C/C++/Ruby/PHP/Kotlin/Swift).</p>
+        <p data-i18n="roadmap.v03.desc">AST-level analysis on top of filename scoring via tree-sitter. Detects API contract changes and interface incompatibilities before a thread opens. Symbol-aware scoring: same file, different functions = annotated reason, not a silent block. 15 languages supported (TS/TSX/JS/Python/Go/Rust/Java/C#/C/C++/Ruby/PHP/Kotlin/Swift/Bash).</p>
         <p class="timeline-meta">
           <span data-i18n="roadmap.v03.date">Shipped May 2026</span>
           <span aria-hidden="true">·</span>
@@ -2704,7 +2704,7 @@
         <p class="timeline-meta">
           <span data-i18n="roadmap.v08.date">Shipped May 2026</span>
           <span aria-hidden="true">·</span>
-          <a href="https://github.com/swoofer/mcp-coordinator/releases/tag/v0.8.0" target="_blank" rel="noopener noreferrer" data-i18n="roadmap.v08.link" aria-label="v0.8.0 release on GitHub">v0.8.0 release</a>
+          <a href="https://github.com/swoofer/mcp-coordinator/releases/tag/v0.8.1" target="_blank" rel="noopener noreferrer" data-i18n="roadmap.v08.link" aria-label="v0.8.1 release on GitHub">v0.8.1 release</a>
         </p>
       </div>
 
@@ -2796,7 +2796,7 @@
         <div class="timeline-dot dot-done" aria-hidden="true"></div>
         <div class="timeline-badge badge-done" data-i18n="roadmap.badge.done">Shipped</div>
         <h4 data-i18n="roadmap.v1_0.title">v1.0 — First stable release: security &amp; supply-chain hardening</h4>
-        <p data-i18n="roadmap.v1_0.desc">The audit-remediation milestone and first major version. <strong>Breaking:</strong> JWTs now carry a <code>typ</code> claim (access/refresh) — tokens issued before v1.0 are rejected, so every user re-authenticates once after upgrade. Hardens the default install (127.0.0.1 bind via <code>COORDINATOR_BIND</code>, Origin/CORS enforcement, secret redaction on all log paths), closes the supply chain (pnpm 10 with <code>onlyBuiltDependencies</code>, SHA-pinned Actions, digest-pinned Docker base), and adds zod-validated REST endpoints with structured 400s. 110 audit findings remediated across 23 PRs; 0 known vulnerabilities.</p>
+        <p data-i18n="roadmap.v1_0.desc">The audit-remediation milestone and first major version. <strong>Breaking:</strong> JWTs now carry a <code>typ</code> claim (access/refresh) — tokens issued before v1.0 are rejected, so every user re-authenticates once after upgrade. Hardens the default install (127.0.0.1 bind via <code>COORDINATOR_BIND</code>, Origin/CORS enforcement, secret redaction on all log paths), closes the supply chain (pnpm 10 with <code>onlyBuiltDependencies</code>, SHA-pinned Actions, digest-pinned Docker base), and adds zod-validated REST endpoints with structured 400s. 110 audit findings remediated across 23 PRs; 0 known vulnerabilities. Followed a day later by v1.0.1: the dashboard's inline script moves to an external <code>dashboard.js</code> so a strict <code>script-src 'self'</code> CSP applies, and SSE responses flush headers immediately so <code>EventSource</code> opens without waiting for the first heartbeat.</p>
         <p class="timeline-meta">
           <span data-i18n="roadmap.v1_0.date">Shipped July 2026</span>
           <span aria-hidden="true">·</span>
@@ -2805,10 +2805,82 @@
       </div>
 
       <div class="timeline-item">
+        <div class="timeline-dot dot-done" aria-hidden="true"></div>
+        <div class="timeline-badge badge-done" data-i18n="roadmap.badge.done">Shipped</div>
+        <h4 data-i18n="roadmap.v1_1.title">v1.1 — Per-run thread scoping + NDJSON logging</h4>
+        <p data-i18n="roadmap.v1_1.desc">Consultation threads now carry a <code>run_id</code>: a run sees its own threads plus every un-scoped one, so an aborted run stops leaking stale thread ids into the next. The filter is <code>run_id IS NULL OR run_id = ?</code>, not strict equality — a run hides other runs but never other sessions, so a human working the same repo stays visible. Announcing without a <code>run_id</code> stays un-scoped and existing clients are unaffected. New <code>--log-json</code> flag (<code>COORDINATOR_LOG_JSON</code>) forces NDJSON output for log aggregators and is forwarded to the detached daemon. Adopted from contributor PR #151.</p>
+        <p class="timeline-meta">
+          <span data-i18n="roadmap.v1_1.date">Shipped July 2026</span>
+          <span aria-hidden="true">·</span>
+          <a href="https://github.com/swoofer/mcp-coordinator/releases/tag/v1.1.0" target="_blank" rel="noopener noreferrer" data-i18n="roadmap.v1_1.link" aria-label="v1.1.0 release on GitHub">v1.1.0 release</a>
+        </p>
+      </div>
+
+      <div class="timeline-item">
+        <div class="timeline-dot dot-done" aria-hidden="true"></div>
+        <div class="timeline-badge badge-done" data-i18n="roadmap.badge.done">Shipped</div>
+        <h4 data-i18n="roadmap.v1_2.title">v1.2 — GitHub OAuth becomes optional</h4>
+        <p data-i18n="roadmap.v1_2.desc">Phase 2 no longer hard-requires a GitHub OAuth App. GitHub credentials are optional both-or-neither like Google, boot requires at least one IdP and fails closed when none is configured, and <code>COORDINATOR_GOOGLE_WORKSPACE_DOMAIN</code> seeds the bootstrap org's IdP allowlist so the first Google sign-in matches an org and becomes admin — previously a Google-only deploy booted to an empty orgs table and denied every login. <code>doctor</code> probes Google credentials and treats GitHub as optional. The v1.2.1 patch marks the tree-sitter grammars <code>--external</code> in the <code>bun --compile</code> binary build and installs Corepack explicitly in the Docker image, since Node 26 dropped the bundled one.</p>
+        <p class="timeline-meta">
+          <span data-i18n="roadmap.v1_2.date">Shipped July 2026</span>
+          <span aria-hidden="true">·</span>
+          <a href="https://github.com/swoofer/mcp-coordinator/releases/tag/v1.2.1" target="_blank" rel="noopener noreferrer" data-i18n="roadmap.v1_2.link" aria-label="v1.2.1 release on GitHub">v1.2.1 release</a>
+        </p>
+      </div>
+
+      <div class="timeline-item">
+        <div class="timeline-dot dot-done" aria-hidden="true"></div>
+        <div class="timeline-badge badge-done" data-i18n="roadmap.badge.done">Shipped</div>
+        <h4 data-i18n="roadmap.v1_3.title">v1.3 — Google provider in the phase2 init wizard</h4>
+        <p data-i18n="roadmap.v1_3.desc"><code>init phase2</code> was GitHub-only. It now offers independent per-provider toggles with per-provider app-creation instructions, plus <code>--google-client-id</code>, <code>--google-client-secret</code>, and <code>--google-workspace-domain</code> flags for non-interactive runs. The wizard mirrors <code>bootPhase2</code>'s rules exactly: both-or-neither per provider, at least one required, <code>GITHUB_ORG</code> only when GitHub is configured. Interactive prompts default to GitHub yes and Google no, so existing runs are unchanged; declining both aborts.</p>
+        <p class="timeline-meta">
+          <span data-i18n="roadmap.v1_3.date">Shipped July 2026</span>
+          <span aria-hidden="true">·</span>
+          <a href="https://github.com/swoofer/mcp-coordinator/releases/tag/v1.3.0" target="_blank" rel="noopener noreferrer" data-i18n="roadmap.v1_3.link" aria-label="v1.3.0 release on GitHub">v1.3.0 release</a>
+        </p>
+      </div>
+
+      <div class="timeline-item">
+        <div class="timeline-dot dot-done" aria-hidden="true"></div>
+        <div class="timeline-badge badge-done" data-i18n="roadmap.badge.done">Shipped</div>
+        <h4 data-i18n="roadmap.v1_4.title">v1.4 — CLI operability pass + grounded docs and examples</h4>
+        <p data-i18n="roadmap.v1_4.desc">Five CLI additions land together: a <code>server restart</code> subcommand, <code>--timeout</code> and <code>--force</code> on <code>server stop</code>, <code>--since</code> / <code>--grep</code> / <code>--level</code> filters on <code>server logs</code>, a <code>--print-only</code> dry run for <code>init</code>, and <code>--json</code> output for <code>service-token issue</code> and <code>list</code>. Ships three reference docs — a 12-question FAQ, a 9-section troubleshooting guide, and a canonical MQTT topic reference — plus eight self-contained integration examples: Go and Node MQTT subscribers, Slack and Discord webhook forwarders, systemd, Fly.io, Traefik, and a GitHub Actions bridge.</p>
+        <p class="timeline-meta">
+          <span data-i18n="roadmap.v1_4.date">Shipped July 2026</span>
+          <span aria-hidden="true">·</span>
+          <a href="https://github.com/swoofer/mcp-coordinator/releases/tag/v1.4.0" target="_blank" rel="noopener noreferrer" data-i18n="roadmap.v1_4.link" aria-label="v1.4.0 release on GitHub">v1.4.0 release</a>
+        </p>
+      </div>
+
+      <div class="timeline-item">
+        <div class="timeline-dot dot-done" aria-hidden="true"></div>
+        <div class="timeline-badge badge-done" data-i18n="roadmap.badge.done">Shipped</div>
+        <h4 data-i18n="roadmap.v1_5.title">v1.5 — External MQTT broker, org-scoped bridge, opt-in Redis multi-instance</h4>
+        <p data-i18n="roadmap.v1_5.desc">The MQTT bridge can now target an external broker (<code>COORDINATOR_MQTT_URL</code>, <code>COORDINATOR_MQTT_EMBEDDED=false</code>, optional username and password) instead of the embedded Aedes one, and it became org-aware: traffic publishes under <code>coordinator/&lt;org&gt;/*</code> with consultation listeners scoped by (org, agent). That closes a tenant-isolation leak where every org's MQTT traffic flowed through <code>coordinator/default/*</code>. Opt-in multi-instance shared state behind <code>COORDINATOR_REDIS_URL</code> adds Redis locks, a shared rate limiter, a membership cache, sweeper leader election, serialized boot migrations, and token-epoch pub/sub — unset, every component keeps its unchanged in-memory single-instance path. Broker-side ACL is deferred.</p>
+        <p class="timeline-meta">
+          <span data-i18n="roadmap.v1_5.date">Shipped July 2026</span>
+          <span aria-hidden="true">·</span>
+          <a href="https://github.com/swoofer/mcp-coordinator/releases/tag/v1.5.0" target="_blank" rel="noopener noreferrer" data-i18n="roadmap.v1_5.link" aria-label="v1.5.0 release on GitHub">v1.5.0 release</a>
+        </p>
+      </div>
+
+      <div class="timeline-item">
+        <div class="timeline-dot dot-done" aria-hidden="true"></div>
+        <div class="timeline-badge badge-done" data-i18n="roadmap.badge.done">Shipped</div>
+        <h4 data-i18n="roadmap.v2_0.title">v2.0 — Node 22 floor, keyed audit chain, auth-path hardening</h4>
+        <p data-i18n="roadmap.v2_0.desc"><strong>Breaking:</strong> the minimum supported Node is now 22 — better-sqlite3@13 declares <code>engines node &gt;=22</code> and Node 20 reached EOL on 2026-04-30 — with the CI matrix moved from 20/22 to 22/24. The audit hash chain is now keyed with HMAC-SHA256 derived from <code>COORDINATOR_ENCRYPTION_KEY</code> via HKDF, so DB write access alone can no longer forge a self-consistent chain: new rows carry an <code>hmac-sha256-v1:</code> prefix, existing rows and keyless deployments stay bare SHA-256, and verification rejects an algorithm downgrade. Audit rows now record the real actor id instead of a truncated pseudonym that was reversible from the cleartext id on the same row. Alongside: revocation and admin-route guards on the cookie session path, auto-provision and login-lockout enforcement on the CLI token grant, org-scoped <code>/api/scoring-stats</code>, a POST-only allowlist on state-changing <code>/api/*</code> routes, boot-time encryption of lingering plaintext IdP tokens, and rejection of low-complexity master keys that evade Shannon entropy.</p>
+        <p class="timeline-meta">
+          <span data-i18n="roadmap.v2_0.date">Shipped August 2026</span>
+          <span aria-hidden="true">·</span>
+          <a href="https://github.com/swoofer/mcp-coordinator/releases/tag/v2.0.0" target="_blank" rel="noopener noreferrer" data-i18n="roadmap.v2_0.link" aria-label="v2.0.0 release on GitHub">v2.0.0 release</a>
+        </p>
+      </div>
+
+      <div class="timeline-item">
         <div class="timeline-dot dot-future" aria-hidden="true"></div>
         <div class="timeline-badge badge-future" data-i18n="roadmap.badge.future">Future</div>
-        <h4 data-i18n="roadmap.beyond.title">Beyond v1.0 — cross-repo coordination &amp; multi-instance</h4>
-        <p data-i18n="roadmap.beyond.desc">Coordination across multiple repositories from a single MQTT broker. A frozen, versioned public REST API with migration guides. Phase 5 multi-instance via Redis pub/sub for membership cache invalidation, token_epoch reads, rate-limit, and sweeper leader election.</p>
+        <h4 data-i18n="roadmap.beyond.title">Beyond v2.0 — cross-repo coordination &amp; a frozen public API</h4>
+        <p data-i18n="roadmap.beyond.desc">Coordination across multiple repositories from a single MQTT broker. A frozen, versioned public REST API with migration guides.</p>
         <p class="timeline-meta">
           <span data-i18n="roadmap.beyond.date">Date TBD</span>
           <span aria-hidden="true">·</span>
@@ -2829,7 +2901,7 @@
     <a href="https://github.com/sponsors/swoofer" target="_blank" rel="noopener noreferrer">Sponsor</a>
     <a href="https://buymeacoffee.com/swoofer" target="_blank" rel="noopener noreferrer">Buy Me A Coffee</a>
   </div>
-  <p data-i18n="footer.text">MIT License &nbsp;·&nbsp; Built with <a href="https://claude.ai/code" target="_blank" rel="noopener noreferrer">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v1.0.0</p>
+  <p data-i18n="footer.text">MIT License &nbsp;·&nbsp; Built with <a href="https://claude.ai/code" target="_blank" rel="noopener noreferrer">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v2.0.0</p>
 </footer>
 
 <script>
@@ -2930,7 +3002,7 @@
       "nav.install": "Install",
       "nav.roadmap": "Roadmap",
       "nav.getstarted": "Get Started",
-      "hero.eyebrow": "Open Source &middot; MIT &middot; v0.13.0",
+      "hero.eyebrow": "Open Source &middot; MIT &middot; v2.0.0",
       "hero.h1": "Zero conflicts. Every agent aligned.",
       "hero.subtitle": "5 agents, 1 codebase, 0 merge conflicts. The MCP server that keeps parallel Claude Code, Cursor, and Cline agents aligned.",
       "hero.stat.latency": "&lt;50ms push latency",
@@ -3002,7 +3074,7 @@
       "mechanism.v05.inflight.title": "In-flight awareness",
       "mechanism.v05.inflight.body": "Hook-based PreToolUse + PostToolUse hooks let the coordinator see agents <strong>start</strong> editing files — not just when they finish. Conflicts surface before bytes are written, not after.",
       "mechanism.v05.symbol.title": "Symbol-aware scoring",
-      "mechanism.v05.symbol.body": "tree-sitter parses 15 languages (TS/TSX/JS/JSX/Python/Go/Rust/Java/C#/C/C++/Ruby/PHP/Kotlin/Swift/Bash). Two agents editing the same file but different functions get an annotated reason — not a silent block.",
+      "mechanism.v05.symbol.body": "tree-sitter parses 15 languages (TS/TSX/JS/Python/Go/Rust/Java/C#/C/C++/Ruby/PHP/Kotlin/Swift/Bash). Two agents editing the same file but different functions get an annotated reason — not a silent block.",
       "mechanism.v05.cochange.title": "Git co-change scoring",
       "mechanism.v05.cochange.body": "Files that move together in git history (config + consumer, fixture + test) are scored as related: impact 60 if &gt;50% co-change, 40 if &gt;20%. Catches regressions invisible to filename matching.",
       "mechanism.cta.primary": "Run it locally in 60 seconds",
@@ -3096,11 +3168,11 @@
       "start.step4.label": "Step 4",
       "start.step4.title": "Verify and open",
       "start.step4.desc": "The <code class=\"ic\">doctor</code> command checks config, server, MCP responses, and MQTT connections, then opens the dashboard at <code class=\"ic\">localhost:3100/dashboard</code>.",
-      "start.alt": "<strong>Prefer Docker?</strong> Pull the multi-arch image instead: <code class=\"ic\">docker pull ghcr.io/swoofer/mcp-coordinator:0.13.0</code>. A working compose stack with Caddy auto-TLS ships at <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose\">examples/docker-compose/</a>.",
+      "start.alt": "<strong>Prefer Docker?</strong> Pull the multi-arch image instead: <code class=\"ic\">docker pull ghcr.io/swoofer/mcp-coordinator:2.0.0</code>. A working compose stack with Caddy auto-TLS ships at <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose\">examples/docker-compose/</a>.",
       "start.modes": "<strong>Want real-time push instead of polling?</strong> Add the Channels sidecar (v0.12+ research preview) so coordination events arrive as <code class=\"ic\">&lt;channel&gt;</code> tags in your Claude Code session between turns. See the <a href=\"https://github.com/swoofer/mcp-coordinator/blob/main/docs/operating-modes.md\">polling-vs-push decision guide</a> and the <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/channels-quickstart\">channels-quickstart example</a>.",
       "start.note": "<code class=\"ic\">git worktree add ../feature-x main</code> and run each agent in its own worktree &mdash; mcp-coordinator handles \"who's editing types.ts\"; worktrees handle \"no two agents fighting the same inode.\"",
       "start.dash.title": "What you'll see in 60 seconds",
-      "start.dash.meta": "mcp-coordinator v0.13.0 &middot; quota 62%",
+      "start.dash.meta": "mcp-coordinator v2.0.0 &middot; quota 62%",
       "start.dash.aria": "Sample dashboard view: four agents tracked live, with a conflict resolved in 38 seconds",
       "start.cta.star": "Star on GitHub",
       "start.cta.issue": "Open an issue",
@@ -3126,7 +3198,7 @@
       "results.perf.label.consensus": "Full consensus",
       "results.perf.value.consensus": "30-45s",
       "results.perf.label.tests": "Test suite",
-      "results.perf.value.tests": "546 unit tests across 65 files",
+      "results.perf.value.tests": "2941 tests across 216 files",
       "results.perf.link": "Browse the test suite on GitHub →",
       "results.subtitle.link": "See tests/ on GitHub →",
       "faq.title": "FAQ",
@@ -3134,25 +3206,25 @@
       "faq.q1": "Does this replace git worktrees?",
       "faq.a1": "No. Worktrees solve filesystem isolation; mcp-coordinator solves intent coordination. Use both.",
       "faq.q2": "Is it production-ready?",
-      "faq.a2": "Stable for solo and team use; v1.0 freezes the public API. 546 unit tests across 65 files cover 6 scoring layers, cross-org isolation, and 4 conflict scenarios. MIT-licensed, <code>doctor</code> command, structured Pino logs.",
+      "faq.a2": "Stable for solo and team use; v1.0 freezes the public API. 2941 tests across 216 files cover 6 scoring layers, cross-org isolation, and 4 conflict scenarios. MIT-licensed, <code>doctor</code> command, structured Pino logs.",
       "faq.q3": "What does it cost?",
       "faq.a3": "MIT-licensed and free. Self-hosted on your machine, your LAN, or your cloud.",
       "faq.q4": "Which MCP clients work?",
       "faq.a4": "Any MCP 2024-11-05 client: Claude Code, Cursor, Cline, Aider, custom scripts. HTTP/SSE or stdio.",
       "faq.q5": "Can multiple repos share one coordinator?",
-      "faq.a5": "Yes via shared LAN or self-hosted cloud deployment. Cross-repo first-class support is on the roadmap (v1.0).",
+      "faq.a5": "Yes via shared LAN or self-hosted cloud deployment. Cross-repo first-class support is on the roadmap (beyond v2.0).",
       "faq.q6": "Is auth or JWT required?",
       "faq.a6": "Not by default. Opt-in HS256 JWT via <a href=\"https://github.com/panva/jose\">jose</a> for shared or internet-facing deployments.",
       "faq.q7": "How is this different from Aider or Cline's own coordination?",
       "faq.a7": "Aider and Cline have no cross-session awareness. mcp-coordinator gives them shared state via the MQTT broker.",
       "faq.q8": "Yet another tool to maintain?",
-      "faq.a8": "One <code>npm install -g</code>, or pull the published image <code>ghcr.io/swoofer/mcp-coordinator:0.13.0</code> if you prefer Docker. Embedded MQTT broker, SQLite, and dashboard ship in the package. Zero sidecar. Symmetric <code>uninstall</code> reverses the <code>init</code> actions; <code>--purge</code> wipes the data dir.",
+      "faq.a8": "One <code>npm install -g</code>, or pull the published image <code>ghcr.io/swoofer/mcp-coordinator:2.0.0</code> if you prefer Docker. Embedded MQTT broker, SQLite, and dashboard ship in the package. Zero sidecar. Symmetric <code>uninstall</code> reverses the <code>init</code> actions; <code>--purge</code> wipes the data dir.",
       "faq.q9": "What if the coordinator goes down?",
       "faq.a9": "Agents fail open and keep working as if uninstalled. Local SQLite resumes on restart.",
       "faq.q10": "Will my agent lose context between turns?",
       "faq.a10": "No. mcp-coordinator events arrive between turns via MQTT push or polling. Your agent reads them and re-enters its turn loop with new context appended.",
       "faq.q11": "Which programming languages does conflict detection support?",
-      "faq.a11": "v0.5.0 ships with 15 languages via tree-sitter: TypeScript, TSX, JavaScript, JSX, Python, Go, Rust, Java, C#, C, C++, Ruby, PHP, Kotlin, and Swift. A strategy-registry pattern makes adding more languages a one-file contribution.",
+      "faq.a11": "15 languages via tree-sitter: TypeScript, TSX, JavaScript, Python, Go, Rust, Java, C#, C, C++, Ruby, PHP, Kotlin, Swift, and Bash. <code>.jsx</code>, <code>.mjs</code>, and <code>.cjs</code> map onto the JavaScript grammar. A strategy-registry pattern makes adding more languages a one-file contribution.",
       "faq.q12": "How does conflict detection work under the hood?",
       "faq.a12": "Six scoring layers, most severe wins: exact file match (100), symbol-aware AST overlap (annotated reason, not silent block), dependency graph (80), module boundary (30), recent-edits heuristic, and git co-change — files with shared commit history score 60 or 40 depending on co-change ratio.",
       "roadmap.title": "Roadmap",
@@ -3178,13 +3250,13 @@
       "roadmap.v04.date": "Shipped May 2026",
       "roadmap.v04.link": "v0.4.0 release",
       "roadmap.v05.title": "v0.5 — In-flight awareness &amp; git co-change",
-      "roadmap.v05.desc": "Hook-based PreToolUse/PostToolUse for real-time edit awareness. Git co-change scoring for historically coupled files. 392 tests across 46 files.",
+      "roadmap.v05.desc": "Hook-based PreToolUse/PostToolUse for real-time edit awareness. Git co-change scoring for historically coupled files.",
       "roadmap.v05.date": "Shipped May 2026",
       "roadmap.v05.link": "v0.5.0 release",
       "roadmap.v08.title": "v0.8 — Phase 2 OAuth 2.1 + device flow",
       "roadmap.v08.desc": "Full OAuth 2.1 + RFC 8628 device flow + cookie sessions (<code>__Host-coordinator_session</code>) + service tokens for CI/CD + refresh-token rotation with stolen-token detection (10s grace window, family revoke on reuse) + two-tier audit pipeline (Tier 1 sync never-drop + Tier 2 async batched) + 29 Prometheus metrics on <code>/metrics/auth</code>. Feature-flagged behind <code>COORDINATOR_OAUTH_ENABLED=true</code>; Phase 1 deployments byte-identical when unset.",
       "roadmap.v08.date": "Shipped May 2026",
-      "roadmap.v08.link": "v0.8.0 release",
+      "roadmap.v08.link": "v0.8.1 release",
       "roadmap.v09.title": "v0.9 — Multi-IdP + audit chain + rotation tooling",
       "roadmap.v09.desc": "First-class <code>GoogleProvider</code> (id_token verification via jose + JWKS) and generic <code>OIDCProvider</code> (auto-discovery via <code>/.well-known/openid-configuration</code> for Okta / Auth0 / Azure AD / Keycloak / Authentik). Picker UI on <code>/auth/login</code> when 2+ providers are registered. SHA-256 hash chain on every <code>audit_log</code> row (SOC 2 Type II tamper-evidence) + <code>verify-audit-chain.ts</code> operator script. <code>mcp-coordinator rotate-jwt-secret</code> CLI helper with systemd-timer + Kubernetes CronJob automation patterns.",
       "roadmap.v09.date": "Shipped May 2026",
@@ -3214,14 +3286,38 @@
       "roadmap.v13.date": "Shipped May 2026",
       "roadmap.v13.link": "v0.13.0 release",
       "roadmap.v1_0.title": "v1.0 — First stable release: security &amp; supply-chain hardening",
-      "roadmap.v1_0.desc": "The audit-remediation milestone and first major version. <strong>Breaking:</strong> JWTs now carry a <code>typ</code> claim (access/refresh) — tokens issued before v1.0 are rejected, so every user re-authenticates once after upgrade. Hardens the default install (127.0.0.1 bind via <code>COORDINATOR_BIND</code>, Origin/CORS enforcement, secret redaction on all log paths), closes the supply chain (pnpm 10 with <code>onlyBuiltDependencies</code>, SHA-pinned Actions, digest-pinned Docker base), and adds zod-validated REST endpoints with structured 400s. 110 audit findings remediated across 23 PRs; 0 known vulnerabilities.",
+      "roadmap.v1_0.desc": "The audit-remediation milestone and first major version. <strong>Breaking:</strong> JWTs now carry a <code>typ</code> claim (access/refresh) — tokens issued before v1.0 are rejected, so every user re-authenticates once after upgrade. Hardens the default install (127.0.0.1 bind via <code>COORDINATOR_BIND</code>, Origin/CORS enforcement, secret redaction on all log paths), closes the supply chain (pnpm 10 with <code>onlyBuiltDependencies</code>, SHA-pinned Actions, digest-pinned Docker base), and adds zod-validated REST endpoints with structured 400s. 110 audit findings remediated across 23 PRs; 0 known vulnerabilities. Followed a day later by v1.0.1: the dashboard's inline script moves to an external <code>dashboard.js</code> so a strict <code>script-src 'self'</code> CSP applies, and SSE responses flush headers immediately so <code>EventSource</code> opens without waiting for the first heartbeat.",
       "roadmap.v1_0.date": "Shipped July 2026",
       "roadmap.v1_0.link": "v1.0.0 release",
-      "roadmap.beyond.title": "Beyond v1.0 — cross-repo coordination &amp; multi-instance",
-      "roadmap.beyond.desc": "Coordination across multiple repositories from a single MQTT broker. A frozen, versioned public REST API with migration guides. Phase 5 multi-instance via Redis pub/sub for membership cache invalidation, token_epoch reads, rate-limit, and sweeper leader election.",
+      "roadmap.v1_1.title": "v1.1 — Per-run thread scoping + NDJSON logging",
+      "roadmap.v1_1.desc": "Consultation threads now carry a <code>run_id</code>: a run sees its own threads plus every un-scoped one, so an aborted run stops leaking stale thread ids into the next. The filter is <code>run_id IS NULL OR run_id = ?</code>, not strict equality — a run hides other runs but never other sessions, so a human working the same repo stays visible. Announcing without a <code>run_id</code> stays un-scoped and existing clients are unaffected. New <code>--log-json</code> flag (<code>COORDINATOR_LOG_JSON</code>) forces NDJSON output for log aggregators and is forwarded to the detached daemon. Adopted from contributor PR #151.",
+      "roadmap.v1_1.date": "Shipped July 2026",
+      "roadmap.v1_1.link": "v1.1.0 release",
+      "roadmap.v1_2.title": "v1.2 — GitHub OAuth becomes optional",
+      "roadmap.v1_2.desc": "Phase 2 no longer hard-requires a GitHub OAuth App. GitHub credentials are optional both-or-neither like Google, boot requires at least one IdP and fails closed when none is configured, and <code>COORDINATOR_GOOGLE_WORKSPACE_DOMAIN</code> seeds the bootstrap org's IdP allowlist so the first Google sign-in matches an org and becomes admin — previously a Google-only deploy booted to an empty orgs table and denied every login. <code>doctor</code> probes Google credentials and treats GitHub as optional. The v1.2.1 patch marks the tree-sitter grammars <code>--external</code> in the <code>bun --compile</code> binary build and installs Corepack explicitly in the Docker image, since Node 26 dropped the bundled one.",
+      "roadmap.v1_2.date": "Shipped July 2026",
+      "roadmap.v1_2.link": "v1.2.1 release",
+      "roadmap.v1_3.title": "v1.3 — Google provider in the phase2 init wizard",
+      "roadmap.v1_3.desc": "<code>init phase2</code> was GitHub-only. It now offers independent per-provider toggles with per-provider app-creation instructions, plus <code>--google-client-id</code>, <code>--google-client-secret</code>, and <code>--google-workspace-domain</code> flags for non-interactive runs. The wizard mirrors <code>bootPhase2</code>'s rules exactly: both-or-neither per provider, at least one required, <code>GITHUB_ORG</code> only when GitHub is configured. Interactive prompts default to GitHub yes and Google no, so existing runs are unchanged; declining both aborts.",
+      "roadmap.v1_3.date": "Shipped July 2026",
+      "roadmap.v1_3.link": "v1.3.0 release",
+      "roadmap.v1_4.title": "v1.4 — CLI operability pass + grounded docs and examples",
+      "roadmap.v1_4.desc": "Five CLI additions land together: a <code>server restart</code> subcommand, <code>--timeout</code> and <code>--force</code> on <code>server stop</code>, <code>--since</code> / <code>--grep</code> / <code>--level</code> filters on <code>server logs</code>, a <code>--print-only</code> dry run for <code>init</code>, and <code>--json</code> output for <code>service-token issue</code> and <code>list</code>. Ships three reference docs — a 12-question FAQ, a 9-section troubleshooting guide, and a canonical MQTT topic reference — plus eight self-contained integration examples: Go and Node MQTT subscribers, Slack and Discord webhook forwarders, systemd, Fly.io, Traefik, and a GitHub Actions bridge.",
+      "roadmap.v1_4.date": "Shipped July 2026",
+      "roadmap.v1_4.link": "v1.4.0 release",
+      "roadmap.v1_5.title": "v1.5 — External MQTT broker, org-scoped bridge, opt-in Redis multi-instance",
+      "roadmap.v1_5.desc": "The MQTT bridge can now target an external broker (<code>COORDINATOR_MQTT_URL</code>, <code>COORDINATOR_MQTT_EMBEDDED=false</code>, optional username and password) instead of the embedded Aedes one, and it became org-aware: traffic publishes under <code>coordinator/&lt;org&gt;/*</code> with consultation listeners scoped by (org, agent). That closes a tenant-isolation leak where every org's MQTT traffic flowed through <code>coordinator/default/*</code>. Opt-in multi-instance shared state behind <code>COORDINATOR_REDIS_URL</code> adds Redis locks, a shared rate limiter, a membership cache, sweeper leader election, serialized boot migrations, and token-epoch pub/sub — unset, every component keeps its unchanged in-memory single-instance path. Broker-side ACL is deferred.",
+      "roadmap.v1_5.date": "Shipped July 2026",
+      "roadmap.v1_5.link": "v1.5.0 release",
+      "roadmap.v2_0.title": "v2.0 — Node 22 floor, keyed audit chain, auth-path hardening",
+      "roadmap.v2_0.desc": "<strong>Breaking:</strong> the minimum supported Node is now 22 — better-sqlite3@13 declares <code>engines node &gt;=22</code> and Node 20 reached EOL on 2026-04-30 — with the CI matrix moved from 20/22 to 22/24. The audit hash chain is now keyed with HMAC-SHA256 derived from <code>COORDINATOR_ENCRYPTION_KEY</code> via HKDF, so DB write access alone can no longer forge a self-consistent chain: new rows carry an <code>hmac-sha256-v1:</code> prefix, existing rows and keyless deployments stay bare SHA-256, and verification rejects an algorithm downgrade. Audit rows now record the real actor id instead of a truncated pseudonym that was reversible from the cleartext id on the same row. Alongside: revocation and admin-route guards on the cookie session path, auto-provision and login-lockout enforcement on the CLI token grant, org-scoped <code>/api/scoring-stats</code>, a POST-only allowlist on state-changing <code>/api/*</code> routes, boot-time encryption of lingering plaintext IdP tokens, and rejection of low-complexity master keys that evade Shannon entropy.",
+      "roadmap.v2_0.date": "Shipped August 2026",
+      "roadmap.v2_0.link": "v2.0.0 release",
+      "roadmap.beyond.title": "Beyond v2.0 — cross-repo coordination &amp; a frozen public API",
+      "roadmap.beyond.desc": "Coordination across multiple repositories from a single MQTT broker. A frozen, versioned public REST API with migration guides.",
       "roadmap.beyond.date": "Date TBD",
       "roadmap.beyond.link": "Follow on GitHub",
-      "footer.text": "MIT License &nbsp;·&nbsp; Built with <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v1.0.0",
+      "footer.text": "MIT License &nbsp;·&nbsp; Built with <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v2.0.0",
       // === Deprecated keys preserved for backwards-compat (old taxonomy) ===
       "why.title": "Why MCP Coordinator?",
       "why.subtitle": "Run five agents on the same repo without merge conflicts, duplicated work, or silent regressions.",
@@ -3351,7 +3447,7 @@
       "roadmap.v07.date": "Shipped May 2026",
       "roadmap.v07.link": "v0.7.0 release",
       "compliance.title": "Enterprise &amp; Compliance",
-      "compliance.intro": "Built for compliance from the foundation up. v0.11.0 ships full Phase 2 OAuth 2.1, multi-IdP SSO, and SHA-256 audit log tamper-evidence — the capabilities regulated-industry and SOC 2 Type II deployments actually need to assemble an audit dossier.",
+      "compliance.intro": "Built for compliance from the foundation up. v2.0.0 ships full Phase 2 OAuth 2.1, multi-IdP SSO, and an HMAC-keyed hash-chained audit log — the capabilities regulated-industry and SOC 2 Type II deployments actually need to assemble an audit dossier.",
       "compliance.th.capability": "Capability",
       "compliance.th.status": "Status",
       "compliance.th.aligned": "Aligned with",
@@ -3364,7 +3460,7 @@
       "compliance.row.multiidp.cap": "Multi-IdP SSO — GitHub OAuth App + GitHub App + Google + generic OIDC",
       "compliance.row.multiidp.status": "Shipped v0.9 &rarr; v0.10",
       "compliance.row.multiidp.aligned": "SOC 2 CC6.1 &middot; centralized identity",
-      "compliance.row.audit.cap": "Audit log table (append-only data layer) + 35 event types Tier 1/Tier 2",
+      "compliance.row.audit.cap": "Audit log table (append-only data layer) + 39 event types Tier 1/Tier 2",
       "compliance.row.audit.status": "Shipped v0.7 &rarr; v0.8",
       "compliance.row.audit.aligned": "SOC 2 CC7.2 &middot; CC7.3",
       "compliance.row.auditchain.cap": "SHA-256 hash chain on every <code>audit_log</code> row (tamper-evidence)",
@@ -3404,7 +3500,7 @@
       "nav.roadmap": "Feuille de route",
       "nav.getstarted": "Commencer",
       "nav.compliance": "Conformité",
-      "hero.eyebrow": "Open Source &middot; MIT &middot; v0.13.0",
+      "hero.eyebrow": "Open Source &middot; MIT &middot; v2.0.0",
       "hero.h1": "Zéro conflit. Tous les agents alignés.",
       "hero.subtitle": "Serveur MCP clé en main qui permet à des agents Claude Code, Cursor ou Cline en parallèle d'annoncer leur travail, détecter les conflits et atteindre un consensus — avant de toucher à votre code.",
       "hero.stat.latency": "Latence push &lt;50 ms",
@@ -3557,18 +3653,18 @@
       "start.step1.desc": "Un seul paquet npm. Le flag <code class=\"ic\">-g</code> ajoute la commande <code class=\"ic\">mcp-coordinator</code> à votre PATH. Aucun broker séparé, aucune base de données à provisionner.",
       "start.step2.label": "Étape 2",
       "start.step2.title": "Configuration initiale",
-      "start.step2.desc": "Crée le dossier de config, écrit un <code class=\"ic\">config.json</code> par défaut et imprime le snippet <code class=\"ic\">.mcp.json</code> pour votre client MCP (Claude Code, Cursor, Cline). Ajoutez <code class=\"ic\">--write-mcp-config <path></code> pour fusionner le snippet directement dans le <code class=\"ic\">.mcp.json</code> d'un projet.",
+      "start.step2.desc": "Crée le dossier de config, écrit un <code class=\"ic\">config.json</code> par défaut et imprime le snippet <code class=\"ic\">.mcp.json</code> pour votre client MCP (Claude Code, Cursor, Cline). Ajoutez <code class=\"ic\">--write-mcp-config &lt;path&gt;</code> pour fusionner le snippet directement dans le <code class=\"ic\">.mcp.json</code> d'un projet.",
       "start.step3.label": "Étape 3",
       "start.step3.title": "Démarrer le serveur",
       "start.step3.desc": "Démarre le serveur MCP, le broker MQTT embarqué et le dashboard sur <code class=\"ic\">localhost:3100</code>. <code class=\"ic\">--daemon</code> met le processus en arrière-plan et écrit les logs dans le dossier de config.",
       "start.step4.label": "Étape 4",
       "start.step4.title": "Vérifier et ouvrir",
       "start.step4.desc": "La commande <code class=\"ic\">doctor</code> vérifie la config, le serveur, les réponses MCP et les connexions MQTT, puis ouvre le dashboard sur <code class=\"ic\">localhost:3100/dashboard</code>.",
-      "start.alt": "<strong>Vous préférez Docker ?</strong> Pull plutôt l'image multi-arch : <code class=\"ic\">docker pull ghcr.io/swoofer/mcp-coordinator:0.13.0</code>. Une stack compose complète avec Caddy auto-TLS est fournie dans <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose\">examples/docker-compose/</a>.",
+      "start.alt": "<strong>Vous préférez Docker ?</strong> Pull plutôt l'image multi-arch : <code class=\"ic\">docker pull ghcr.io/swoofer/mcp-coordinator:2.0.0</code>. Une stack compose complète avec Caddy auto-TLS est fournie dans <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose\">examples/docker-compose/</a>.",
       "start.modes": "<strong>Vous voulez du push temps réel plutôt que du polling ?</strong> Ajoutez le sidecar Channels (v0.12+ research preview) pour que les événements de coordination arrivent comme tags <code class=\"ic\">&lt;channel&gt;</code> dans votre session Claude Code entre les tours. Voir le <a href=\"https://github.com/swoofer/mcp-coordinator/blob/main/docs/operating-modes.md\">guide de décision polling-vs-push</a> et l'<a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/channels-quickstart\">exemple channels-quickstart</a>.",
       "start.note": "<code class=\"ic\">git worktree add ../feature-x main</code> et lancez chaque agent dans son propre worktree &mdash; mcp-coordinator gère \"qui édite types.ts\" ; les worktrees gèrent \"deux agents qui ne se battent pas sur la même inode.\"",
       "start.dash.title": "Ce que vous verrez en 60 secondes",
-      "start.dash.meta": "mcp-coordinator v0.13.0 &middot; quota 62%",
+      "start.dash.meta": "mcp-coordinator v2.0.0 &middot; quota 62%",
       "start.dash.aria": "Vue exemple du dashboard : quatre agents suivis en direct, avec un conflit résolu en 38 secondes",
       "start.cta.star": "Mettre une étoile sur GitHub",
       "start.cta.issue": "Ouvrir une issue",
@@ -3594,7 +3690,7 @@
       "results.perf.label.consensus": "Consensus complet",
       "results.perf.value.consensus": "30-45s",
       "results.perf.label.tests": "Suite de tests",
-      "results.perf.value.tests": "546 tests unitaires sur 65 fichiers",
+      "results.perf.value.tests": "2941 tests sur 216 fichiers",
       "results.perf.link": "Parcourir la suite de tests sur GitHub →",
       "results.subtitle.link": "Voir tests/ sur GitHub →",
       "faq.title": "FAQ",
@@ -3602,19 +3698,19 @@
       "faq.q1": "Est-ce que ça remplace les git worktrees ?",
       "faq.a1": "Non. Les worktrees règlent l'isolation du système de fichiers ; mcp-coordinator règle la coordination de l'intention. Utilisez les deux.",
       "faq.q2": "Est-ce prêt pour la production ?",
-      "faq.a2": "Stable pour l'usage solo et en équipe ; v1.0 fige l'API publique. 546 tests unitaires sur 65 fichiers couvrent 6 couches de scoring, l'isolation cross-org et 4 scénarios de conflit. Licence MIT, commande <code>doctor</code>, logs Pino structurés.",
+      "faq.a2": "Stable pour l'usage solo et en équipe ; v1.0 fige l'API publique. 2941 tests sur 216 fichiers couvrent 6 couches de scoring, l'isolation cross-org et 4 scénarios de conflit. Licence MIT, commande <code>doctor</code>, logs Pino structurés.",
       "faq.q3": "Combien ça coûte ?",
       "faq.a3": "Licence MIT et gratuit. Auto-hébergé sur votre machine, votre LAN ou votre cloud.",
       "faq.q4": "Quels clients MCP fonctionnent ?",
       "faq.a4": "Tout client MCP 2024-11-05 : Claude Code, Cursor, Cline, Aider, scripts personnalisés. HTTP/SSE ou stdio.",
       "faq.q5": "Plusieurs repos peuvent-ils partager un coordinator ?",
-      "faq.a5": "Oui via un déploiement LAN partagé ou cloud auto-hébergé. Le support cross-repo de première classe est sur la feuille de route (v1.0).",
+      "faq.a5": "Oui via un déploiement LAN partagé ou cloud auto-hébergé. Le support cross-repo de première classe est sur la feuille de route (au-delà de v2.0).",
       "faq.q6": "L'auth ou JWT sont-ils requis ?",
       "faq.a6": "Pas par défaut. JWT HS256 opt-in via <a href=\"https://github.com/panva/jose\">jose</a> pour les déploiements partagés ou exposés sur internet.",
       "faq.q7": "En quoi est-ce différent de la coordination propre à Aider ou Cline ?",
       "faq.a7": "Aider et Cline n'ont aucune conscience cross-session. mcp-coordinator leur donne un état partagé via le broker MQTT.",
       "faq.q8": "Encore un outil à maintenir ?",
-      "faq.a8": "Un seul <code>npm install -g</code>, ou pull de l'image publiée <code>ghcr.io/swoofer/mcp-coordinator:0.13.0</code> si vous préférez Docker. Broker MQTT, SQLite et dashboard embarqués dans le paquet. Zéro sidecar. Le <code>uninstall</code> symétrique annule les actions de <code>init</code> ; <code>--purge</code> efface le dossier de données.",
+      "faq.a8": "Un seul <code>npm install -g</code>, ou pull de l'image publiée <code>ghcr.io/swoofer/mcp-coordinator:2.0.0</code> si vous préférez Docker. Broker MQTT, SQLite et dashboard embarqués dans le paquet. Zéro sidecar. Le <code>uninstall</code> symétrique annule les actions de <code>init</code> ; <code>--purge</code> efface le dossier de données.",
       "faq.q9": "Que se passe-t-il si le coordinator tombe ?",
       "faq.a9": "Les agents échouent en mode ouvert et continuent à travailler comme s'il était désinstallé. SQLite local reprend au redémarrage.",
       "faq.q10": "Mon agent va-t-il perdre son contexte entre les turns ?",
@@ -3642,7 +3738,7 @@
       "roadmap.v04.date": "Livré en mai 2026",
       "roadmap.v04.link": "Release v0.4.0",
       "roadmap.v05.title": "v0.5 — Conscience en vol &amp; co-changement git",
-      "roadmap.v05.desc": "PreToolUse/PostToolUse basés sur des hooks pour une conscience d'édition en temps réel. Scoring de co-changement git pour les fichiers historiquement couplés. 546 tests sur 65 fichiers.",
+      "roadmap.v05.desc": "PreToolUse/PostToolUse basés sur des hooks pour une conscience d'édition en temps réel. Scoring de co-changement git pour les fichiers historiquement couplés.",
       "roadmap.v05.date": "Livré en mai 2026",
       "roadmap.v05.link": "Release v0.5.0",
       "roadmap.llm.title": "LLM Reasoner — arbitrage en zone grise (opt-in)",
@@ -3664,7 +3760,7 @@
       "roadmap.v08.title": "v0.8 — OAuth 2.1 Phase 2 + device flow",
       "roadmap.v08.desc": "OAuth 2.1 complet + device flow RFC 8628 + sessions par cookie (<code>__Host-coordinator_session</code>) + service tokens pour CI/CD + rotation des refresh tokens avec détection de vol (fenêtre de grâce de 10 s, révocation de la famille en cas de réutilisation) + pipeline d'audit à deux paliers (Tier 1 synchrone never-drop + Tier 2 asynchrone batché) + 29 métriques Prometheus sur <code>/metrics/auth</code>. Activable par feature-flag <code>COORDINATOR_OAUTH_ENABLED=true</code> ; les déploiements Phase 1 restent identiques au byte près quand l'option n'est pas définie.",
       "roadmap.v08.date": "Livré en mai 2026",
-      "roadmap.v08.link": "Release v0.8.0",
+      "roadmap.v08.link": "Release v0.8.1",
       "roadmap.v09.title": "v0.9 — Multi-IdP + chaîne d'audit + outillage de rotation",
       "roadmap.v09.desc": "<code>GoogleProvider</code> first-class (vérification d'<code>id_token</code> via jose + JWKS) et <code>OIDCProvider</code> générique (auto-discovery via <code>/.well-known/openid-configuration</code> pour Okta / Auth0 / Azure AD / Keycloak / Authentik). UI de sélection sur <code>/auth/login</code> dès que 2+ providers sont enregistrés. Chaîne de hashs SHA-256 sur chaque ligne <code>audit_log</code> (inviolabilité SOC 2 Type II) + script opérateur <code>verify-audit-chain.ts</code>. Helper CLI <code>mcp-coordinator rotate-jwt-secret</code> avec patterns d'automatisation systemd-timer + Kubernetes CronJob.",
       "roadmap.v09.date": "Livré en mai 2026",
@@ -3685,8 +3781,40 @@
       "roadmap.v13.desc": "Les channels deviennent bidirectionnels : un nouvel outil <code>post_to_thread</code> permet à une session Claude Code de répondre directement dans un thread de consultation via MQTT. CI : le chaînage <code>release.yml &rarr; docker-publish.yml</code> via <code>workflow_call</code> publie maintenant automatiquement l'image multi-arch sur GHCR à chaque tag de release sans dispatch manuel (la cause racine était un gating sur le mauvais champ d'événement). Nouveau guide operating-modes (polling vs push) qui détaille le choix ; enum de statut <code>list_threads</code> corrigé pour les intégrateurs externes.",
       "roadmap.v13.date": "Livré en mai 2026",
       "roadmap.v13.link": "Release v0.13.0",
+      "roadmap.v1_0.title": "v1.0 — Première release stable : durcissement sécurité &amp; supply-chain",
+      "roadmap.v1_0.desc": "Le jalon de remédiation d'audit et la première version majeure. <strong>Breaking :</strong> les JWT portent maintenant un claim <code>typ</code> (access/refresh) — les tokens émis avant la v1.0 sont rejetés, donc chaque utilisateur se ré-authentifie une fois après la montée de version. Durcit l'installation par défaut (bind sur 127.0.0.1 via <code>COORDINATOR_BIND</code>, application d'Origin/CORS, masquage des secrets sur tous les chemins de log), verrouille la supply chain (pnpm 10 avec <code>onlyBuiltDependencies</code>, Actions pinnées par SHA, base Docker pinnée par digest), et ajoute des endpoints REST validés par zod avec des 400 structurées. 110 constats d'audit corrigés sur 23 PRs ; 0 vulnérabilité connue. Suivie un jour plus tard par la v1.0.1 : le script inline du dashboard passe dans un <code>dashboard.js</code> externe pour qu'une CSP stricte <code>script-src 'self'</code> s'applique, et les réponses SSE flushent leurs en-têtes immédiatement pour qu'<code>EventSource</code> s'ouvre sans attendre le premier heartbeat.",
+      "roadmap.v1_0.date": "Livré en juillet 2026",
+      "roadmap.v1_0.link": "Release v1.0.0",
+      "roadmap.v1_1.title": "v1.1 — Scoping des threads par run + logs NDJSON",
+      "roadmap.v1_1.desc": "Les threads de consultation portent maintenant un <code>run_id</code> : un run voit ses propres threads plus tous ceux sans scope, donc un run avorté cesse de faire fuiter des ids de thread périmés dans le suivant. Le filtre est <code>run_id IS NULL OR run_id = ?</code>, pas une égalité stricte — un run masque les autres runs mais jamais les autres sessions, donc un humain qui travaille sur le même repo reste visible. Annoncer sans <code>run_id</code> reste sans scope et les clients existants ne sont pas impactés. Nouveau flag <code>--log-json</code> (<code>COORDINATOR_LOG_JSON</code>) qui force une sortie NDJSON pour les agrégateurs de logs, et qui est transmis au daemon détaché. Repris de la PR #151 d'un contributeur.",
+      "roadmap.v1_1.date": "Livré en juillet 2026",
+      "roadmap.v1_1.link": "Release v1.1.0",
+      "roadmap.v1_2.title": "v1.2 — L'OAuth GitHub devient optionnel",
+      "roadmap.v1_2.desc": "La Phase 2 n'exige plus obligatoirement une OAuth App GitHub. Les credentials GitHub sont optionnels, les deux ou aucun comme pour Google ; le boot exige au moins un IdP et échoue en mode fermé si aucun n'est configuré ; et <code>COORDINATOR_GOOGLE_WORKSPACE_DOMAIN</code> amorce l'allowlist d'IdP de l'org bootstrap, pour que la première connexion Google corresponde à un org et devienne admin — auparavant, un déploiement Google seul démarrait sur une table orgs vide et refusait toutes les connexions. <code>doctor</code> sonde les credentials Google et traite GitHub comme optionnel. Le patch v1.2.1 marque les grammaires tree-sitter en <code>--external</code> dans le build binaire <code>bun --compile</code> et installe Corepack explicitement dans l'image Docker, puisque Node 26 ne le fournit plus d'origine.",
+      "roadmap.v1_2.date": "Livré en juillet 2026",
+      "roadmap.v1_2.link": "Release v1.2.1",
+      "roadmap.v1_3.title": "v1.3 — Provider Google dans l'assistant init phase2",
+      "roadmap.v1_3.desc": "<code>init phase2</code> ne gérait que GitHub. Il propose maintenant une activation indépendante par provider, avec les instructions de création d'app propres à chaque provider, plus les flags <code>--google-client-id</code>, <code>--google-client-secret</code> et <code>--google-workspace-domain</code> pour les runs non interactifs. L'assistant reproduit exactement les règles de <code>bootPhase2</code> : les deux ou aucun par provider, au moins un requis, <code>GITHUB_ORG</code> uniquement quand GitHub est configuré. Les prompts interactifs proposent GitHub à oui et Google à non par défaut, donc les runs existants sont inchangés ; refuser les deux annule l'opération.",
+      "roadmap.v1_3.date": "Livré en juillet 2026",
+      "roadmap.v1_3.link": "Release v1.3.0",
+      "roadmap.v1_4.title": "v1.4 — Passe d'opérabilité CLI + docs et exemples concrets",
+      "roadmap.v1_4.desc": "Cinq ajouts CLI livrés ensemble : une sous-commande <code>server restart</code>, les flags <code>--timeout</code> et <code>--force</code> sur <code>server stop</code>, les filtres <code>--since</code> / <code>--grep</code> / <code>--level</code> sur <code>server logs</code>, un dry run <code>--print-only</code> pour <code>init</code>, et une sortie <code>--json</code> pour <code>service-token issue</code> et <code>list</code>. Livre aussi trois docs de référence — une FAQ de 12 questions, un guide de troubleshooting en 9 sections et une référence canonique des topics MQTT — plus huit exemples d'intégration autonomes : subscribers MQTT en Go et en Node, relais webhook Slack et Discord, systemd, Fly.io, Traefik et un pont GitHub Actions.",
+      "roadmap.v1_4.date": "Livré en juillet 2026",
+      "roadmap.v1_4.link": "Release v1.4.0",
+      "roadmap.v1_5.title": "v1.5 — Broker MQTT externe, bridge cloisonné par org, multi-instance Redis en opt-in",
+      "roadmap.v1_5.desc": "Le bridge MQTT peut maintenant viser un broker externe (<code>COORDINATOR_MQTT_URL</code>, <code>COORDINATOR_MQTT_EMBEDDED=false</code>, username et password optionnels) au lieu du broker Aedes embarqué, et il est devenu conscient des orgs : le trafic est publié sous <code>coordinator/&lt;org&gt;/*</code>, avec des listeners de consultation cloisonnés par (org, agent). Cela ferme une fuite d'isolation multi-tenant où le trafic MQTT de chaque org transitait par <code>coordinator/default/*</code>. L'état partagé multi-instance en opt-in derrière <code>COORDINATOR_REDIS_URL</code> ajoute des locks Redis, un rate limiter partagé, un cache d'appartenance, l'élection de leader du sweeper, la sérialisation des migrations au boot et un pub/sub de token-epoch — non défini, chaque composant conserve son chemin mono-instance en mémoire, inchangé. L'ACL côté broker est repoussée.",
+      "roadmap.v1_5.date": "Livré en juillet 2026",
+      "roadmap.v1_5.link": "Release v1.5.0",
+      "roadmap.v2_0.title": "v2.0 — Node 22 minimum, chaîne d'audit scellée par HMAC, durcissement des chemins d'auth",
+      "roadmap.v2_0.desc": "<strong>Breaking :</strong> le Node minimum supporté est désormais 22 — better-sqlite3@13 déclare <code>engines node &gt;=22</code> et Node 20 a atteint sa fin de vie le 30 avril 2026 — et la matrice CI passe de 20/22 à 22/24. La chaîne de hashs d'audit est maintenant scellée par un HMAC-SHA256 dérivé de <code>COORDINATOR_ENCRYPTION_KEY</code> via HKDF, donc un simple accès en écriture à la base ne suffit plus à forger une chaîne cohérente avec elle-même : les nouvelles lignes portent un préfixe <code>hmac-sha256-v1:</code>, les lignes existantes et les déploiements sans clé restent en SHA-256 nu, et la vérification rejette tout downgrade d'algorithme. Les lignes d'audit enregistrent maintenant le véritable id d'acteur au lieu d'un pseudonyme tronqué qui était réversible depuis l'id en clair présent sur la même ligne. En complément : gardes de révocation et de route admin sur le chemin des sessions par cookie, application de l'auto-provisioning et du verrouillage de connexion sur le grant de token CLI, <code>/api/scoring-stats</code> cloisonné par org, une allowlist POST-only sur les routes <code>/api/*</code> qui modifient l'état, chiffrement au boot des tokens IdP restés en clair, et rejet des clés maîtresses à faible complexité qui passent au travers de l'entropie de Shannon.",
+      "roadmap.v2_0.date": "Livré en août 2026",
+      "roadmap.v2_0.link": "Release v2.0.0",
+      "roadmap.beyond.title": "Au-delà de v2.0 — coordination cross-repo &amp; API publique figée",
+      "roadmap.beyond.desc": "Coordination entre plusieurs repos depuis un seul broker MQTT. Une API REST publique figée et versionnée, avec guides de migration.",
+      "roadmap.beyond.date": "Date à définir",
+      "roadmap.beyond.link": "Suivre sur GitHub",
       "compliance.title": "Entreprise &amp; Conformité",
-      "compliance.intro": "Conçu pour la conformité depuis la fondation. v0.11.0 livre OAuth 2.1 Phase 2 complet, SSO multi-IdP et inviolabilité du journal d'audit via SHA-256 &mdash; les capacités dont les déploiements en industries régulées et SOC 2 Type II ont réellement besoin pour constituer un dossier d'audit.",
+      "compliance.intro": "Conçu pour la conformité depuis la fondation. v2.0.0 livre OAuth 2.1 Phase 2 complet, SSO multi-IdP et un journal d'audit à chaîne de hashs scellée par HMAC &mdash; les capacités dont les déploiements en industries régulées et SOC 2 Type II ont réellement besoin pour constituer un dossier d'audit.",
       "compliance.th.capability": "Capacité",
       "compliance.th.status": "Statut",
       "compliance.th.aligned": "Aligné avec",
@@ -3699,7 +3827,7 @@
       "compliance.row.multiidp.cap": "SSO multi-IdP &mdash; GitHub OAuth App + GitHub App + Google + OIDC générique",
       "compliance.row.multiidp.status": "Livré v0.9 &rarr; v0.10",
       "compliance.row.multiidp.aligned": "SOC 2 CC6.1 &middot; identité centralisée",
-      "compliance.row.audit.cap": "Table d'audit log (couche de données append-only) + 35 types d'événements Tier 1/Tier 2",
+      "compliance.row.audit.cap": "Table d'audit log (couche de données append-only) + 39 types d'événements Tier 1/Tier 2",
       "compliance.row.audit.status": "Livré v0.7 &rarr; v0.8",
       "compliance.row.audit.aligned": "SOC 2 CC7.2 &middot; CC7.3",
       "compliance.row.auditchain.cap": "Chaîne de hashs SHA-256 sur chaque ligne <code>audit_log</code> (inviolabilité)",
@@ -3727,7 +3855,7 @@
       "compliance.row.retention.status": "Sweeper livré &middot; UI future",
       "compliance.row.retention.aligned": "SOC 2 &middot; Minimisation RGPD",
       "compliance.disclaimer": "mcp-coordinator n'est <strong>pas certifié SOC 2</strong> &mdash; la certification est un travail d'auditeur, pas de code. Nous livrons les crochets architecturaux (isolation multi-tenant, audit log, interface de chiffrement) pour que les équipes en quête d'audit aient une longueur d'avance, mais la certification elle-même reste le processus de votre équipe.",
-      "footer.text": "Licence MIT &nbsp;·&nbsp; Construit avec <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v1.0.0",
+      "footer.text": "Licence MIT &nbsp;·&nbsp; Construit avec <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v2.0.0",
       "why.title": "Pourquoi MCP Coordinator ?",
       "why.subtitle": "Faites tourner cinq agents sur le même repo, sans conflit de merge, sans travail dupliqué, sans régression silencieuse.",
       "why.block1.title": "Plusieurs agents, un seul processus aligné",
@@ -3837,7 +3965,7 @@
       "install.step1.desc": "Un seul paquet npm. Aucun broker ni base de données séparé à mettre en place.",
       "install.step2.label": "Étape 2",
       "install.step2.title": "Configuration initiale",
-      "install.step2.desc": "Crée le dossier de config, écrit un <code class=\"ic\">config.json</code> par défaut et imprime le snippet <code class=\"ic\">.mcp.json</code> pour votre client MCP (Claude Code, Cursor, Cline, …). Ajoutez <code class=\"ic\">--write-mcp-config <path></code> pour insérer le snippet directement dans le <code class=\"ic\">.mcp.json</code> d'un projet (avec merge si nécessaire).",
+      "install.step2.desc": "Crée le dossier de config, écrit un <code class=\"ic\">config.json</code> par défaut et imprime le snippet <code class=\"ic\">.mcp.json</code> pour votre client MCP (Claude Code, Cursor, Cline, …). Ajoutez <code class=\"ic\">--write-mcp-config &lt;path&gt;</code> pour insérer le snippet directement dans le <code class=\"ic\">.mcp.json</code> d'un projet (avec merge si nécessaire).",
       "install.step3.label": "Étape 3",
       "install.step3.title": "Démarrer le serveur",
       "install.step3.desc": "Démarre le serveur MCP, le broker MQTT embarqué et le dashboard sur <code class=\"ic\">localhost:3100</code>. <code class=\"ic\">--daemon</code> met le processus en arrière-plan et écrit les logs dans le dossier de config.",
@@ -3848,11 +3976,11 @@
       "mechanism.v05.inflight.title": "Conscience en vol",
       "mechanism.v05.inflight.body": "Les hooks PreToolUse + PostToolUse permettent au coordinator de voir les agents <strong>commencer</strong> à éditer les fichiers — pas seulement quand ils terminent. Les conflits émergent avant que les bytes ne soient écrits, pas après.",
       "mechanism.v05.symbol.title": "Scoring conscient des symboles",
-      "mechanism.v05.symbol.body": "tree-sitter parse 15 langages (TS/TSX/JS/JSX/Python/Go/Rust/Java/C#/C/C++/Ruby/PHP/Kotlin/Swift/Bash). Deux agents qui éditent le même fichier mais des fonctions différentes obtiennent une raison annotée — pas un blocage silencieux.",
+      "mechanism.v05.symbol.body": "tree-sitter parse 15 langages (TS/TSX/JS/Python/Go/Rust/Java/C#/C/C++/Ruby/PHP/Kotlin/Swift/Bash). Deux agents qui éditent le même fichier mais des fonctions différentes obtiennent une raison annotée — pas un blocage silencieux.",
       "mechanism.v05.cochange.title": "Scoring de co-changement git",
       "mechanism.v05.cochange.body": "Les fichiers qui bougent ensemble dans l'historique git (config + consommateur, fixture + test) sont scorés comme liés : impact 60 si co-changement &gt;50%, 40 si &gt;20%. Détecte des régressions invisibles au matching par nom de fichier.",
       "faq.q11": "Quels langages de programmation la détection de conflits supporte-t-elle ?",
-      "faq.a11": "v0.5.0 livre 15 langages via tree-sitter : TypeScript, TSX, JavaScript, JSX, Python, Go, Rust, Java, C#, C, C++, Ruby, PHP, Kotlin et Swift. Un pattern de strategy-registry rend l'ajout de langages une contribution sur un seul fichier.",
+      "faq.a11": "15 langages via tree-sitter : TypeScript, TSX, JavaScript, Python, Go, Rust, Java, C#, C, C++, Ruby, PHP, Kotlin, Swift et Bash. <code>.jsx</code>, <code>.mjs</code> et <code>.cjs</code> sont mappés sur la grammaire JavaScript. Un pattern de strategy-registry rend l'ajout de langages une contribution sur un seul fichier.",
       "faq.q12": "Comment fonctionne la détection de conflits en interne ?",
       "faq.a12": "Six couches de scoring, la plus sévère l'emporte : correspondance exacte de fichier (100), chevauchement AST conscient des symboles (raison annotée, pas blocage silencieux), graphe de dépendances (80), frontière de module (30), heuristique d'éditions récentes, et co-changement git — les fichiers à historique de commits partagé scorent 60 ou 40 selon le ratio de co-changement.",
     },
@@ -3866,7 +3994,7 @@
       "nav.install": "Instalar",
       "nav.roadmap": "Hoja de ruta",
       "nav.getstarted": "Empezar",
-      "hero.eyebrow": "Código abierto &middot; MIT &middot; v0.13.0",
+      "hero.eyebrow": "Código abierto &middot; MIT &middot; v2.0.0",
       "hero.h1": "Cero conflictos. Cada agente alineado.",
       "hero.subtitle": "Servidor MCP plug-and-play que permite a agentes paralelos de Claude Code, Cursor o Cline anunciar su trabajo, detectar conflictos y alcanzar consenso — antes de tocar su código.",
       "hero.stat.latency": "&lt;50ms de latencia push",
@@ -4026,11 +4154,11 @@
       "start.step4.label": "Paso 4",
       "start.step4.title": "Verificar y abrir",
       "start.step4.desc": "El comando <code class=\"ic\">doctor</code> chequea config, servidor, respuestas MCP y conexiones MQTT, luego abre el dashboard en <code class=\"ic\">localhost:3100/dashboard</code>.",
-      "start.alt": "<strong>¿Prefieres Docker?</strong> Haz pull de la imagen multi-arch: <code class=\"ic\">docker pull ghcr.io/swoofer/mcp-coordinator:0.13.0</code>. Un stack compose completo con Caddy auto-TLS está en <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose\">examples/docker-compose/</a>.",
+      "start.alt": "<strong>¿Prefieres Docker?</strong> Haz pull de la imagen multi-arch: <code class=\"ic\">docker pull ghcr.io/swoofer/mcp-coordinator:2.0.0</code>. Un stack compose completo con Caddy auto-TLS está en <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose\">examples/docker-compose/</a>.",
       "start.modes": "<strong>¿Quieres push en tiempo real en vez de polling?</strong> Añade el sidecar Channels (v0.12+ research preview) para que los eventos de coordinación lleguen como etiquetas <code class=\"ic\">&lt;channel&gt;</code> en tu sesión de Claude Code entre turnos. Mira la <a href=\"https://github.com/swoofer/mcp-coordinator/blob/main/docs/operating-modes.md\">guía de decisión polling-vs-push</a> y el <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/channels-quickstart\">ejemplo channels-quickstart</a>.",
       "start.note": "<code class=\"ic\">git worktree add ../feature-x main</code> y ejecuta cada agente en su propio worktree &mdash; mcp-coordinator maneja \"quién está editando types.ts\"; los worktrees manejan \"que dos agentes no peleen por el mismo inode.\"",
       "start.dash.title": "Lo que verás en 60 segundos",
-      "start.dash.meta": "mcp-coordinator v0.13.0 &middot; cuota 62%",
+      "start.dash.meta": "mcp-coordinator v2.0.0 &middot; cuota 62%",
       "start.dash.aria": "Vista de dashboard de muestra: cuatro agentes rastreados en vivo, con un conflicto resuelto en 38 segundos",
       "start.cta.star": "Dale una estrella en GitHub",
       "start.cta.issue": "Abrir un issue",
@@ -4056,7 +4184,7 @@
       "results.perf.label.consensus": "Consenso completo",
       "results.perf.value.consensus": "30-45s",
       "results.perf.label.tests": "Suite de tests",
-      "results.perf.value.tests": "546 tests unitarios en 65 archivos",
+      "results.perf.value.tests": "2941 tests en 216 archivos",
       "results.perf.link": "Explorar la suite de tests en GitHub →",
       "results.subtitle.link": "Ver tests/ en GitHub →",
       "faq.title": "FAQ",
@@ -4064,19 +4192,19 @@
       "faq.q1": "¿Esto reemplaza a git worktrees?",
       "faq.a1": "No. Los worktrees resuelven el aislamiento del sistema de archivos; mcp-coordinator resuelve la coordinación de intención. Usa ambos.",
       "faq.q2": "¿Está listo para producción?",
-      "faq.a2": "Estable para uso individual y de equipo; v1.0 congela la API pública. 546 tests unitarios en 65 archivos cubren 6 capas de scoring, aislamiento entre organizaciones y 4 escenarios de conflicto. Licencia MIT, comando <code>doctor</code>, logs estructurados Pino.",
+      "faq.a2": "Estable para uso individual y de equipo; v1.0 congela la API pública. 2941 tests en 216 archivos cubren 6 capas de scoring, aislamiento entre organizaciones y 4 escenarios de conflicto. Licencia MIT, comando <code>doctor</code>, logs estructurados Pino.",
       "faq.q3": "¿Cuánto cuesta?",
       "faq.a3": "Licencia MIT y gratis. Self-hosted en tu máquina, tu LAN o tu cloud.",
       "faq.q4": "¿Qué MCP clients funcionan?",
       "faq.a4": "Cualquier cliente MCP 2024-11-05: Claude Code, Cursor, Cline, Aider, scripts personalizados. HTTP/SSE o stdio.",
       "faq.q5": "¿Pueden múltiples repos compartir un solo coordinator?",
-      "faq.a5": "Sí, vía LAN compartida o despliegue cloud self-hosted. El soporte cross-repo de primer nivel está en la roadmap (v1.0).",
+      "faq.a5": "Sí, vía LAN compartida o despliegue cloud self-hosted. El soporte cross-repo de primer nivel está en la roadmap (más allá de v2.0).",
       "faq.q6": "¿Se requiere auth o JWT?",
       "faq.a6": "No por defecto. JWT HS256 opcional vía <a href=\"https://github.com/panva/jose\">jose</a> para despliegues compartidos o expuestos a internet.",
       "faq.q7": "¿En qué se diferencia esto de la coordinación propia de Aider o Cline?",
       "faq.a7": "Aider y Cline no tienen conciencia entre sesiones. mcp-coordinator les da estado compartido vía el MQTT broker.",
       "faq.q8": "¿Otra herramienta más para mantener?",
-      "faq.a8": "Un solo <code>npm install -g</code>, o haz pull de la imagen publicada <code>ghcr.io/swoofer/mcp-coordinator:0.13.0</code> si prefieres Docker. MQTT broker embebido, SQLite y dashboard vienen en el paquete. Cero sidecar. El <code>uninstall</code> simétrico revierte las acciones de <code>init</code>; <code>--purge</code> limpia el directorio de datos.",
+      "faq.a8": "Un solo <code>npm install -g</code>, o haz pull de la imagen publicada <code>ghcr.io/swoofer/mcp-coordinator:2.0.0</code> si prefieres Docker. MQTT broker embebido, SQLite y dashboard vienen en el paquete. Cero sidecar. El <code>uninstall</code> simétrico revierte las acciones de <code>init</code>; <code>--purge</code> limpia el directorio de datos.",
       "faq.q9": "¿Qué pasa si el coordinator se cae?",
       "faq.a9": "Los agentes fallan en abierto y siguen trabajando como si estuviera desinstalado. La SQLite local retoma al reiniciar.",
       "faq.q10": "¿Mi agente perderá contexto entre turnos?",
@@ -4099,7 +4227,7 @@
       "roadmap.v03.desc": "Análisis AST con tree-sitter en 15 lenguajes. Scoring consciente de símbolos: mismo archivo, funciones distintas = razón anotada, no un bloqueo silencioso.",
       "roadmap.v03.date": "Lanzado en mayo de 2026",
       "roadmap.v03.link": "Lanzamiento v0.3.0",
-      "footer.text": "Licencia MIT &nbsp;·&nbsp; Construido con <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v1.0.0",
+      "footer.text": "Licencia MIT &nbsp;·&nbsp; Construido con <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v2.0.0",
       "why.title": "¿Por qué MCP Coordinator?",
       "why.subtitle": "Ejecute cinco agentes en el mismo repositorio sin conflictos de merge, trabajo duplicado ni regresiones silenciosas.",
       "why.block1.title": "Varios agentes, un solo proceso alineado",
@@ -4243,14 +4371,18 @@
       "roadmap.v07.date": "Lanzado en mayo de 2026",
       "roadmap.v07.link": "Lanzamiento v0.7.0",
       "compliance.title": "Empresa y cumplimiento",
-      "compliance.intro": "Construido para el cumplimiento desde la base. v0.11.0 entrega Phase 2 OAuth 2.1 completo, SSO multi-IdP y evidencia de manipulación del audit log con SHA-256 — las capacidades que los despliegues en industrias reguladas y SOC 2 Type II realmente necesitan para preparar un dossier de auditoría.",
+      "compliance.intro": "Construido para el cumplimiento desde la base. v2.0.0 entrega Phase 2 OAuth 2.1 completo, SSO multi-IdP y un audit log con cadena de hash firmada con HMAC — las capacidades que los despliegues en industrias reguladas y SOC 2 Type II realmente necesitan para preparar un dossier de auditoría.",
       "compliance.th.capability": "Capacidad",
       "compliance.th.status": "Estado",
       "compliance.th.aligned": "Alineado con",
+      "compliance.row.oauth.cap": "OAuth 2.1 + device flow RFC 8628 + sesiones por cookie + tokens de servicio (Phase 2)",
+      "compliance.row.oauth.status": "Lanzado v0.8",
+      "compliance.row.oauth.aligned": "SOC 2 CC6.1 &middot; CC6.6 &middot; CC6.7",
+      "compliance.row.multiidp.cap": "SSO multi-IdP &mdash; GitHub OAuth App + GitHub App + Google + OIDC genérico",
       "compliance.row.tenant.cap": "Aislamiento multi-tenant <code>org_id</code> en 14 tablas",
       "compliance.row.tenant.status": "Lanzado v0.7",
       "compliance.row.tenant.aligned": "SOC 2 CC6.1 &middot; GDPR Art. 32",
-      "compliance.row.audit.cap": "Tabla audit_log (capa de datos append-only) + 35 tipos de evento Tier 1/Tier 2",
+      "compliance.row.audit.cap": "Tabla audit_log (capa de datos append-only) + 39 tipos de evento Tier 1/Tier 2",
       "compliance.row.audit.status": "Lanzado v0.7 &rarr; v0.8",
       "compliance.row.audit.aligned": "SOC 2 CC7.2 &middot; CC7.3",
       "compliance.row.jwt.cap": "JWT &mdash; pin HS256 &middot; RFC 6750 &middot; rotación sin tiempo de inactividad + CLI <code>rotate-jwt-secret</code>",
@@ -4275,17 +4407,17 @@
       "mechanism.v05.inflight.title": "Conciencia en vuelo",
       "mechanism.v05.inflight.body": "Los hooks PreToolUse + PostToolUse permiten al coordinator ver a los agentes <strong>empezar</strong> a editar archivos — no solo cuando terminan. Los conflictos emergen antes de que se escriban los bytes, no después.",
       "mechanism.v05.symbol.title": "Scoring consciente de símbolos",
-      "mechanism.v05.symbol.body": "tree-sitter analiza 15 lenguajes (TS/TSX/JS/JSX/Python/Go/Rust/Java/C#/C/C++/Ruby/PHP/Kotlin/Swift/Bash). Dos agentes que editan el mismo archivo pero funciones distintas reciben una razón anotada — no un bloqueo silencioso.",
+      "mechanism.v05.symbol.body": "tree-sitter analiza 15 lenguajes (TS/TSX/JS/Python/Go/Rust/Java/C#/C/C++/Ruby/PHP/Kotlin/Swift/Bash). Dos agentes que editan el mismo archivo pero funciones distintas reciben una razón anotada — no un bloqueo silencioso.",
       "mechanism.v05.cochange.title": "Scoring por co-cambio git",
       "mechanism.v05.cochange.body": "Los archivos que se mueven juntos en el historial git (config + consumidor, fixture + test) se puntúan como relacionados: impacto 60 si co-cambio &gt;50%, 40 si &gt;20%. Detecta regresiones invisibles para el matching por nombre de archivo.",
       "faq.q11": "¿Qué lenguajes de programación soporta la detección de conflictos?",
-      "faq.a11": "v0.5.0 incluye 15 lenguajes vía tree-sitter: TypeScript, TSX, JavaScript, JSX, Python, Go, Rust, Java, C#, C, C++, Ruby, PHP, Kotlin y Swift. Un patrón de strategy-registry hace que añadir más lenguajes sea una contribución de un solo archivo.",
+      "faq.a11": "15 lenguajes vía tree-sitter: TypeScript, TSX, JavaScript, Python, Go, Rust, Java, C#, C, C++, Ruby, PHP, Kotlin, Swift y Bash. <code>.jsx</code>, <code>.mjs</code> y <code>.cjs</code> se mapean sobre la gramática de JavaScript. Un patrón de strategy-registry hace que añadir más lenguajes sea una contribución de un solo archivo.",
       "faq.q12": "¿Cómo funciona la detección de conflictos por dentro?",
       "faq.a12": "Seis capas de scoring, gana la más severa: match exacto de archivo (100), solapamiento AST consciente de símbolos (razón anotada, no bloqueo silencioso), grafo de dependencias (80), frontera de módulo (30), heurística de ediciones recientes, y co-cambio git — los archivos con historial de commits compartido puntúan 60 o 40 según la ratio de co-cambio.",
       "roadmap.v08.title": "v0.8 — Phase 2 OAuth 2.1 + device flow",
       "roadmap.v08.desc": "OAuth 2.1 completo + device flow RFC 8628 + sesiones por cookie (<code>__Host-coordinator_session</code>) + tokens de servicio para CI/CD + rotación de refresh-token con detección de tokens robados (ventana de gracia de 10s, revocación de familia al reuso) + pipeline de auditoría de dos niveles (Tier 1 sync nunca-perder + Tier 2 async por lotes) + 29 métricas Prometheus en <code>/metrics/auth</code>. Con feature flag detrás de <code>COORDINATOR_OAUTH_ENABLED=true</code>; los despliegues Phase 1 son byte-idénticos cuando no se activa.",
       "roadmap.v08.date": "Lanzado en mayo de 2026",
-      "roadmap.v08.link": "Lanzamiento v0.8.0",
+      "roadmap.v08.link": "Lanzamiento v0.8.1",
       "roadmap.v09.title": "v0.9 — Multi-IdP + cadena de auditoría + herramientas de rotación",
       "roadmap.v09.desc": "<code>GoogleProvider</code> de primer nivel (verificación de id_token vía jose + JWKS) y <code>OIDCProvider</code> genérico (auto-descubrimiento vía <code>/.well-known/openid-configuration</code> para Okta / Auth0 / Azure AD / Keycloak / Authentik). UI de selector en <code>/auth/login</code> cuando hay 2+ proveedores registrados. Cadena de hash SHA-256 en cada fila de <code>audit_log</code> (evidencia de manipulación SOC 2 Type II) + script de operador <code>verify-audit-chain.ts</code>. CLI <code>mcp-coordinator rotate-jwt-secret</code> con patrones de automatización systemd-timer + Kubernetes CronJob.",
       "roadmap.v09.date": "Lanzado en mayo de 2026",
@@ -4306,6 +4438,38 @@
       "roadmap.v13.desc": "Los channels se vuelven bidireccionales: una nueva herramienta <code>post_to_thread</code> permite a una sesión Claude Code responder directamente en un thread de consulta vía MQTT. CI: el encadenado <code>release.yml &rarr; docker-publish.yml</code> vía <code>workflow_call</code> ahora publica automáticamente la imagen multi-arch en GHCR en cada tag de release sin dispatch manual (la causa raíz era un gating en el campo de evento incorrecto). Nueva guía operating-modes (polling vs push) detalla la elección; enum de estado <code>list_threads</code> corregido para integradores externos.",
       "roadmap.v13.date": "Lanzado en mayo de 2026",
       "roadmap.v13.link": "Lanzamiento v0.13.0",
+      "roadmap.v1_0.title": "v1.0 — Primera release estable: endurecimiento de seguridad y de la cadena de suministro",
+      "roadmap.v1_0.desc": "El hito de remediación de la auditoría y la primera versión mayor. <strong>Cambio incompatible:</strong> los JWT ahora llevan un claim <code>typ</code> (access/refresh) — los tokens emitidos antes de v1.0 se rechazan, así que cada usuario vuelve a autenticarse una vez tras la actualización. Endurece la instalación por defecto (bind a 127.0.0.1 vía <code>COORDINATOR_BIND</code>, aplicación de Origin/CORS, redacción de secretos en todas las rutas de log), cierra la cadena de suministro (pnpm 10 con <code>onlyBuiltDependencies</code>, Actions ancladas por SHA, base Docker anclada por digest) y añade endpoints REST validados con zod y errores 400 estructurados. 110 hallazgos de auditoría remediados en 23 PRs; 0 vulnerabilidades conocidas. Un día después llegó v1.0.1: el script inline del dashboard pasa a un <code>dashboard.js</code> externo para que pueda aplicarse una CSP estricta <code>script-src 'self'</code>, y las respuestas SSE envían las cabeceras de inmediato, así que <code>EventSource</code> abre sin esperar al primer heartbeat.",
+      "roadmap.v1_0.date": "Lanzado en julio de 2026",
+      "roadmap.v1_0.link": "Lanzamiento v1.0.0",
+      "roadmap.v1_1.title": "v1.1 — Alcance de threads por run + logging NDJSON",
+      "roadmap.v1_1.desc": "Los threads de consulta ahora llevan un <code>run_id</code>: un run ve sus propios threads más todos los que no tienen run asignado, así que un run abortado deja de filtrar ids de thread obsoletos al siguiente. El filtro es <code>run_id IS NULL OR run_id = ?</code>, no una igualdad estricta — un run oculta otros runs pero nunca otras sesiones, de modo que una persona trabajando en el mismo repo sigue siendo visible. Anunciar sin <code>run_id</code> no aplica ningún alcance y los clientes existentes no se ven afectados. El nuevo flag <code>--log-json</code> (<code>COORDINATOR_LOG_JSON</code>) fuerza la salida NDJSON para agregadores de logs y se propaga al daemon en segundo plano. Adoptado a partir del PR #151 de un colaborador.",
+      "roadmap.v1_1.date": "Lanzado en julio de 2026",
+      "roadmap.v1_1.link": "Lanzamiento v1.1.0",
+      "roadmap.v1_2.title": "v1.2 — El OAuth de GitHub se vuelve opcional",
+      "roadmap.v1_2.desc": "Phase 2 ya no exige obligatoriamente una OAuth App de GitHub. Las credenciales de GitHub son opcionales, ambas-o-ninguna igual que las de Google; el arranque requiere al menos un IdP y falla de forma cerrada cuando no hay ninguno configurado, y <code>COORDINATOR_GOOGLE_WORKSPACE_DOMAIN</code> siembra la allowlist de IdP de la organización de bootstrap para que el primer inicio de sesión con Google encuentre una organización y se convierta en admin — antes, un despliegue solo con Google arrancaba con la tabla de organizaciones vacía y rechazaba cada login. <code>doctor</code> comprueba las credenciales de Google y trata GitHub como opcional. El parche v1.2.1 marca las gramáticas de tree-sitter como <code>--external</code> en la build binaria con <code>bun --compile</code> e instala Corepack explícitamente en la imagen Docker, ya que Node 26 dejó de incluirlo.",
+      "roadmap.v1_2.date": "Lanzado en julio de 2026",
+      "roadmap.v1_2.link": "Lanzamiento v1.2.1",
+      "roadmap.v1_3.title": "v1.3 — Proveedor Google en el asistente de init phase2",
+      "roadmap.v1_3.desc": "<code>init phase2</code> era solo para GitHub. Ahora ofrece activación independiente por proveedor, con instrucciones de creación de app específicas para cada uno, además de los flags <code>--google-client-id</code>, <code>--google-client-secret</code> y <code>--google-workspace-domain</code> para ejecuciones no interactivas. El asistente refleja exactamente las reglas de <code>bootPhase2</code>: ambas-o-ninguna por proveedor, al menos uno requerido, <code>GITHUB_ORG</code> solo cuando GitHub está configurado. Los prompts interactivos vienen con GitHub activado por defecto y Google desactivado, así que las ejecuciones existentes no cambian; rechazar ambos aborta.",
+      "roadmap.v1_3.date": "Lanzado en julio de 2026",
+      "roadmap.v1_3.link": "Lanzamiento v1.3.0",
+      "roadmap.v1_4.title": "v1.4 — Operabilidad del CLI + documentación y ejemplos fundamentados",
+      "roadmap.v1_4.desc": "Cinco añadidos al CLI llegan juntos: un subcomando <code>server restart</code>, <code>--timeout</code> y <code>--force</code> en <code>server stop</code>, filtros <code>--since</code> / <code>--grep</code> / <code>--level</code> en <code>server logs</code>, una ejecución en seco <code>--print-only</code> para <code>init</code>, y salida <code>--json</code> para <code>service-token issue</code> y <code>list</code>. Incluye tres documentos de referencia — una FAQ de 12 preguntas, una guía de resolución de problemas de 9 secciones y una referencia canónica de topics MQTT — más ocho ejemplos de integración autocontenidos: subscribers MQTT en Go y Node, forwarders de webhooks para Slack y Discord, systemd, Fly.io, Traefik y un puente para GitHub Actions.",
+      "roadmap.v1_4.date": "Lanzado en julio de 2026",
+      "roadmap.v1_4.link": "Lanzamiento v1.4.0",
+      "roadmap.v1_5.title": "v1.5 — Broker MQTT externo, bridge con alcance por organización, multi-instancia Redis opt-in",
+      "roadmap.v1_5.desc": "El bridge MQTT ya puede apuntar a un broker externo (<code>COORDINATOR_MQTT_URL</code>, <code>COORDINATOR_MQTT_EMBEDDED=false</code>, usuario y contraseña opcionales) en vez del Aedes embebido, y pasa a ser consciente de la organización: el tráfico se publica bajo <code>coordinator/&lt;org&gt;/*</code> y los listeners de consulta quedan acotados por (org, agente). Eso cierra una fuga de aislamiento multi-tenant por la que el tráfico MQTT de todas las organizaciones pasaba por <code>coordinator/default/*</code>. El estado compartido multi-instancia opt-in tras <code>COORDINATOR_REDIS_URL</code> añade locks Redis, un rate limiter compartido, una caché de membresía, elección de líder para el sweeper, migraciones de arranque serializadas y pub/sub de token-epoch — sin definir, cada componente conserva sin cambios su ruta in-memory de instancia única. La ACL en el lado del broker queda aplazada.",
+      "roadmap.v1_5.date": "Lanzado en julio de 2026",
+      "roadmap.v1_5.link": "Lanzamiento v1.5.0",
+      "roadmap.v2_0.title": "v2.0 — Node 22 como mínimo, cadena de auditoría con clave, endurecimiento de la ruta de auth",
+      "roadmap.v2_0.desc": "<strong>Cambio incompatible:</strong> la versión mínima de Node soportada es ahora 22 — better-sqlite3@13 declara <code>engines node &gt;=22</code> y Node 20 llegó a su EOL el 2026-04-30 — con la matriz de CI movida de 20/22 a 22/24. La cadena de hash del audit log ahora va firmada con HMAC-SHA256 derivada de <code>COORDINATOR_ENCRYPTION_KEY</code> vía HKDF, de modo que el acceso de escritura a la BD por sí solo ya no basta para falsificar una cadena autoconsistente: las filas nuevas llevan el prefijo <code>hmac-sha256-v1:</code>, las filas existentes y los despliegues sin clave siguen con SHA-256 a secas, y la verificación rechaza una degradación de algoritmo. Las filas de auditoría ahora registran el id real del actor en vez de un seudónimo truncado que era reversible a partir del id en claro de la misma fila. Además: guardas de revocación y de rutas de admin en la ruta de sesión por cookie, aplicación del auto-aprovisionamiento y del bloqueo por intentos de login fallidos en la concesión de tokens del CLI, <code>/api/scoring-stats</code> con alcance por organización, una allowlist solo-POST en las rutas <code>/api/*</code> que cambian estado, cifrado en el arranque de los tokens IdP en claro que quedaran sueltos, y rechazo de claves maestras de baja complejidad que evaden la entropía de Shannon.",
+      "roadmap.v2_0.date": "Lanzado en agosto de 2026",
+      "roadmap.v2_0.link": "Lanzamiento v2.0.0",
+      "roadmap.beyond.title": "Más allá de v2.0 — coordinación cross-repo y una API pública congelada",
+      "roadmap.beyond.desc": "Coordinación entre múltiples repositorios desde un solo broker MQTT. Una API REST pública congelada y versionada, con guías de migración.",
+      "roadmap.beyond.date": "Fecha por definir",
+      "roadmap.beyond.link": "Seguir en GitHub",
       "compliance.row.multiidp.status": "Lanzado v0.9 &rarr; v0.10",
       "compliance.row.multiidp.aligned": "SOC 2 CC6.1 &middot; identidad centralizada",
       "compliance.row.auditchain.cap": "Cadena de hash SHA-256 en cada fila de <code>audit_log</code> (evidencia de manipulación)",
@@ -4325,7 +4489,7 @@
       "nav.install": "Installation",
       "nav.roadmap": "Roadmap",
       "nav.getstarted": "Loslegen",
-      "hero.eyebrow": "Open Source &middot; MIT &middot; v0.13.0",
+      "hero.eyebrow": "Open Source &middot; MIT &middot; v2.0.0",
       "hero.h1": "Null Konflikte. Jeder Agent abgestimmt.",
       "hero.subtitle": "Drop-in MCP-Server, mit dem parallele Claude-Code-, Cursor- oder Cline-Agenten ihre Arbeit ankündigen, Konflikte erkennen und zu einem Konsens kommen — bevor sie eine einzige Zeile Ihres Codes anfassen.",
       "hero.stat.latency": "&lt;50 ms Push-Latenz",
@@ -4485,11 +4649,11 @@
       "start.step4.label": "Schritt 4",
       "start.step4.title": "Prüfen und öffnen",
       "start.step4.desc": "Der <code class=\"ic\">doctor</code>-Befehl prüft Konfig, Server, MCP-Antworten und MQTT-Verbindungen, dann öffnet er das Dashboard auf <code class=\"ic\">localhost:3100/dashboard</code>.",
-      "start.alt": "<strong>Bevorzugen Sie Docker?</strong> Ziehen Sie stattdessen das Multi-Arch-Image: <code class=\"ic\">docker pull ghcr.io/swoofer/mcp-coordinator:0.13.0</code>. Ein vollständiger Compose-Stack mit Caddy auto-TLS liegt unter <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose\">examples/docker-compose/</a>.",
+      "start.alt": "<strong>Bevorzugen Sie Docker?</strong> Ziehen Sie stattdessen das Multi-Arch-Image: <code class=\"ic\">docker pull ghcr.io/swoofer/mcp-coordinator:2.0.0</code>. Ein vollständiger Compose-Stack mit Caddy auto-TLS liegt unter <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose\">examples/docker-compose/</a>.",
       "start.modes": "<strong>Möchten Sie Echtzeit-Push statt Polling?</strong> Fügen Sie den Channels-Sidecar (v0.12+ Research Preview) hinzu, sodass Coordination-Events als <code class=\"ic\">&lt;channel&gt;</code>-Tags in Ihrer Claude-Code-Session zwischen den Turns ankommen. Siehe den <a href=\"https://github.com/swoofer/mcp-coordinator/blob/main/docs/operating-modes.md\">Polling-vs-Push-Entscheidungsleitfaden</a> und das <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/channels-quickstart\">channels-quickstart-Beispiel</a>.",
       "start.note": "<code class=\"ic\">git worktree add ../feature-x main</code> und führe jeden Agenten in seinem eigenen Worktree aus &mdash; mcp-coordinator regelt \"wer bearbeitet types.ts\"; Worktrees regeln \"keine zwei Agenten kämpfen um dieselbe Inode.\"",
       "start.dash.title": "Was du in 60 Sekunden siehst",
-      "start.dash.meta": "mcp-coordinator v0.13.0 &middot; Quota 62%",
+      "start.dash.meta": "mcp-coordinator v2.0.0 &middot; Quota 62%",
       "start.dash.aria": "Beispiel-Dashboard-Ansicht: vier Agenten live verfolgt, mit einem in 38 Sekunden gelösten Konflikt",
       "start.cta.star": "Auf GitHub starren",
       "start.cta.issue": "Issue eröffnen",
@@ -4515,7 +4679,7 @@
       "results.perf.label.consensus": "Voller Konsens",
       "results.perf.value.consensus": "30-45s",
       "results.perf.label.tests": "Test-Suite",
-      "results.perf.value.tests": "546 Unit-Tests in 65 Dateien",
+      "results.perf.value.tests": "2941 Tests in 216 Dateien",
       "results.perf.link": "Test-Suite auf GitHub durchsuchen →",
       "results.subtitle.link": "tests/ auf GitHub ansehen →",
       "faq.title": "FAQ",
@@ -4523,19 +4687,19 @@
       "faq.q1": "Ersetzt das git worktrees?",
       "faq.a1": "Nein. Worktrees lösen Dateisystem-Isolation; mcp-coordinator löst Intent-Koordination. Nutze beides.",
       "faq.q2": "Ist es produktionsreif?",
-      "faq.a2": "Stabil für Solo- und Team-Einsatz; v1.0 friert die öffentliche API ein. 546 Unit-Tests in 65 Dateien decken 6 Scoring-Layer, organisationsübergreifende Isolation und 4 Konfliktszenarien ab. MIT-lizenziert, <code>doctor</code>-Befehl, strukturierte Pino-Logs.",
+      "faq.a2": "Stabil für Solo- und Team-Einsatz; v1.0 friert die öffentliche API ein. 2941 Tests in 216 Dateien decken 6 Scoring-Layer, organisationsübergreifende Isolation und 4 Konfliktszenarien ab. MIT-lizenziert, <code>doctor</code>-Befehl, strukturierte Pino-Logs.",
       "faq.q3": "Was kostet es?",
       "faq.a3": "MIT-lizenziert und kostenlos. Self-hosted auf deiner Maschine, deinem LAN oder deiner Cloud.",
       "faq.q4": "Welche MCP-Clients funktionieren?",
       "faq.a4": "Jeder MCP-2024-11-05-Client: Claude Code, Cursor, Cline, Aider, eigene Skripte. HTTP/SSE oder stdio.",
       "faq.q5": "Können sich mehrere Repos einen Coordinator teilen?",
-      "faq.a5": "Ja, über gemeinsames LAN oder self-hosted Cloud-Deployment. First-Class-Support für Repo-übergreifende Koordination steht auf der Roadmap (v1.0).",
+      "faq.a5": "Ja, über gemeinsames LAN oder self-hosted Cloud-Deployment. First-Class-Support für Repo-übergreifende Koordination steht auf der Roadmap (jenseits von v2.0).",
       "faq.q6": "Sind Auth oder JWT erforderlich?",
       "faq.a6": "Standardmäßig nicht. Opt-in HS256 JWT via <a href=\"https://github.com/panva/jose\">jose</a> für geteilte oder internet-erreichbare Deployments.",
       "faq.q7": "Wie unterscheidet sich das von Aiders oder Clines eigener Koordination?",
       "faq.a7": "Aider und Cline haben kein Bewusstsein über Sessions hinweg. mcp-coordinator gibt ihnen geteilten State über den MQTT-Broker.",
       "faq.q8": "Noch ein Tool zu pflegen?",
-      "faq.a8": "Ein <code>npm install -g</code>, oder ziehen Sie das veröffentlichte Image <code>ghcr.io/swoofer/mcp-coordinator:0.13.0</code>, wenn Sie Docker bevorzugen. Eingebetteter MQTT-Broker, SQLite und Dashboard sind im Paket enthalten. Kein Sidecar. Symmetrisches <code>uninstall</code> macht die <code>init</code>-Aktionen rückgängig; <code>--purge</code> löscht das Datenverzeichnis.",
+      "faq.a8": "Ein <code>npm install -g</code>, oder ziehen Sie das veröffentlichte Image <code>ghcr.io/swoofer/mcp-coordinator:2.0.0</code>, wenn Sie Docker bevorzugen. Eingebetteter MQTT-Broker, SQLite und Dashboard sind im Paket enthalten. Kein Sidecar. Symmetrisches <code>uninstall</code> macht die <code>init</code>-Aktionen rückgängig; <code>--purge</code> löscht das Datenverzeichnis.",
       "faq.q9": "Was, wenn der Coordinator ausfällt?",
       "faq.a9": "Agenten arbeiten weiter, als wäre nichts installiert. Lokales SQLite nimmt beim Neustart wieder auf.",
       "faq.q10": "Verliert mein Agent Kontext zwischen Turns?",
@@ -4558,7 +4722,7 @@
       "roadmap.v03.desc": "AST-Analyse via tree-sitter über 15 Sprachen. Symbol-bewusstes Scoring: gleiche Datei, unterschiedliche Funktionen = annotierter Grund, keine stille Blockade.",
       "roadmap.v03.date": "Veröffentlicht im Mai 2026",
       "roadmap.v03.link": "v0.3.0 Release",
-      "footer.text": "MIT-Lizenz &nbsp;·&nbsp; Gebaut mit <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v1.0.0",
+      "footer.text": "MIT-Lizenz &nbsp;·&nbsp; Gebaut mit <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v2.0.0",
       "why.title": "Warum MCP Coordinator?",
       "why.subtitle": "Fünf Agenten auf demselben Repo betreiben — ohne Merge-Konflikte, doppelte Arbeit oder stille Regressionen.",
       "why.block1.title": "Mehrere Agenten, ein abgestimmter Prozess",
@@ -4702,14 +4866,18 @@
       "roadmap.v07.date": "Veröffentlicht im Mai 2026",
       "roadmap.v07.link": "v0.7.0 Release",
       "compliance.title": "Enterprise &amp; Compliance",
-      "compliance.intro": "Von Grund auf für Compliance gebaut. v0.11.0 liefert vollständiges Phase 2 OAuth 2.1, Multi-IdP SSO und SHA-256 Audit-Log-Tamper-Evidence — die Fähigkeiten, die regulierte Branchen und SOC 2 Type II Deployments tatsächlich brauchen, um ein Audit-Dossier zusammenzustellen.",
+      "compliance.intro": "Von Grund auf für Compliance gebaut. v2.0.0 liefert vollständiges Phase 2 OAuth 2.1, Multi-IdP SSO und ein HMAC-geschlüsseltes, hash-verkettetes Audit-Log — die Fähigkeiten, die regulierte Branchen und SOC 2 Type II Deployments tatsächlich brauchen, um ein Audit-Dossier zusammenzustellen.",
       "compliance.th.capability": "Fähigkeit",
       "compliance.th.status": "Status",
       "compliance.th.aligned": "Ausgerichtet auf",
+      "compliance.row.oauth.cap": "OAuth 2.1 + RFC 8628 Device-Flow + Cookie-Sessions + Service-Tokens (Phase 2)",
+      "compliance.row.oauth.status": "Veröffentlicht v0.8",
+      "compliance.row.oauth.aligned": "SOC 2 CC6.1 &middot; CC6.6 &middot; CC6.7",
+      "compliance.row.multiidp.cap": "Multi-IdP SSO — GitHub OAuth App + GitHub App + Google + generisches OIDC",
       "compliance.row.tenant.cap": "Multi-Tenant <code>org_id</code>-Isolation über 14 Tabellen",
       "compliance.row.tenant.status": "Veröffentlicht v0.7",
       "compliance.row.tenant.aligned": "SOC 2 CC6.1 &middot; GDPR Art. 32",
-      "compliance.row.audit.cap": "Audit-Log-Tabelle (Append-only-Datenschicht) + 35 Event-Typen Tier 1/Tier 2",
+      "compliance.row.audit.cap": "Audit-Log-Tabelle (Append-only-Datenschicht) + 39 Event-Typen Tier 1/Tier 2",
       "compliance.row.audit.status": "Veröffentlicht v0.7 &rarr; v0.8",
       "compliance.row.audit.aligned": "SOC 2 CC7.2 &middot; CC7.3",
       "compliance.row.jwt.cap": "JWT &mdash; HS256-Pin &middot; RFC 6750 &middot; Zero-Downtime-Rotation + <code>rotate-jwt-secret</code> CLI",
@@ -4734,17 +4902,17 @@
       "mechanism.v05.inflight.title": "In-Flight-Awareness",
       "mechanism.v05.inflight.body": "Hook-basierte PreToolUse- und PostToolUse-Hooks lassen den Coordinator sehen, wann Agenten Dateien <strong>beginnen</strong> zu bearbeiten — nicht erst, wenn sie fertig sind. Konflikte zeigen sich, bevor Bytes geschrieben werden, nicht danach.",
       "mechanism.v05.symbol.title": "Symbol-bewusstes Scoring",
-      "mechanism.v05.symbol.body": "tree-sitter parst 15 Sprachen (TS/TSX/JS/JSX/Python/Go/Rust/Java/C#/C/C++/Ruby/PHP/Kotlin/Swift/Bash). Zwei Agenten, die dieselbe Datei aber unterschiedliche Funktionen bearbeiten, erhalten einen annotierten Grund — keine stille Blockade.",
+      "mechanism.v05.symbol.body": "tree-sitter parst 15 Sprachen (TS/TSX/JS/Python/Go/Rust/Java/C#/C/C++/Ruby/PHP/Kotlin/Swift/Bash). Zwei Agenten, die dieselbe Datei aber unterschiedliche Funktionen bearbeiten, erhalten einen annotierten Grund — keine stille Blockade.",
       "mechanism.v05.cochange.title": "Git-Co-Change-Scoring",
       "mechanism.v05.cochange.body": "Dateien, die sich in der Git-Historie zusammen bewegen (config + Consumer, Fixture + Test), werden als verwandt gescort: Impact 60 bei &gt;50 % Co-Change, 40 bei &gt;20 %. Erfasst Regressionen, die für Dateinamen-Matching unsichtbar bleiben.",
       "faq.q11": "Welche Programmiersprachen unterstützt die Konflikterkennung?",
-      "faq.a11": "v0.5.0 liefert 15 Sprachen via tree-sitter: TypeScript, TSX, JavaScript, JSX, Python, Go, Rust, Java, C#, C, C++, Ruby, PHP, Kotlin und Swift. Ein Strategy-Registry-Pattern macht das Hinzufügen weiterer Sprachen zu einem Single-File-Beitrag.",
+      "faq.a11": "15 Sprachen via tree-sitter: TypeScript, TSX, JavaScript, Python, Go, Rust, Java, C#, C, C++, Ruby, PHP, Kotlin, Swift und Bash. <code>.jsx</code>, <code>.mjs</code> und <code>.cjs</code> werden auf die JavaScript-Grammatik abgebildet. Ein Strategy-Registry-Pattern macht das Hinzufügen weiterer Sprachen zu einem Single-File-Beitrag.",
       "faq.q12": "Wie funktioniert die Konflikterkennung intern?",
       "faq.a12": "Sechs Scoring-Layer, die schwerwiegendste gewinnt: exakter Dateimatch (100), symbol-bewusste AST-Überlappung (annotierter Grund, keine stille Blockade), Abhängigkeitsgraph (80), Modulgrenze (30), Recent-Edit-Heuristik und Git-Co-Change — Dateien mit gemeinsamer Commit-Historie scoren 60 oder 40 je nach Co-Change-Verhältnis.",
       "roadmap.v08.title": "v0.8 — Phase 2 OAuth 2.1 + Device-Flow",
       "roadmap.v08.desc": "Vollständiger OAuth 2.1 + RFC 8628 Device-Flow + Cookie-Sessions (<code>__Host-coordinator_session</code>) + Service-Tokens für CI/CD + Refresh-Token-Rotation mit Stolen-Token-Detection (10s Grace Window, Family-Revoke bei Reuse) + zweistufige Audit-Pipeline (Tier 1 sync never-drop + Tier 2 async batched) + 29 Prometheus-Metriken auf <code>/metrics/auth</code>. Feature-Flag hinter <code>COORDINATOR_OAUTH_ENABLED=true</code>; Phase 1 Deployments byte-identisch wenn nicht gesetzt.",
       "roadmap.v08.date": "Veröffentlicht im Mai 2026",
-      "roadmap.v08.link": "v0.8.0 Release",
+      "roadmap.v08.link": "v0.8.1 Release",
       "roadmap.v09.title": "v0.9 — Multi-IdP + Audit-Chain + Rotations-Tooling",
       "roadmap.v09.desc": "First-Class <code>GoogleProvider</code> (id_token-Verifikation via jose + JWKS) und generischer <code>OIDCProvider</code> (Auto-Discovery via <code>/.well-known/openid-configuration</code> für Okta / Auth0 / Azure AD / Keycloak / Authentik). Picker-UI auf <code>/auth/login</code> wenn 2+ Provider registriert sind. SHA-256 Hash-Chain auf jeder <code>audit_log</code>-Zeile (SOC 2 Type II Tamper-Evidence) + <code>verify-audit-chain.ts</code> Operator-Skript. <code>mcp-coordinator rotate-jwt-secret</code> CLI-Helper mit systemd-Timer- und Kubernetes-CronJob-Automatisierungs-Patterns.",
       "roadmap.v09.date": "Veröffentlicht im Mai 2026",
@@ -4765,6 +4933,38 @@
       "roadmap.v13.desc": "Channels werden bidirektional: ein neues <code>post_to_thread</code>-Tool ermöglicht einer Claude-Code-Session, direkt in einen Konsultations-Thread via MQTT zu antworten. CI: die verkettete <code>release.yml &rarr; docker-publish.yml</code> via <code>workflow_call</code> publiziert das Multi-Arch-Image jetzt bei jedem Release-Tag automatisch nach GHCR &mdash; ohne manuelles Dispatch (Ursache war ein Gating auf das falsche Event-Feld). Neuer Operating-Modes-Guide (Polling vs Push) erklärt die Wahl; <code>list_threads</code>-Status-Enum für externe Integratoren korrigiert.",
       "roadmap.v13.date": "Ausgeliefert Mai 2026",
       "roadmap.v13.link": "v0.13.0 Release",
+      "roadmap.v1_0.title": "v1.0 — Erstes stabiles Release: Security- &amp; Supply-Chain-Härtung",
+      "roadmap.v1_0.desc": "Der Audit-Remediation-Meilenstein und die erste Major-Version. <strong>Breaking:</strong> JWTs tragen jetzt einen <code>typ</code>-Claim (access/refresh) — vor v1.0 ausgestellte Tokens werden abgewiesen, jeder Nutzer authentifiziert sich nach dem Upgrade also einmal neu. Härtet die Standardinstallation (127.0.0.1-Bind via <code>COORDINATOR_BIND</code>, Origin/CORS-Enforcement, Secret-Redaction auf allen Log-Pfaden), schließt die Supply Chain (pnpm 10 mit <code>onlyBuiltDependencies</code>, SHA-gepinnte Actions, Digest-gepinnte Docker-Base) und ergänzt zod-validierte REST-Endpoints mit strukturierten 400ern. 110 Audit-Findings über 23 PRs behoben; 0 bekannte Schwachstellen. Einen Tag später folgte v1.0.1: Das Inline-Skript des Dashboards wandert in eine externe <code>dashboard.js</code>, sodass eine strikte <code>script-src 'self'</code>-CSP greift, und SSE-Antworten flushen ihre Header sofort, sodass <code>EventSource</code> öffnet, ohne auf den ersten Heartbeat zu warten.",
+      "roadmap.v1_0.date": "Ausgeliefert Juli 2026",
+      "roadmap.v1_0.link": "v1.0.0 Release",
+      "roadmap.v1_1.title": "v1.1 — Thread-Scoping pro Run + NDJSON-Logging",
+      "roadmap.v1_1.desc": "Konsultations-Threads tragen jetzt eine <code>run_id</code>: Ein Run sieht seine eigenen Threads plus alle Threads ohne Scope, sodass ein abgebrochener Run keine veralteten Thread-IDs mehr in den nächsten Run durchsickern lässt. Der Filter lautet <code>run_id IS NULL OR run_id = ?</code>, nicht strikte Gleichheit — ein Run blendet andere Runs aus, aber nie andere Sessions, sodass ein Mensch, der am selben Repo arbeitet, sichtbar bleibt. Ankündigen ohne <code>run_id</code> bleibt ohne Scope, bestehende Clients sind nicht betroffen. Ein neues <code>--log-json</code>-Flag (<code>COORDINATOR_LOG_JSON</code>) erzwingt NDJSON-Ausgabe für Log-Aggregatoren und wird an den im Hintergrund laufenden Daemon durchgereicht. Übernommen aus Contributor-PR #151.",
+      "roadmap.v1_1.date": "Ausgeliefert Juli 2026",
+      "roadmap.v1_1.link": "v1.1.0 Release",
+      "roadmap.v1_2.title": "v1.2 — GitHub OAuth wird optional",
+      "roadmap.v1_2.desc": "Phase 2 setzt keine GitHub OAuth App mehr zwingend voraus. GitHub-Credentials sind jetzt optional nach dem Beide-oder-keins-Prinzip wie bei Google, der Boot verlangt mindestens einen IdP und bricht fail-closed ab, wenn keiner konfiguriert ist, und <code>COORDINATOR_GOOGLE_WORKSPACE_DOMAIN</code> befüllt die IdP-Allowlist der Bootstrap-Org, sodass die erste Google-Anmeldung eine Org trifft und Admin wird — zuvor bootete ein reines Google-Deployment mit leerer orgs-Tabelle und wies jeden Login ab. <code>doctor</code> prüft Google-Credentials und behandelt GitHub als optional. Der Patch v1.2.1 markiert die tree-sitter-Grammatiken im <code>bun --compile</code>-Binary-Build als <code>--external</code> und installiert Corepack explizit im Docker-Image, da Node 26 das mitgelieferte entfernt hat.",
+      "roadmap.v1_2.date": "Ausgeliefert Juli 2026",
+      "roadmap.v1_2.link": "v1.2.1 Release",
+      "roadmap.v1_3.title": "v1.3 — Google-Provider im phase2-Init-Wizard",
+      "roadmap.v1_3.desc": "<code>init phase2</code> war GitHub-only. Jetzt bietet es unabhängige Toggles pro Provider mit providerspezifischen Anleitungen zum Anlegen der App, dazu die Flags <code>--google-client-id</code>, <code>--google-client-secret</code> und <code>--google-workspace-domain</code> für nicht-interaktive Runs. Der Wizard spiegelt die Regeln von <code>bootPhase2</code> exakt: beide oder keins pro Provider, mindestens einer erforderlich, <code>GITHUB_ORG</code> nur wenn GitHub konfiguriert ist. Interaktive Prompts sind auf GitHub ja und Google nein vorbelegt, bestehende Runs bleiben also unverändert; werden beide abgelehnt, bricht der Wizard ab.",
+      "roadmap.v1_3.date": "Ausgeliefert Juli 2026",
+      "roadmap.v1_3.link": "v1.3.0 Release",
+      "roadmap.v1_4.title": "v1.4 — CLI-Operability-Pass + fundierte Docs und Beispiele",
+      "roadmap.v1_4.desc": "Fünf CLI-Ergänzungen landen gemeinsam: ein <code>server restart</code>-Subcommand, <code>--timeout</code> und <code>--force</code> für <code>server stop</code>, die Filter <code>--since</code> / <code>--grep</code> / <code>--level</code> für <code>server logs</code>, ein <code>--print-only</code>-Trockenlauf für <code>init</code> sowie <code>--json</code>-Ausgabe für <code>service-token issue</code> und <code>list</code>. Dazu drei Referenz-Dokumente — eine FAQ mit 12 Fragen, ein Troubleshooting-Guide mit 9 Abschnitten und eine kanonische MQTT-Topic-Referenz — plus acht eigenständige Integrationsbeispiele: MQTT-Subscriber in Go und Node, Webhook-Forwarder für Slack und Discord, systemd, Fly.io, Traefik und eine GitHub-Actions-Bridge.",
+      "roadmap.v1_4.date": "Ausgeliefert Juli 2026",
+      "roadmap.v1_4.link": "v1.4.0 Release",
+      "roadmap.v1_5.title": "v1.5 — Externer MQTT-Broker, org-gescopte Bridge, opt-in Redis-Multi-Instance",
+      "roadmap.v1_5.desc": "Die MQTT-Bridge kann jetzt einen externen Broker ansprechen (<code>COORDINATOR_MQTT_URL</code>, <code>COORDINATOR_MQTT_EMBEDDED=false</code>, optional Username und Passwort) statt des eingebetteten Aedes-Brokers, und sie wurde org-bewusst: Traffic wird unter <code>coordinator/&lt;org&gt;/*</code> publiziert, Konsultations-Listener sind nach (Org, Agent) gescopt. Damit ist ein Tenant-Isolation-Leck geschlossen, bei dem der MQTT-Traffic jeder Org über <code>coordinator/default/*</code> lief. Opt-in Multi-Instance-Shared-State hinter <code>COORDINATOR_REDIS_URL</code> ergänzt Redis-Locks, einen geteilten Rate-Limiter, einen Membership-Cache, Leader-Election für den Sweeper, serialisierte Boot-Migrationen und Token-Epoch-Pub/Sub — ohne gesetzte Variable behält jede Komponente ihren unveränderten In-Memory-Single-Instance-Pfad. Broker-seitige ACL ist zurückgestellt.",
+      "roadmap.v1_5.date": "Ausgeliefert Juli 2026",
+      "roadmap.v1_5.link": "v1.5.0 Release",
+      "roadmap.v2_0.title": "v2.0 — Node-22-Floor, geschlüsselte Audit-Chain, Härtung der Auth-Pfade",
+      "roadmap.v2_0.desc": "<strong>Breaking:</strong> Die minimal unterstützte Node-Version ist jetzt 22 — better-sqlite3@13 deklariert <code>engines node &gt;=22</code> und Node 20 hat am 30.04.2026 sein EOL erreicht — die CI-Matrix wechselt von 20/22 auf 22/24. Die Audit-Hash-Chain wird jetzt mit HMAC-SHA256 geschlüsselt, abgeleitet aus <code>COORDINATOR_ENCRYPTION_KEY</code> via HKDF: Schreibzugriff auf die DB allein reicht nicht mehr, um eine in sich stimmige Chain zu fälschen. Neue Zeilen tragen das Präfix <code>hmac-sha256-v1:</code>, bestehende Zeilen und Deployments ohne Key bleiben bei blankem SHA-256, und die Verifikation weist einen Algorithmus-Downgrade zurück. Audit-Zeilen protokollieren jetzt die echte Actor-ID statt eines gekürzten Pseudonyms, das sich über die Klartext-ID in derselben Zeile zurückrechnen ließ. Dazu: Revocation- und Admin-Route-Guards auf dem Cookie-Session-Pfad, Auto-Provision- und Login-Lockout-Enforcement beim CLI-Token-Grant, org-gescoptes <code>/api/scoring-stats</code>, eine POST-only-Allowlist für zustandsändernde <code>/api/*</code>-Routen, Boot-Zeit-Verschlüsselung verbliebener IdP-Klartext-Tokens und die Ablehnung von Master-Keys mit geringer Komplexität, die die Shannon-Entropie-Prüfung umgehen.",
+      "roadmap.v2_0.date": "Ausgeliefert August 2026",
+      "roadmap.v2_0.link": "v2.0.0 Release",
+      "roadmap.beyond.title": "Jenseits von v2.0 — Repo-übergreifende Koordination &amp; eine eingefrorene öffentliche API",
+      "roadmap.beyond.desc": "Koordination über mehrere Repositories hinweg von einem einzigen MQTT-Broker aus. Eine eingefrorene, versionierte öffentliche REST-API mit Migrationsleitfäden.",
+      "roadmap.beyond.date": "Termin offen",
+      "roadmap.beyond.link": "Auf GitHub folgen",
       "compliance.row.multiidp.status": "Veröffentlicht v0.9 &rarr; v0.10",
       "compliance.row.multiidp.aligned": "SOC 2 CC6.1 &middot; zentralisierte Identität",
       "compliance.row.auditchain.cap": "SHA-256 Hash-Chain auf jeder <code>audit_log</code>-Zeile (Tamper-Evidence)",
@@ -4784,7 +4984,7 @@
       "nav.install": "安装",
       "nav.roadmap": "路线图",
       "nav.getstarted": "开始使用",
-      "hero.eyebrow": "开源 &middot; MIT &middot; v0.13.0",
+      "hero.eyebrow": "开源 &middot; MIT &middot; v2.0.0",
       "hero.h1": "零冲突。每个 agent 对齐。",
       "hero.subtitle": "即插即用的 MCP 服务器,让并行运行的 Claude Code、Cursor 或 Cline agent 在动手改代码之前先宣告工作、检测冲突、达成共识。",
       "hero.stat.latency": "&lt;50ms 推送延迟",
@@ -4944,11 +5144,11 @@
       "start.step4.label": "第 4 步",
       "start.step4.title": "验证并打开",
       "start.step4.desc": "<code class=\"ic\">doctor</code> 命令检查 config、服务器、MCP 响应和 MQTT 连接,然后在 <code class=\"ic\">localhost:3100/dashboard</code> 打开 dashboard。",
-      "start.alt": "<strong>更喜欢 Docker?</strong> 改为拉取多架构镜像:<code class=\"ic\">docker pull ghcr.io/swoofer/mcp-coordinator:0.13.0</code>。完整的 compose 栈(带 Caddy auto-TLS)位于 <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose\">examples/docker-compose/</a>。",
+      "start.alt": "<strong>更喜欢 Docker?</strong> 改为拉取多架构镜像:<code class=\"ic\">docker pull ghcr.io/swoofer/mcp-coordinator:2.0.0</code>。完整的 compose 栈(带 Caddy auto-TLS)位于 <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose\">examples/docker-compose/</a>。",
       "start.modes": "<strong>想要实时推送而不是轮询?</strong> 添加 Channels 边车(v0.12+ research preview),让协调事件以 <code class=\"ic\">&lt;channel&gt;</code> 标签的形式在轮次之间到达您的 Claude Code 会话。参见 <a href=\"https://github.com/swoofer/mcp-coordinator/blob/main/docs/operating-modes.md\">polling-vs-push 决策指南</a>和 <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/channels-quickstart\">channels-quickstart 示例</a>。",
       "start.note": "<code class=\"ic\">git worktree add ../feature-x main</code>,让每个 agent 在自己的 worktree 里运行&mdash;&mdash;mcp-coordinator 处理\"谁在编辑 types.ts\";worktree 处理\"两个 agent 别抢同一个 inode\"。",
       "start.dash.title": "60 秒后你会看到的画面",
-      "start.dash.meta": "mcp-coordinator v0.13.0 &middot; 配额 62%",
+      "start.dash.meta": "mcp-coordinator v2.0.0 &middot; 配额 62%",
       "start.dash.aria": "示例 dashboard 视图:实时跟踪 4 个 agent,一次冲突在 38 秒内得到解决",
       "start.cta.star": "在 GitHub 上 Star",
       "start.cta.issue": "提一个 issue",
@@ -4974,7 +5174,7 @@
       "results.perf.label.consensus": "完整共识",
       "results.perf.value.consensus": "30-45 秒",
       "results.perf.label.tests": "测试套件",
-      "results.perf.value.tests": "65 个文件,共 546 个单元测试",
+      "results.perf.value.tests": "216 个文件,共 2941 个测试",
       "results.perf.link": "在 GitHub 上浏览测试套件 →",
       "results.subtitle.link": "在 GitHub 上查看 tests/ →",
       "faq.title": "常见问题",
@@ -4982,19 +5182,19 @@
       "faq.q1": "它会取代 git worktree 吗?",
       "faq.a1": "不会。Worktree 解决文件系统隔离;mcp-coordinator 解决意图协调。两者都用。",
       "faq.q2": "可以投入生产吗?",
-      "faq.a2": "适合个人和团队使用,稳定;v1.0 将冻结公共 API。65 个文件、546 个单元测试覆盖 6 个评分层、跨组织隔离和 4 种冲突场景。MIT 许可证,带 <code>doctor</code> 命令,结构化 Pino 日志。",
+      "faq.a2": "适合个人和团队使用,稳定;v1.0 冻结公共 API。216 个文件、2941 个测试覆盖 6 个评分层、跨组织隔离和 4 种冲突场景。MIT 许可证,带 <code>doctor</code> 命令,结构化 Pino 日志。",
       "faq.q3": "费用多少?",
       "faq.a3": "MIT 许可证,免费。在你的机器、你的局域网或你的云上自托管。",
       "faq.q4": "支持哪些 MCP 客户端?",
       "faq.a4": "任何 MCP 2024-11-05 客户端:Claude Code、Cursor、Cline、Aider、自定义脚本。HTTP/SSE 或 stdio 都可以。",
       "faq.q5": "多个仓库可以共用一个 coordinator 吗?",
-      "faq.a5": "可以,通过共享局域网或自托管云端部署。跨仓库一等公民支持在路线图上(v1.0)。",
+      "faq.a5": "可以,通过共享局域网或自托管云端部署。跨仓库一等公民支持在路线图上(v2.0 之后)。",
       "faq.q6": "需要 auth 或 JWT 吗?",
       "faq.a6": "默认不需要。共享或对外网络的部署可以选用 HS256 JWT,通过 <a href=\"https://github.com/panva/jose\">jose</a> 实现。",
       "faq.q7": "这和 Aider 或 Cline 自带的协调有什么区别?",
       "faq.a7": "Aider 和 Cline 没有跨会话的感知。mcp-coordinator 通过 MQTT broker 给它们提供共享状态。",
       "faq.q8": "又多一个工具要维护?",
-      "faq.a8": "一条 <code>npm install -g</code>,或者拉取已发布的镜像 <code>ghcr.io/swoofer/mcp-coordinator:0.13.0</code>(如果您更喜欢 Docker)。嵌入式 MQTT broker、SQLite 和 dashboard 都在包里。零 sidecar。对称的 <code>uninstall</code> 可以撤销 <code>init</code> 的所有动作;<code>--purge</code> 清空数据目录。",
+      "faq.a8": "一条 <code>npm install -g</code>,或者拉取已发布的镜像 <code>ghcr.io/swoofer/mcp-coordinator:2.0.0</code>(如果您更喜欢 Docker)。嵌入式 MQTT broker、SQLite 和 dashboard 都在包里。零 sidecar。对称的 <code>uninstall</code> 可以撤销 <code>init</code> 的所有动作;<code>--purge</code> 清空数据目录。",
       "faq.q9": "如果 coordinator 挂了会怎样?",
       "faq.a9": "agent 失败开放,继续工作,就像没装过一样。本地 SQLite 在重启时恢复。",
       "faq.q10": "agent 会在轮次之间丢失上下文吗?",
@@ -5017,7 +5217,7 @@
       "roadmap.v03.desc": "通过 tree-sitter 在 15 种语言上进行 AST 级分析。符号感知评分:同一文件、不同函数 = 标注原因,而非静默阻塞。",
       "roadmap.v03.date": "2026 年 5 月发布",
       "roadmap.v03.link": "v0.3.0 发布版本",
-      "footer.text": "MIT 许可证 &nbsp;·&nbsp; 用 <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> 构建 &nbsp;·&nbsp; MCP Coordinator v1.0.0",
+      "footer.text": "MIT 许可证 &nbsp;·&nbsp; 用 <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> 构建 &nbsp;·&nbsp; MCP Coordinator v2.0.0",
       "why.title": "为什么选择 MCP Coordinator?",
       "why.subtitle": "在同一 repo 上跑五个 agent,不出现合并冲突、不重复劳动、不遗留隐性回归。",
       "why.block1.title": "多个 agent,一个对齐的流程",
@@ -5163,7 +5363,7 @@
       "roadmap.v08.title": "v0.8——Phase 2 OAuth 2.1 + 设备流",
       "roadmap.v08.desc": "完整的 OAuth 2.1 + RFC 8628 设备流 + Cookie 会话(<code>__Host-coordinator_session</code>)+ 用于 CI/CD 的服务令牌 + 带被盗令牌检测的刷新令牌轮换(10 秒宽限窗口,复用时家族吊销)+ 双层审计管道(Tier 1 同步永不丢弃 + Tier 2 异步批处理)+ <code>/metrics/auth</code> 上的 29 个 Prometheus 指标。通过 <code>COORDINATOR_OAUTH_ENABLED=true</code> 功能开关控制;未设置时,Phase 1 部署字节一致。",
       "roadmap.v08.date": "2026 年 5 月发布",
-      "roadmap.v08.link": "v0.8.0 发布",
+      "roadmap.v08.link": "v0.8.1 发布",
       "roadmap.v09.title": "v0.9——多 IdP + 审计链 + 轮换工具",
       "roadmap.v09.desc": "一等的 <code>GoogleProvider</code>(通过 jose + JWKS 验证 id_token)和通用 <code>OIDCProvider</code>(通过 <code>/.well-known/openid-configuration</code> 为 Okta / Auth0 / Azure AD / Keycloak / Authentik 自动发现)。注册 2 个及以上提供商时,<code>/auth/login</code> 上出现选择器 UI。每行 <code>audit_log</code> 上的 SHA-256 哈希链(SOC 2 Type II 防篡改证据)+ <code>verify-audit-chain.ts</code> 运维脚本。<code>mcp-coordinator rotate-jwt-secret</code> CLI 助手,附带 systemd-timer + Kubernetes CronJob 自动化模式。",
       "roadmap.v09.date": "2026 年 5 月发布",
@@ -5184,6 +5384,42 @@
       "roadmap.v13.desc": "Channels 变为双向:新的 <code>post_to_thread</code> 工具允许 Claude Code 会话通过 MQTT 直接回复咨询线程。CI:链式 <code>release.yml &rarr; docker-publish.yml</code> 的 <code>workflow_call</code> 现在会在每个发布标签上自动将多架构镜像发布到 GHCR,无需手动触发(根因是 gating 用错了事件字段)。新增 operating-modes(轮询 vs 推送)指南来阐明选择;为外部集成方修正了 <code>list_threads</code> 状态枚举。",
       "roadmap.v13.date": "2026 年 5 月发布",
       "roadmap.v13.link": "v0.13.0 发布",
+      "roadmap.v1_0.title": "v1.0 — 首个稳定版本:安全与供应链加固",
+      "roadmap.v1_0.desc": "审计整改里程碑,也是首个大版本。<strong>破坏性变更:</strong>JWT 现在携带 <code>typ</code> 声明(access/refresh)——v1.0 之前签发的令牌一律拒绝,因此升级后每位用户需要重新认证一次。加固默认安装(通过 <code>COORDINATOR_BIND</code> 绑定 127.0.0.1、强制 Origin/CORS 校验、所有日志路径上的密钥脱敏),收紧供应链(pnpm 10 配合 <code>onlyBuiltDependencies</code>、SHA 固定的 Actions、digest 固定的 Docker 基础镜像),并新增经 zod 校验的 REST 端点与结构化 400 响应。23 个 PR 修复了 110 项审计发现;0 个已知漏洞。一天后跟进的 v1.0.1:dashboard 的内联脚本移到外部 <code>dashboard.js</code>,让严格的 <code>script-src 'self'</code> CSP 得以生效;SSE 响应立即 flush 响应头,<code>EventSource</code> 无需等待第一次心跳即可建立连接。",
+      "roadmap.v1_0.date": "2026 年 7 月发布",
+      "roadmap.v1_0.link": "v1.0.0 发布",
+      "roadmap.v1_1.title": "v1.1 — 按 run 划分 thread 作用域 + NDJSON 日志",
+      "roadmap.v1_1.desc": "consultation thread 现在带上 <code>run_id</code>:一次 run 只看到自己的 thread 加上所有未划定作用域的 thread,中断的 run 不会再把过期的 thread id 泄漏给下一次。过滤条件是 <code>run_id IS NULL OR run_id = ?</code>,而非严格相等——一次 run 会隐藏其他 run,但绝不会隐藏其他会话,因此在同一 repo 上工作的人依然可见。不带 <code>run_id</code> 宣告仍然是无作用域的,现有客户端不受影响。新增 <code>--log-json</code> 标志(<code>COORDINATOR_LOG_JSON</code>)强制输出 NDJSON 供日志聚合器使用,并会转发给后台 daemon。采纳自贡献者 PR #151。",
+      "roadmap.v1_1.date": "2026 年 7 月发布",
+      "roadmap.v1_1.link": "v1.1.0 发布",
+      "roadmap.v1_2.title": "v1.2 — GitHub OAuth 变为可选",
+      "roadmap.v1_2.desc": "Phase 2 不再硬性要求 GitHub OAuth App。GitHub 凭据像 Google 一样变为可选,并遵循&ldquo;要么都配、要么都不配&rdquo;;启动时至少需要一个 IdP,一个都没有配置时 fail closed;<code>COORDINATOR_GOOGLE_WORKSPACE_DOMAIN</code> 会为引导 org 预置 IdP 白名单,让第一次 Google 登录能匹配到 org 并成为管理员——此前仅用 Google 的部署启动后 orgs 表为空,任何登录都会被拒。<code>doctor</code> 现在探测 Google 凭据,并把 GitHub 视为可选。v1.2.1 补丁在 <code>bun --compile</code> 二进制构建中把 tree-sitter 语法标记为 <code>--external</code>,并在 Docker 镜像里显式安装 Corepack,因为 Node 26 已不再内置。",
+      "roadmap.v1_2.date": "2026 年 7 月发布",
+      "roadmap.v1_2.link": "v1.2.1 发布",
+      "roadmap.v1_3.title": "v1.3 — phase2 init 向导支持 Google 提供商",
+      "roadmap.v1_3.desc": "<code>init phase2</code> 此前只支持 GitHub。现在它为每个提供商提供独立开关和各自的应用创建说明,并新增 <code>--google-client-id</code>、<code>--google-client-secret</code> 和 <code>--google-workspace-domain</code> 标志供非交互式运行使用。向导完全复刻 <code>bootPhase2</code> 的规则:每个提供商要么都配、要么都不配,至少需要配置一个,只有配置了 GitHub 时才需要 <code>GITHUB_ORG</code>。交互式提示默认 GitHub 为是、Google 为否,因此现有流程保持不变;两个都拒绝则中止。",
+      "roadmap.v1_3.date": "2026 年 7 月发布",
+      "roadmap.v1_3.link": "v1.3.0 发布",
+      "roadmap.v1_4.title": "v1.4 — CLI 可运维性增强 + 文档与集成示例",
+      "roadmap.v1_4.desc": "五项 CLI 增强一起落地:<code>server restart</code> 子命令、<code>server stop</code> 上的 <code>--timeout</code> 与 <code>--force</code>、<code>server logs</code> 上的 <code>--since</code> / <code>--grep</code> / <code>--level</code> 过滤器、<code>init</code> 的 <code>--print-only</code> 空跑,以及 <code>service-token issue</code> 和 <code>list</code> 的 <code>--json</code> 输出。同时发布三份参考文档——12 个问题的 FAQ、9 个章节的故障排查指南,以及一份权威的 MQTT topic 参考——外加八个自包含的集成示例:Go 和 Node 的 MQTT subscriber、Slack 和 Discord 的 webhook 转发器、systemd、Fly.io、Traefik,以及一个 GitHub Actions 桥接。",
+      "roadmap.v1_4.date": "2026 年 7 月发布",
+      "roadmap.v1_4.link": "v1.4.0 发布",
+      "roadmap.v1_5.title": "v1.5 — 外部 MQTT broker、按 org 划分作用域的 bridge、可选启用的 Redis 多实例",
+      "roadmap.v1_5.desc": "MQTT bridge 现在可以指向外部 broker(<code>COORDINATOR_MQTT_URL</code>、<code>COORDINATOR_MQTT_EMBEDDED=false</code>,用户名和密码可选),而不必使用内嵌的 Aedes broker;同时它变得 org 感知:流量发布在 <code>coordinator/&lt;org&gt;/*</code> 下,consultation 监听器按 (org, agent) 划分作用域。这堵上了一处租户隔离漏洞——此前每个 org 的 MQTT 流量都流经 <code>coordinator/default/*</code>。通过 <code>COORDINATOR_REDIS_URL</code> 可选启用的多实例共享状态带来 Redis 锁、共享限流器、成员关系缓存、清理器 leader 选举、串行化的启动迁移,以及 token-epoch pub/sub——不设置该变量时,每个组件都保持原有的内存单实例路径不变。broker 侧 ACL 暂缓。",
+      "roadmap.v1_5.date": "2026 年 7 月发布",
+      "roadmap.v1_5.link": "v1.5.0 发布",
+      "roadmap.v2_0.title": "v2.0 — Node 22 最低要求、带密钥的审计链、认证路径加固",
+      "roadmap.v2_0.desc": "<strong>破坏性变更:</strong>最低支持的 Node 版本现在是 22——better-sqlite3@13 声明 <code>engines node &gt;=22</code>,且 Node 20 已于 2026-04-30 结束支持——CI 矩阵也从 20/22 改为 22/24。audit 哈希链现在用由 <code>COORDINATOR_ENCRYPTION_KEY</code> 经 HKDF 派生的 HMAC-SHA256 加密,仅凭数据库写权限已无法伪造出自洽的链:新行带 <code>hmac-sha256-v1:</code> 前缀,已有行和未配置密钥的部署仍为裸 SHA-256,校验时拒绝算法降级。audit 行现在记录真实的 actor id,而不再是可以从同一行的明文 id 反推出来的截断假名。同时还有:cookie 会话路径上的吊销与管理员路由防护、CLI 令牌授予上的自动开通与登录锁定强制、按 org 划分作用域的 <code>/api/scoring-stats</code>、状态变更类 <code>/api/*</code> 路由的 POST-only 白名单、启动时对遗留明文 IdP 令牌的加密,以及对绕过 Shannon 熵检测的低复杂度主密钥的拒绝。",
+      "roadmap.v2_0.date": "2026 年 8 月发布",
+      "roadmap.v2_0.link": "v2.0.0 发布",
+      "roadmap.beyond.title": "v2.0 之后 — 跨仓库协调与冻结的公共 API",
+      "roadmap.beyond.desc": "从单个 MQTT broker 协调多个仓库。冻结的、带版本的公共 REST API,并配有迁移指南。",
+      "roadmap.beyond.date": "日期待定",
+      "roadmap.beyond.link": "在 GitHub 上关注",
+      "compliance.title": "企业与合规",
+      "compliance.intro": "从地基起就为合规而建。v2.0.0 交付完整的 Phase 2 OAuth 2.1、多 IdP SSO,以及带 HMAC 密钥的哈希链 audit log——正是受监管行业和 SOC 2 Type II 部署真正需要、用来汇总出一份审计档案的能力。",
+      "compliance.th.capability": "能力",
+      "compliance.th.status": "状态",
       "compliance.th.aligned": "对齐于",
       "compliance.row.tenant.cap": "多租户 <code>org_id</code> 隔离覆盖 14 张表",
       "compliance.row.tenant.status": "v0.7 已发布",
@@ -5194,7 +5430,7 @@
       "compliance.row.multiidp.cap": "多 IdP SSO——GitHub OAuth App + GitHub App + Google + 通用 OIDC",
       "compliance.row.multiidp.status": "v0.9 &rarr; v0.10 已发布",
       "compliance.row.multiidp.aligned": "SOC 2 CC6.1 &middot; 集中式身份",
-      "compliance.row.audit.cap": "audit log 表(只追加的数据层)+ 35 种事件类型 Tier 1/Tier 2",
+      "compliance.row.audit.cap": "audit log 表(只追加的数据层)+ 39 种事件类型 Tier 1/Tier 2",
       "compliance.row.audit.status": "v0.7 &rarr; v0.8 已发布",
       "compliance.row.audit.aligned": "SOC 2 CC7.2 &middot; CC7.3",
       "compliance.row.auditchain.cap": "每行 <code>audit_log</code> 上的 SHA-256 哈希链(防篡改证据)",
@@ -5225,11 +5461,11 @@
       "mechanism.v05.inflight.title": "进行中感知",
       "mechanism.v05.inflight.body": "基于钩子的 PreToolUse + PostToolUse 让 coordinator 看到 agent <strong>开始</strong>编辑文件——而不仅仅是完成时。冲突在字节写出之前浮现,而非之后。",
       "mechanism.v05.symbol.title": "符号感知评分",
-      "mechanism.v05.symbol.body": "tree-sitter 解析 15 种语言(TS/TSX/JS/JSX/Python/Go/Rust/Java/C#/C/C++/Ruby/PHP/Kotlin/Swift/Bash)。两个 agent 编辑同一文件但不同函数时,会得到带标注的原因——而非静默阻塞。",
+      "mechanism.v05.symbol.body": "tree-sitter 解析 15 种语言(TS/TSX/JS/Python/Go/Rust/Java/C#/C/C++/Ruby/PHP/Kotlin/Swift/Bash)。两个 agent 编辑同一文件但不同函数时,会得到带标注的原因——而非静默阻塞。",
       "mechanism.v05.cochange.title": "Git 协同变更评分",
       "mechanism.v05.cochange.body": "在 git 历史中同进同出的文件(config + 消费者、fixture + 测试)被评为相关:协同变更率 &gt;50% 时影响 60,&gt;20% 时影响 40。能捕获文件名匹配看不到的回归。",
       "faq.q11": "冲突检测支持哪些编程语言?",
-      "faq.a11": "v0.5.0 通过 tree-sitter 提供 15 种语言:TypeScript、TSX、JavaScript、JSX、Python、Go、Rust、Java、C#、C、C++、Ruby、PHP、Kotlin 和 Swift。策略注册表模式让新增语言成为单文件级别的贡献。",
+      "faq.a11": "通过 tree-sitter 支持 15 种语言:TypeScript、TSX、JavaScript、Python、Go、Rust、Java、C#、C、C++、Ruby、PHP、Kotlin、Swift 和 Bash。<code>.jsx</code>、<code>.mjs</code> 和 <code>.cjs</code> 会映射到 JavaScript 语法。策略注册表模式让新增语言成为单文件级别的贡献。",
       "faq.q12": "底层的冲突检测如何工作?",
       "faq.a12": "六层评分,最严重的层胜出:精确文件匹配(100)、符号感知 AST 重叠(标注原因,而非静默阻塞)、依赖图(80)、模块边界(30)、最近编辑启发式,以及 git 协同变更——共享提交历史的文件依据协同变更率得分 60 或 40。",
     },
@@ -5243,7 +5479,7 @@
       "nav.install": "インストール",
       "nav.roadmap": "ロードマップ",
       "nav.getstarted": "始める",
-      "hero.eyebrow": "オープンソース &middot; MIT &middot; v0.13.0",
+      "hero.eyebrow": "オープンソース &middot; MIT &middot; v2.0.0",
       "hero.h1": "競合ゼロ。すべてのエージェントが揃う。",
       "hero.subtitle": "並列で動く Claude Code、Cursor、Cline のエージェントが、コードに触れる前に作業を宣言し、競合を検出し、合意に至るためのドロップイン MCP サーバーです。",
       "hero.stat.latency": "プッシュ遅延 &lt;50ms",
@@ -5403,11 +5639,11 @@
       "start.step4.label": "ステップ 4",
       "start.step4.title": "確認して開く",
       "start.step4.desc": "<code class=\"ic\">doctor</code> コマンドが config、サーバー、MCP 応答、MQTT 接続をチェックし、その後 <code class=\"ic\">localhost:3100/dashboard</code> でダッシュボードを開きます。",
-      "start.alt": "<strong>Docker をお使いの場合は?</strong> 代わりにマルチアーキ対応イメージを pull してください: <code class=\"ic\">docker pull ghcr.io/swoofer/mcp-coordinator:0.13.0</code>。Caddy auto-TLS 付きの完全な compose スタックが <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose\">examples/docker-compose/</a> にあります。",
+      "start.alt": "<strong>Docker をお使いの場合は?</strong> 代わりにマルチアーキ対応イメージを pull してください: <code class=\"ic\">docker pull ghcr.io/swoofer/mcp-coordinator:2.0.0</code>。Caddy auto-TLS 付きの完全な compose スタックが <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose\">examples/docker-compose/</a> にあります。",
       "start.modes": "<strong>ポーリングではなくリアルタイム push がお望みですか?</strong> Channels サイドカー (v0.12+ research preview) を追加すれば、コーディネーションイベントが <code class=\"ic\">&lt;channel&gt;</code> タグとしてターン間で Claude Code セッションに届きます。<a href=\"https://github.com/swoofer/mcp-coordinator/blob/main/docs/operating-modes.md\">polling-vs-push 決定ガイド</a>と <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/channels-quickstart\">channels-quickstart のサンプル</a>をご覧ください。",
       "start.note": "<code class=\"ic\">git worktree add ../feature-x main</code> を実行し、各エージェントを自身のワークツリーで動かしてください&mdash;mcp-coordinator は「誰が types.ts を編集しているか」を扱い、ワークツリーは「2 体のエージェントが同じ inode を取り合わない」を扱います。",
       "start.dash.title": "60 秒で見えるもの",
-      "start.dash.meta": "mcp-coordinator v0.13.0 &middot; クォータ 62%",
+      "start.dash.meta": "mcp-coordinator v2.0.0 &middot; クォータ 62%",
       "start.dash.aria": "サンプルダッシュボードビュー: 4 体のエージェントをライブで追跡、競合は 38 秒で解決",
       "start.cta.star": "GitHub でスター",
       "start.cta.issue": "Issue を起票",
@@ -5433,7 +5669,7 @@
       "results.perf.label.consensus": "完全合意",
       "results.perf.value.consensus": "30-45 秒",
       "results.perf.label.tests": "テストスイート",
-      "results.perf.value.tests": "65 ファイルにわたる 546 ユニットテスト",
+      "results.perf.value.tests": "216 ファイルにわたる 2941 テスト",
       "results.perf.link": "GitHub でテストスイートを閲覧 →",
       "results.subtitle.link": "GitHub の tests/ をご覧ください →",
       "faq.title": "FAQ",
@@ -5441,19 +5677,19 @@
       "faq.q1": "git ワークツリーを置き換えますか?",
       "faq.a1": "いいえ。ワークツリーはファイルシステムの分離を解決し、mcp-coordinator は意図の連携を解決します。両方を併用してください。",
       "faq.q2": "本番運用に耐えますか?",
-      "faq.a2": "ソロ・チーム利用で安定しています。v1.0 で公開 API が凍結されます。65 ファイル、546 のユニットテストが 6 つのスコアリングレイヤー、クロス組織分離、4 つの競合シナリオをカバーします。MIT ライセンス、<code>doctor</code> コマンド、構造化された Pino ログ。",
+      "faq.a2": "ソロ・チーム利用で安定しています。v1.0 で公開 API が凍結されます。216 ファイルにわたる 2941 のテストが 6 つのスコアリングレイヤー、クロス組織分離、4 つの競合シナリオをカバーします。MIT ライセンス、<code>doctor</code> コマンド、構造化された Pino ログ。",
       "faq.q3": "費用はどれくらいですか?",
       "faq.a3": "MIT ライセンスで無料です。自分のマシン、LAN、またはクラウドにセルフホストできます。",
       "faq.q4": "どの MCP クライアントが動作しますか?",
       "faq.a4": "MCP 2024-11-05 に対応するすべてのクライアント: Claude Code、Cursor、Cline、Aider、カスタムスクリプト。HTTP/SSE または stdio。",
       "faq.q5": "複数のリポジトリで 1 つのコーディネーターを共有できますか?",
-      "faq.a5": "はい。共有 LAN またはセルフホスト型クラウドデプロイで可能です。リポジトリ横断のファーストクラスサポートはロードマップ (v1.0) に入っています。",
+      "faq.a5": "はい。共有 LAN またはセルフホスト型クラウドデプロイで可能です。リポジトリ横断のファーストクラスサポートはロードマップ (v2.0 以降) に入っています。",
       "faq.q6": "認証や JWT は必要ですか?",
       "faq.a6": "デフォルトでは不要です。共有環境やインターネット公開デプロイ向けに、<a href=\"https://github.com/panva/jose\">jose</a> を使ったオプトインの HS256 JWT を提供します。",
       "faq.q7": "Aider や Cline 自身の連携機能とは何が違いますか?",
       "faq.a7": "Aider と Cline はセッション横断の認識を持ちません。mcp-coordinator は MQTT ブローカーを介して共有状態を提供します。",
       "faq.q8": "また別のメンテすべきツールが増えるのでは?",
-      "faq.a8": "<code>npm install -g</code> ひとつ、または Docker をお使いの場合は公開イメージ <code>ghcr.io/swoofer/mcp-coordinator:0.13.0</code> を pull するだけ。組み込み MQTT ブローカー、SQLite、ダッシュボードがパッケージに同梱されています。サイドカーゼロ。対称的な <code>uninstall</code> が <code>init</code> のアクションを巻き戻し、<code>--purge</code> がデータディレクトリを一掃します。",
+      "faq.a8": "<code>npm install -g</code> ひとつ、または Docker をお使いの場合は公開イメージ <code>ghcr.io/swoofer/mcp-coordinator:2.0.0</code> を pull するだけ。組み込み MQTT ブローカー、SQLite、ダッシュボードがパッケージに同梱されています。サイドカーゼロ。対称的な <code>uninstall</code> が <code>init</code> のアクションを巻き戻し、<code>--purge</code> がデータディレクトリを一掃します。",
       "faq.q9": "コーディネーターがダウンしたらどうなりますか?",
       "faq.a9": "エージェントはフェイルオープンし、未インストール時のように作業を続けます。再起動時にローカルの SQLite が再開します。",
       "faq.q10": "エージェントはターン間でコンテキストを失いますか?",
@@ -5476,7 +5712,7 @@
       "roadmap.v03.desc": "tree-sitter による 15 言語の AST 解析。シンボル認識スコアリング:同一ファイル、異なる関数 = 注釈付き理由、サイレントブロックではない。",
       "roadmap.v03.date": "2026 年 5 月リリース",
       "roadmap.v03.link": "v0.3.0 リリース",
-      "footer.text": "MIT License &nbsp;·&nbsp; <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> で構築 &nbsp;·&nbsp; MCP Coordinator v1.0.0",
+      "footer.text": "MIT License &nbsp;·&nbsp; <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> で構築 &nbsp;·&nbsp; MCP Coordinator v2.0.0",
       "why.title": "なぜ MCP Coordinator か?",
       "why.subtitle": "5 体のエージェントを同じリポジトリで走らせても、マージ競合・重複作業・サイレントリグレッションは発生しません。",
       "why.block1.title": "複数のエージェント、ひとつの揃ったプロセス",
@@ -5622,7 +5858,7 @@
       "roadmap.v08.title": "v0.8 —— Phase 2 OAuth 2.1 + デバイスフロー",
       "roadmap.v08.desc": "完全な OAuth 2.1 + RFC 8628 デバイスフロー + Cookie セッション (<code>__Host-coordinator_session</code>) + CI/CD 向けサービストークン + 盗難検出付きリフレッシュトークンローテーション (10 秒の猶予ウィンドウ、再利用時のファミリー失効) + 2 段階監査パイプライン (Tier 1 同期ドロップなし + Tier 2 非同期バッチ) + <code>/metrics/auth</code> 上の 29 個の Prometheus メトリクス。<code>COORDINATOR_OAUTH_ENABLED=true</code> によるフィーチャーフラグ付き。未設定時、Phase 1 デプロイはバイト同一です。",
       "roadmap.v08.date": "2026 年 5 月リリース",
-      "roadmap.v08.link": "v0.8.0 リリース",
+      "roadmap.v08.link": "v0.8.1 リリース",
       "roadmap.v09.title": "v0.9 —— マルチ IdP + 監査チェーン + ローテーションツール",
       "roadmap.v09.desc": "ファーストクラスの <code>GoogleProvider</code> (jose + JWKS による id_token 検証) と汎用 <code>OIDCProvider</code> (<code>/.well-known/openid-configuration</code> による自動検出、Okta / Auth0 / Azure AD / Keycloak / Authentik 対応)。2 つ以上のプロバイダーが登録されている場合、<code>/auth/login</code> にピッカー UI を表示。すべての <code>audit_log</code> 行に SHA-256 ハッシュチェーン (SOC 2 Type II 改ざん検知) + <code>verify-audit-chain.ts</code> 運用スクリプト。<code>mcp-coordinator rotate-jwt-secret</code> CLI ヘルパーと systemd-timer + Kubernetes CronJob 自動化パターン。",
       "roadmap.v09.date": "2026 年 5 月リリース",
@@ -5643,6 +5879,42 @@
       "roadmap.v13.desc": "Channels が双方向に:新しい <code>post_to_thread</code> ツールにより、Claude Code セッションから MQTT 経由でコンサルテーション スレッドに直接返信できます。CI:<code>release.yml &rarr; docker-publish.yml</code> の <code>workflow_call</code> による連鎖が、リリース タグごとにマルチアーキ イメージを GHCR に自動公開するようになりました (手動 dispatch 不要 &mdash; 原因はゲーティングが誤ったイベント フィールドを参照していたこと)。operating-modes (ポーリング vs プッシュ) の新しいガイドが選択肢を整理;外部インテグレーター向けに <code>list_threads</code> のステータス enum を修正。",
       "roadmap.v13.date": "2026 年 5 月リリース",
       "roadmap.v13.link": "v0.13.0 リリース",
+      "roadmap.v1_0.title": "v1.0 — 初の安定版リリース:セキュリティとサプライチェーンの堅牢化",
+      "roadmap.v1_0.desc": "監査対応のマイルストーンであり、初のメジャーバージョン。<strong>破壊的変更:</strong> JWT が <code>typ</code> クレーム (access/refresh) を持つようになり、v1.0 より前に発行されたトークンは拒否されます。そのため、アップグレード後にすべてのユーザーが一度だけ再認証する必要があります。デフォルトインストールを堅牢化し (<code>COORDINATOR_BIND</code> による 127.0.0.1 バインド、Origin/CORS の強制、すべてのログ経路でのシークレットのマスキング)、サプライチェーンを封じ (<code>onlyBuiltDependencies</code> 付きの pnpm 10、SHA ピン留めした Actions、ダイジェストピン留めした Docker ベースイメージ)、構造化された 400 を返す zod 検証済み REST エンドポイントを追加しました。23 本の PR で 110 件の監査指摘を解消、既知の脆弱性はゼロ。翌日リリースの v1.0.1 では、ダッシュボードのインラインスクリプトを外部の <code>dashboard.js</code> に切り出して厳格な <code>script-src 'self'</code> CSP を適用できるようにし、SSE レスポンスがヘッダーを即座にフラッシュすることで <code>EventSource</code> が最初のハートビートを待たずに接続を確立するようになりました。",
+      "roadmap.v1_0.date": "2026 年 7 月リリース",
+      "roadmap.v1_0.link": "v1.0.0 リリース",
+      "roadmap.v1_1.title": "v1.1 — run 単位のスレッドスコープ + NDJSON ログ",
+      "roadmap.v1_1.desc": "協議スレッドが <code>run_id</code> を持つようになりました:各 run は自分のスレッドとスコープなしのスレッドをすべて参照できるため、中断された run が古いスレッド ID を次の run に漏らすことがなくなります。フィルターは厳密一致ではなく <code>run_id IS NULL OR run_id = ?</code> です &mdash; run は他の run を隠しますが、他のセッションを隠すことは決してないため、同じリポジトリで作業している人間は見えたままです。<code>run_id</code> なしで宣言した場合はスコープなしのままとなり、既存のクライアントは影響を受けません。新しい <code>--log-json</code> フラグ (<code>COORDINATOR_LOG_JSON</code>) はログアグリゲーター向けに NDJSON 出力を強制し、デタッチされたデーモンにも引き継がれます。コントリビューターの PR #151 を採用しました。",
+      "roadmap.v1_1.date": "2026 年 7 月リリース",
+      "roadmap.v1_1.link": "v1.1.0 リリース",
+      "roadmap.v1_2.title": "v1.2 — GitHub OAuth が任意に",
+      "roadmap.v1_2.desc": "Phase 2 が GitHub OAuth App を必須としなくなりました。GitHub のクレデンシャルは Google と同様に「両方設定するか、どちらも設定しないか」の任意扱いとなり、起動時には最低 1 つの IdP が必要で、1 つも設定されていない場合はフェイルクローズします。また <code>COORDINATOR_GOOGLE_WORKSPACE_DOMAIN</code> がブートストラップ org の IdP allowlist を初期化するため、最初の Google サインインが org にマッチして管理者になります &mdash; 従来、Google のみのデプロイは orgs テーブルが空のまま起動し、すべてのログインを拒否していました。<code>doctor</code> は Google のクレデンシャルをプローブし、GitHub は任意として扱います。v1.2.1 パッチでは、<code>bun --compile</code> によるバイナリビルドで tree-sitter の grammar を <code>--external</code> としてマークし、Node 26 が同梱をやめたため Docker イメージで Corepack を明示的にインストールするようにしました。",
+      "roadmap.v1_2.date": "2026 年 7 月リリース",
+      "roadmap.v1_2.link": "v1.2.1 リリース",
+      "roadmap.v1_3.title": "v1.3 — phase2 init ウィザードへの Google プロバイダー追加",
+      "roadmap.v1_3.desc": "<code>init phase2</code> は GitHub 専用でした。プロバイダーごとに独立したトグルと、プロバイダー別のアプリ作成手順を提供するようになり、非対話実行向けに <code>--google-client-id</code>、<code>--google-client-secret</code>、<code>--google-workspace-domain</code> の各フラグが追加されました。ウィザードは <code>bootPhase2</code> のルールを正確にミラーします:プロバイダーごとに「両方設定するか、どちらも設定しないか」、最低 1 つは必須、<code>GITHUB_ORG</code> は GitHub が設定されている場合のみ。対話プロンプトは GitHub を「はい」、Google を「いいえ」でデフォルトするため、既存の実行は変わりません。両方を拒否した場合は中止します。",
+      "roadmap.v1_3.date": "2026 年 7 月リリース",
+      "roadmap.v1_3.link": "v1.3.0 リリース",
+      "roadmap.v1_4.title": "v1.4 — CLI の運用性強化 + 実装に即したドキュメントとサンプル",
+      "roadmap.v1_4.desc": "5 つの CLI 追加が同時にリリースされます:<code>server restart</code> サブコマンド、<code>server stop</code> の <code>--timeout</code> と <code>--force</code>、<code>server logs</code> の <code>--since</code> / <code>--grep</code> / <code>--level</code> フィルター、<code>init</code> のドライラン <code>--print-only</code>、そして <code>service-token issue</code> と <code>list</code> の <code>--json</code> 出力。加えて 3 つのリファレンスドキュメント &mdash; 12 問の FAQ、9 セクションのトラブルシューティングガイド、正式な MQTT トピックリファレンス &mdash; と、8 つの自己完結型インテグレーションサンプル (Go と Node の MQTT サブスクライバー、Slack と Discord の Webhook フォワーダー、systemd、Fly.io、Traefik、GitHub Actions ブリッジ) を同梱します。",
+      "roadmap.v1_4.date": "2026 年 7 月リリース",
+      "roadmap.v1_4.link": "v1.4.0 リリース",
+      "roadmap.v1_5.title": "v1.5 — 外部 MQTT ブローカー、org スコープのブリッジ、オプトインの Redis マルチインスタンス",
+      "roadmap.v1_5.desc": "MQTT ブリッジが、組み込みの Aedes ブローカーの代わりに外部ブローカー (<code>COORDINATOR_MQTT_URL</code>、<code>COORDINATOR_MQTT_EMBEDDED=false</code>、任意でユーザー名とパスワード) を指定できるようになり、さらに org を認識するようになりました:トラフィックは <code>coordinator/&lt;org&gt;/*</code> の下に publish され、協議リスナーは (org, agent) でスコープされます。これにより、すべての org の MQTT トラフィックが <code>coordinator/default/*</code> を流れていたテナント分離の漏れが塞がれます。<code>COORDINATOR_REDIS_URL</code> によるオプトインのマルチインスタンス共有状態では、Redis ロック、共有レートリミッター、メンバーシップキャッシュ、Sweeper のリーダー選出、起動時マイグレーションの直列化、token-epoch の pub/sub が追加されます &mdash; 未設定であれば、各コンポーネントは従来どおりインメモリの単一インスタンス経路のままです。ブローカー側の ACL は見送りとなりました。",
+      "roadmap.v1_5.date": "2026 年 7 月リリース",
+      "roadmap.v1_5.link": "v1.5.0 リリース",
+      "roadmap.v2_0.title": "v2.0 — Node 22 を最低要件に、鍵付き監査チェーン、認証経路の堅牢化",
+      "roadmap.v2_0.desc": "<strong>破壊的変更:</strong> サポートする Node の最小バージョンが 22 になりました &mdash; better-sqlite3@13 が <code>engines node &gt;=22</code> を宣言しており、Node 20 は 2026-04-30 に EOL を迎えたためです &mdash; CI マトリクスも 20/22 から 22/24 に移行しています。監査ハッシュチェーンは <code>COORDINATOR_ENCRYPTION_KEY</code> から HKDF で導出した HMAC-SHA256 で鍵付けされるようになり、DB への書き込み権限だけでは整合性のとれたチェーンを偽造できなくなりました:新しい行には <code>hmac-sha256-v1:</code> プレフィックスが付き、既存の行と鍵なしのデプロイは素の SHA-256 のままで、検証はアルゴリズムのダウングレードを拒否します。監査行には、同じ行の平文 ID から逆算できてしまう切り詰めた仮名ではなく、実際のアクター ID が記録されるようになりました。あわせて、Cookie セッション経路での失効チェックと管理ルートのガード、CLI トークン付与時の自動プロビジョニングとログインロックアウトの強制、<code>/api/scoring-stats</code> の org スコープ化、状態を変更する <code>/api/*</code> ルートの POST 限定 allowlist、起動時に残存する平文 IdP トークンの暗号化、Shannon エントロピーをすり抜ける低複雑度のマスターキーの拒否を実施しました。",
+      "roadmap.v2_0.date": "2026 年 8 月リリース",
+      "roadmap.v2_0.link": "v2.0.0 リリース",
+      "roadmap.beyond.title": "v2.0 の先へ — リポジトリ横断の連携と凍結された公開 API",
+      "roadmap.beyond.desc": "単一の MQTT ブローカーによる複数リポジトリ横断の連携。マイグレーションガイドを伴う、凍結されたバージョン管理済みの公開 REST API。",
+      "roadmap.beyond.date": "日付未定",
+      "roadmap.beyond.link": "GitHub でフォロー",
+      "compliance.title": "エンタープライズとコンプライアンス",
+      "compliance.intro": "基盤からコンプライアンスを念頭に設計されています。v2.0.0 では完全な Phase 2 OAuth 2.1、マルチ IdP SSO、HMAC 鍵付きハッシュチェーンの audit log を提供します &mdash; 規制業界や SOC 2 Type II のデプロイが監査資料を揃えるために実際に必要とする機能です。",
+      "compliance.th.capability": "機能",
+      "compliance.th.status": "ステータス",
       "compliance.th.aligned": "整合性",
       "compliance.row.tenant.cap": "14 のテーブルにまたがるマルチテナント <code>org_id</code> 分離",
       "compliance.row.tenant.status": "v0.7 リリース済み",
@@ -5653,7 +5925,7 @@
       "compliance.row.multiidp.cap": "マルチ IdP SSO —— GitHub OAuth App + GitHub App + Google + 汎用 OIDC",
       "compliance.row.multiidp.status": "v0.9 → v0.10 出荷済み",
       "compliance.row.multiidp.aligned": "SOC 2 CC6.1 &middot; 一元化された ID",
-      "compliance.row.audit.cap": "audit log テーブル (追記専用データレイヤー) + 35 イベント種別 Tier 1/Tier 2",
+      "compliance.row.audit.cap": "audit log テーブル (追記専用データレイヤー) + 39 イベント種別 Tier 1/Tier 2",
       "compliance.row.audit.status": "v0.7 → v0.8 出荷済み",
       "compliance.row.audit.aligned": "SOC 2 CC7.2 &middot; CC7.3",
       "compliance.row.auditchain.cap": "すべての <code>audit_log</code> 行に SHA-256 ハッシュチェーン (改ざん検知)",
@@ -5684,11 +5956,11 @@
       "mechanism.v05.inflight.title": "進行中の認識",
       "mechanism.v05.inflight.body": "フックベースの PreToolUse + PostToolUse により、コーディネーターはエージェントがファイルを<strong>編集し始めた</strong>瞬間を把握できます。終了時だけではありません。バイトが書き込まれる前に競合が表面化します。",
       "mechanism.v05.symbol.title": "シンボル認識スコアリング",
-      "mechanism.v05.symbol.body": "tree-sitter が 15 言語 (TS/TSX/JS/JSX/Python/Go/Rust/Java/C#/C/C++/Ruby/PHP/Kotlin/Swift/Bash) をパースします。同じファイルの異なる関数を編集する 2 つのエージェントには、注釈付きの理由が返されます — サイレントブロックではありません。",
+      "mechanism.v05.symbol.body": "tree-sitter が 15 言語 (TS/TSX/JS/Python/Go/Rust/Java/C#/C/C++/Ruby/PHP/Kotlin/Swift/Bash) をパースします。同じファイルの異なる関数を編集する 2 つのエージェントには、注釈付きの理由が返されます — サイレントブロックではありません。",
       "mechanism.v05.cochange.title": "Git co-change スコアリング",
       "mechanism.v05.cochange.body": "Git 履歴で一緒に動くファイル (config + コンシューマー、fixture + テスト) は関連していると判定されます: co-change &gt;50% でインパクト 60、&gt;20% で 40。ファイル名マッチングでは見えないリグレッションを捕捉します。",
       "faq.q11": "競合検出はどのプログラミング言語をサポートしますか?",
-      "faq.a11": "v0.5.0 は tree-sitter を介して 15 言語をサポートします:TypeScript、TSX、JavaScript、JSX、Python、Go、Rust、Java、C#、C、C++、Ruby、PHP、Kotlin、Swift。strategy-registry パターンにより、言語の追加は 1 ファイルの貢献で済みます。",
+      "faq.a11": "tree-sitter を介して 15 言語をサポートします:TypeScript、TSX、JavaScript、Python、Go、Rust、Java、C#、C、C++、Ruby、PHP、Kotlin、Swift、Bash。<code>.jsx</code>、<code>.mjs</code>、<code>.cjs</code> は JavaScript の grammar にマッピングされます。strategy-registry パターンにより、言語の追加は 1 ファイルの貢献で済みます。",
       "faq.q12": "競合検出は内部でどのように動作しますか?",
       "faq.a12": "6 つのスコアリングレイヤー、最も深刻なものが採用されます:完全なファイル一致 (100)、シンボル認識 AST 重複 (注釈付き理由、サイレントブロックではない)、依存グラフ (80)、モジュール境界 (30)、最近の編集ヒューリスティック、そして git co-change — 共有コミット履歴を持つファイルは co-change 比率に応じて 60 または 40 を獲得します。"
     }
