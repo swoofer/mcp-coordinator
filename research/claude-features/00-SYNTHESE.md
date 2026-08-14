@@ -135,6 +135,16 @@ ne pas savoir que l'outil existe — donc ne jamais annoncer. Avec ~26 outils, l
 zone concernée. Le correctif candidat (`alwaysLoad: true` sur le sous-ensemble critique) est peu coûteux ; le
 préalable est de **mesurer si la régression est réelle**. → [C06](C06-tool-search-defer-loading.md)
 
+> 🛠 **Mesuré le 2026-08-15 — ce paragraphe est faux, sur les deux points.** (1) Le tool search n'a rien
+> cassé : avec `ENABLE_TOOL_SEARCH=false` et les 26 schémas pleinement en contexte, l'agent édite sans
+> annoncer. Le workflow ne fonctionnait **pas non plus avant**. (2) Le correctif candidat était le mauvais :
+> `alwaysLoad: true` a été testé seul, et avec un impératif dans la description d'`announce_work` — 0/3.
+> Ce qui fonctionne est le champ **`instructions`** du serveur (5/5), aujourd'hui absent de
+> `createMcpServer()`. Conséquence pour cette section : `C06` n'est pas une régression en production,
+> c'est une capacité neuve — et le fait que rien ne contraigne l'annonce **renforce** la priorité du
+> Mouvement 1 ([`C01`](C01-hook-mcp-tool-gate.md), [`F02`](F02-canusetool-distributed-lock.md)) au lieu
+> de la réduire. Détail et sorties brutes en §6.4 et §7.3 de [C06](C06-tool-search-defer-loading.md).
+
 **Le sandbox Bash bloque probablement l'onboarding en silence.** Le sandbox de Claude Code (GA sur macOS et
 Linux) applique un egress deny-by-default. Un daemon écoutant sur `localhost` n'est pas joignable sans une
 entrée explicite dans `sandbox.network.allowedDomains`. L'utilisateur ne voit pas une erreur de configuration :
