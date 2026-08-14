@@ -61,7 +61,13 @@ export function registerMqttTools(
           `How long to block, in seconds. Defaults to 15, capped at ${MAX_WAIT_TIMEOUT_SECONDS}.`,
         ),
     },
-    { readOnlyHint: true, title: "Wait for MQTT message" },
+    // issue #269: NOT read-only either — waitForMessage does `queue.shift()`,
+    // so a received message is consumed. Deliberately NOT destructiveHint: it
+    // takes exactly one message and that is its documented purpose, whereas
+    // get_queued_messages wipes the backlog. Marking the main receive loop
+    // destructive would make clients prompt on every poll, which pushes people
+    // to switch hints off entirely — worse than the problem.
+    { readOnlyHint: false, idempotentHint: false, title: "Wait for MQTT message" },
     async ({ agent_id, timeout_seconds }, extra) => {
       const claims = getSessionClaims(extra.sessionId ?? "");
       if (!claims) throw new Error("Session has no captured claims (auth bug)");
@@ -82,7 +88,19 @@ export function registerMqttTools(
     {
       agent_id: z.string().describe("ID of the agent whose queued messages to fetch."),
     },
-    { readOnlyHint: true, title: "Get queued MQTT messages" },
+    // issue #269: NOT read-only. getQueuedMessages does `listener.queue.length = 0`
+    // — it wipes the whole backlog and hands it back. The messages have no other
+    // copy (MQTT here is best-effort push; the durable path is thread_messages),
+    // so a client that auto-approves read-only tools, or an agent that retries a
+    // "harmless" call, destroys a batch. destructiveHint because it removes
+    // every queued message at once, and not idempotent because the second call
+    // returns nothing.
+    {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      title: "Drain queued MQTT messages",
+    },
     async ({ agent_id }, extra) => {
       const claims = getSessionClaims(extra.sessionId ?? "");
       if (!claims) throw new Error("Session has no captured claims (auth bug)");

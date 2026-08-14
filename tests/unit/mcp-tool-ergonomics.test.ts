@@ -197,8 +197,6 @@ describe("protocole-mcp-10: tool annotations", () => {
       "hot_files",
       "get_session_files",
       "check_file_conflict",
-      "wait_for_message",
-      "get_queued_messages",
       "coordinator_status",
       "wait_for_peers",
     ];
@@ -240,6 +238,10 @@ describe("protocole-mcp-10: tool annotations", () => {
       "register_agent",
       "heartbeat",
       "mqtt_publish",
+      // issue #269: both consume from the listener queue — waitForMessage
+      // shifts one, getQueuedMessages empties it. They were listed as reads.
+      "wait_for_message",
+      "get_queued_messages",
     ];
     for (const name of mutations) {
       expect(
@@ -248,7 +250,16 @@ describe("protocole-mcp-10: tool annotations", () => {
       ).toBe(false);
     }
 
-    const destructive = ["set_dependency_map", "close_thread", "cancel_thread"];
+    // get_queued_messages drains the entire queue in one call and the messages
+    // have no other copy. wait_for_message is deliberately NOT here: it takes
+    // exactly one message as its documented purpose, and flagging the main
+    // receive loop destructive would make clients prompt on every poll.
+    const destructive = [
+      "set_dependency_map",
+      "close_thread",
+      "cancel_thread",
+      "get_queued_messages",
+    ];
     for (const name of destructive) {
       expect(
         getTool(server, name).annotations?.destructiveHint,
