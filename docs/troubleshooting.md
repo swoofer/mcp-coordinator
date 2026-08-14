@@ -285,6 +285,55 @@ coordination calls: raise the value, or have it call `heartbeat` periodically.
 
 ---
 
+## 8c. `register_agent` fails with "already registered in org …"
+
+**Symptom.** Registering an agent id that works fine in one org is rejected in
+another:
+
+```
+agent id 'builder' is already registered in org 'acme'. Agent ids are globally
+unique in this release, not per-org — choose a different id.
+```
+
+**Cause.** The `agents` primary key is `(org_id, id)`, but a **global** UNIQUE
+index on `agents(id)` still exists because several foreign keys reference
+`agents(id)` rather than the composite key. So ids are effectively global for
+now. Before this message existed, the same situation surfaced as a raw
+`UNIQUE constraint failed: agents.id` naming neither the id nor the owning org.
+
+**Fix.** Pick an id that is unique across every org — prefixing with the org
+(`acme-builder`) is the simplest scheme. Tracked in
+[#231](https://github.com/swoofer/mcp-coordinator/issues/231); lifting it needs
+a schema migration.
+
+---
+
+## 8d. `claim-task` returns `success: false` with a `conflict` field
+
+**Symptom.** A claim is refused even though the thread itself is unclaimed —
+`claimed_by` is `null`, `assigned_to` is `null`, `status` is `"open"`:
+
+```json
+{ "success": false, "claimed_by": null, "assigned_to": null, "status": "open",
+  "conflict": { "thread_id": "…", "files": ["src/shared.ts"] } }
+```
+
+**Cause.** Another agent already holds a **different** thread whose
+`target_files` overlap yours. The claim CAS used to predicate on thread id
+alone, so two agents could claim two different threads touching the same file
+and both start editing it. The overlap guard closes that
+([#258](https://github.com/swoofer/mcp-coordinator/issues/258)).
+
+`conflict` names the thread holding the files and which files collided — the
+other fields all look normal precisely because nothing is wrong with *your*
+thread.
+
+**Fix.** Nothing to repair: claim a different thread and come back. Clients that
+already handle `success: false` by refetching need no change. One agent holding
+two overlapping threads is still allowed — a single worker serializes itself.
+
+---
+
 ## 9. Windows notes
 
 - **`EBUSY` during tests.** A handful of Windows file-handle teardown flakes

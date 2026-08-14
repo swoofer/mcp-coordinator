@@ -290,7 +290,27 @@ Any MCP client can discover the full tool schema at runtime via the standard `to
 |------|-------------|
 | `wait_for_message` | Block until a coordination message arrives on the agent's topic |
 | `get_queued_messages` | Drain all queued messages without blocking |
-| `mqtt_publish` | Publish a raw message to any MQTT topic |
+| `mqtt_publish` | Publish a message into your org's MQTT namespace |
+
+**MQTT here is best-effort push, not the record of truth.** Worth knowing before
+you build on it:
+
+- Nothing is buffered for an agent with no live listener — a message that
+  arrives before `wait_for_message`/`get_queued_messages` registers is gone.
+- `get_queued_messages` **drains**: the messages are removed as you read them,
+  so a second call returns nothing and a crash mid-processing loses them.
+- Listener queues are capped and drop oldest-first under load.
+- `mqtt_publish` rewrites your topic into `coordinator/<your-org>/…`, and only
+  `broadcast` and `consultations/*` reach other agents' listeners. Any other
+  topic is published and consumed by nobody.
+- Payloads must be valid JSON to be delivered.
+
+Every one of those discards is now counted on `/metrics` as
+`mcp_coordinator_mqtt_messages_dropped_total{reason}` and logged at warn level,
+so a silent drip is visible rather than invisible (issue #236).
+
+For delivery you can rely on, use the thread APIs — `post_to_thread` +
+`get_thread_updates` are backed by SQLite and survive restarts.
 
 ### Status
 
