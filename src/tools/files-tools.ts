@@ -4,6 +4,8 @@ import type { CoordinatorServices } from "../server-setup.js";
 import type { Logger } from "../logger.js";
 import type { AuthClaims } from "../auth.js";
 
+import { missingClaimsError } from "./tool-errors.js";
+
 /**
  * S1: file tracking MCP tools (3 tools).
  * hot_files, get_session_files, check_file_conflict.
@@ -25,7 +27,7 @@ export function registerFilesTools(
     { readOnlyHint: true, title: "List hot files" },
     async ({ since_minutes }, extra) => {
       const claims = getSessionClaims(extra.sessionId ?? "");
-      if (!claims) throw new Error("Session has no captured claims (auth bug)");
+      if (!claims) throw missingClaimsError();
       const files = fileTracker.getHotFiles(claims.org, since_minutes || 30);
       return { content: [{ type: "text", text: JSON.stringify(files) }] };
     },
@@ -40,7 +42,7 @@ export function registerFilesTools(
     { readOnlyHint: true, title: "Get session files" },
     async ({ session_id }, extra) => {
       const claims = getSessionClaims(extra.sessionId ?? "");
-      if (!claims) throw new Error("Session has no captured claims (auth bug)");
+      if (!claims) throw missingClaimsError();
       const files = fileTracker.getBySession(claims.org, session_id);
       return { content: [{ type: "text", text: JSON.stringify(files) }] };
     },
@@ -62,7 +64,7 @@ export function registerFilesTools(
     { readOnlyHint: true, title: "Check file conflict" },
     async ({ file_path, agent_id, within_minutes }, extra) => {
       const claims = getSessionClaims(extra.sessionId ?? "");
-      if (!claims) throw new Error("Session has no captured claims (auth bug)");
+      if (!claims) throw missingClaimsError();
       const result = fileTracker.checkFileConflict(
         claims.org,
         file_path,
