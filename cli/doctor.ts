@@ -15,6 +15,96 @@ export interface CheckResult {
   severity?: "ok" | "warn" | "fail";
 }
 
+/**
+ * Modules the daemon cannot boot without.
+ *
+ * issue #282: a concurrent package-manager run can rewrite node_modules while
+ * a node process is starting, leaving a link missing. The daemon then dies on
+ * a raw `cjs/loader` stack trace that names a package nobody declared —
+ * `@babel/runtime`, four levels below `mqtt`.
+ *
+ * We **import** rather than `require.resolve` on purpose. Resolution only
+ * proves the top-level entry exists; the breakage is always deeper, and only
+ * surfaces when the module graph is actually executed. `mqtt` is the canary:
+ * it pulls worker-timers -> worker-timers-broker -> broker-factory ->
+ * @babel/runtime, and that last link is the one that goes missing.
+ */
+const CRITICAL_MODULES = [
+  "@modelcontextprotocol/sdk/server/mcp.js",
+  "better-sqlite3",
+  "mqtt",
+] as const;
+
+const MODULE_MISSING_CODES = new Set(["ERR_MODULE_NOT_FOUND", "MODULE_NOT_FOUND"]);
+
+/**
+ * Verify the dependency tree actually loads.
+ *
+ * Runs before every other probe: when the tree is broken, every downstream
+ * check fails for the wrong reason and the hints point at the wrong fix
+ * ("start the server" when the server physically cannot start).
+ */
+export async function checkDependencyTree(
+  modules: readonly string[] = CRITICAL_MODULES,
+): Promise<CheckResult> {
+  const broken: { module: string; missing: string }[] = [];
+  const other: { module: string; message: string }[] = [];
+
+  for (const name of modules) {
+    try {
+      await import(name);
+    } catch (e) {
+      const err = e as NodeJS.ErrnoException & { message: string };
+      const isMissing =
+        MODULE_MISSING_CODES.has(err.code ?? "") || /Cannot find module/.test(err.message ?? "");
+      if (isMissing) {
+        // Surface the package that is actually absent, which is rarely the one
+        // we asked for. That name is the whole diagnostic value here.
+        // Node phrases it two ways: "Cannot find module 'x'" from the CJS
+        // loader (the #282 case, thrown deep inside a transitive require) and
+        // "Cannot find package 'x' imported from y" from the ESM loader.
+        const m = /Cannot find (?:module|package) '([^']+)'/.exec(err.message ?? "");
+        broken.push({ module: name, missing: m?.[1] ?? "unknown" });
+      } else {
+        other.push({ module: name, message: err.message ?? String(e) });
+      }
+    }
+  }
+
+  if (broken.length > 0) {
+    const detail = broken.map((b) => `${b.module} -> missing '${b.missing}'`).join("; ");
+    return {
+      name: "deps",
+      ok: false,
+      severity: "fail",
+      detail: `dependency tree incomplete: ${detail}`,
+      hint:
+        "Run: pnpm install --frozen-lockfile (restores the tree without touching the lockfile). " +
+        "A concurrent install or agent run can rewrite node_modules mid-flight — see issue #282.",
+    };
+  }
+
+  if (other.length > 0) {
+    const detail = other.map((o) => `${o.module}: ${o.message}`).join("; ");
+    return {
+      name: "deps",
+      ok: false,
+      severity: "fail",
+      detail: `dependency loaded but failed: ${detail}`,
+      hint:
+        "A package is present but unusable — typically a native binding built for another " +
+        "Node version. Run: pnpm rebuild better-sqlite3",
+    };
+  }
+
+  return {
+    name: "deps",
+    ok: true,
+    severity: "ok",
+    detail: `${modules.length} critical modules load (${modules.join(", ")})`,
+  };
+}
+
 async function tcpReachable(host: string, port: number, timeoutMs = 1500): Promise<boolean> {
   return new Promise((resolveP) => {
     const sock = createConnection({ host, port });
@@ -834,6 +924,12 @@ export function createDoctorCommand(): Command {
     .action(async (opts: { host: string; port: string; mqttPort: string; phase2: boolean }) => {
       const results: CheckResult[] = [];
       const host = opts.host;
+
+      // 0. Dependency tree (issue #282). First on purpose: if the tree is
+      // incomplete the daemon physically cannot boot, and every probe below
+      // would report "unreachable" with a hint telling the user to start a
+      // server that cannot start.
+      results.push(await checkDependencyTree());
 
       // 1. Config dir
       const configDir = getConfigDir();
