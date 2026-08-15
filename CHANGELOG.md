@@ -1,5 +1,37 @@
 # Changelog
 
+## [2.1.0](https://github.com/swoofer/mcp-coordinator/compare/v2.0.1...v2.1.0) (2026-08-15)
+
+
+### Features
+
+* **cli:** resolve the dashboard port from config, add --url override ([#264](https://github.com/swoofer/mcp-coordinator/issues/264)) ([52ea66b](https://github.com/swoofer/mcp-coordinator/commit/52ea66b600281b6f8b8685cc8fe0dd0b54119e66)), closes [#69](https://github.com/swoofer/mcp-coordinator/issues/69)
+* **db:** scope agent ids per org (composite FK, migration v11) ([#284](https://github.com/swoofer/mcp-coordinator/issues/284)) ([c50c830](https://github.com/swoofer/mcp-coordinator/commit/c50c830fef56e50753416d90ce71ef3f573b9ad6))
+
+
+### Bug Fixes
+
+* **agents:** expire stale agents from the online list ([#261](https://github.com/swoofer/mcp-coordinator/issues/261)) ([5010c1a](https://github.com/swoofer/mcp-coordinator/commit/5010c1abac4af805cc4fa8d298f7de5116e74d98)), closes [#233](https://github.com/swoofer/mcp-coordinator/issues/233)
+* **agents:** explain the cross-org agent id conflict instead of leaking SQLite ([#259](https://github.com/swoofer/mcp-coordinator/issues/259)) ([9fe4e82](https://github.com/swoofer/mcp-coordinator/commit/9fe4e82ce860fd6dcb6b63171b2d23a1cb3874ee)), closes [#231](https://github.com/swoofer/mcp-coordinator/issues/231)
+* **auth:** scope agent revocation to the org ([#287](https://github.com/swoofer/mcp-coordinator/issues/287)) ([#289](https://github.com/swoofer/mcp-coordinator/issues/289)) ([c600f7a](https://github.com/swoofer/mcp-coordinator/commit/c600f7a768e04f89de2e47ab226202597dedb3f2))
+* **claim:** refuse a claim whose target files are held by another agent ([#266](https://github.com/swoofer/mcp-coordinator/issues/266)) ([293a1a7](https://github.com/swoofer/mcp-coordinator/commit/293a1a79e477f19ffb48118e3a7505eea6cb0f20)), closes [#258](https://github.com/swoofer/mcp-coordinator/issues/258)
+* **cli:** name the paths when backup and restore fail ([#262](https://github.com/swoofer/mcp-coordinator/issues/262)) ([99dd818](https://github.com/swoofer/mcp-coordinator/commit/99dd8180667b67fc54a73ee5fb30ff7ea18f61be)), closes [#68](https://github.com/swoofer/mcp-coordinator/issues/68)
+* **cli:** verify the daemon actually bound before reporting success ([#273](https://github.com/swoofer/mcp-coordinator/issues/273)) ([#293](https://github.com/swoofer/mcp-coordinator/issues/293)) ([295721e](https://github.com/swoofer/mcp-coordinator/commit/295721ebeedecf02b5e497c361e9fe75216ff2dd))
+* **dashboard:** derive the API origin from the page, not a hardcoded :3100 ([#292](https://github.com/swoofer/mcp-coordinator/issues/292)) ([#294](https://github.com/swoofer/mcp-coordinator/issues/294)) ([cea91b8](https://github.com/swoofer/mcp-coordinator/commit/cea91b8c20912a2ee47efea39a5677e97b8d7bb1))
+* **db:** stop blaming the migration for someone else's corrupt data ([#285](https://github.com/swoofer/mcp-coordinator/issues/285)) ([#290](https://github.com/swoofer/mcp-coordinator/issues/290)) ([6fdafc5](https://github.com/swoofer/mcp-coordinator/commit/6fdafc53ef8487c1386d144148437b5c6279ff8c))
+* **doctor:** diagnose an incomplete dependency tree instead of dying on it ([#283](https://github.com/swoofer/mcp-coordinator/issues/283)) ([41e6c50](https://github.com/swoofer/mcp-coordinator/commit/41e6c50c9e42ad2ef05596a1a73ee3f91fb5e872))
+* **mcp:** stop advertising the queue readers as read-only ([#270](https://github.com/swoofer/mcp-coordinator/issues/270)) ([b892b60](https://github.com/swoofer/mcp-coordinator/commit/b892b6068278762df50f3cf5253e1636eace228e)), closes [#269](https://github.com/swoofer/mcp-coordinator/issues/269)
+* **mqtt:** stop dropping messages silently, and describe the delivery rules ([#263](https://github.com/swoofer/mcp-coordinator/issues/263)) ([78ae93d](https://github.com/swoofer/mcp-coordinator/commit/78ae93db5b19151e71e876cade238d6f2a78f0b4))
+* **tools:** explain the missing-claims failure instead of saying "auth bug" ([#274](https://github.com/swoofer/mcp-coordinator/issues/274)) ([a5f2fcf](https://github.com/swoofer/mcp-coordinator/commit/a5f2fcf6c8b4e0f3902980d7997ba44d5bdb5fed)), closes [#99](https://github.com/swoofer/mcp-coordinator/issues/99)
+
+
+### Documentation
+
+* add a client connection guide, without inventing config paths ([#276](https://github.com/swoofer/mcp-coordinator/issues/276)) ([605c082](https://github.com/swoofer/mcp-coordinator/commit/605c08299a64aacc0cdf9167ed22395ff341ca31)), closes [#73](https://github.com/swoofer/mcp-coordinator/issues/73)
+* docs/usage.md. ([c600f7a](https://github.com/swoofer/mcp-coordinator/commit/c600f7a768e04f89de2e47ab226202597dedb3f2))
+* **research:** veille plateforme Claude — 56 dossiers de décision ([#267](https://github.com/swoofer/mcp-coordinator/issues/267)) ([353e7b8](https://github.com/swoofer/mcp-coordinator/commit/353e7b881ff6a737901671eb2ba3a37d46c20342))
+* write down the behaviour the recent fixes changed ([#268](https://github.com/swoofer/mcp-coordinator/issues/268)) ([6e11d65](https://github.com/swoofer/mcp-coordinator/commit/6e11d654232eab93f125d9b7a11c00ddc17ce958))
+
 ## [2.0.1](https://github.com/swoofer/mcp-coordinator/compare/v2.0.0...v2.0.1) (2026-08-14)
 
 
