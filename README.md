@@ -155,7 +155,7 @@ The **consultation cycle** has four steps:
 3. **Consult** — MQTT pushes the new thread to every affected agent. Each agent posts context, constraints, or proposes a resolution.
 4. **Resolve** — Agents approve, contest, or propose again. The thread closes when consensus is reached, or auto-resolves after timeout / in gray zones.
 
-The server is **client-agnostic**: any MCP-compatible agent (Claude Code, Cursor, Cline, Aider, custom scripts) can connect over HTTP/SSE or stdio.
+The server is **client-agnostic**: any MCP-compatible agent (Claude Code, Cursor, Cline, Aider, custom scripts) can connect over HTTP/SSE or stdio. See [connecting an MCP client](./docs/clients.md) for the config shapes, the stdio caveats, and how to verify a connection.
 
 ### MQTT layer
 
