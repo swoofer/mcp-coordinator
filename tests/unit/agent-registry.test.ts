@@ -158,29 +158,30 @@ describe("agent-registry org_id scoping", () => {
     const afterB2 = registry.get("org-b", "agent-b-1")?.last_seen_at;
     expect(afterB2).toBe(beforeB);
   });
-  // Issue #231: agents.id carries a global UNIQUE index (idx_agents_id), which
-  // is load-bearing for the FKs that still target agents(id). So the same agent
-  // id genuinely cannot exist in two orgs yet. Until the schema migration lands,
-  // the failure must at least be legible: name the owning org and say the
-  // constraint is global, instead of surfacing a raw SQLite constraint string.
-  it("register: a duplicate agent id from another org fails with an actionable message (#231)", () => {
-    registry.register("org-a", "shared-id", "A", []);
-    let err: Error | undefined;
-    try {
-      registry.register("org-b", "shared-id", "B", []);
-    } catch (e) {
-      err = e as Error;
-    }
-    expect(err).toBeDefined();
-    // Names the id, the org that already holds it, and why.
-    expect(err!.message).toContain("shared-id");
-    expect(err!.message).toContain("org-a");
-    expect(err!.message).toMatch(/global/i);
-    // The raw driver text must not leak through.
-    expect(err!.message).not.toMatch(/SQLITE_CONSTRAINT/);
-    // And the first org's row is untouched.
+  // Issue #231: the v11 migration repointed the five agents foreign keys onto
+  // the composite (org_id, id) and dropped the global UNIQUE index, so ids are
+  // per-org. This replaces the stage-1 test, which asserted the opposite —
+  // that a cross-org duplicate must fail with an explanatory message.
+  it("register: the same agent id is independent across orgs (#231)", () => {
+    const a = registry.register("org-a", "shared-id", "A", ["src/a"]);
+    const b = registry.register("org-b", "shared-id", "B", ["src/b"]);
+
+    expect(a.name).toBe("A");
+    expect(b.name).toBe("B");
+    // Two distinct rows, not one row overwritten by the second registration.
     expect(registry.get("org-a", "shared-id")?.name).toBe("A");
-    expect(registry.get("org-b", "shared-id")).toBeUndefined();
+    expect(registry.get("org-b", "shared-id")?.name).toBe("B");
+  });
+
+  it("register: re-registering within ONE org still upserts rather than duplicating (#231)", () => {
+    registry.register("org-a", "shared-id", "First", []);
+    registry.register("org-a", "shared-id", "Second", []);
+
+    const n = getDb()
+      .prepare("SELECT COUNT(*) AS n FROM agents WHERE org_id = ? AND id = ?")
+      .get("org-a", "shared-id") as { n: number };
+    expect(n.n).toBe(1);
+    expect(registry.get("org-a", "shared-id")?.name).toBe("Second");
   });
 
   // Issue #233: listOnline used to filter on `status` alone. `status` only ever

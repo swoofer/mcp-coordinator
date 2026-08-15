@@ -1004,13 +1004,23 @@ describe("Consultation", () => {
 });
 
 describe("consultation org_id scoping", () => {
-  // a1, a2, a3 are already registered in the outer beforeEach under org "default".
-  // These tests reuse those existing agent IDs but assign threads to different orgs
-  // to verify per-org isolation. FK on threads.initiator_id references agents(id)
-  // (cross-org by design — it checks id existence, not org matching).
+  // These tests assign threads to org-a / org-b to verify per-org isolation.
+  //
+  // They used to lean on the old FK, which referenced agents(id) alone and so
+  // "checked id existence, not org matching" — letting a thread in org-a name
+  // an agent registered only under "default". The v11 migration (issue #231)
+  // repointed that FK to the composite (org_id, id), so the shortcut is now a
+  // FOREIGN KEY violation. Register the agents in each org the tests use, which
+  // is what production does anyway: an agent registers under its own org before
+  // it can announce there.
   beforeEach(() => {
     const db = getDb();
     db.exec("DELETE FROM thread_messages; DELETE FROM threads;");
+    for (const org of ["org-a", "org-b"]) {
+      registry.register(org, "a1", "Agent A", ["src/auth"]);
+      registry.register(org, "a2", "Agent B", ["src/users"]);
+      registry.register(org, "a3", "Agent C", ["src/api"]);
+    }
   });
 
   it("announceWork writes org_id", () => {

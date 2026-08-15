@@ -295,16 +295,40 @@ agent id 'builder' is already registered in org 'acme'. Agent ids are globally
 unique in this release, not per-org — choose a different id.
 ```
 
-**Cause.** The `agents` primary key is `(org_id, id)`, but a **global** UNIQUE
-index on `agents(id)` still exists because several foreign keys reference
-`agents(id)` rather than the composite key. So ids are effectively global for
-now. Before this message existed, the same situation surfaced as a raw
-`UNIQUE constraint failed: agents.id` naming neither the id nor the owning org.
+**Cause.** You are on a pre-v11 schema. The `agents` primary key was already
+`(org_id, id)`, but a **global** UNIQUE index on `agents(id)` survived because
+five foreign keys referenced `agents(id)` rather than the composite key — so
+ids were effectively global. (Older still: the same situation surfaced as a raw
+`UNIQUE constraint failed: agents.id`, naming neither the id nor the owning
+org.)
 
-**Fix.** Pick an id that is unique across every org — prefixing with the org
-(`acme-builder`) is the simplest scheme. Tracked in
-[#231](https://github.com/swoofer/mcp-coordinator/issues/231); lifting it needs
-a schema migration.
+**Fix.** Upgrade. Schema **v11** ([#231](https://github.com/swoofer/mcp-coordinator/issues/231))
+rewrites those foreign keys as `(org_id, <col>) REFERENCES agents(org_id, id)`
+and drops the global index: agent ids are now unique **within an org**, and two
+orgs may both use `builder`. The migration runs automatically on first open. To
+stay on the old schema, keep prefixing ids with the org (`acme-builder`).
+
+Two things the upgrade can report:
+
+- **`Cannot migrate to per-org agent ids (issue #231): rows reference agent ids
+  that do not exist in 'agents' …`** — a row points at an agent absent from
+  `agents`, so there is no org to re-parent it to. Such a database already
+  violates the *current* foreign key, and would have failed boot anyway (the
+  v9 migration's `foreign_key_check` catches it, with a much less helpful
+  message). Boot refuses rather than delete your rows; the message carries
+  per-table counts. Back up the data directory, then either re-create the
+  missing agent rows / remove the orphaned ones yourself, **or** set
+  `COORDINATOR_ALLOW_MIGRATION_REPAIR=true` and restart: boot then recreates
+  the missing agents for you — one per dangling id, in the org most of its
+  referencing rows carry, named `<id> (recovered by migration v11)` and
+  `offline`. Nothing is deleted either way. Unset the variable once you are
+  through; it is an unblock switch, not a setting. The repair is recorded in
+  `audit_log` under `migration.agent_fk_recover` (per-table row counts, how
+  many agents were recreated, and a sample of up to 50).
+- **A `migration.agent_fk_reparent` row in `audit_log`** — rows whose `org_id`
+  disagreed with their agent's actual org (possible only because the old
+  foreign key never checked it) were corrected. Informational, written once,
+  with per-table counts in `metadata_json`.
 
 ---
 

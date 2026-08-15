@@ -168,10 +168,14 @@ describe("introspection org_id scoping", () => {
 
   beforeEach(() => {
     getDb().exec("DELETE FROM introspections");
-    // Ensure agents exist (idempotent re-register is fine)
+    // v11 (issue #231): introspections now key on (org_id, agent_id), so the
+    // agents must exist in each org used below. Previously one "default"
+    // registration sufficed because agents.id was globally unique.
     registry = new AgentRegistry();
-    registry.register("default", "a1", "Agent A", []);
-    registry.register("default", "b1", "Agent B", []);
+    for (const org of ["default", "org-a", "org-b"]) {
+      registry.register(org, "a1", "Agent A", []);
+      registry.register(org, "b1", "Agent B", []);
+    }
     // Create threads under org-a and org-b
     consultation = new Consultation();
     const tA = consultation.announceWork("org-a", {
