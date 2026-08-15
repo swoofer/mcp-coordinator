@@ -9,7 +9,7 @@ import { runCommonAnnounceFlow } from "../announce-workflow.js";
 import { runRegisterFlow } from "../register-workflow.js";
 import { canResetDb } from "../reset-guard.js";
 import { json } from "./utils.js";
-import { normalizePath } from "../path-normalize.js";
+import { normalizePath, normalizeDeclaredPaths } from "../path-normalize.js";
 import { safeJsonParse } from "../json-utils.js";
 import { appError } from "./response-contract.js";
 import {
@@ -148,10 +148,25 @@ export function handleCheckConflict(
     return;
   }
   const { file, agent_id } = parsed.data;
-  const conflict = fileTracker.checkFileConflict(ctx.claims.org, file, agent_id, 30);
+  // issue #275: the REST twin of check_file_conflict, and the same trap --
+  // this asked a normalized column about a raw string.
+  const declared = normalizeDeclaredPaths(process.env.COORDINATOR_REPO_ROOT || null, [file]);
+  if (!declared.ok) {
+    json(
+      res,
+      appError(
+        "INVALID_REQUEST",
+        `invalid file ${declared.rejected.path}: ${declared.rejected.message}`,
+      ),
+      400,
+    );
+    return;
+  }
+  const normFile = declared.paths[0];
+  const conflict = fileTracker.checkFileConflict(ctx.claims.org, normFile, agent_id, 30);
   const warnings: string[] = [];
   if (conflict.conflict) {
-    warnings.push(`File ${file} recently edited by: ${conflict.agents.join(", ")}`);
+    warnings.push(`File ${normFile} recently edited by: ${conflict.agents.join(", ")}`);
   }
   json(res, { conflict: conflict.conflict, warnings });
 }
@@ -213,14 +228,40 @@ export function handleAnnounce(
     run_id,
   } = parsed.data;
 
+  // issue #275: normalize the declared side, exactly as /api/file-activity and
+  // /api/working-files already do for the observed side. AnnounceBodySchema is
+  // a bare z.array(z.string()), so without this the scorer compares raw strings
+  // against normalized columns by exact SQL equality and joins nothing.
+  const declared = normalizeDeclaredPaths(process.env.COORDINATOR_REPO_ROOT || null, [
+    ...target_files,
+    ...(depends_on_files ?? []),
+    ...(exports_affected ?? []),
+  ]);
+  if (!declared.ok) {
+    json(
+      res,
+      appError(
+        "INVALID_REQUEST",
+        `invalid path ${declared.rejected.path}: ${declared.rejected.message}`,
+      ),
+      400,
+    );
+    return;
+  }
+  const nTargets = target_files.length;
+  const nDepends = depends_on_files?.length ?? 0;
+  const normTargetFiles = declared.paths.slice(0, nTargets);
+  const normDependsOn = depends_on_files && declared.paths.slice(nTargets, nTargets + nDepends);
+  const normExports = exports_affected && declared.paths.slice(nTargets + nDepends);
+
   const thread = consultation.announceWork(ctx.claims.org, {
     agent_id,
     subject,
     plan,
     target_modules,
-    target_files,
-    depends_on_files,
-    exports_affected,
+    target_files: normTargetFiles,
+    depends_on_files: normDependsOn,
+    exports_affected: normExports,
     keep_open,
     assigned_to,
     run_id,
@@ -239,9 +280,9 @@ export function handleAnnounce(
       subject,
       plan,
       target_modules,
-      target_files,
-      depends_on_files,
-      exports_affected,
+      target_files: normTargetFiles,
+      depends_on_files: normDependsOn,
+      exports_affected: normExports,
       keep_open,
       target_symbols,
     },

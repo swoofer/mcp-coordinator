@@ -4,6 +4,7 @@ import type { CoordinatorServices } from "../server-setup.js";
 import type { Logger } from "../logger.js";
 import type { AgentContext } from "../types.js";
 import { getDb } from "../database.js";
+import { normalizeDeclaredPaths } from "../path-normalize.js";
 import { runCommonAnnounceFlow } from "../announce-workflow.js";
 import type { AuthClaims } from "../auth.js";
 
@@ -54,7 +55,7 @@ export function registerConsultationTools(
         target_files: z
           .array(z.string())
           .describe(
-            "Repo-relative file paths (forward-slash, e.g. 'src/foo.ts'). Absolute paths are not accepted in team-mode.",
+            "Repo-relative file paths, forward-slash (e.g. 'src/foo.ts'). Normalized on arrival so they match observed activity: './' is stripped, backslashes become '/', and an absolute path under the configured repo root is rewritten relative to it — one outside it is rejected.",
           ),
         depends_on_files: z
           .array(z.string())
@@ -107,6 +108,34 @@ export function registerConsultationTools(
         { tool: "announce_work", agent_id, subject, target_modules, target_files, assigned_to },
         "Tool called",
       );
+
+      // issue #275: the declared side is normalized here, at the entry point,
+      // exactly as /api/file-activity and /api/working-files do for the observed
+      // side. Without this the two never join: the scorer queries normalized
+      // columns by exact SQL equality, so `src/Types.ts` announced on Windows
+      // silently matched nothing.
+      const repoRoot = process.env.COORDINATOR_REPO_ROOT || null;
+      const declared = normalizeDeclaredPaths(repoRoot, [
+        ...target_files,
+        ...(depends_on_files ?? []),
+        ...(exports_affected ?? []),
+      ]);
+      if (!declared.ok) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text" as const,
+              text: `invalid path ${declared.rejected.path}: ${declared.rejected.message}`,
+            },
+          ],
+        };
+      }
+      const nTargets = target_files.length;
+      const nDepends = depends_on_files?.length ?? 0;
+      target_files = declared.paths.slice(0, nTargets);
+      depends_on_files = depends_on_files && declared.paths.slice(nTargets, nTargets + nDepends);
+      exports_affected = exports_affected && declared.paths.slice(nTargets + nDepends);
 
       const conflicts = conflictDetector.detect({
         org_id: claims.org,
