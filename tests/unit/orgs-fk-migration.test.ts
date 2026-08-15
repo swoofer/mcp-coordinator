@@ -96,17 +96,19 @@ describe("v0.9 org_id FK migration (fresh DB)", () => {
     expect(() => db.prepare("DELETE FROM orgs WHERE id = ?").run("org-delete-test")).not.toThrow();
   });
 
-  it("composite-PK invariants still hold (agents has UNIQUE idx_agents_id)", () => {
-    // Regression guard: rebuilding `agents` for the FK must preserve the
-    // UNIQUE INDEX on id that backs the 5 FKs targeting agents(id).
+  it("rebuilding agents keeps the composite PK, and no longer a global index (#231)", () => {
+    // Regression guard, updated for v11: the org-FK rebuild must preserve the
+    // composite primary key. It used to also assert a UNIQUE index on id alone;
+    // that index was what made agent ids global, and v11 dropped it.
     const db = getDb();
     const list = db.prepare("PRAGMA index_list(agents)").all() as Array<{
       name: string;
       unique: number;
+      origin?: string;
     }>;
-    const found = list.find((i) => i.name === "idx_agents_id");
-    expect(found).toBeDefined();
-    expect(found!.unique).toBe(1);
+    expect(list.find((i) => i.name === "idx_agents_id")).toBeUndefined();
+    // The composite PK survives as SQLite's own autoindex.
+    expect(list.some((i) => i.unique === 1)).toBe(true);
   });
 
   it("running initDatabase twice is idempotent (no-op on already-migrated DB)", () => {

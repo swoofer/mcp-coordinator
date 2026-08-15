@@ -76,28 +76,46 @@ describe("composite PK migration", () => {
     expect(rows[1].depends_on).toBe('["b"]');
   });
 
-  it("idx_agents_id UNIQUE INDEX exists (load-bearing for FK to agents(id))", () => {
+  it("idx_agents_id is GONE — the composite key backs the FKs now (#231)", () => {
     const db = getDb();
-    // After the composite-PK migration, agents.id alone is no longer a PK.
-    // SQLite FKs require the referenced column to be UNIQUE or PK, so
-    // idx_agents_id UNIQUE is created to preserve enforcement of the 5 FKs
-    // that target agents(id) (thread_messages, action_summaries, introspections,
-    // threads.initiator_id, agent_activity_status). If this index is ever
-    // dropped, FK enforcement silently breaks across those 5 tables.
+    // This test used to assert the opposite. The composite-PK migration left a
+    // UNIQUE index on agents(id) because the five dependent tables referenced
+    // agents(id) and SQLite needs a unique parent key — which made ids global.
+    // The v11 migration repointed those FKs to (org_id, id), so the index is no
+    // longer load-bearing and was dropped.
     const idx = db
       .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_agents_id'")
       .get() as { name: string } | undefined;
-    expect(idx?.name).toBe("idx_agents_id");
-    // Verify it's UNIQUE (PRAGMA index_list returns the unique flag).
-    const list = db.prepare("PRAGMA index_list(agents)").all() as {
-      name: string;
-      unique: number;
-    }[];
-    const found = list.find((i) => i.name === "idx_agents_id");
-    expect(found?.unique).toBe(1);
+    expect(idx).toBeUndefined();
   });
 
-  it("agents: same agent_id in two orgs is REJECTED by idx_agents_id UNIQUE", () => {
+  it("the five dependent FKs are still enforced, via the composite key (#231)", () => {
+    const db = getDb();
+    // The guard the old test was really protecting: dropping the index must not
+    // silently disable FK enforcement on these tables.
+    for (const table of [
+      "threads",
+      "thread_messages",
+      "action_summaries",
+      "introspections",
+      "agent_activity_status",
+    ]) {
+      const fks = (
+        db.prepare(`PRAGMA foreign_key_list(${table})`).all() as {
+          table: string;
+          from: string;
+          to: string | null;
+        }[]
+      ).filter((f) => f.table === "agents");
+      expect(fks.length, `${table} lost its agents FK`).toBe(2);
+      expect(
+        fks.some((f) => f.from === "org_id" && f.to === "org_id"),
+        `${table} should reference the composite key`,
+      ).toBe(true);
+    }
+  });
+
+  it("agents: the same agent_id in two orgs is now ACCEPTED (#231)", () => {
     const db = getDb();
     db.prepare("INSERT OR IGNORE INTO orgs (id, name) VALUES ('org-x', 'X')").run();
     db.prepare("INSERT OR IGNORE INTO orgs (id, name) VALUES ('org-y', 'Y')").run();
@@ -106,15 +124,13 @@ describe("composite PK migration", () => {
       "org-x",
       "X-agent",
     );
-    // The composite PK (org_id, id) WOULD allow this, but the UNIQUE index on
-    // id alone blocks it. This is a documented Phase 1 constraint (see the
-    // composite-pk-fk-constraint memory note) — cross-org tests must use
-    // distinct agent IDs.
+    // Previously blocked by idx_agents_id. The composite PK always allowed it;
+    // now nothing else stands in the way.
     expect(() =>
       db
         .prepare("INSERT INTO agents (id, org_id, name) VALUES (?, ?, ?)")
         .run("shared-id", "org-y", "Y-agent"),
-    ).toThrow(/UNIQUE/i);
+    ).not.toThrow();
   });
 
   it("agent_activity_status: FK to agents(id) is enforced post-migration", () => {

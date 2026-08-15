@@ -13,7 +13,7 @@ const require = createRequire(import.meta.url);
 
 let db: DatabaseAdapter;
 
-const CURRENT_USER_VERSION = 10;
+const CURRENT_USER_VERSION = 11;
 
 /**
  * Narrow type alias for the migration code paths in this file. The
@@ -1117,6 +1117,19 @@ export function initDatabase(dataDir: string): void {
   // scanning. This migration creates those 6 expression indexes.
   migrateSweepIndexesV10(db);
 
+  // ============================================================================
+  // v0.11 (issue #231): per-org agent ids
+  // ============================================================================
+  // `agents` has had PK (org_id, id) since Task 5.5, but a global UNIQUE index
+  // on agents(id) survived because five tables still referenced agents(id) and
+  // SQLite requires a unique parent key. That made ids effectively global:
+  // registering the same id in a second org failed on the index.
+  //
+  // Repoints those five FKs to (org_id, id), then drops the index. Runs AFTER
+  // the v9 org FK migration, whose table-copy it depends on for org_id to be a
+  // real, FK-backed column.
+  migrateAgentIdPerOrgV11(db);
+
   // v0.10.6 T03: if the pre-flight guard accepted duplicate org names via
   // COORDINATOR_ALLOW_DUPLICATE_ORG_NAMES=1, emit the Tier 1 audit row NOW —
   // SCHEMA has run (audit_log exists with id/created_at/prev_hash/row_hash)
@@ -1134,6 +1147,299 @@ export function initDatabase(dataDir: string): void {
     // src/boot-orgs-uniqueness.ts for the full boot-ordering finding.
     ensureAuditChainKeyForBootAudit(process.env);
     emitDuplicatesAcceptedAudit(db, orgsUniquenessResult.pendingDuplicatesAcceptedAudit);
+  }
+}
+
+/**
+ * v0.11 (issue #231): make agent ids unique PER ORG instead of globally.
+ *
+ * `agents` has had a composite primary key `(org_id, id)` since the Task 5.5
+ * migration, but a global `UNIQUE INDEX idx_agents_id ON agents(id)` survived
+ * alongside it — because five tables still declare
+ * `FOREIGN KEY (<col>) REFERENCES agents(id)`, and SQLite requires the parent
+ * key of a foreign key to be unique. The index could not be dropped without
+ * first repointing those FKs, so registering the same agent id in a second org
+ * failed with a raw `UNIQUE constraint failed: agents.id`.
+ *
+ * This repoints all five to the composite key, then drops the index.
+ *
+ * Idempotent via `PRAGMA user_version`: returns early at >= 11, and
+ * user_version is set LAST so a crash mid-migration re-runs cleanly. Each
+ * table is additionally skipped if it already carries the composite FK, so a
+ * partial run resumes rather than restarting.
+ *
+ * ORPHAN HANDLING — the subtle part, and why this is safe to run:
+ *
+ * Under the composite FK a row is only valid if `(org_id, agent_id)` matches an
+ * agents row. Today's rows were validated against `agent_id` ALONE, so a row
+ * can carry an org_id that disagrees with its agent's org — v0.7 back-filled
+ * `org_id = 'default'` onto pre-existing rows without consulting the agent.
+ *
+ * Those rows are repairable precisely BECAUSE ids are still globally unique at
+ * this point: each agent_id resolves to exactly one agents row, so the row's
+ * true org is knowable. They are re-parented to the agent's org before the
+ * copy. Counts land in audit_log under `migration.agent_fk_reparent`.
+ *
+ * A row whose agent_id matches NO agents row cannot be repaired — there is no
+ * org to infer. Such a row already violates the CURRENT foreign key, so the
+ * database is corrupt in a way that predates this migration. Rather than drop
+ * the rows, the migration ABORTS naming the tables and counts. Silently losing
+ * coordination history would be worse than refusing to boot.
+ */
+function migrateAgentIdPerOrgV11(targetDb: DatabaseAdapter): void {
+  const q = targetDb as unknown as {
+    prepare: (sql: string) => {
+      get: (...a: unknown[]) => unknown;
+      all: (...a: unknown[]) => unknown[];
+      run: (...a: unknown[]) => { changes: number };
+    };
+  };
+
+  const v = q.prepare("PRAGMA user_version").get() as { user_version: number } | undefined;
+  if ((v?.user_version ?? 0) >= 11) return;
+
+  // The five tables that reference agents, and the column that does it. Each
+  // CREATE below is the CURRENT schema (post v0.9 org FK, post v0.10) with
+  // ONLY the agents foreign key changed to the composite form. `columnList`
+  // matches the live column order exactly — it drives
+  // `INSERT INTO <new> (...) SELECT ... FROM <old>`, so a mismatch would
+  // silently shift data between columns.
+  type Spec = {
+    table: string;
+    agentCol: string;
+    createSql: string;
+    columnList: string;
+    indexCreateSqls: string[];
+  };
+
+  const SPECS: Spec[] = [
+    {
+      table: "threads",
+      agentCol: "initiator_id",
+      createSql: `CREATE TABLE threads_new (
+        id TEXT PRIMARY KEY,
+        initiator_id TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        plan TEXT,
+        target_modules TEXT DEFAULT '[]',
+        target_files TEXT DEFAULT '[]',
+        status TEXT DEFAULT 'open',
+        resolution_summary TEXT,
+        conflicts TEXT,
+        round INTEGER DEFAULT 1,
+        max_rounds INTEGER DEFAULT 4,
+        timeout_seconds INTEGER DEFAULT 600,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        resolved_at TEXT,
+        expected_respondents TEXT,
+        depends_on_files TEXT,
+        exports_affected TEXT,
+        claimed_by TEXT,
+        claimed_at TEXT,
+        unclaim_count INTEGER DEFAULT 0,
+        assigned_to TEXT,
+        org_id TEXT NOT NULL DEFAULT 'default',
+        run_id TEXT,
+        FOREIGN KEY (org_id, initiator_id) REFERENCES agents(org_id, id),
+        FOREIGN KEY (org_id) REFERENCES orgs(id) ON DELETE RESTRICT
+      )`,
+      columnList:
+        "id, initiator_id, subject, plan, target_modules, target_files, status, resolution_summary, conflicts, round, max_rounds, timeout_seconds, created_at, resolved_at, expected_respondents, depends_on_files, exports_affected, claimed_by, claimed_at, unclaim_count, assigned_to, org_id, run_id",
+      indexCreateSqls: [
+        "CREATE INDEX IF NOT EXISTS idx_threads_status ON threads(status)",
+        "CREATE INDEX IF NOT EXISTS idx_threads_initiator ON threads(initiator_id)",
+        "CREATE INDEX IF NOT EXISTS idx_threads_org_status ON threads(org_id, status)",
+      ],
+    },
+    {
+      table: "thread_messages",
+      agentCol: "agent_id",
+      createSql: `CREATE TABLE thread_messages_new (
+        id TEXT PRIMARY KEY,
+        thread_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        agent_name TEXT,
+        type TEXT NOT NULL,
+        content TEXT NOT NULL,
+        context_snapshot TEXT,
+        in_reply_to TEXT,
+        round INTEGER NOT NULL,
+        token_estimate INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        org_id TEXT NOT NULL DEFAULT 'default',
+        FOREIGN KEY (thread_id) REFERENCES threads(id),
+        FOREIGN KEY (org_id, agent_id) REFERENCES agents(org_id, id),
+        FOREIGN KEY (org_id) REFERENCES orgs(id) ON DELETE RESTRICT
+      )`,
+      columnList:
+        "id, thread_id, agent_id, agent_name, type, content, context_snapshot, in_reply_to, round, token_estimate, created_at, org_id",
+      indexCreateSqls: [
+        "CREATE INDEX IF NOT EXISTS idx_messages_thread ON thread_messages(thread_id)",
+        "CREATE INDEX IF NOT EXISTS idx_messages_agent ON thread_messages(agent_id)",
+        "CREATE INDEX IF NOT EXISTS idx_thread_messages_created_epoch ON thread_messages(strftime('%s', created_at))",
+      ],
+    },
+    {
+      table: "action_summaries",
+      agentCol: "agent_id",
+      createSql: `CREATE TABLE action_summaries_new (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        file_path TEXT,
+        summary TEXT NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        org_id TEXT NOT NULL DEFAULT 'default',
+        FOREIGN KEY (org_id, agent_id) REFERENCES agents(org_id, id),
+        FOREIGN KEY (org_id) REFERENCES orgs(id) ON DELETE RESTRICT
+      )`,
+      columnList: "id, session_id, agent_id, file_path, summary, created_at, org_id",
+      indexCreateSqls: [
+        "CREATE INDEX IF NOT EXISTS idx_summaries_agent ON action_summaries(agent_id)",
+        "CREATE INDEX IF NOT EXISTS idx_summaries_session ON action_summaries(session_id)",
+        "CREATE INDEX IF NOT EXISTS idx_summaries_org_agent ON action_summaries(org_id, agent_id)",
+        "CREATE INDEX IF NOT EXISTS idx_action_summaries_created_epoch ON action_summaries(strftime('%s', created_at))",
+      ],
+    },
+    {
+      table: "introspections",
+      agentCol: "agent_id",
+      createSql: `CREATE TABLE introspections_new (
+        id TEXT PRIMARY KEY,
+        thread_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        score INTEGER NOT NULL,
+        reasons TEXT,
+        status TEXT DEFAULT 'pending',
+        response TEXT,
+        concerned INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        responded_at TEXT,
+        org_id TEXT NOT NULL DEFAULT 'default',
+        FOREIGN KEY (thread_id) REFERENCES threads(id),
+        FOREIGN KEY (org_id, agent_id) REFERENCES agents(org_id, id),
+        FOREIGN KEY (org_id) REFERENCES orgs(id) ON DELETE RESTRICT
+      )`,
+      columnList:
+        "id, thread_id, agent_id, score, reasons, status, response, concerned, created_at, responded_at, org_id",
+      indexCreateSqls: [
+        "CREATE INDEX IF NOT EXISTS idx_introspections_agent ON introspections(agent_id)",
+        "CREATE INDEX IF NOT EXISTS idx_introspections_status ON introspections(status)",
+      ],
+    },
+    {
+      table: "agent_activity_status",
+      agentCol: "agent_id",
+      createSql: `CREATE TABLE agent_activity_status_new (
+        agent_id TEXT NOT NULL,
+        org_id TEXT NOT NULL DEFAULT 'default',
+        activity_status TEXT DEFAULT 'idle',
+        current_file TEXT,
+        current_thread TEXT,
+        last_activity_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (org_id, agent_id),
+        FOREIGN KEY (org_id, agent_id) REFERENCES agents(org_id, id),
+        FOREIGN KEY (org_id) REFERENCES orgs(id) ON DELETE RESTRICT
+      )`,
+      columnList:
+        "agent_id, org_id, activity_status, current_file, current_thread, last_activity_at",
+      indexCreateSqls: [],
+    },
+  ];
+
+  // Pre-flight 1: rows pointing at an agent id that exists nowhere. Not
+  // repairable — there is no org to infer — and already illegal under the
+  // current FK. Refuse rather than drop coordination history.
+  const dangling: Record<string, number> = {};
+  for (const spec of SPECS) {
+    const row = q
+      .prepare(
+        `SELECT COUNT(*) AS n FROM ${spec.table} WHERE ${spec.agentCol} NOT IN (SELECT id FROM agents)`,
+      )
+      .get() as { n: number } | undefined;
+    if ((row?.n ?? 0) > 0) dangling[spec.table] = row!.n;
+  }
+  if (Object.keys(dangling).length > 0) {
+    throw new Error(
+      "Cannot migrate to per-org agent ids (issue #231): rows reference agent ids that do not " +
+        "exist in `agents`, so their org cannot be determined. This database already violates " +
+        "the current foreign key. Counts: " +
+        JSON.stringify(dangling) +
+        ". Back up the data directory, then delete or re-point those rows before restarting.",
+    );
+  }
+
+  // Pre-flight 2: rows whose org_id disagrees with their agent's org.
+  // Repairable while ids are still globally unique — the agent resolves to
+  // exactly one row, so its org is authoritative.
+  const reparented: Record<string, number> = {};
+  for (const spec of SPECS) {
+    const res = q
+      .prepare(
+        `UPDATE ${spec.table}
+         SET org_id = (SELECT a.org_id FROM agents a WHERE a.id = ${spec.table}.${spec.agentCol})
+         WHERE NOT EXISTS (
+           SELECT 1 FROM agents a
+           WHERE a.id = ${spec.table}.${spec.agentCol} AND a.org_id = ${spec.table}.org_id
+         )`,
+      )
+      .run();
+    if (res.changes > 0) reparented[spec.table] = res.changes;
+  }
+  if (Object.keys(reparented).length > 0) {
+    try {
+      q.prepare(
+        "INSERT INTO audit_log (action, outcome, metadata_json, created_at) " +
+          "VALUES ('migration.agent_fk_reparent', 'success', ?, CURRENT_TIMESTAMP)",
+      ).run(JSON.stringify({ counts: reparented, from_version: 10, to_version: 11 }));
+    } catch {
+      /* audit_log shape mismatch; non-fatal */
+    }
+  }
+
+  // Table copy. PRAGMA foreign_keys must be toggled OUTSIDE the transaction —
+  // it is a no-op inside an open one. try/finally so it is always restored.
+  targetDb.exec("PRAGMA foreign_keys = OFF");
+  try {
+    targetDb.exec("BEGIN");
+    try {
+      for (const spec of SPECS) {
+        // Resume-safe: skip a table already carrying the composite FK.
+        const fks = q.prepare(`PRAGMA foreign_key_list(${spec.table})`).all() as {
+          table: string;
+          from: string;
+          to: string | null;
+        }[];
+        if (fks.some((f) => f.table === "agents" && f.to === "org_id")) continue;
+
+        targetDb.exec(spec.createSql);
+        targetDb.exec(
+          `INSERT INTO ${spec.table}_new (${spec.columnList}) SELECT ${spec.columnList} FROM ${spec.table}`,
+        );
+        targetDb.exec(`DROP TABLE ${spec.table}`);
+        targetDb.exec(`ALTER TABLE ${spec.table}_new RENAME TO ${spec.table}`);
+        for (const idx of spec.indexCreateSqls) targetDb.exec(idx);
+      }
+
+      // The point of the whole migration: with every FK on the composite key,
+      // global uniqueness is no longer load-bearing and can go.
+      targetDb.exec("DROP INDEX IF EXISTS idx_agents_id");
+
+      const violations = q.prepare("PRAGMA foreign_key_check").all();
+      if (violations.length > 0) {
+        throw new Error(
+          `Per-org agent id migration left ${violations.length} foreign key violation(s); rolled back.`,
+        );
+      }
+
+      targetDb.exec("PRAGMA user_version = 11");
+      targetDb.exec("COMMIT");
+    } catch (err) {
+      targetDb.exec("ROLLBACK");
+      throw err;
+    }
+  } finally {
+    targetDb.exec("PRAGMA foreign_keys = ON");
   }
 }
 

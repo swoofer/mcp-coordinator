@@ -152,13 +152,13 @@ afterAll(() => {
 });
 
 describe("Phase 1 → v8 migration (T43)", () => {
-  it("user_version is bumped to 10", () => {
+  it("user_version is bumped to 11", () => {
     // v0.9 (issue #79) adds FK on org_id → orgs(id) ON DELETE RESTRICT on the
     // 14 v0.7 coordinator tables. v0.10 (performance-09) then adds Sweeper
     // expression indexes. Both bumps happen in the same initDatabase pass
     // after v0.8, so a Phase 1 fixture comes out at v10 directly.
     const v = getDb().prepare("PRAGMA user_version").get() as { user_version: number };
-    expect(v.user_version).toBe(10);
+    expect(v.user_version).toBe(11);
   });
 
   it("users primary_org_id column receives renamed Phase 1 org_id data", () => {
@@ -280,7 +280,7 @@ describe("Phase 1 → v8 migration (T43)", () => {
     expect(backfillCount.c).toBe(1); // Only the first migration emitted the marker.
 
     const v = getDb().prepare("PRAGMA user_version").get() as { user_version: number };
-    expect(v.user_version).toBe(10);
+    expect(v.user_version).toBe(11);
   });
 
   it("re-running initDatabase does NOT re-backfill family_id (stable across boots)", () => {

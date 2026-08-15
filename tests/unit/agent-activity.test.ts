@@ -167,8 +167,14 @@ describe("AgentActivityTracker", () => {
 describe("agent-activity org_id scoping", () => {
   beforeEach(() => {
     getDb().exec("DELETE FROM agent_activity_status");
-    // Register agents so FK (agent_id) -> agents(id) is satisfied.
-    // idx_agents_id is UNIQUE on agents(id) alone, so agent-1/agent-2 can only live
+    // v11 (issue #231) repointed the activity FK to the composite (org_id, id),
+    // so an agent must exist in the org whose activity rows it owns. This block
+    // used to register only under "default" and write rows for org-a/org-b,
+    // which the old agents(id)-only FK allowed.
+    for (const org of ["default", "org-a", "org-b", "orgA", "orgB"]) {
+      registry.register(org, "agent-1", "Agent One", []);
+      registry.register(org, "agent-2", "Agent Two", []);
+    }
     // in one org row -- we use 'default' but write activity rows for org-a/org-b.
     registry.register("default", "agent-1", "Agent One", []);
     registry.register("default", "agent-2", "Agent Two", []);

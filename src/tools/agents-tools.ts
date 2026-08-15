@@ -26,7 +26,7 @@ export function registerAgentTools(
       agent_id: z
         .string()
         .describe(
-          "ID for this agent. Must be unique across ALL orgs, not just yours — re-registering an id another org already holds is rejected.",
+          "ID for this agent. Unique within your org — another org may use the same id for a different agent. Re-registering an id your org already holds updates that agent instead of creating a second one.",
         ),
       name: z.string().describe("Display name for this agent."),
       modules: z
