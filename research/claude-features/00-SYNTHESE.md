@@ -81,6 +81,22 @@ Il l'est désormais. La question n'est pas de savoir si le code maison marche �
 combien de temps il vaut de le maintenir face à un canal standard, négocié et compatible load-balancer.
 → [A04](A04-subscriptions-listen.md)
 
+> 🛠 **Tranché le 2026-08-15 — ce paragraphe attribue à `A04` une question qu'elle ne peut pas trancher.**
+> `subscriptions/listen` est bloqué **aux deux bouts** : le SDK installé (1.30.0) a **0 occurrence** de la
+> révision `2026-07-28` (`LATEST_PROTOCOL_VERSION = '2025-11-25'`), notre serveur rétrograde une demande en
+> 2026-07-28 vers 2025-11-25, et Claude Code 2.1.219 envoie `initialize` en 2025-11-25. Le sort du broker
+> MQTT, lui, **ne dépend pas de cette révision** et se tranche aujourd'hui — la fiche `A04` mélangeait trois
+> questions distinctes (§7.2). **L'ordre de travail est d'ailleurs inversé :** `A04` est conditionnée par
+> [`A01`](A01-mcp-2026-07-28-stateless.md)/[`A02`](A02-mcp-sdk-typescript-v2.md), qui portent la migration,
+> et non l'inverse. Corrections de classement : tier T1 → **T3**, nature `replace-homemade-code` →
+> **opportunity** (le dépôt n'a **aucune** ressource MCP — on n'y remplace rien).
+>
+> Trois constats extraits, tous indépendants de la révision : le broker **bloque le démarrage** du
+> coordinateur si le port 1883 est pris (`serve-http.ts:1386`, sans `try`/`catch`) ; **essaim**, le
+> consommateur de référence du bus cité par le README, souscrit à des topics d'avant la v0.7.0 et **ne reçoit
+> plus rien depuis** ; et déclarer `capabilities.resources.subscribe: true` sans installer le handler renvoie
+> **-32601** — garde-fou fantôme en puissance. Détail en §6.4 et §7 de [A04](A04-subscriptions-listen.md).
+
 ### Mouvement 3 — Occuper explicitement ce que le natif ne couvre pas
 
 Le natif d'Anthropic a des trous nets, documentés, et durables. Les nommer publiquement coûte peu et vaut
