@@ -554,7 +554,7 @@ Fiche « menace » : le verdict porte sur la **réponse**, pas sur une adoption.
 | **Verdict** | ✅ **contre-mesure technique** — et **rejet** des deux branches de §6.1, qui posaient la mauvaise question |
 | **Date** | 2026-08-15 |
 | **Justification** | Voir §7.1 à §7.4. La menace n'est pas surestimée : elle est **sous-spécifiée**. |
-| **Issue / PR** | à créer — périmètre en §7.3 |
+| **Issue / PR** | [#275](https://github.com/swoofer/mcp-coordinator/issues/275) — périmètre en §7.3 ; le point (2) y est marqué « à cadrer séparément » |
 | **Jalon visé** | prochaine mineure pour §7.3 (1) et (3) ; à cadrer pour (2) |
 
 ### 7.1 Le résultat principal
