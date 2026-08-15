@@ -475,7 +475,7 @@ fausse dans six langues.
 | **Verdict** | ⬜ adopter · ✅ **adopter partiellement** · ⬜ reporter · ⬜ refuser |
 | **Date** | 2026-08-15 |
 | **Justification** | Voir §7.1 à §7.4. Les **deux** branches de la question §6.1 sont refusées ; ce qui est adopté est délibérément **non spécifique au sandbox**. |
-| **Issue / PR** | à créer — périmètre en §7.2 |
+| **Issue / PR** | [#273](https://github.com/swoofer/mcp-coordinator/issues/273) — périmètre en §7.2 / §7.3 |
 | **Jalon visé** | prochaine mineure |
 | **Effort réel** | **M**, pas S — ~6 fichiers dont un fichier de test neuf. Mon premier périmètre déclenchait mon propre K5. |
 
