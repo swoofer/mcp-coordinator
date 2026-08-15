@@ -286,7 +286,7 @@ inventing a new shape.
 
 ### MCP tool
 
-1. Add `server.tool(name, description, zodShape, annotations, handler)`
+1. Add `server.registerTool(name, { description, inputSchema, annotations }, handler)`
    inside the relevant `registerXTools()` function under `src/tools/`
    (one file per domain — see the directory map above). Use `z` from
    `zod` directly for the argument shape (no separate schema file for MCP
@@ -296,6 +296,12 @@ inventing a new shape.
 3. Set MCP tool annotations (`readOnlyHint`, `destructiveHint`,
    `idempotentHint`, `title`) to match the operation's actual semantics —
    clients use these as hints.
+4. If the tool belongs to the announce workflow, add it to the server
+   `instructions` in `src/mcp-instructions.ts`. With tool search on, that
+   text plus bare tool names is all a client sees at session start — a tool
+   absent from it is a tool the agent has no reason to look for. A test
+   pins every name cited there against the real registrations, so an
+   invented name fails the suite rather than the user.
 
 ### Shared flow between REST and MCP
 
