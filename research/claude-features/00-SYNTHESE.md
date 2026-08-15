@@ -75,6 +75,54 @@ round-robin, sans affinité de session ni store partagé — ce qui simplifie fr
 → [A01](A01-mcp-2026-07-28-stateless.md), [A02](A02-mcp-sdk-typescript-v2.md),
 [A04](A04-subscriptions-listen.md), [A06](A06-tool-metadata-modern-surface.md)
 
+> 🛠 **Tranché le 2026-08-15 — « la seule partie qui a une horloge » n'en a pas, et le vrai bénéfice
+> est ailleurs que là où cette section le cherche.**
+>
+> **(1) Il n'y a pas d'horloge.** `/specification/2026-07-28/deprecated`, fetchée le 2026-08-15 :
+> section **« Removed » vide**, HTTP+SSE « Three months after SEP-2596 reaches Final » (non daté),
+> Roots/Sampling/Logging/DCR « First revision released on or after **2027-07-28** ». Et surtout, le
+> **repli fonctionne** : un client `@modelcontextprotocol/client@2.0.0` en `mode: 'auto'` — celui
+> qui sonde `server/discover` — se connecte au daemon actuel **en 33 ms et liste ses 26 outils**.
+> Seul `{ pin: '2026-07-28' }`, qui refuse tout repli, échoue. « Devenir un serveur legacy 2025 »
+> est exact et **sans conséquence fonctionnelle mesurable**.
+>
+> **(2) « Le SDK cible n'existe plus sous son nom actuel » est faux** (déjà corrigé en §6 de ce
+> document, mais §1 et §2 le répètent) : `@modelcontextprotocol/sdk@1.30.0` est publié — le
+> **2026-07-27 à 17h56**, six heures avant la famille v2 du même jour.
+>
+> **(3) Le bénéfice réel de la migration SDK n'est pas le protocole, c'est l'arbre de dépendances.**
+> Mesuré `pnpm ls --prod --depth Infinity` sur un worktree migré par le codemod officiel :
+> **189 → 120 paquets de production, −74 / +4**. Sortent notamment `express@5`, `cors`,
+> `express-rate-limit`, `ajv`, `ajv-formats`, `raw-body`, `zod-to-json-schema` — que ce dépôt, un
+> `node:http` nu, **n'importe nulle part**. Coût mesuré du chemin : 108 changements automatiques
+> sur 21 fichiers, **6 erreurs `tsc` dont 0 dans `src/`**, **48/49 tests**, daemon fonctionnel.
+>
+> **(4) Le « gain multi-instance » ne se matérialise pas, et on sait pourquoi.** Porter les claims
+> par requête ne débloque aucun round-robin tant que `sessionIdGenerator` est fourni ; le stateless
+> impose un transport + un `McpServer` **neufs par requête HTTP**. Et SQLite + le broker MQTT
+> embarqué restent les vrais points de sérialisation.
+>
+> **Verdicts :** [`A01`](A01-mcp-2026-07-28-stateless.md) **reporter** (tier T1 → **T2**) ;
+> [`A02`](A02-mcp-sdk-typescript-v2.md) **adopter partiellement** — le changement de paquets, pas la
+> révision (nature `replace-homemade-code` → **`reduce-dependency-surface`**, effort `XL` → **M**).
+> Détail en §6.4 et §7 des deux fiches.
+>
+> **(5) Capacité v2 ≠ trafic v2 — et c'est mesuré sur le fil.** Le changelog officiel de Claude Code
+> donne « protocol-version **probe** » en **2.1.232** et « **MCP v2** … **subscriptions/listen** »
+> en **2.1.233** : Claude Code **est** un client de la révision. Le poste a donc été mis à jour
+> (2.1.219 → **2.1.233**) et la session rejouée à travers un proxy d'écoute. Résultat :
+>
+> ```
+> >>> POST /mcp  initialize  protocolVersion: "2025-11-25"  clientInfo: claude-code 2.1.233
+> >>> POST /mcp  notifications/initialized     mcp-session-id: b688aca8-…
+> >>> GET  /mcp  (endpoint que la revision supprime)
+> >>> POST /mcp  tools/list  -> 26 outils      >>> tools/call list_agents -> OK   (9 s)
+> ```
+>
+> **Aucun `server/discover`. Aucune sonde. `2025-11-25` sur le fil.** Le binaire « MCP v2 »
+> négocie l'ère legacy avec notre daemon et utilise même l'endpoint GET que la révision retire.
+> Conséquence : la mesure de [`A04`](A04-subscriptions-listen.md) est **re-confirmée**, pas périmée.
+
 Un cas mérite d'être isolé : **`subscriptions/listen`**. Le broker MQTT embarqué, `src/mqtt-bridge.ts` et
 `src/sse-emitter.ts` existent en grande partie parce que le push temps réel n'était pas standardisé dans MCP.
 Il l'est désormais. La question n'est pas de savoir si le code maison marche — il marche — mais de savoir
