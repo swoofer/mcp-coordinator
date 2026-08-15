@@ -234,7 +234,18 @@ COORDINATOR_MQTT_TCP_PORT=12883 \
 mcp-coordinator server start --daemon --data-dir ./.mcp-coordinator-B
 ```
 
-**Known limitation:** `--data-dir` only relocates the SQLite database — the PID file always lives at the fixed `~/.mcp-coordinator/server.pid`, regardless of `--data-dir`. Starting Project B's daemon overwrites Project A's PID file, so `mcp-coordinator server stop` / `mcp-coordinator server status` can only ever address the most recently started instance. To stop an earlier instance, note the PID printed in its start banner (`Coordinator started in background (PID <pid>, port <port>)`) and kill it directly, e.g. `kill <pid>` (Windows: `taskkill /PID <pid> /F`). There is currently no `--data-dir`-scoped stop/status command.
+Each instance gets its own PID file, named after the port it serves ([#279](https://github.com/swoofer/mcp-coordinator/issues/279)): `server.pid` on the default 3100, `server-3110.pid` and `server-3120.pid` for the two above. So `stop`, `status` and `restart` address a specific instance rather than whichever one started last:
+
+```bash
+# Stop project A only
+mcp-coordinator server stop --port 3110
+# Status of project B
+PORT=3120 mcp-coordinator server status
+```
+
+`restart` reads the port from the arguments it forwards to `start`, so `mcp-coordinator server restart --daemon --port 3110` stops and restarts that instance rather than the default one.
+
+Two things this does **not** change. `--data-dir` still only relocates the SQLite database; the PID file lives under `~/.mcp-coordinator/` whatever data dir you pass, so the port is what identifies an instance. And the daemon still has a single `COORDINATOR_REPO_ROOT`, so one coordinator serving two different repos will still merge their `hot_files` rows — that part of [#279](https://github.com/swoofer/mcp-coordinator/issues/279) is open. One daemon per project is the supported answer today.
 
 In each project's `.mcp.json`, point at the project's coordinator:
 

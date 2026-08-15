@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { existingPidFilePath } from "../pid-file.js";
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
 import { getConfigDir, loadConfig } from "../config.js";
@@ -16,9 +17,11 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T | null> 
 export function createServerStatusCommand(): Command {
   return new Command("status").description("Show coordinator status").action(async () => {
     const configDir = getConfigDir();
-    const pidPath = join(configDir, "server.pid");
     const config = loadConfig();
     const port = config.server.port;
+    // issue #279: the PID file is named per instance; the configured port
+    // selects which daemon this reports on.
+    const pidPath = existingPidFilePath(configDir, port);
 
     if (!existsSync(pidPath)) {
       console.log("Coordinator: stopped");

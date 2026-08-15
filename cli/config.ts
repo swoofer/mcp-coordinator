@@ -12,13 +12,17 @@ export interface CoordinatorConfig {
   };
 }
 
+/** The port a coordinator serves when nothing overrides it. Exported so the
+ *  PID-file naming (see cli/pid-file.ts) and the config default cannot drift. */
+export const DEFAULT_HTTP_PORT = 3100;
+
 const DEFAULT_CONFIG: CoordinatorConfig = {
   server: {
-    port: 3100,
+    port: DEFAULT_HTTP_PORT,
     data_dir: join(homedir(), ".mcp-coordinator", "data"),
   },
   defaults: {
-    coordinator_url: "http://localhost:3100",
+    coordinator_url: `http://localhost:${DEFAULT_HTTP_PORT}`,
   },
 };
 
