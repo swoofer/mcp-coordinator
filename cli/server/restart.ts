@@ -1,6 +1,7 @@
 import { Command } from "commander";
+import { existingPidFilePath } from "../pid-file.js";
 import { join } from "path";
-import { getConfigDir } from "../config.js";
+import { getConfigDir, loadConfig } from "../config.js";
 import { stopServer, makeDefaultStopDeps } from "./stop.js";
 
 /** Signals a tolerated stop-abort (no/invalid PID) so restart can proceed to start. */
@@ -15,6 +16,26 @@ export interface StartArgvParts {
   /** argv[1] (the CLI script) — omitted for a Bun-compiled binary. */
   scriptPath?: string;
   isBun: boolean;
+}
+
+/**
+ * The port `start` will bind, read from the args restart passes through.
+ * Accepts `--port 3200` and `--port=3200`; null when absent or unparseable so
+ * the caller falls back to the configured port.
+ */
+export function portFromArgs(args: readonly string[]): number | null {
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === "--port" && i + 1 < args.length) {
+      const n = parseInt(args[i + 1], 10);
+      return Number.isFinite(n) ? n : null;
+    }
+    if (a.startsWith("--port=")) {
+      const n = parseInt(a.slice("--port=".length), 10);
+      return Number.isFinite(n) ? n : null;
+    }
+  }
+  return null;
 }
 
 /**
@@ -43,7 +64,13 @@ export function createServerRestartCommand(): Command {
         "  mcp-coordinator server restart --daemon --port 3200  # ...with new flags\n",
     )
     .action(async (startArgs: string[]) => {
-      const pidPath = join(getConfigDir(), "server.pid");
+      // issue #279: the PID file is named per instance. restart forwards its
+      // passthrough args to `start`, so the port it will START on is the port
+      // whose daemon it must STOP — read it from the same argv rather than from
+      // config, or `restart --port 3200` would stop the default instance and
+      // then start a second one alongside it.
+      const port = portFromArgs(startArgs) ?? loadConfig().server.port;
+      const pidPath = existingPidFilePath(getConfigDir(), port);
 
       // 1. Graceful stop. A missing/invalid PID file is not fatal for restart —
       //    it just means there's nothing to stop, so proceed to start.

@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { existingPidFilePath } from "./pid-file.js";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { createConnection } from "net";
@@ -985,7 +986,7 @@ export function createDoctorCommand(): Command {
       );
 
       // 3. Server PID file
-      const pidPath = join(configDir, "server.pid");
+      const pidPath = existingPidFilePath(configDir, port);
       let pidFromFile: number | null = null;
       let pidAlive = false;
       if (existsSync(pidPath)) {

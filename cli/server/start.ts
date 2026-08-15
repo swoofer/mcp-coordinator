@@ -1,5 +1,6 @@
 ﻿import { Command } from "commander";
 import { writeFileSync, unlinkSync, readFileSync } from "fs";
+import { pidFilePath } from "../pid-file.js";
 import { join } from "path";
 import { loadConfig, ensureConfigDir } from "../config.js";
 import { tcpReachable } from "../tcp-probe.js";
@@ -349,7 +350,7 @@ ${tail}`);
 
           // Still running: record the PID either way, so `server stop` can reach
           // it even when the bind never confirmed.
-          writeFileSync(join(configDir, "server.pid"), String(child.pid));
+          writeFileSync(pidFilePath(configDir, port), String(child.pid));
 
           if (outcome === "timeout") {
             console.error(
@@ -371,7 +372,7 @@ ${tail}`);
 
         // Foreground mode: start server in-process
         // Write PID file for server stop support
-        const pidFile = join(configDir, "server.pid");
+        const pidFile = pidFilePath(configDir, port);
         writeFileSync(pidFile, String(process.pid));
 
         // Import and start server in-process. registerSignalHandlers: false

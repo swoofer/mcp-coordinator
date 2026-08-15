@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { existingPidFilePath } from "../pid-file.js";
 import { existsSync, readFileSync, statSync } from "fs";
 import { join, resolve, basename } from "path";
 import { create as tarCreate } from "tar";
@@ -42,7 +43,7 @@ function isProcessAlive(pid: number): boolean {
  * Returns the pid if alive, or null otherwise.
  */
 export function getRunningCoordinatorPid(configDir: string): number | null {
-  const pidPath = join(configDir, "server.pid");
+  const pidPath = existingPidFilePath(configDir, loadConfig().server.port);
   if (!existsSync(pidPath)) return null;
   const raw = readFileSync(pidPath, "utf-8").trim();
   const pid = parseInt(raw, 10);

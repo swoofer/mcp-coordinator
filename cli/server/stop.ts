@@ -1,7 +1,8 @@
 import { Command } from "commander";
+import { existingPidFilePath } from "../pid-file.js";
 import { readFileSync, unlinkSync, existsSync } from "fs";
 import { join } from "path";
-import { getConfigDir } from "../config.js";
+import { getConfigDir, loadConfig } from "../config.js";
 
 /**
  * Injectable side effects for stopServer, so the signal/timing flow can be
@@ -131,6 +132,7 @@ export function createServerStopCommand(): Command {
       `SIGTERM grace period before SIGKILL (default: ${DEFAULT_TIMEOUT_SECONDS})`,
     )
     .option("--force", "Skip graceful SIGTERM and SIGKILL immediately", false)
+    .option("--port <port>", "HTTP port of the instance to address (default: from config)")
     .addHelpText(
       "after",
       "\nExamples:\n" +
@@ -138,7 +140,7 @@ export function createServerStopCommand(): Command {
         "  mcp-coordinator server stop --timeout 30   # allow a slow audit flush\n" +
         "  mcp-coordinator server stop --force        # SIGKILL now (no graceful shutdown)\n",
     )
-    .action(async (opts: { timeout?: string; force?: boolean }) => {
+    .action(async (opts: { timeout?: string; force?: boolean; port?: string }) => {
       const timeoutSeconds = parseTimeoutSeconds(opts.timeout);
       if (timeoutSeconds === null) {
         console.error(
@@ -146,7 +148,10 @@ export function createServerStopCommand(): Command {
         );
         process.exit(1);
       }
-      const pidPath = join(getConfigDir(), "server.pid");
+      // issue #279: the PID file is named per instance, so the port picks which
+      // daemon this command addresses. Default port keeps the historical name.
+      const port = parseInt(opts.port ?? process.env.PORT ?? String(loadConfig().server.port), 10);
+      const pidPath = existingPidFilePath(getConfigDir(), port);
       await stopServer(makeDefaultStopDeps(pidPath), {
         timeoutSeconds,
         force: opts.force ?? false,
