@@ -11,7 +11,7 @@
  * This avoids spinning up a real HTTP server and verifies:
  *  1. Tool reads extra.sessionId and looks up claims.
  *  2. Tool throws "MCP tool requires a session" when sessionId is absent.
- *  3. Tool throws "Session has no captured claims (auth bug)" when claims are missing.
+ *  3. Tool throws missingClaimsError().message when claims are missing.
  *  4. Tool scopes underlying service calls to claims.org (not literal "default").
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
@@ -43,6 +43,8 @@ import type { AuthClaims } from "../../src/auth.js";
 import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import type { ServerRequest, ServerNotification } from "@modelcontextprotocol/sdk/types.js";
 import fs from "fs";
+
+import { missingClaimsError } from "../../src/tools/tool-errors.js";
 
 const TEST_DIR = "data-test-mcp-tool-org";
 const SECRET = "test-secret-at-least-32-characters-long!";
@@ -177,7 +179,7 @@ describe("agents-tools: register_agent", () => {
     const handler = getHandler(server, "register_agent");
     await expect(
       handler({ agent_id: "a1", name: "Agent1", modules: [] }, fakeExtra("sess-42")),
-    ).rejects.toThrow("Session has no captured claims (auth bug)");
+    ).rejects.toThrow(missingClaimsError().message);
   });
 
   it("registers agent under claims.org (not 'default')", async () => {
@@ -250,7 +252,7 @@ describe("files-tools: hot_files", () => {
     registerFilesTools(server, services, silentLogger, () => null);
     const handler = getHandler(server, "hot_files");
     await expect(handler({ since_minutes: 30 }, fakeExtra("sess-x"))).rejects.toThrow(
-      "Session has no captured claims (auth bug)",
+      missingClaimsError().message,
     );
   });
 
