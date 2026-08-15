@@ -1495,43 +1495,115 @@ function migrateAgentIdPerOrgV11(targetDb: DatabaseAdapter): void {
   // invoked standalone.
   resolveDanglingAgentRefs(targetDb);
 
-  // Pre-flight 2: rows whose org_id disagrees with their agent's org.
-  // Repairable while ids are still globally unique — the agent resolves to
-  // exactly one row, so its org is authoritative.
-  const reparented: Record<string, number> = {};
-  for (const spec of SPECS) {
-    const res = q
-      .prepare(
-        `UPDATE ${spec.table}
-         SET org_id = (SELECT a.org_id FROM agents a WHERE a.id = ${spec.table}.${spec.agentCol})
-         WHERE EXISTS (
-           SELECT 1 FROM agents a WHERE a.id = ${spec.table}.${spec.agentCol}
-         )
-         AND NOT EXISTS (
-           SELECT 1 FROM agents a
-           WHERE a.id = ${spec.table}.${spec.agentCol} AND a.org_id = ${spec.table}.org_id
-         )`,
-      )
-      .run();
-    if (res.changes > 0) reparented[spec.table] = res.changes;
-  }
-  if (Object.keys(reparented).length > 0) {
-    try {
-      q.prepare(
-        "INSERT INTO audit_log (action, outcome, metadata_json, created_at) " +
-          "VALUES ('migration.agent_fk_reparent', 'success', ?, CURRENT_TIMESTAMP)",
-      ).run(JSON.stringify({ counts: reparented, from_version: 10, to_version: 11 }));
-    } catch {
-      /* audit_log shape mismatch; non-fatal */
-    }
-  }
-
   // Table copy. PRAGMA foreign_keys must be toggled OUTSIDE the transaction —
   // it is a no-op inside an open one. try/finally so it is always restored.
   targetDb.exec("PRAGMA foreign_keys = OFF");
   try {
     targetDb.exec("BEGIN");
     try {
+      // Pre-flight 2: rows whose org_id disagrees with their agent's org.
+      // Repairable while ids are still globally unique — the agent resolves to
+      // exactly one row, so its org is authoritative.
+      //
+      // INSIDE the transaction, with the copy: these are writes that move rows
+      // between orgs, and running them in autocommit meant a failure partway
+      // through left some tables re-parented, some not, no audit row, and
+      // user_version still at 10 — a half-applied migration with no record.
+      const reparented: Record<string, number> = {};
+
+      // `agent_activity_status` is the one migrated table not keyed on a plain
+      // `id`: its PRIMARY KEY is (org_id, agent_id). So two rows can exist for
+      // one agent under different orgs — legal before v11, since the old FK
+      // only required the agent id to exist in SOME org and no write path
+      // checks that the agent belongs to the caller's org — and re-parenting
+      // the drifted one lands on top of the row already there.
+      //
+      // The table holds LIVE STATUS, one row per agent, not history: the
+      // resolution is a merge, not a loss: collapse to ONE row per agent id,
+      // the most recently active. The comparison is a strict TOTAL order
+      // (last_activity_at, then in-the-agent-s-org, then lowest org id). A
+      // rule that only compared each drifted row against the in-org one
+      // leaves TWO survivors when three orgs wrote status for the same id,
+      // and they collide again on the UPDATE below. NULL timestamps sort
+      // lowest rather than poisoning the comparison.
+      const merged: Record<string, number> = {};
+      const mergedSample: Record<string, unknown>[] = [];
+      for (const spec of SPECS) {
+        if (spec.table !== "agent_activity_status") continue;
+        // One condition, used twice: the rows it selects are the rows it
+        // deletes. They are the only thing this migration destroys, so they
+        // are captured (bounded) before they go — a re-parented row is still
+        // there to inspect afterwards, a deleted one is not.
+        const loserWhere = `EXISTS (
+               SELECT 1 FROM agents a WHERE a.id = loser.${spec.agentCol}
+             )
+             AND EXISTS (
+               SELECT 1 FROM ${spec.table} keeper, agents a
+               WHERE a.id = loser.${spec.agentCol}
+                 AND keeper.${spec.agentCol} = loser.${spec.agentCol}
+                 AND keeper.org_id <> loser.org_id
+                 AND (
+                   COALESCE(keeper.last_activity_at, '') > COALESCE(loser.last_activity_at, '')
+                   OR (
+                     COALESCE(keeper.last_activity_at, '') = COALESCE(loser.last_activity_at, '')
+                     AND (
+                       (keeper.org_id = a.org_id AND loser.org_id <> a.org_id)
+                       OR (
+                         (keeper.org_id = a.org_id) = (loser.org_id = a.org_id)
+                         AND keeper.org_id < loser.org_id
+                       )
+                     )
+                   )
+                 )
+             )`;
+        const losers = q
+          .prepare(
+            `SELECT org_id, ${spec.agentCol} AS agent_id, activity_status, last_activity_at
+             FROM ${spec.table} AS loser WHERE ${loserWhere} LIMIT 50`,
+          )
+          .all() as Record<string, unknown>[];
+        const res = q.prepare(`DELETE FROM ${spec.table} AS loser WHERE ${loserWhere}`).run();
+        if (res.changes > 0) {
+          merged[spec.table] = res.changes;
+          mergedSample.push(...losers);
+        }
+      }
+
+      for (const spec of SPECS) {
+        const res = q
+          .prepare(
+            `UPDATE ${spec.table}
+             SET org_id = (SELECT a.org_id FROM agents a WHERE a.id = ${spec.table}.${spec.agentCol})
+             WHERE EXISTS (
+               SELECT 1 FROM agents a WHERE a.id = ${spec.table}.${spec.agentCol}
+             )
+             AND NOT EXISTS (
+               SELECT 1 FROM agents a
+               WHERE a.id = ${spec.table}.${spec.agentCol} AND a.org_id = ${spec.table}.org_id
+             )`,
+          )
+          .run();
+        if (res.changes > 0) reparented[spec.table] = res.changes;
+      }
+      if (Object.keys(reparented).length > 0 || Object.keys(merged).length > 0) {
+        try {
+          q.prepare(
+            "INSERT INTO audit_log (action, outcome, metadata_json, created_at) " +
+              "VALUES ('migration.agent_fk_reparent', 'success', ?, CURRENT_TIMESTAMP)",
+          ).run(
+            JSON.stringify({
+              counts: reparented,
+              status_duplicates_merged: merged,
+              status_duplicates_dropped_sample: mergedSample,
+              from_version: 10,
+              to_version: 11,
+            }),
+          );
+        } catch {
+          /* audit_log shape mismatch; non-fatal */
+        }
+      }
+
       for (const spec of SPECS) {
         // Resume-safe: skip a table already carrying the composite FK.
         const fks = q.prepare(`PRAGMA foreign_key_list(${spec.table})`).all() as {

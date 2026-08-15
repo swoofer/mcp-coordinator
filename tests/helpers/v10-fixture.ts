@@ -21,6 +21,21 @@ export interface SeedV10Options {
    * with the pragma off).
    */
   dangling?: { threadId: string; agentId: string; orgId: string }[];
+  /**
+   * Rows for `agent_activity_status`, whose PRIMARY KEY is (org_id, agent_id)
+   * — the only one of the five migrated tables that is not keyed on a plain
+   * `id`. Two rows for one agent under different orgs is legal pre-v11 (the
+   * old FK only required the id to exist in SOME org), and re-parenting the
+   * drifted one onto the agent it belongs to collides with the row already
+   * there.
+   */
+  activity?: {
+    agentId: string;
+    orgId: string;
+    status: string;
+    /** Omit for a default timestamp; pass null to store a real SQL NULL. */
+    lastActivityAt?: string | null;
+  }[];
 }
 
 export function seedV10(dir: string, options: SeedV10Options = {}): void {
@@ -71,6 +86,18 @@ export function seedV10(dir: string, options: SeedV10Options = {}): void {
       FOREIGN KEY (initiator_id) REFERENCES agents(id),
       FOREIGN KEY (org_id) REFERENCES orgs(id) ON DELETE RESTRICT
     );
+
+    CREATE TABLE agent_activity_status (
+      agent_id TEXT NOT NULL,
+      org_id TEXT NOT NULL DEFAULT 'default',
+      activity_status TEXT DEFAULT 'idle',
+      current_file TEXT,
+      current_thread TEXT,
+      last_activity_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (agent_id) REFERENCES agents(id),
+      FOREIGN KEY (org_id) REFERENCES orgs(id) ON DELETE RESTRICT,
+      PRIMARY KEY (org_id, agent_id)
+    );
   `);
 
   db.prepare("INSERT INTO agents (id, org_id, name, status) VALUES (?, ?, ?, ?)").run(
@@ -97,6 +124,20 @@ export function seedV10(dir: string, options: SeedV10Options = {}): void {
   db.prepare(
     "INSERT INTO threads (id, initiator_id, subject, org_id, target_files, round) VALUES (?,?,?,?,?,?)",
   ).run("t-mismatched", "bob", "org drifted", "default", '["src/b.ts"]', 7);
+
+  if (options.activity?.length) {
+    const ins = db.prepare(
+      "INSERT INTO agent_activity_status (agent_id, org_id, activity_status, last_activity_at) VALUES (?,?,?,?)",
+    );
+    for (const a of options.activity) {
+      ins.run(
+        a.agentId,
+        a.orgId,
+        a.status,
+        "lastActivityAt" in a ? a.lastActivityAt : "2026-01-01T00:00:00Z",
+      );
+    }
+  }
 
   if (options.dangling?.length) {
     db.pragma("foreign_keys = OFF");
