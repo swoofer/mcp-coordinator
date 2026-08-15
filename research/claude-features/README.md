@@ -49,7 +49,7 @@ Le détail par fiche est dans sa **section 0**.
 | `A05` | [Extension MCP Tasks : la consultation inter-agents comme opération longue](A05-mcp-tasks-extension.md) | ~~🟠 T2~~ 🟡 T3 | experimental | ~~remplace du code maison~~ opportunité | L | 🟡 | ⚠️ | ✅ |
 | `A06` | [Surface d'outils moderne : outputSchema, annotations, ttlMs, progress](A06-tool-metadata-modern-surface.md) | ~~🔴 T1~~ 🟡 T3 | GA | opportunité | ~~M~~ — | 🟡 | ~~⚠️~~ ✅ | ✅ |
 | `A07` | [Elicitation (modes `form` et `url`) : arbitrer un conflit sans passer par un thread](A07-elicitation.md) | ~~🔴 T1~~ 🟠 T2 | GA | opportunité | M | 🟡 | ⚠️ | ✅ |
-| `A08` | [MCP Apps (`ui://`) : le dashboard rendu dans la conversation](A08-mcp-apps-ui.md) | 🟠 T2 | GA | remplace du code maison | L | ✅ | ⚠️ | ⬜ |
+| `A08` | [MCP Apps (`ui://`) : le dashboard rendu dans la conversation](A08-mcp-apps-ui.md) | ~~🟠 T2~~ 🟡 T3 | GA | ~~remplace du code maison~~ opportunité | L | ✅ | ⚠️ | ✅ |
 | `A09` | [Organiser 26 outils : extensions, primitive grouping, skills-over-MCP](A09-extensions-grouping-skills.md) | 🟠 T2 | mixte | opportunité | M | ✅ | ⚠️ | ⬜ |
 | `A10` | [Identité et découverte : mcpName, server.json, /server-card, Inspector en CI](A10-registry-servercard-conformance.md) | 🔴 T1 | mixte | opportunité | M | 🟡 | ✅ | ⬜ |
 
