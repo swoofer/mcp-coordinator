@@ -223,21 +223,36 @@ export async function refreshToken(
   });
 }
 
-export function isRevoked(agentId: string): boolean {
+/**
+ * issue #287: scoped to the org, not global.
+ *
+ * These ignored `org_id` entirely, on the premise that an agent id named
+ * exactly one agent — "a revocation issued by an admin must be effective
+ * across every org where that agent_id appears". The v11 migration (#231)
+ * made ids unique per org instead, so two orgs may each have a `builder` and
+ * they are different agents. Left global, one org's admin revoking `builder`
+ * would 403 every other org's `builder` on every request, and could not
+ * revoke their own without doing so.
+ *
+ * `revoked_agents` has been keyed (org_id, agent_id) since the composite-PK
+ * migration; only this code ignored it. Rows written before v12 all carry
+ * org_id='default' whatever org their agent is in, and are moved onto the
+ * right org by migrateRevokedAgentsPerOrgV12 — without that, scoping the
+ * lookup would silently un-revoke every agent outside 'default'.
+ */
+export function isRevoked(orgId: string, agentId: string): boolean {
   const db = getDb();
-  const row = db.prepare("SELECT 1 FROM revoked_agents WHERE agent_id = ?").get(agentId);
+  const row = db
+    .prepare("SELECT 1 FROM revoked_agents WHERE org_id = ? AND agent_id = ?")
+    .get(orgId, agentId);
   return !!row;
 }
 
-export function revokeAgent(agentId: string, revokedBy: string): void {
+export function revokeAgent(orgId: string, agentId: string, revokedBy: string): void {
   const db = getDb();
-  // INTENTIONALLY cross-org: revoked_agents is a global blocklist by design.
-  // A revocation issued by an admin must be effective across every org where
-  // that agent_id appears — there is no per-org revocation in Phase 1.
-  db.prepare("INSERT OR IGNORE INTO revoked_agents (agent_id, revoked_by) VALUES (?, ?)").run(
-    agentId,
-    revokedBy,
-  );
+  db.prepare(
+    "INSERT OR IGNORE INTO revoked_agents (agent_id, org_id, revoked_by) VALUES (?, ?, ?)",
+  ).run(agentId, orgId, revokedBy);
 }
 
 const ADMIN_ONLY_ROUTES = ["/api/auth/revoke", "/api/reset"];
@@ -260,7 +275,7 @@ export type AuthResult =
  */
 function applyRouteGuards(result: AuthResult, req: IncomingMessage): AuthResult {
   if (!result.ok) return result;
-  if (isRevoked(result.claims.sub)) {
+  if (isRevoked(result.claims.org, result.claims.sub)) {
     return { ok: false, status: 403, error: "Agent has been revoked" };
   }
   const url = req.url || "";
