@@ -313,10 +313,18 @@ Two things the upgrade can report:
 - **`Cannot migrate to per-org agent ids (issue #231): rows reference agent ids
   that do not exist in 'agents' …`** — a row points at an agent absent from
   `agents`, so there is no org to re-parent it to. Such a database already
-  violates the *current* foreign key. The migration refuses rather than delete
-  your rows: it aborts, the DB stays at v10, and the message carries per-table
-  counts. Back up the data directory, then re-create the missing agent rows or
-  remove the orphaned ones, and restart.
+  violates the *current* foreign key, and would have failed boot anyway (the
+  v9 migration's `foreign_key_check` catches it, with a much less helpful
+  message). Boot refuses rather than delete your rows; the message carries
+  per-table counts. Back up the data directory, then either re-create the
+  missing agent rows / remove the orphaned ones yourself, **or** set
+  `COORDINATOR_ALLOW_MIGRATION_REPAIR=true` and restart: boot then recreates
+  the missing agents for you — one per dangling id, in the org most of its
+  referencing rows carry, named `<id> (recovered by migration v11)` and
+  `offline`. Nothing is deleted either way. Unset the variable once you are
+  through; it is an unblock switch, not a setting. The repair is recorded in
+  `audit_log` under `migration.agent_fk_recover` (per-table row counts, how
+  many agents were recreated, and a sample of up to 50).
 - **A `migration.agent_fk_reparent` row in `audit_log`** — rows whose `org_id`
   disagreed with their agent's actual org (possible only because the old
   foreign key never checked it) were corrected. Informational, written once,

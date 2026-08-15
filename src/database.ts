@@ -8,6 +8,7 @@ import {
   emitDuplicatesAcceptedAudit,
   ensureAuditChainKeyForBootAudit,
 } from "./boot-orgs-uniqueness.js";
+import { canRepairMigrationOrphans } from "./migration-guard.js";
 
 const require = createRequire(import.meta.url);
 
@@ -1103,6 +1104,14 @@ export function initDatabase(dataDir: string): void {
   // re-parented to 'default' BEFORE the table-copy runs (otherwise the
   // post-copy `PRAGMA foreign_key_check` would fail). Counts are logged via
   // an audit_log row keyed `migration.org_fk_reparent`.
+  //
+  // issue #231: this MUST come first. v9 finishes with a whole-database
+  // `PRAGMA foreign_key_check` and throws on any violation — a row referencing
+  // an agent id that exists in no org is one, so v9 would abort before v11 is
+  // ever reached, reporting "this indicates a migration bug" for what is in
+  // fact a data problem. Resolving those rows here gets the operator a message
+  // that names the tables and the way out.
+  resolveDanglingAgentRefs(db);
   migrateOrgsFkV9(db);
 
   // ============================================================================
@@ -1151,6 +1160,132 @@ export function initDatabase(dataDir: string): void {
 }
 
 /**
+ * The five tables that reference an agent, and the column that does it.
+ * Shared by `resolveDanglingAgentRefs` and the v11 migration.
+ */
+const AGENT_REF_TABLES: { table: string; agentCol: string }[] = [
+  { table: "threads", agentCol: "initiator_id" },
+  { table: "thread_messages", agentCol: "agent_id" },
+  { table: "action_summaries", agentCol: "agent_id" },
+  { table: "introspections", agentCol: "agent_id" },
+  { table: "agent_activity_status", agentCol: "agent_id" },
+];
+
+/**
+ * issue #231, pre-flight: rows referencing an agent id that exists in NO org.
+ *
+ * WHY THIS RUNS BEFORE THE v9 MIGRATION, not inside v11 where it belongs
+ * logically: `migrateOrgsFkV9` ends every boot with a whole-database
+ * `PRAGMA foreign_key_check` and throws on any violation. A dangling agent
+ * reference IS such a violation (`threads.initiator_id` etc. reference
+ * `agents(id)`), so v9 aborts first — with "this indicates a migration bug",
+ * which is exactly the wrong thing to tell an operator whose data is the
+ * problem. Running here means the operator gets a message naming the tables,
+ * the counts, and what to do about it.
+ *
+ * Default: throw. The org such a row belongs to cannot be derived from
+ * `agents`, and deleting coordination history to let a schema change proceed
+ * is not this function's call to make.
+ *
+ * With COORDINATOR_ALLOW_MIGRATION_REPAIR=true: recreate the missing `agents`
+ * rows instead, each in the org its referencing rows already carry, and let
+ * boot continue. Nothing is ever deleted. See src/migration-guard.ts.
+ */
+function resolveDanglingAgentRefs(targetDb: DatabaseAdapter): void {
+  const q = targetDb as unknown as {
+    prepare: (sql: string) => {
+      get: (...a: unknown[]) => unknown;
+      all: (...a: unknown[]) => unknown[];
+      run: (...a: unknown[]) => { changes: number };
+    };
+  };
+
+  const dangling: Record<string, number> = {};
+  // (id -> org -> how many rows in that org reference it)
+  const orgVotes = new Map<string, Map<string, number>>();
+  for (const spec of AGENT_REF_TABLES) {
+    let rows: { id: string; orgId: string; n: number }[];
+    try {
+      rows = q
+        .prepare(
+          `SELECT ${spec.agentCol} AS id, org_id AS orgId, COUNT(*) AS n FROM ${spec.table}
+           WHERE ${spec.agentCol} NOT IN (SELECT id FROM agents)
+           GROUP BY ${spec.agentCol}, org_id`,
+        )
+        .all() as { id: string; orgId: string; n: number }[];
+    } catch {
+      // Table absent on this boot path; nothing to check.
+      continue;
+    }
+    for (const r of rows) {
+      dangling[spec.table] = (dangling[spec.table] ?? 0) + r.n;
+      const votes = orgVotes.get(r.id) ?? new Map<string, number>();
+      votes.set(r.orgId, (votes.get(r.orgId) ?? 0) + r.n);
+      orgVotes.set(r.id, votes);
+    }
+  }
+  if (orgVotes.size === 0) return;
+
+  if (!canRepairMigrationOrphans(process.env)) {
+    throw new Error(
+      "Cannot migrate to per-org agent ids (issue #231): rows reference agent ids that do not " +
+        "exist in `agents`, so their org cannot be determined. This database already violates " +
+        "the current foreign key. Counts: " +
+        JSON.stringify(dangling) +
+        ". Back up the data directory, then delete or re-point those rows before restarting — " +
+        "or set COORDINATOR_ALLOW_MIGRATION_REPAIR=true to have the migration recreate the " +
+        "missing `agents` rows instead (nothing is deleted).",
+    );
+  }
+
+  // Opt-in repair: ONE agents row per dangling id.
+  //
+  // Not one per (id, org) pair, for two reasons. First, `idx_agents_id` is
+  // still load-bearing at this point — every `REFERENCES agents(id)` foreign
+  // key in the pre-v11 schema needs it, and SQLite raises "foreign key
+  // mismatch" the moment it is gone — so a second row for the same id cannot
+  // be inserted here anyway. Second, and more to the point: ids WERE globally
+  // unique, so a dangling id named exactly one agent in exactly one org.
+  // Referencing rows that disagree are the drifted ones (v0.7 back-filled
+  // org_id='default' without consulting the agent), and pre-flight 2 of the
+  // v11 migration already re-parents drifted rows to their agent's org. Same
+  // rule, applied to a resurrected agent.
+  //
+  // Which org: the one most of its rows carry, ties broken by lowest org id so
+  // two runs on the same database agree.
+  const recovered: { id: string; orgId: string; rows: number }[] = [];
+  for (const [id, votes] of [...orgVotes.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const best = [...votes.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0];
+    recovered.push({ id, orgId: best[0], rows: [...votes.values()].reduce((s, n) => s + n, 0) });
+  }
+
+  const insertAgent = q.prepare(
+    `INSERT OR IGNORE INTO agents (id, org_id, name, modules, status, registered_at, last_seen_at)
+     VALUES (?, ?, ?, '[]', 'offline', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+  );
+  for (const p of recovered) {
+    insertAgent.run(p.id, p.orgId, `${p.id} (recovered by migration v11)`);
+  }
+
+  try {
+    q.prepare(
+      "INSERT INTO audit_log (action, outcome, metadata_json, created_at) " +
+        "VALUES ('migration.agent_fk_recover', 'success', ?, CURRENT_TIMESTAMP)",
+    ).run(
+      JSON.stringify({
+        rows_affected: dangling,
+        agents_recreated: recovered.length,
+        // Bounded: an operator needs a handle on what appeared, not a blob
+        // proportional to the corruption.
+        sample: recovered.slice(0, 50),
+      }),
+    );
+  } catch {
+    /* audit_log shape mismatch; non-fatal */
+  }
+}
+
+/**
  * v0.11 (issue #231): make agent ids unique PER ORG instead of globally.
  *
  * `agents` has had a composite primary key `(org_id, id)` since the Task 5.5
@@ -1180,11 +1315,17 @@ export function initDatabase(dataDir: string): void {
  * true org is knowable. They are re-parented to the agent's org before the
  * copy. Counts land in audit_log under `migration.agent_fk_reparent`.
  *
- * A row whose agent_id matches NO agents row cannot be repaired — there is no
- * org to infer. Such a row already violates the CURRENT foreign key, so the
- * database is corrupt in a way that predates this migration. Rather than drop
- * the rows, the migration ABORTS naming the tables and counts. Silently losing
- * coordination history would be worse than refusing to boot.
+ * A row whose agent_id matches NO agents row cannot be repaired from `agents` —
+ * there is no org to infer. Such a row already violates the CURRENT foreign
+ * key, so the database is corrupt in a way that predates this migration.
+ * Rather than drop the rows, the migration ABORTS naming the tables and counts.
+ * Silently losing coordination history would be worse than refusing to boot.
+ *
+ * `COORDINATOR_ALLOW_MIGRATION_REPAIR=true` (see `migration-guard.ts`) turns
+ * that abort into a repair: the missing `agents` rows are recreated, each in
+ * the org its referencing rows already carry, and the migration proceeds. Still
+ * no deletion — the escape hatch exists to unblock a boot, not to discard
+ * history. Counts land in audit_log under `migration.agent_fk_recover`.
  */
 function migrateAgentIdPerOrgV11(targetDb: DatabaseAdapter): void {
   const q = targetDb as unknown as {
@@ -1347,27 +1488,12 @@ function migrateAgentIdPerOrgV11(targetDb: DatabaseAdapter): void {
     },
   ];
 
-  // Pre-flight 1: rows pointing at an agent id that exists nowhere. Not
-  // repairable — there is no org to infer — and already illegal under the
-  // current FK. Refuse rather than drop coordination history.
-  const dangling: Record<string, number> = {};
-  for (const spec of SPECS) {
-    const row = q
-      .prepare(
-        `SELECT COUNT(*) AS n FROM ${spec.table} WHERE ${spec.agentCol} NOT IN (SELECT id FROM agents)`,
-      )
-      .get() as { n: number } | undefined;
-    if ((row?.n ?? 0) > 0) dangling[spec.table] = row!.n;
-  }
-  if (Object.keys(dangling).length > 0) {
-    throw new Error(
-      "Cannot migrate to per-org agent ids (issue #231): rows reference agent ids that do not " +
-        "exist in `agents`, so their org cannot be determined. This database already violates " +
-        "the current foreign key. Counts: " +
-        JSON.stringify(dangling) +
-        ". Back up the data directory, then delete or re-point those rows before restarting.",
-    );
-  }
+  // Pre-flight 1 normally ran here. It is hoisted to resolveDanglingAgentRefs
+  // and called from initDatabase BEFORE the v9 migration, whose whole-database
+  // foreign_key_check would otherwise abort first (see that function). Calling
+  // it again is a no-op once resolved, and keeps this migration correct when
+  // invoked standalone.
+  resolveDanglingAgentRefs(targetDb);
 
   // Pre-flight 2: rows whose org_id disagrees with their agent's org.
   // Repairable while ids are still globally unique — the agent resolves to
@@ -1378,7 +1504,10 @@ function migrateAgentIdPerOrgV11(targetDb: DatabaseAdapter): void {
       .prepare(
         `UPDATE ${spec.table}
          SET org_id = (SELECT a.org_id FROM agents a WHERE a.id = ${spec.table}.${spec.agentCol})
-         WHERE NOT EXISTS (
+         WHERE EXISTS (
+           SELECT 1 FROM agents a WHERE a.id = ${spec.table}.${spec.agentCol}
+         )
+         AND NOT EXISTS (
            SELECT 1 FROM agents a
            WHERE a.id = ${spec.table}.${spec.agentCol} AND a.org_id = ${spec.table}.org_id
          )`,

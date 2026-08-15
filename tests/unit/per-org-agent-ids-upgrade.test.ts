@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import Database from "better-sqlite3";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
 import fs from "fs";
-import path from "path";
+import { seedV10 } from "../helpers/v10-fixture.js";
 
 /**
  * issue #231 — the v11 migration running over a POPULATED v10 database.
@@ -16,86 +15,6 @@ import path from "path";
  * agents(id), and the five dependent tables referencing agents(id) alone.
  */
 const DIR = "data-test-per-org-upgrade";
-
-/** Build a populated v10 database by hand, bypassing initDatabase. */
-function seedV10(dir: string): void {
-  fs.mkdirSync(dir, { recursive: true });
-  const db = new Database(path.join(dir, "coordinator.db"));
-  db.pragma("foreign_keys = ON");
-  db.exec(`
-    CREATE TABLE orgs (id TEXT PRIMARY KEY, name TEXT NOT NULL);
-    INSERT INTO orgs (id, name) VALUES ('default','Default'),('org-a','A'),('org-b','B');
-
-    CREATE TABLE agents (
-      id TEXT NOT NULL,
-      org_id TEXT NOT NULL DEFAULT 'default',
-      name TEXT NOT NULL,
-      modules TEXT DEFAULT '[]',
-      status TEXT DEFAULT 'offline',
-      registered_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      last_seen_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      PRIMARY KEY (org_id, id),
-      FOREIGN KEY (org_id) REFERENCES orgs(id) ON DELETE RESTRICT
-    );
-    CREATE UNIQUE INDEX idx_agents_id ON agents(id);
-
-    CREATE TABLE threads (
-      id TEXT PRIMARY KEY,
-      initiator_id TEXT NOT NULL,
-      subject TEXT NOT NULL,
-      plan TEXT,
-      target_modules TEXT DEFAULT '[]',
-      target_files TEXT DEFAULT '[]',
-      status TEXT DEFAULT 'open',
-      resolution_summary TEXT,
-      conflicts TEXT,
-      round INTEGER DEFAULT 1,
-      max_rounds INTEGER DEFAULT 4,
-      timeout_seconds INTEGER DEFAULT 600,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      resolved_at TEXT,
-      expected_respondents TEXT,
-      depends_on_files TEXT,
-      exports_affected TEXT,
-      claimed_by TEXT,
-      claimed_at TEXT,
-      unclaim_count INTEGER DEFAULT 0,
-      assigned_to TEXT,
-      org_id TEXT NOT NULL DEFAULT 'default',
-      run_id TEXT,
-      FOREIGN KEY (initiator_id) REFERENCES agents(id),
-      FOREIGN KEY (org_id) REFERENCES orgs(id) ON DELETE RESTRICT
-    );
-  `);
-
-  db.prepare("INSERT INTO agents (id, org_id, name, status) VALUES (?, ?, ?, ?)").run(
-    "alice",
-    "org-a",
-    "Alice",
-    "online",
-  );
-  db.prepare("INSERT INTO agents (id, org_id, name, status) VALUES (?, ?, ?, ?)").run(
-    "bob",
-    "org-b",
-    "Bob",
-    "offline",
-  );
-
-  // A well-formed thread: org matches the agent's org.
-  db.prepare(
-    "INSERT INTO threads (id, initiator_id, subject, org_id, target_files, round) VALUES (?,?,?,?,?,?)",
-  ).run("t-ok", "alice", "well formed", "org-a", '["src/a.ts"]', 3);
-
-  // The row v0.7 could leave behind: org_id back-filled to 'default' while the
-  // agent actually belongs to org-b. Legal under the old single-column FK,
-  // illegal under the composite one — the migration must repair it.
-  db.prepare(
-    "INSERT INTO threads (id, initiator_id, subject, org_id, target_files, round) VALUES (?,?,?,?,?,?)",
-  ).run("t-mismatched", "bob", "org drifted", "default", '["src/b.ts"]', 7);
-
-  db.pragma("user_version = 10");
-  db.close();
-}
 
 beforeEach(() => {
   fs.rmSync(DIR, { recursive: true, force: true });
@@ -174,12 +93,8 @@ describe("v11 upgrade over a populated v10 database (#231)", () => {
     expect(JSON.parse(rows[0].metadata_json).counts.threads).toBe(1);
   });
 
-  // NOT COVERED, deliberately: the pre-flight that ABORTS when a row points at
-  // an agent id present nowhere in `agents`. Reproducing it needs a faithful
-  // v10 fixture — winding user_version back on a real database makes the v9
-  // migration fire first and mask the v11 guard, and hand-building the full
-  // v10 schema means transcribing every table the earlier migrations touch.
-  // Disproportionate for a branch that only fires on a database already
-  // violating its current foreign keys. The guard itself is a COUNT + throw
-  // with no branching; see migrateAgentIdPerOrgV11 pre-flight 1.
+  // The other pre-flight — the one that refuses to guess when a row points at
+  // an agent id present in no org, plus the COORDINATOR_ALLOW_MIGRATION_REPAIR
+  // escape hatch — lives in per-org-agent-ids-orphans.test.ts, on the same
+  // fixture (tests/helpers/v10-fixture.ts) with `dangling` rows added.
 });
