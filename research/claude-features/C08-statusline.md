@@ -325,7 +325,7 @@ n'utilise pas.
 | **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ✅ **refuser** (en tant que feature) |
 | **Date** | 2026-08-15 |
 | **Justification** | Bénéfice net ≈ 0, mesuré : dominé par le dashboard, incohérent avec lui-même, et vide dans le profil dominant. Voir §7.1. |
-| **Issue / PR** | deux constats **extraits**, voir §7.3 — la fiche elle-même n'en produit aucune |
+| **Issue / PR** | aucune pour la feature (refusée). Deux constats **extraits** : [#278](https://github.com/swoofer/mcp-coordinator/issues/278) (taxe CLI ~700 ms) et [#279](https://github.com/swoofer/mcp-coordinator/issues/279) (scoping par dépôt) |
 | **Jalon visé** | aucun |
 
 ### 7.1 Pourquoi refuser
