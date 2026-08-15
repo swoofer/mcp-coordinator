@@ -51,7 +51,7 @@ Le détail par fiche est dans sa **section 0**.
 | `A07` | [Elicitation (modes `form` et `url`) : arbitrer un conflit sans passer par un thread](A07-elicitation.md) | ~~🔴 T1~~ 🟠 T2 | GA | opportunité | M | 🟡 | ⚠️ | ✅ |
 | `A08` | [MCP Apps (`ui://`) : le dashboard rendu dans la conversation](A08-mcp-apps-ui.md) | ~~🟠 T2~~ 🟡 T3 | GA | ~~remplace du code maison~~ opportunité | L | ✅ | ⚠️ | ✅ |
 | `A09` | [Organiser 26 outils : extensions, primitive grouping, skills-over-MCP](A09-extensions-grouping-skills.md) | ~~🟠 T2~~ 🟡 T3 | mixte | opportunité | ~~M~~ S | ✅ | ~~⚠️~~ ✅ | ✅ |
-| `A10` | [Identité et découverte : mcpName, server.json, /server-card, Inspector en CI](A10-registry-servercard-conformance.md) | 🔴 T1 | mixte | opportunité | M | 🟡 | ✅ | ⬜ |
+| `A10` | [Identité et découverte : mcpName, server.json, /server-card, Inspector en CI](A10-registry-servercard-conformance.md) | ~~🔴 T1~~ 🟡 T3 | mixte | opportunité | ~~M~~ S | 🟡 | ✅ | ✅ |
 
 ## B. Securite et auth
 
