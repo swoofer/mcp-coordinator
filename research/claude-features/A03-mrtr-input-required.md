@@ -676,7 +676,7 @@ Il ne peut donc rien contre l'agent qui n'annonce pas. C'est
 | # | Condition | Pourquoi |
 |---|---|---|
 | 1 | **[#286](https://github.com/swoofer/mcp-coordinator/issues/286) est mergée** (migration vers `@modelcontextprotocol/server@2`) | Préalable strict : `inputRequired` et son shim n'existent que sur la ligne v2. Sans elle, rien de tout ceci n'est atteignable. |
-| 2 | **Le projet a tranché : que fait un agent non surveillé face à un conflit `warning` ?** | C'est la vraie question ouverte (§7.1). Trois réponses possibles — il s'arrête (MRTR tel quel), il force (MRTR devient `isError`), ou le gate ne s'arme qu'en mode interactif (il faut alors détecter le mode, ce qui n'est pas exposé). |
+| 2 | **Le projet a tranché : que fait un agent non surveillé face à un conflit `warning` ?** | C'est la vraie question ouverte (§7.1). Trois réponses possibles — il s'arrête (MRTR tel quel), il force (MRTR devient `isError`), ou le gate ne s'arme qu'en mode interactif (il faut alors détecter le mode, ce qui n'est pas exposé). **🔧 Corrigé le 2026-08-15 par le challenge [`A07`](A07-elicitation.md) §6.4 (1 bis) : l'affirmation « aucun chemin de forçage n'existe » était fausse.** Un hook `Elicitation` répond `{"action":"accept","content":{…}}` à la place de l'humain — mesuré 3/3 en `claude -p`. Une quatrième réponse existe donc : **l'opérateur pré-tranche par un hook**. Nuance : ce hook est écrit par l'utilisateur, pas par nous — le garde-fou reste à géométrie variable. |
 | 3 | **Mesurer le mode interactif** — Claude Code avec un humain, face au dialogue d'élicitation | La seule lacune de mesure de ce challenge (§6.4 (9)). C'est le mode où MRTR donnerait sa pleine valeur, et il n'a pas été éprouvé. |
 
 ### 7.3 Ce qui est écarté explicitement, et pourquoi
