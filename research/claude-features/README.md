@@ -74,7 +74,7 @@ Le détail par fiche est dans sa **section 0**.
 | `C05` | [Outil `Monitor` et transport MCP `ws` : le plan B du push, sans allowlist](C05-monitor-websocket-push.md) | 🔴 T1 | mixte | opportunité | M | 🟡 | ⚠️ | ⬜ |
 | `C06` | [Tool search et defer_loading : que faire des 26 outils MCP](C06-tool-search-defer-loading.md) | 🔴 T1 | GA | ~~menace~~ opportunité | S | 🟡 | ✅ | ✅ |
 | `C07` | [Distribution : plugin Claude Code, marketplace et bundles .mcpb](C07-plugin-marketplace-mcpb.md) | 🔴 T1 | GA | opportunité | M | 🟡 | ⚠️ | ⬜ |
-| `C08` | [Status line : trois autres agents sur ce repo, un conflit, à zéro token](C08-statusline.md) | 🔴 T1 | GA | opportunité | S | ✅ | ✅ | ⬜ |
+| `C08` | [Status line : trois autres agents sur ce repo, un conflit, à zéro token](C08-statusline.md) | ~~🔴 T1~~ 🟡 T3 | GA | opportunité | S | ✅ | ✅ | ✅ |
 | `C09` | [Sandbox Bash et egress : l'échec d'onboarding silencieux à corriger](C09-bash-sandbox-egress.md) | 🔴 T1 | GA | menace | ~~S~~ M | 🟡 | ⚠️ | ✅ |
 | `C10` | [Déploiement entreprise : managed-mcp.json, gateway, self-hosted runners](C10-enterprise-deployment.md) | 🟠 T2 | mixte | intégration | M | 🟡 | ⚠️ | ⬜ |
 | `C11` | [Observabilité : traceparent, OTel multi-agents, APIs Analytics](C11-otel-traceparent-analytics.md) | 🟠 T2 | mixte | remplace du code maison | M | 🟡 | ⚠️ | ⬜ |
