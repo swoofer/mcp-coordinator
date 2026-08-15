@@ -122,6 +122,29 @@ l'isolation par worktree n'apporte rien.
 Cette reformulation est un travail de positionnement, pas de code. Elle conditionne la valeur de tout le
 reste. → [D03](D03-threat-native-worktrees.md), [G02](G02-worktree-orchestrators.md)
 
+> 🛠 **Tranché le 2026-08-15 — cette section se trompe sur les deux points qui comptent.**
+>
+> **(1) « C'est ce que mesurent déjà `dependency-map`, `impact-scorer`, `git-cochange-builder` et
+> `conflict-detector` »** — non. Vérifié commande par commande : le serveur **n'ouvre jamais un
+> fichier source du dépôt** (les seuls `readFileSync` de `src/` sont les assets du dashboard et
+> `package.json` ; aucun `fs.watch`, aucun `chokidar`) ; `treeSitter.extract()` n'a **qu'un seul
+> appelant**, alimenté par un `body.content` **optionnel** poussé par le client ; la dependency-map
+> est **intégralement uploadée** (`setMap` ← l'outil MCP `set_dependency_map` ; `setDependencies`
+> n'a aucun appelant de production) ; et les quatre signaux de `ConflictDetector` comparent des
+> **déclarations d'agent**. La seule observation autonome, `git-cochange`, ne rend que des **noms de
+> fichiers commités**, est aveugle au travail en cours (non commité) des worktrees, et
+> `COORDINATOR_REPO_ROOT` est absent du `Dockerfile` et du `docker-compose.yml` — donc désactivée
+> par défaut. **mcp-coordinator est aujourd'hui un agrégateur de déclarations.**
+>
+> **(2) « un travail de positionnement, pas de code »** — l'inverse. Le positionnement est **déjà
+> écrit** : `docs/index.html:2077` dit mot pour mot « Worktrees isolate filesystems. mcp-coordinator
+> coordinates intent. » Ce qui manque, c'est le code.
+>
+> **La menace n'est donc pas surestimée — elle est sous-spécifiée.** Elle ne dit pas seulement que
+> le conflit d'écriture rétrécit ; elle dit que le repli annoncé n'a pas d'implémentation. C'est
+> plus grave, et plus actionnable : ça ne dépend d'aucune décision d'Anthropic. Voir §7.1 de
+> [D03](D03-threat-native-worktrees.md).
+
 ---
 
 ## 4. Deux choses à vérifier tout de suite
