@@ -68,12 +68,18 @@ function seedV10(dir: string): void {
     );
   `);
 
-  db.prepare(
-    "INSERT INTO agents (id, org_id, name, status) VALUES (?, ?, ?, ?)",
-  ).run("alice", "org-a", "Alice", "online");
-  db.prepare(
-    "INSERT INTO agents (id, org_id, name, status) VALUES (?, ?, ?, ?)",
-  ).run("bob", "org-b", "Bob", "offline");
+  db.prepare("INSERT INTO agents (id, org_id, name, status) VALUES (?, ?, ?, ?)").run(
+    "alice",
+    "org-a",
+    "Alice",
+    "online",
+  );
+  db.prepare("INSERT INTO agents (id, org_id, name, status) VALUES (?, ?, ?, ?)").run(
+    "bob",
+    "org-b",
+    "Bob",
+    "offline",
+  );
 
   // A well-formed thread: org matches the agent's org.
   db.prepare(
@@ -122,7 +128,13 @@ describe("v11 upgrade over a populated v10 database (#231)", () => {
 
     const rows = getDb()
       .prepare("SELECT id, initiator_id, subject, target_files, round FROM threads ORDER BY id")
-      .all() as { id: string; initiator_id: string; subject: string; target_files: string; round: number }[];
+      .all() as {
+      id: string;
+      initiator_id: string;
+      subject: string;
+      target_files: string;
+      round: number;
+    }[];
 
     expect(rows).toHaveLength(2);
     const ok = rows.find((r) => r.id === "t-ok")!;
@@ -138,9 +150,9 @@ describe("v11 upgrade over a populated v10 database (#231)", () => {
     seedV10(DIR);
     initDatabase(DIR);
 
-    const row = getDb()
-      .prepare("SELECT org_id FROM threads WHERE id = ?")
-      .get("t-mismatched") as { org_id: string };
+    const row = getDb().prepare("SELECT org_id FROM threads WHERE id = ?").get("t-mismatched") as {
+      org_id: string;
+    };
     // bob lives in org-b, so the row follows him rather than staying 'default'.
     expect(row.org_id).toBe("org-b");
   });

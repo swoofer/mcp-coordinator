@@ -110,9 +110,7 @@ describe("per-org agent ids (#231)", () => {
     // org-b has no 'builder', so this row is invalid under the composite FK.
     expect(() =>
       getDb()
-        .prepare(
-          "INSERT INTO threads (id, initiator_id, subject, org_id) VALUES (?, ?, ?, ?)",
-        )
+        .prepare("INSERT INTO threads (id, initiator_id, subject, org_id) VALUES (?, ?, ?, ?)")
         .run("t1", "builder", "cross-org", "org-b"),
     ).toThrow(/FOREIGN KEY/i);
   });
