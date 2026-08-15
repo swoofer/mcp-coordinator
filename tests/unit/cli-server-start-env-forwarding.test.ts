@@ -250,6 +250,12 @@ describe("cli/server/start.ts — daemon-spawn env forwarding (integration)", ()
       pid: 12345,
       unref: () => {},
     });
+    // issue #273: the daemon path now waits for the child to accept a
+    // connection before reporting success. `spawn` is mocked here, so
+    // nothing will ever listen on 3199 — collapse the window rather than
+    // sit through the real one.
+    envSnapshot.COORDINATOR_DAEMON_BIND_TIMEOUT_MS = process.env.COORDINATOR_DAEMON_BIND_TIMEOUT_MS;
+    process.env.COORDINATOR_DAEMON_BIND_TIMEOUT_MS = "50";
     openSyncMock = vi.fn().mockReturnValue(3);
     writeFileSyncMock = vi.fn();
 

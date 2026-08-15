@@ -73,7 +73,11 @@ export function createUninstallCommand(): Command {
                   console.log(`No coordinator entry in ${target} — nothing to remove.`);
                 }
               } catch (e) {
-                console.error(`Error reading ${target}: ${(e as Error).message}`);
+                // issue #273: this catch spans the read, the rewrite
+                // (writeFileSync) and the delete (rmSync), so "Error reading"
+                // was wrong for two of the three — and misleading in exactly
+                // the case that matters, a permission-denied write.
+                console.error(`Error updating ${target}: ${(e as Error).message}`);
                 exitCode = 1;
               }
             }

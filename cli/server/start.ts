@@ -1,7 +1,8 @@
 ﻿import { Command } from "commander";
-import { writeFileSync, unlinkSync } from "fs";
+import { writeFileSync, unlinkSync, readFileSync } from "fs";
 import { join } from "path";
 import { loadConfig, ensureConfigDir } from "../config.js";
+import { tcpReachable } from "../tcp-probe.js";
 
 /**
  * architecture-04: builds the foreground SIGINT/SIGTERM handler.
@@ -60,6 +61,89 @@ export function createForegroundShutdownHandler(
       deps.exit(exitCode);
     }
   };
+}
+
+/**
+ * How long `server start --daemon` waits for the child to accept a connection
+ * before giving up on confirming it (issue #273). Generous rather than snappy:
+ * first boot on an existing database runs the schema migrations, and reporting
+ * a healthy daemon as failed is its own kind of lie.
+ */
+export const DEFAULT_DAEMON_BIND_TIMEOUT_MS = 15000;
+
+/**
+ * Overridable because 15s is a guess about someone else's machine: a first
+ * boot that migrates a large database can legitimately outrun it, and a test
+ * that mocks `spawn` should not sit through it.
+ */
+export function daemonBindTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = Number(env.COORDINATOR_DAEMON_BIND_TIMEOUT_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_DAEMON_BIND_TIMEOUT_MS;
+}
+
+/** Outcome of the wait: the child bound, died, or neither within the window. */
+export type DaemonBindOutcome = "listening" | "exited" | "timeout";
+
+/**
+ * Wait until the spawned daemon is actually accepting connections.
+ *
+ * Resolves as soon as one of three things is true, whichever comes first: the
+ * port answers, the child exits, or the window closes. The child-exit race is
+ * the important one — a daemon that dies on EADDRINUSE does so in a few
+ * milliseconds, long before any port ever answers, and that is exactly the
+ * case that used to be reported as success.
+ */
+export async function waitForDaemonBind(
+  child: {
+    once?: (ev: string, cb: (...a: unknown[]) => void) => unknown;
+    /** Set by Node once the child is gone; read so a death that happened
+     *  before we attached a listener is not missed. */
+    exitCode?: number | null;
+    signalCode?: string | null;
+  },
+  port: number,
+  timeoutMs: number = daemonBindTimeoutMs(),
+  probe: (host: string, port: number, t?: number) => Promise<boolean> = tcpReachable,
+  pollMs = 150,
+): Promise<DaemonBindOutcome> {
+  // Both the event AND the state: `once("exit")` only fires for a death that
+  // happens after this call, and `spawn` is followed by this immediately, so
+  // in production the event is enough. Reading exitCode too makes the
+  // function answer correctly whenever it is called.
+  let exited = child.exitCode != null || child.signalCode != null;
+  // A mocked spawn may hand back a bare object; treat a child with no event
+  // API as one that simply never reports, and let the probe/timeout decide.
+  const on = typeof child.once === "function" ? child.once.bind(child) : () => undefined;
+  on("exit", () => {
+    exited = true;
+  });
+  // A spawn that fails outright (ENOENT on the command) emits `error`, never
+  // `exit`. Same conclusion for the caller.
+  on("error", () => {
+    exited = true;
+  });
+
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    if (exited) return "exited";
+    if (await probe("127.0.0.1", port, 500)) return "listening";
+    if (exited) return "exited";
+    if (Date.now() >= deadline) return "timeout";
+    await new Promise((r) => setTimeout(r, pollMs));
+  }
+}
+
+/**
+ * Last `lines` lines of a file, or "" when it cannot be read. Used to put the
+ * daemon's own error in front of the operator instead of a path to go read.
+ */
+export function tailFile(path: string, lines: number): string {
+  try {
+    const text = readFileSync(path, "utf-8");
+    return text.split(/\r?\n/).filter(Boolean).slice(-lines).join("\n");
+  } catch {
+    return "";
+  }
 }
 
 /**
@@ -242,10 +326,43 @@ export function createServerStartCommand(): Command {
             env: childEnv,
           });
 
-          // Write PID file
+          // issue #273: do NOT announce success on the strength of a successful
+          // spawn. `spawn` returning a pid means a process was created, not that
+          // it bound the port — and the bind fails closed downstream
+          // (serve-http rejects on the listen `error` event) for EADDRINUSE, a
+          // sandbox-refused bind, or any crash during boot. Writing the PID and
+          // printing "Coordinator started in background" before knowing left a
+          // green message, a PID file pointing at a corpse, and exit 0 for any
+          // `&&` chain or wrapper script downstream.
+          const outcome = await waitForDaemonBind(child, port, daemonBindTimeoutMs());
+          child.unref();
+
+          if (outcome === "exited") {
+            console.error(`Coordinator failed to start — the process exited during boot.`);
+            console.error(`  Logs: ${logPath}`);
+            const tail = tailFile(logPath, 12);
+            if (tail)
+              console.error(`
+${tail}`);
+            process.exit(1);
+          }
+
+          // Still running: record the PID either way, so `server stop` can reach
+          // it even when the bind never confirmed.
           writeFileSync(join(configDir, "server.pid"), String(child.pid));
 
-          child.unref();
+          if (outcome === "timeout") {
+            console.error(
+              `Coordinator did not accept connections on port ${port} within ${daemonBindTimeoutMs() / 1000}s.`,
+            );
+            console.error(
+              `  PID ${child.pid} is still running — it may be slow to boot, or stuck.`,
+            );
+            console.error(`  Logs: ${logPath}`);
+            console.error(`  Stop: mcp-coordinator server stop`);
+            process.exit(1);
+          }
+
           console.log(`Coordinator started in background (PID ${child.pid}, port ${port})`);
           console.log(`  Logs: ${logPath}`);
           console.log(`  Stop: mcp-coordinator server stop`);

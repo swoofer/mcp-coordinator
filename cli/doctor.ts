@@ -4,6 +4,7 @@ import { join } from "path";
 import { createConnection } from "net";
 import { request } from "http";
 import { getConfigDir, loadConfig } from "./config.js";
+import { tcpReachable } from "./tcp-probe.js";
 import { assertSecretEntropy } from "../src/auth/entropy.js";
 
 export interface CheckResult {
@@ -99,21 +100,6 @@ export async function checkDependencyTree(
     severity: "ok",
     detail: `${modules.length} critical modules load (${modules.join(", ")})`,
   };
-}
-
-async function tcpReachable(host: string, port: number, timeoutMs = 1500): Promise<boolean> {
-  return new Promise((resolveP) => {
-    const sock = createConnection({ host, port });
-    const settle = (ok: boolean) => {
-      try {
-        sock.destroy();
-      } catch {}
-      resolveP(ok);
-    };
-    sock.setTimeout(timeoutMs, () => settle(false));
-    sock.on("connect", () => settle(true));
-    sock.on("error", () => settle(false));
-  });
 }
 
 async function httpGet(
@@ -892,6 +878,34 @@ export interface Phase2Env {
 }
 
 /**
+ * What to tell an operator when nothing is listening on the HTTP port.
+ *
+ * issue #273: this used to be one string — "Start the server" — regardless of
+ * state. When a daemon had already been started and died during boot, doctor
+ * printed that advice directly under a green pid-file line, i.e. it told you to
+ * start the server whose PID it had just shown you. Starting it again just
+ * repeats the failure; the daemon's own error is in the log.
+ */
+export function serverUnreachableHint(
+  port: number,
+  pidFromFile: number | null,
+  pidAlive: boolean,
+): string {
+  if (pidFromFile !== null && pidAlive) {
+    return (
+      `PID ${pidFromFile} is alive but nothing is listening on ${port} — the daemon is stuck, ` +
+      `or bound to a different port. Check ~/.mcp-coordinator/logs/server.log.`
+    );
+  }
+  if (pidFromFile !== null) {
+    return (
+      `A daemon was started and is gone — it died during boot. Its error is at the end of ` +
+      `~/.mcp-coordinator/logs/server.log (a busy port and a sandbox-refused bind both land there).`
+    );
+  }
+  return `Start the server: mcp-coordinator server start --daemon (or check the configured port)`;
+}
+/**
  * Runs probes 1-8 in parallel and returns the result array.
  */
 export async function runPhase2Probes(env: Phase2Env): Promise<CheckResult[]> {
@@ -973,13 +987,35 @@ export function createDoctorCommand(): Command {
       // 3. Server PID file
       const pidPath = join(configDir, "server.pid");
       let pidFromFile: number | null = null;
+      let pidAlive = false;
       if (existsSync(pidPath)) {
         try {
           pidFromFile = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
+          // issue #273: a parseable PID is not a running process. `server
+          // status` has always probed with signal 0; doctor reported [OK] on
+          // the file alone, so a daemon that died during boot showed pid-file
+          // green directly above tcp-<port> red.
+          const validPid = !isNaN(pidFromFile) && pidFromFile > 0;
+          if (validPid) {
+            try {
+              process.kill(pidFromFile, 0);
+              pidAlive = true;
+            } catch {
+              pidAlive = false;
+            }
+          }
           results.push({
             name: "pid-file",
-            ok: !isNaN(pidFromFile) && pidFromFile > 0,
-            detail: `PID ${pidFromFile} (this is just the PID file; check 'tcp-${port}' below to confirm the server is actually listening)`,
+            ok: validPid && pidAlive,
+            detail: validPid
+              ? pidAlive
+                ? `PID ${pidFromFile} is running (check 'tcp-${port}' below to confirm it is actually listening)`
+                : `PID ${pidFromFile} recorded, but no such process — stale file`
+              : "unparseable PID",
+            hint:
+              validPid && !pidAlive
+                ? "The daemon died. Its own error is at the end of ~/.mcp-coordinator/logs/server.log; clear the file with 'mcp-coordinator server stop'."
+                : undefined,
           });
         } catch {
           results.push({
@@ -1004,9 +1040,7 @@ export function createDoctorCommand(): Command {
         name: `tcp-${port}`,
         ok: httpUp,
         detail: httpUp ? `${host}:${port} accepts connections` : `${host}:${port} unreachable`,
-        hint: httpUp
-          ? undefined
-          : `Start the server: mcp-coordinator server start --daemon (or check the configured port)`,
+        hint: httpUp ? undefined : serverUnreachableHint(port, pidFromFile, pidAlive),
       });
 
       // 5. /health endpoint
