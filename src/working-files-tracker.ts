@@ -11,7 +11,7 @@ import type { Metrics } from "./metrics.js";
  *   PreToolUse  → start(orgId, agent, file, ttlMin)  → UPSERT row
  *   PostToolUse → stop(orgId, agent, file)            → DELETE row
  *   Sweeper     → sweepExpired()                      → DELETE rows past claim_until (cross-org)
- *   Agent LWT   → clearForAgent(agent)                → DELETE all rows for agent (cross-org maintenance)
+ *   Agent LWT   → clearForAgent(orgId, agent)         → DELETE that org rows for agent
  */
 export class WorkingFilesTracker {
   private sweeperHandle: ReturnType<typeof setInterval> | null = null;
@@ -76,14 +76,22 @@ export class WorkingFilesTracker {
     return evicted;
   }
 
-  /** Called when an agent goes offline (MQTT LWT). Returns rows deleted.
-   * cross-org maintenance — intentional: MQTT topics carry no org_id today
-   * (see TODO(Task 22) in serve-http.ts); clearing by agent_id only is safe
-   * in single-tenant Phase 1 and matches the cross-org setOffline("default", …) pattern.
+  /**
+   * Called when an agent goes offline (MQTT LWT). Returns rows deleted.
+   *
+   * issue #288: this deleted by `agent_id` alone, across every org. The
+   * justification was that agent ids were effectively global, so one id meant
+   * one agent — no longer true since the v11 per-org id migration (#231). Two
+   * orgs may each have a `builder`, and one going offline must not wipe the
+   * other's in-flight claims. The LWT handler in serve-http.ts already
+   * resolves the org and hands it to `setOffline` and `handleAgentDeparture`
+   * on the two lines above its call to this.
    */
-  clearForAgent(agentId: string): number {
+  clearForAgent(orgId: string, agentId: string): number {
     const db = getDb();
-    const result = db.prepare("DELETE FROM working_files WHERE agent_id = ?").run(agentId);
+    const result = db
+      .prepare("DELETE FROM working_files WHERE org_id = ? AND agent_id = ?")
+      .run(orgId, agentId);
     return Number(result.changes ?? 0);
   }
 

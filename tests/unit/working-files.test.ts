@@ -85,11 +85,26 @@ describe("WorkingFilesTracker", () => {
     tracker.start("default", "agentA", "src/x.ts", 30);
     tracker.start("default", "agentA", "src/y.ts", 30);
     tracker.start("default", "agentB", "src/z.ts", 30);
-    const cleared = tracker.clearForAgent("agentA");
+    const cleared = tracker.clearForAgent("default", "agentA");
     expect(cleared).toBe(2);
     const remaining = getDb().prepare("SELECT agent_id FROM working_files").all() as any[];
     expect(remaining).toHaveLength(1);
     expect(remaining[0].agent_id).toBe("agentB");
+  });
+
+  it("clearForAgent leaves another org's identically-named agent alone (#288)", () => {
+    // Since the v11 per-org id migration (#231) two orgs may each have a
+    // `builder`. One going offline must not wipe the other's claims.
+    tracker.start("org-a", "builder", "src/a.ts", 30);
+    tracker.start("org-b", "builder", "src/b.ts", 30);
+
+    const cleared = tracker.clearForAgent("org-b", "builder");
+
+    expect(cleared).toBe(1);
+    const remaining = getDb()
+      .prepare("SELECT org_id, file_path FROM working_files WHERE agent_id = 'builder'")
+      .all() as any[];
+    expect(remaining).toEqual([{ org_id: "org-a", file_path: "src/a.ts" }]);
   });
 
   it("getIndex returns file→agents map, excluding caller and expired", () => {
