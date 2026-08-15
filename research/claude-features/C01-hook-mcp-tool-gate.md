@@ -11,12 +11,12 @@
 | **Disponible depuis** | `inconnu` — présent dans la référence hooks à jour en août 2026 (à verrouiller sur un changelog) |
 | **Tier** | T1-incontournable |
 | **Nature** | opportunity |
-| **Effort estimé** | S |
+| **Effort estimé** | ~~S~~ → **L** (recalibré au challenge du 2026-08-15, voir §7.4) |
 | **Confiance veille** | high |
 | **Vérification** | CONFIRMED |
 | **Vérifiée le** | 2026-08-14 |
 | **Testabilité** | ✅ testable — PoC local suffit, aucun accès privilégié requis |
-| **Statut du challenge** | ⬜ à faire |
+| **Statut du challenge** | ✅ **tranché** (2026-08-15) — adopter partiellement, voir §7 |
 
 ---
 
@@ -230,11 +230,53 @@ hook offre une garantie que mcp-coordinator ne peut que promettre. La documentat
 
 ### 6.2 Hypothèse
 
-<Ce qu'on pense avant de tester.>
+**Pré-enregistré le 2026-08-15, avant toute exécution.** Claude Code **2.1.219**, Node 22.21.0,
+Windows 11.
+
+**Apport des challenges déjà rendus** (à ne pas re-démontrer ici) :
+[`C06`](C06-tool-search-defer-loading.md) a mesuré **0 annonce spontanée sur 12 runs** sans
+`instructions` serveur, et 5/5 avec — le contre-argument YAGNI de §6.5 (« le problème est une
+hypothèse du mainteneur, pas un ticket ») **est réfuté par la mesure**.
+[`D03`](D03-threat-native-worktrees.md) a montré que **rien ne valide ce qui est déclaré** et que
+le côté déclaré n'est jamais normalisé. Les deux poussent dans le même sens : la contrainte
+manque, et elle ne peut pas venir du modèle.
+
+**Hypothèse.** Le hook fonctionne mécaniquement, mais `check_file_conflict` est la **mauvaise
+cible** : il exige un `agent_id` (`files-tools.ts:54`) que le hook ne peut pas interpoler — les
+clés disponibles sont `${tool_input.*}`, `${session_id}`, `${tool_name}`. Et `${tool_input.file_path}`
+d'un `Edit` est **absolu**, alors que le côté déclaré n'est pas normalisé (mesuré en `D03`). Je
+m'attends donc à ce que le veto dur soit techniquement possible mais mal servi par l'outil existant,
+et à ce que le fail-open documenté rende la branche « veto » moins dangereuse que §6.5 ne le craint.
+
+**Critères de refus, posés avant de mesurer :**
+
+| # | Ce qui tue quoi | Seuil |
+|---|---|---|
+| K1 | Si Claude Code 2.1.219 **rejette** le bloc `type: "mcp_tool"` ou ne l'exécute jamais, la fiche s'effondre → `refuser`. | observation directe |
+| K2 | Si le hook se déclenche mais que `check_file_conflict` échoue faute d'`agent_id`, la cible naturelle ne marche pas telle quelle → coût supplémentaire à chiffrer. | erreur observée |
+| K3 | Si **aucune** forme de retour d'outil MCP ne produit un `deny`, la branche « veto dur » de §6.1 est morte ; seule survit `allow` + `permissionDecisionReason`. | 3 formes testées |
+| K4 | Si le système est **fail-closed** (daemon arrêté ⇒ écritures bloquées), le veto dur est disqualifié pour un mainteneur solo, quelle que soit son élégance. | daemon arrêté |
+| K5 | Si le `file_path` interpolé arrive sous une forme qui ne matche pas ce que le serveur stocke (absolu, casse, antislash), le gate produit des faux négatifs silencieux. | comparaison de chaînes |
+| K6 | Si câbler ça proprement (`init --write-hooks`, `uninstall`, `doctor`) touche plus de 3 fichiers, l'effort n'est plus S. | > 3 fichiers |
 
 ### 6.3 Protocole de vérification
 
-<Proposition de la veille — à amender pendant le challenge.>
+Amendé le 2026-08-15 — le protocole de la veille est repris, réordonné pour que les critères les
+plus lourds tombent en premier, et exécuté dans un clone jetable.
+
+- [x] **T1 — Le hook s'exécute-t-il ?** `.claude/settings.json` écrit à la main avec le bloc de §2,
+      `Edit` sur un fichier, lecture des logs serveur. Tranche K1, et capture le `file_path` exact
+      (K5).
+- [x] **T2 — `agent_id` manquant.** Observer ce que renvoie `check_file_conflict` appelé sans lui.
+      Tranche K2.
+- [x] **T3 — Quelle forme produit un `deny` ?** Faire retourner successivement à l'outil : du texte
+      brut, `{"permissionDecision":"deny"}`, puis
+      `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny",…}}`.
+      Tranche K3.
+- [x] **T4 — Le chemin d'échec.** Daemon arrêté, puis timeout court dépassé. Tranche K4 — c'est le
+      critère qui décide du verdict.
+- [ ] **T5 — Variante `type: "http"`.** Comparer le coût d'auth. Traité en lecture si le budget
+      d'expérience est consommé par T1-T4.
 
 - [ ] Écrire à la main un `.claude/settings.json` avec le bloc `PreToolUse` / `mcp_tool` visé en
       §2, contre le serveur `coordinator` local, et faire un `Edit` sur un fichier quelconque :
@@ -255,7 +297,162 @@ hook offre une garantie que mcp-coordinator ne peut que promettre. La documentat
 
 ### 6.4 Résultat observé
 
-<Ce qu'on a réellement mesuré/vu. Coller les sorties, pas les paraphraser.>
+Exécuté le 2026-08-15. Claude Code **2.1.219**, Node 22.21.0, Windows 11. PoC dans le scratchpad,
+daemon dédié (base et `COORDINATOR_REPO_ROOT` neufs), arrêté en fin de session.
+
+---
+
+**(A) Incident de départ, hors sujet mais réel : le daemon ne démarrait plus.**
+
+```
+Error: Cannot find module '@babel/runtime/helpers/defineProperty'
+Require stack: … broker-factory@3.1.15 … worker-timers … mqtt@5.15.2 …
+```
+
+`@babel/runtime` est déclaré par `broker-factory` mais était **absent du store pnpm** ; le mode
+stdio échouait aussi. `pnpm install --frozen-lockfile` a restauré 5 paquets — *« Lockfile is up to
+date, resolution step is skipped »* — sans modifier `package.json` ni `pnpm-lock.yaml`. À signaler
+au mainteneur : l'arbre `node_modules` était dans un état cassé.
+
+> ⛔ **(B) CI-DESSOUS EST UN FAUX NÉGATIF. Conservé pour mémoire, réfuté en (D).** Ma sonde était
+> incapable de produire une preuve : `--include-hook-events` n'était pas passé, le stdout d'un
+> `PreToolUse` en code 0 n'est pas rendu dans le flux par conception (seuls `UserPromptSubmit`,
+> `UserPromptExpansion` et `SessionStart` le sont), et la clé que je grepais — `"hook_event"` —
+> n'existe dans aucun schéma. Les 7 runs ont fait varier 4 dimensions sans rapport pendant que la
+> seule variable qui pilote l'observable restait constante.
+
+**(B) ~~Le blocage central : aucun hook d'outil n'a jamais tiré en headless.~~**
+
+Sept configurations, chacune avec un `Edit`/`Write` **réellement effectué** (fichier vérifié) :
+
+| # | source des hooks | cwd | mode permission | SessionStart | PreToolUse |
+|---|---|---|---|---|---|
+| 1 | `--settings` | non approuvé | `--dangerously-skip-permissions` | (global) ✓ | ✗ |
+| 2 | `.claude/settings.json` du projet | non approuvé | `--dangerously-skip-permissions` | (global) ✓ | ✗ |
+| 3 | `--settings` | non approuvé | `acceptEdits` | (global) ✓ | ✗ |
+| 4 | `--settings` | **approuvé** | `acceptEdits` | (global) ✓ | ✗ |
+| 5 | `--settings`, SessionStart **et** PreToolUse dans le même fichier | approuvé | `acceptEdits` | **✓ le mien tire** | ✗ |
+| 6 | `--settings`, matchers `"*"` / `"Write"` / aucun, + un `PostToolUse` | approuvé | `acceptEdits` | — | ✗ (et PostToolUse ✗) |
+| 7 | `--settings` (idem 6) | approuvé | défaut + `--allowedTools "Write"` | — | ✗ |
+
+Le run **5** est le discriminateur : `MY_SESSIONSTART_FIRED` apparaît, donc **les hooks de
+`--settings` se chargent bien** ; c'est `PreToolUse`/`PostToolUse` qui ne se déclenchent pas.
+La piste « répertoire non approuvé » est écartée par le run 4 (`hasTrustDialogAccepted: true`,
+vérifié dans `~/.claude.json`).
+
+**Je n'ai donc jamais atteint `type: "mcp_tool"`** : K1 reste sans réponse. La doc officielle des
+hooks, fetchée aujourd'hui, est **muette** sur le mode headless, sur l'effet des modes de permission
+sur `PreToolUse`, et sur la légitimité des hooks fournis via `--settings`.
+
+> ~~**Correction à §0.** Le champ *Testabilité* serait faux depuis une session headless.~~
+> **Retiré** : cette « correction » découlait du faux négatif. La §0 avait raison — la fiche **est**
+> entièrement testable ici, y compris en headless (voir D, E, F). Seule nuance à ajouter à §0 :
+> il faut passer `--include-hook-events`, sans quoi rien d'un hook d'outil n'est observable.
+
+**(C) Ce qui se tranche par lecture, et qui ne dépend pas du hook.** Trois faits indépendants,
+`src/tools/files-tools.ts:49-74` :
+
+```ts
+server.tool("check_file_conflict", "Check if another agent is editing a file", {
+  file_path: z.string().describe("Repo-relative file path."),
+  agent_id:  z.string().describe("ID of the agent checking for conflicts (excluded from the match)."),
+  within_minutes: z.number().optional(),
+}, { readOnlyHint: true, … },
+async ({ file_path, agent_id, within_minutes }, extra) => { …
+  return { content: [{ type: "text", text: JSON.stringify(result) }] };
+});
+```
+
+1. **`agent_id` est requis** (`z.string()`, sans `.optional()`), et les seules clés interpolables
+   dans l'`input` d'un `mcp_tool` sont `${tool_input.*}`, `${session_id}`, `${tool_name}` — **aucune
+   ne fournit un `agent_id`**. Le hook ne peut donc pas appeler l'outil avec succès.
+2. **La forme du chemin ne correspond pas** : `file_path` est documenté « Repo-relative », alors que
+   `${tool_input.file_path}` d'un `Edit` est **absolu**. Et [`D03`](D03-threat-native-worktrees.md) a
+   mesuré que le côté déclaré n'est jamais normalisé.
+3. **Le retour ne peut pas exprimer une décision.** L'outil renvoie
+   `{"conflict":true|false,"agents":[…]}`. D'après la doc, ce texte est traité comme le stdout d'un
+   hook `command` : s'il parse en JSON, il est interprété comme une décision. Or ce JSON ne contient
+   **ni `hookSpecificOutput`, ni `permissionDecision`** — même quand `conflict` vaut `true`.
+   **`check_file_conflict` ne peut structurellement jamais produire un `deny`.**
+
+Autrement dit : même si le hook tirait, la cible que la fiche désigne comme « naturelle » est
+inutilisable telle quelle, pour trois raisons indépendantes. Un **outil dédié au gating** est
+nécessaire dans les deux branches de §6.1.
+
+---
+
+**(D) Le vrai résultat, après correction de la sonde.** Test comportemental (immunisé : le hook
+écrit un fichier témoin et sort en code 2 ; on lit l'effet, pas le flux), avec
+`--include-hook-events` :
+
+```
+"hook_name":"PreToolUse:Write"   x2   (hook_started + hook_response)
+TEMOIN : FIRED
+CIBLE  : (absent)  -> ECRITURE BLOQUEE
+```
+
+**Les hooks `PreToolUse` fonctionnent parfaitement en `claude -p`.** Le blocage de (B) était
+entièrement un artefact d'instrumentation.
+
+**(E) K1 et K2 — le hook `mcp_tool` atteint bien le coordinateur.** Bloc de §2 posé tel quel,
+serveur `coordinator` en HTTP :
+
+```
+[tool_use] Edit
+[hook_started]  PreToolUse:Edit
+[hook_response] PreToolUse:Edit -> "MCP error -32602: Input validation error:
+                Invalid arguments for tool check_file_conflict:
+                Invalid input: expected string, received undefined at agent_id"
+[result] success        <- et le fichier a bien ete modifie
+```
+
+K1 **répondu** : `type: "mcp_tool"` est fonctionnel en 2.1.219, la forme du bloc de §2 est correcte
+(le marqueur `(à vérifier)` de §0 est levé). K2 **répondu** : l'appel échoue exactement pour la
+raison prédite en (C). Et **K4 est répondu du même coup — le système est bien fail-open** :
+l'erreur de validation n'a pas bloqué l'`Edit`. Second cas observé plus tard, même conclusion :
+serveur non démarré → `"MCP server 'coordinator' not connected"` → l'écriture passe.
+
+**(F) K3 — un outil MCP *peut* opposer un veto.** PoC jetable : `agent_id` rendu optionnel dans
+`dist/` et forme de retour pilotée par variable d'environnement (dist restauré à l'identique
+ensuite). Forme `hookSpecificOutput` :
+
+```
+[tool_use] Edit
+[hook_response] "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",
+                  \"permissionDecision\":\"deny\",
+                  \"permissionDecisionReason\":\"forme hookSpecificOutput\"}}"
+=== K3 === BLOQUE
+```
+
+L'`Edit` est **refusé**. L'agent a ensuite tenté Read/Bash/Glob puis appelé `check_file_conflict`
+de lui-même — mais l'écriture n'a pas eu lieu. **Le mécanisme complet est prouvé de bout en bout :
+`PreToolUse` → `mcp_tool` → outil du coordinateur → `permissionDecision: "deny"` → écriture
+bloquée.**
+
+**(G) Le fait qui tue la cible, vérifié par grep ici.** `file_activity` — la table que
+`check_file_conflict` interroge — **n'est jamais écrite par un outil MCP** :
+
+```
+INSERT INTO file_activity   -> src/file-tracker.ts:18  (unique)
+appelants de fileTracker.log( -> rest-handlers.ts:172 (POST /api/log-file)
+                                 rest-handlers.ts:850 (POST /api/file-activity)
+```
+
+Les deux sont **REST**. Le dépôt le documente lui-même (`src/http/rest-schemas.ts:49`) :
+*« POST /api/log-file — no MCP equivalent (essaim/hook telemetry only) »*. Dans une installation
+purement MCP — celle qu'un hook `server: "coordinator"` utiliserait — la table est **vide**, et
+`check_file_conflict` renvoie `{"conflict":false,"agents":[]}` à perpétuité. **Le gate serait un
+no-op garanti.**
+
+Et le comparateur ne pardonne rien : `normalizePath` n'est appelé **que** depuis
+`rest-handlers.ts:834,877,901`. Ni `check_file_conflict` (MCP), ni `/api/check-conflict`, ni
+`/api/log-file` ne normalisent — alors que `${tool_input.file_path}` est absolu et que
+`file-tracker` compare par égalité stricte. Trois formats, un `=`.
+
+**(H) Incident d'environnement, récurrent.** Le problème `@babel/runtime` de (A) est **revenu** une
+seconde fois en cours de session, après avoir été réparé. Quelque chose élague `node_modules` entre
+les exécutions. `pnpm install --frozen-lockfile` répare à chaque fois sans toucher au lockfile.
+À investiguer hors challenge.
 
 ### 6.5 Contre-arguments
 
@@ -295,11 +492,84 @@ hook offre une garantie que mcp-coordinator ne peut que promettre. La documentat
 
 | | |
 |---|---|
-| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ⬜ refuser |
-| **Date** | |
-| **Justification** | |
-| **Issue / PR** | |
-| **Jalon visé** | |
+| **Verdict** | ⬜ adopter · ✅ **adopter partiellement** · ⬜ reporter · ⬜ refuser |
+| **Date** | 2026-08-15 |
+| **Justification** | Le **mécanisme** est prouvé de bout en bout (§6.4 D-F). La **cible** de la fiche est réfutée pour quatre raisons indépendantes (§6.4 C, G). L'effort annoncé est faux. |
+| **Issue / PR** | à créer — périmètre en §7.2 |
+| **Effort réel** | **L**, pas S — voir §7.4. K6 est franchi d'un facteur ~5. |
+| **Jalon visé** | après résolution du préalable d'identité (§7.3), partagé avec [`F02`](F02-canusetool-distributed-lock.md) |
+
+### 7.1 Ce qui est retenu — le mécanisme, prouvé
+
+Le hook `PreToolUse` de type `mcp_tool` **fonctionne**, mesuré ici : il atteint le coordinateur, et
+un retour de la forme
+
+```json
+{"hookSpecificOutput":{"hookEventName":"PreToolUse",
+                       "permissionDecision":"deny",
+                       "permissionDecisionReason":"…"}}
+```
+
+**bloque l'écriture avant qu'elle atteigne le disque**. C'est le seul des trois chemins vers la
+contrainte du Mouvement 1 de la synthèse dont l'exécution soit démontrée à ce jour. Le marqueur
+`(à vérifier)` de §0 sur la forme du bloc `.claude/settings.json` est **levé** : la forme de §2 est
+correcte telle quelle.
+
+C'est d'autant plus à retenir que le besoin est **mesuré**, pas supposé :
+[`C06`](C06-tool-search-defer-loading.md) a établi 0 annonce spontanée sur 12 runs sans
+`instructions`, et — même avec — **0/3 sur une tâche à écriture immédiate**. Le contre-argument
+YAGNI de §6.5 (« aucune demande utilisateur, c'est une hypothèse du mainteneur ») **est réfuté par
+la mesure**, et l'argument « `instructions` rend le hook redondant » ne tient pas : `C06` conclut
+explicitement que c'est un plancher, pas une garantie.
+
+### 7.2 Ce qui est écarté — la cible
+
+**`check_file_conflict` ne peut pas être la cible du hook.** Quatre raisons indépendantes, chacune
+suffisante, toutes établies par lecture ou mesure :
+
+1. **`agent_id` est requis** et non interpolable (mesuré : `expected string, received undefined at
+   agent_id`). Le repli proposé en §5 — « repli sur les claims de session » — **n'est pas
+   implémentable en l'état** : `AuthClaims` ne porte aucun `agent_id`, et rien dans le dépôt ne lie
+   une session MCP à un agent enregistré.
+2. **La table interrogée est vide en MCP.** `file_activity` n'est écrite que par
+   `POST /api/log-file` et `POST /api/file-activity` — deux routes **REST**. Le dépôt le documente :
+   « no MCP equivalent (essaim/hook telemetry only) ». Le gate serait un **no-op garanti**.
+3. **Le comparateur ne matche pas.** `${tool_input.file_path}` est absolu ; `normalizePath` n'est
+   appelé ni par `check_file_conflict`, ni par `/api/check-conflict`, ni par `/api/log-file` ; et
+   `file-tracker` compare par égalité stricte. Prolongement direct de
+   [`D03`](D03-threat-native-worktrees.md).
+4. **Le retour ne peut pas exprimer une décision.** `{"conflict":…,"agents":[…]}` parse en JSON
+   valide mais ne porte ni `hookSpecificOutput` ni `permissionDecision` — même quand `conflict` vaut
+   `true`.
+
+**Écarté aussi : le veto dur comme posture par défaut.** Le fail-open est confirmé par l'expérience
+(erreur de validation → écriture passe ; serveur arrêté → écriture passe). C'est une bonne nouvelle
+pour le risque produit — on ne peut pas geler le poste d'un utilisateur — mais c'est une mauvaise
+nouvelle pour §4, qui vend le hook comme une contrainte « **non contournable par l'agent** ».
+Un gate qui s'évapore quand le daemon est arrêté est une garantie **molle**. Il faut le dire dans la
+doc au lieu de promettre l'inverse.
+
+### 7.3 Le préalable, qui n'appartient pas à cette fiche
+
+**D'où vient l'`agent_id` ?** C'est la question que `C01` n'a jamais posée et sans laquelle aucune
+des deux branches de §6.1 n'est constructible. Elle est **partagée avec
+[`F02`](F02-canusetool-distributed-lock.md)** (`canUseTool`), qui bute sur la même identité, et elle
+touche le modèle de données (`src/register-workflow.ts`, `src/agent-registry.ts`, `AuthClaims`).
+**Elle doit être tranchée avant d'écrire une ligne de gate**, et probablement dans le cadre de
+`F02` ou d'une fiche dédiée.
+
+Le successeur, une fois l'identité résolue : un outil **dédié** (`gate_file_write`) qui renvoie un
+`hookSpecificOutput` conforme, adossé à **`working_files`** — qui a un propriétaire et un TTL —
+plutôt qu'à `file_activity`, et qui normalise **des deux côtés** du comparateur.
+
+### 7.4 L'effort : L, pas S
+
+Ma propre estimation initiale (« S, 3 fichiers ») déclenchait mon critère K6. Comptage réel :
+`cli/init.ts` (`--write-hooks`, avec une **stratégie de fusion neuve** — `hooks.PreToolUse[]` est un
+tableau, sans clé d'objet comme `.mcp.json` ni sentinel comme CLAUDE.md), `cli/uninstall.ts`,
+`cli/doctor.ts`, `src/tools/files-tools.ts` (outil dédié), plus le modèle d'identité de §7.3 ;
+4 fichiers de tests ; et la doc, dont `docs/index.html` où la chaîne d'installation est répétée
+**7 fois**. Ordre de grandeur : **~15 fichiers**. La fiche annonçait S ; c'est **L**.
 
 ## 8. Journal
 
@@ -307,3 +577,4 @@ hook offre une garantie que mcp-coordinator ne peut que promettre. La documentat
 |---|---|
 | 2026-08-14 | Fiche créée par la veille plateforme. |
 | 2026-08-14 | Vérification des faits : API confirmée, les deux `(à vérifier)` tranchés, fail-open documenté, template l.10-89. |
+| 2026-08-15 | **Challenge tranché : adopter partiellement — le mécanisme, pas la cible.** Prouvé de bout en bout : `PreToolUse` + `type: "mcp_tool"` atteint le coordinateur, et un retour `hookSpecificOutput` avec `permissionDecision: "deny"` **bloque l'écriture**. Fail-open confirmé à l'exécution (erreur de validation et serveur arrêté : l'écriture passe) — donc la garantie est **molle**, contrairement à ce que promet §4. Cible réfutée pour 4 raisons indépendantes : `agent_id` requis et non interpolable (mesuré) sans repli implémentable ; `file_activity` **jamais écrite par un outil MCP** (deux appelants, tous deux REST) donc gate no-op ; aucune normalisation sur ce chemin face à un `file_path` absolu ; et le retour ne peut porter aucune décision. Préalable identifié et sorti du périmètre : **d'où vient l'`agent_id`**, question partagée avec `F02`. Effort recalibré **S → L** (~15 fichiers, dont une stratégie de fusion neuve pour `hooks.PreToolUse[]` et une chaîne répétée 7 fois dans `docs/index.html`). **Mon premier résultat expérimental était un faux négatif** : 7 configurations « aucun hook ne tire » étaient un artefact de sonde — `--include-hook-events` manquant, stdout d'un `PreToolUse` non rendu par conception, et une clé `"hook_event"` qui n'existe dans aucun schéma. Réfutateur 1 a trouvé l'erreur, réfutateur 2 a chiffré l'effort et établi le no-op de `file_activity`. Incident annexe, récurrent : `@babel/runtime` disparaît de `node_modules` (deux fois), `pnpm install --frozen-lockfile` répare sans toucher au lockfile. |
