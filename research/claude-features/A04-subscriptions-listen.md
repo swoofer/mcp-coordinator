@@ -6,14 +6,14 @@
 | **Surface** | mcp-spec |
 | **Statut** | GA — le vocabulaire officiel de la spec est Draft/**Current**/Final : la révision `2026-07-28` est « current ». Nuance : `notifications/tasks` relève de l'extension optionnelle `io.modelcontextprotocol/tasks`, pas du cœur. |
 | **Disponible depuis** | `2026-07-28` (révision de spec, SEP-2575) |
-| **Tier** | T1-incontournable |
-| **Nature** | replace-homemade-code |
+| **Tier** | ~~T1-incontournable~~ → **T3** (déclassé au challenge du 2026-08-15, §7.4) |
+| **Nature** | ~~replace-homemade-code~~ → **opportunity** (corrigé au challenge : le dépôt n'a aucune ressource MCP, §7.4) |
 | **Effort estimé** | L |
 | **Confiance veille** | high |
 | **Vérification** | CONFIRMED |
 | **Vérifiée le** | 2026-08-14 |
 | **Testabilité** | ⚠️ partielle — PoC possible hors repo ; SDK v1 du repo ignore la méthode |
-| **Statut du challenge** | ⬜ à faire |
+| **Statut du challenge** | ✅ **tranché** (2026-08-15) — reporter sur `subscriptions/listen` seul, voir §7 |
 
 ---
 
@@ -165,12 +165,48 @@ Modéré mais réel. Le serveur MCP du repo est construit sur `@modelcontextprot
 
 ### 6.2 Hypothèse
 
-<Ce qu'on pense avant de tester.>
+**Pré-enregistré le 2026-08-15, avant toute exécution.** Claude Code **2.1.219**, Node 22.21.0,
+Windows 11, `@modelcontextprotocol/sdk` **1.30.0** installé.
+
+**Hypothèse.** La question de §6.1 est **prématurée**. Elle demande quelle forme donner à
+`subscriptions/listen` alors que ni notre SDK, ni le client majoritaire ne parlent la révision qui
+l'introduit. Je m'attends à ce que la chaîne soit bloquée en amont de nous, et donc à un verdict
+`reporter` avec une condition de réveil nommée — pas à un arbitrage entre les deux branches.
+
+Je m'attends aussi à ce que la **nature** de la fiche soit fausse : elle est classée
+`replace-homemade-code`, mais le dépôt n'a **aucune** ressource MCP. On n'y remplacerait rien, on
+ajouterait une quatrième voie de push.
+
+**Critères de refus, posés avant de mesurer :**
+
+| # | Ce qui tue quoi | Seuil |
+|---|---|---|
+| K1 | Si `@modelcontextprotocol/sdk@1.30.0` ignore `subscriptions/listen`, la fiche est bloquée sur le SDK, pas sur nous → `reporter`, jamais `adopter`. | grep sur `node_modules` |
+| K2 | Si notre transport négocie une révision **antérieure** à `2026-07-28`, le chemin de code réel ne peut pas porter la feature. | `protocolVersion` observé |
+| K3 | Si Claude Code envoie toujours `initialize` (et non `server/discover`), le client majoritaire n'est pas prêt non plus — les deux bouts de la chaîne sont bloqués. | trafic observé |
+| K4 | Si `@modelcontextprotocol/server@2.0.0` / `client@2.0.0` ne sont pas publiés, la §0 surestime la testabilité et le verdict devient `reporter` sur blocage total. | `npm view` |
+| K5 | Si adopter suppose de **créer** une couche `resources` inexistante, la nature `replace-homemade-code` est fausse et l'effort L est un plancher, pas une estimation. | grep sur le dépôt |
+| K6 | Si la perte de résumabilité (`Last-Event-ID` supprimé en 2026-07-28) fait régresser un chemin qui marche aujourd'hui, l'adoption a un coût fonctionnel net. | lecture du code de reprise |
 
 ### 6.3 Protocole de vérification
 
-<Comment on tranche : PoC, lecture de code, mesure, test avec un vrai client MCP, benchmark de tokens…
-Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
+Amendé le 2026-08-15. **Deux mesures sont déjà en main** — faites pendant le challenge de
+[`C06`](C06-tool-search-defer-loading.md) sur ce même dépôt — et sont réutilisées au lieu d'être
+refaites.
+
+- [x] **T1 — le SDK.** Chercher `subscriptions/listen`, `subscriptionId`, `server/discover` dans
+      `node_modules/@modelcontextprotocol/sdk`. Tranche K1.
+- [x] **T2 — la révision négociée.** Déjà mesurée en `C06` : sonde JSON-RPC sur le serveur stdio du
+      dépôt. Tranche K2.
+- [x] **T3 — ce que parle Claude Code.** Déjà observé en `C06` et `C01` : sessions réelles contre le
+      serveur du dépôt. Tranche K3.
+- [x] **T4 — les paquets v2.** `npm view @modelcontextprotocol/server` et `client`. Tranche K4.
+- [x] **T5 — la couche `resources`.** Grep sur `src/`, `cli/`, `sdk/src/`. Tranche K5.
+- [x] **T6 — le coût de la perte de résumabilité.** Lire le chemin de reprise réel
+      (`sse-emitter.ts`, `SSE_RESUME_CAP`) et chiffrer ce qui serait perdu. Tranche K6.
+- [ ] **Écarté faute de valeur décisionnelle** — le PoC autonome en paquets v2 hors dépôt. Il
+      prouverait que la spec fonctionne (ce dont personne ne doute) sans rien dire de notre chemin de
+      code, qui est le seul objet de la question §6.1. À rouvrir le jour où K1/K2/K3 changent.
 
 > ⚠️ Vérifié le 2026-08-14 : le PoC est exécutable ici via `@modelcontextprotocol/server@2.0.0` / `@modelcontextprotocol/client@2.0.0` (npm `latest`, aucun credential requis), mais **pas dans le vrai chemin de code du repo** — le serveur tourne sur `@modelcontextprotocol/sdk` v1, qui ignore `subscriptions/listen` ; l'y tester suppose d'abord la migration vers les paquets v2. La branche « portabilité vers un autre client MCP » n'est pas testable : aucun client MCP tiers parlant 2026-07-28 n'est installé.
 
@@ -182,7 +218,166 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 
 ### 6.4 Résultat observé
 
-<Ce qu'on a réellement mesuré/vu. Coller les sorties, pas les paraphraser.>
+Exécuté le 2026-08-15. Claude Code **2.1.219**, Node 22.21.0, Windows 11,
+`@modelcontextprotocol/sdk` **1.30.0**.
+
+> **Frontière exécuté / lu.** Tout ce qui suit est **exécuté**, sauf mention contraire. Le PoC
+> autonome en paquets v2 a été **écarté volontairement** (voir §6.3) : il aurait prouvé que la spec
+> fonctionne, ce dont personne ne doute, sans rien dire du chemin de code du dépôt — seul objet de
+> la question §6.1.
+
+**(A) T1 — le SDK du projet ignore totalement la révision.**
+
+```
+subscriptions/listen     -> 0 fichier(s)
+subscriptionId           -> 0 fichier(s)
+server/discover          -> 0 fichier(s)
+2026-07-28               -> 0 fichier(s)
+
+LATEST_PROTOCOL_VERSION    = '2025-11-25'
+SUPPORTED_PROTOCOL_VERSIONS = ['2025-11-25','2025-06-18','2025-03-26','2024-11-05','2024-10-07']
+```
+
+`2026-07-28` **n'est pas dans la liste**. K1 est déclenché.
+
+**(B) T2 — le plafond réel de notre serveur.**
+
+> ⚠️ **Correction d'une mesure de ma part.** J'ai d'abord lu `protocolVersion: "2025-06-18"` dans
+> l'`InitializeResult` et j'allais en conclure que le serveur plafonnait là. **Faux** : ma sonde
+> proposait `2025-06-18` en dur, la réponse reflétait donc ma requête. Mesure refaite en faisant
+> varier la proposition du client :
+
+```
+client propose 2026-07-28   -> serveur repond : "protocolVersion": "2025-11-25"
+client propose 2025-11-25   -> serveur repond : "protocolVersion": "2025-11-25"
+client propose 2025-06-18   -> serveur repond : "protocolVersion": "2025-06-18"
+```
+
+Le serveur **plafonne à `2025-11-25`** et rétrograde proprement une demande en `2026-07-28`.
+K2 est déclenché.
+
+**(C) T3 — ce que Claude Code envoie réellement sur le fil.** Serveur stdio jetable journalisant
+chaque message entrant :
+
+```
+methode: initialize                   protocolVersion=2025-11-25
+methode: notifications/initialized
+methode: tools/list
+```
+
+**`initialize`, pas `server/discover`. `2025-11-25`, pas `2026-07-28`.** Le client majoritaire n'est
+pas prêt non plus. K3 est déclenché — **les deux bouts de la chaîne sont bloqués**.
+
+**(D) T4 — les paquets v2 existent bien.**
+
+```
+@modelcontextprotocol/server     2.0.0
+@modelcontextprotocol/client     2.0.0
+@modelcontextprotocol/sdk        1.30.0
+```
+
+K4 **n'est pas** déclenché : la §0 a raison, un PoC hors dépôt serait exécutable. C'est sa valeur
+décisionnelle qui est nulle, pas sa faisabilité.
+
+**(E) T5 — il n'y a rien à remplacer.**
+
+```
+ListResourcesRequestSchema  -> 0 occurrence(s)
+ReadResourceRequestSchema   -> 0 occurrence(s)
+registerResource            -> 0 occurrence(s)
+resources/subscribe         -> 0 occurrence(s)
+```
+
+K5 est déclenché. **La nature `replace-homemade-code` de l'en-tête est fausse** : on n'y remplace
+rien, on ajoute une quatrième voie de push. Le premier contre-argument de §6.5 est confirmé mot pour
+mot.
+
+**(F) Le canal standard existe déjà — sous son ancien nom.** Point que la fiche n'examine pas.
+Dans le SDK 1.30.0, donc dans la révision que **les deux bouts parlent** :
+
+```
+resources/subscribe          -> 4 fichier(s)
+SubscribeRequestSchema       -> 2 fichier(s)
+resources/updated            -> 4 fichier(s)
+ResourceUpdatedNotification  -> 4 fichier(s)
+registerResource             -> 5 fichier(s)
+```
+
+Autrement dit, un canal de push **du protocole** est disponible aujourd'hui, sans attendre
+`2026-07-28`. La question §6.1 (« faut-il créer une couche `resources` ? ») n'est donc **pas**
+bloquée par la révision — seul le *nom* du RPC d'abonnement l'est.
+
+**(G) Mais personne ne s'abonne.** Serveur stdio annonçant
+`capabilities.resources = { subscribe: true, listChanged: true }` et exposant
+`coord://default/working-files`, avec un prompt demandant **explicitement** de s'abonner :
+
+```
+initialize                     1
+notifications/initialized      1
+tools/list                     1
+resources/list                 1
+resources/read                 1
+
+resources/subscribe appele ? NON
+resources/list appele ?      OUI
+```
+
+**Claude Code lit les ressources, il ne s'y abonne pas.** Le versant *lecture* d'une couche
+`resources` a donc un consommateur réel ; le versant *abonnement* — le sujet de cette fiche — n'en a
+aucun, ni sous le nouveau nom (non parlé) ni sous l'ancien (non appelé).
+
+*Limite de cette mesure : n = 1 client, 1 prompt, 1 version.*
+
+---
+
+### 6.4-bis Ce que la passe adversariale a trouvé — et que cette fiche n'aurait pas dû manquer
+
+La fiche est présentée dans l'ordre de travail du projet comme celle qui décide **« garde-t-on le
+broker MQTT ? »**. Mon verdict n'en disait rien. Deux faits, vérifiés ici, montrent que cette
+question se tranche **aujourd'hui** et qu'elle ne dépend pas de `subscriptions/listen`.
+
+**(H) Le broker embarqué est sur le chemin critique du démarrage, sans garde.**
+`src/serve-http.ts:1386` :
+
+```ts
+const { broker, resolvedMqttTcpPort } = await wireMqtt({
+  mqttTcpPort, mqttWsPath, httpServer, log, redis,
+});
+```
+
+Aucun `try`/`catch`. Et `src/mqtt-broker.ts:297` fait `tcpServer.once("error", reject)`. Donc
+**port 1883 occupé ⇒ le coordinateur HTTP ne démarre pas du tout** — alors que le mode stdio prouve
+que le produit fonctionne sans MQTT (`src/index.ts:53` : « no MQTT broker in stdio mode »), et que
+les 3 outils MQTT dégradent proprement. Correctif de robustesse de l'ordre de dix lignes,
+indépendant de tout le reste de cette fiche.
+
+**(I) Le consommateur externe de référence est désabonné depuis la v0.7.0.** Le README désigne
+**essaim** comme l'implémentation de référence du bus. Ses filtres
+(`essaim-new/src/agent-loop/mqtt-listener.ts:109`) :
+
+```
+coordinator/consultations/new
+coordinator/consultations/+/messages
+coordinator/agents/+/status
+```
+
+Ce que le coordinateur publie (`src/mqtt-bridge.ts:260,279,319`) :
+
+```
+coordinator/${orgId}/agents/${agentId}/status
+coordinator/${orgId}/consultations/new
+coordinator/${orgId}/consultations/${threadId}/messages
+```
+
+Un `+` MQTT ne matche **qu'un seul** niveau : `coordinator/consultations/new` (3 segments) ne peut
+pas matcher `coordinator/default/consultations/new` (4 segments). **Aucun message ne peut
+arriver.** Le `CHANGELOG.md:1313` documente pourtant la rupture en v0.7.0 : *« MQTT topic namespace
+changed […] External MQTT consumers must update subscription patterns »*.
+
+> Le bus dont cette fiche discute le remplacement **n'alimente plus son consommateur phare depuis
+> la v0.7.0**, et personne ne s'en est aperçu. C'est la mesure la plus honnête de ce que le broker
+> apporte aujourd'hui — et c'est un fait daté d'aujourd'hui, qui n'attend ni le SDK v2 ni
+> Claude Code.
 
 ### 6.5 Contre-arguments
 
@@ -196,15 +391,119 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 
 ---
 
+**(J) Le piège que personne n'avait vu : `subscribe: true` est un garde-fou fantôme en puissance.**
+PoC jetable sur le SDK **du dépôt** (1.30.0), `InMemoryTransport` :
+
+```
+capabilities annoncees par le serveur : {"resources":{"subscribe":true,"listChanged":true}}
+resources/list      -> OK, 1 ressource(s)
+resources/read      -> OK, 1 contenu(s)
+resources/subscribe -> REFUSE : -32601 MCP error -32601: Method not found
+```
+
+L'API haut niveau `McpServer` — **celle qu'utilise `src/server-setup.ts:207`** — laisse déclarer
+`capabilities.resources.subscribe: true` et **n'installe aucun handler**. Il faut redescendre sur
+`server.server.setRequestHandler(SubscribeRequestSchema, …)`. C'est exactement le motif
+« garde-fou fantôme » de l'audit v0.13.0 : une capability annoncée que le code ne peut pas honorer.
+
+**(K) A06 et A09 ne couvrent pas la couche `resources`.** Vérifié :
+
+```
+A06-tool-metadata-modern-surface.md   registerResource=0  resources/read=2  resources/subscribe=0
+A09-extensions-grouping-skills.md     registerResource=1  resources/read=7  resources/subscribe=0
+```
+
+A09 ne parle de `resources/read` que comme véhicule de **skills** (SEP-2640, experimental, T2).
+**Zéro occurrence de `resources/subscribe` dans les deux.** Y renvoyer le sujet serait un
+enterrement.
+
+**(L) K6 — la « régression de résumabilité » est théorique.** Base vivante du dépôt :
+
+```
+data/coordinator.db -> events: 0   agents: 0
+```
+
+Zéro événement à rejouer, contre un `SSE_RESUME_CAP = 1000`. Et le chemin de reprise
+(`Last-Event-ID`) n'a qu'un consommateur, `dashboard/public/dashboard.js:647`, **un navigateur** —
+que personne ne propose de toucher. Le contre-argument de §6.5 oppose une nouveauté à un chemin qui
+ne bouge pas.
+
+---
+
 ## 7. Décision
 
 | | |
 |---|---|
-| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ⬜ refuser |
-| **Date** | |
-| **Justification** | |
-| **Issue / PR** | |
-| **Jalon visé** | |
+| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ✅ **reporter** (sur `subscriptions/listen` seul) · ⬜ refuser |
+| **Date** | 2026-08-15 |
+| **Justification** | Bloqué aux **deux bouts**, mesuré. Mais la fiche mélangeait trois questions : voir §7.2 et §7.3. |
+| **Issue / PR** | à créer — trois constats extraits, §7.3 |
+| **Tier** | ~~T1~~ → **T3** pour `subscriptions/listen` lui-même |
+| **Effort** | ~~L~~ → l'essentiel du L est **compté deux fois** avec `A01`/`A02` (voir §7.4) |
+
+### 7.1 Ce qui est reporté, et la condition de réveil
+
+`subscriptions/listen` est inaccessible, et le blocage n'est pas chez nous :
+
+- `@modelcontextprotocol/sdk@1.30.0` : **0 occurrence** de `subscriptions/listen`,
+  `subscriptionId`, `server/discover`, `2026-07-28`. `LATEST_PROTOCOL_VERSION = '2025-11-25'`.
+- Notre serveur **rétrograde** une demande en `2026-07-28` vers `2025-11-25`.
+- Claude Code 2.1.219 envoie `initialize` en `2025-11-25`, **jamais** `server/discover`.
+
+**Condition de réveil, en deux temps :** (a) le projet migre vers les paquets v2
+(`@modelcontextprotocol/{server,client}`, publiés en 2.0.0) — c'est le sujet de
+[`A02`](A02-mcp-sdk-typescript-v2.md), pas de celui-ci ; (b) un client que nos utilisateurs
+emploient réellement parle `2026-07-28`. Aucun des deux n'est vrai aujourd'hui.
+
+### 7.2 La question §6.1 est mal posée — elle en mélange trois
+
+Elle demande « créer une couche `resources` **ou** garder SSE + MQTT ». Ce sont trois décisions
+indépendantes, et les confondre est ce qui a failli me faire écrire un `reporter` global :
+
+| Question | Bloquée par la révision ? | Verdict |
+|---|---|---|
+| Un handler `subscriptions/listen` | **oui**, aux deux bouts | reporter (§7.1) |
+| Une couche `resources` (URIs, lecture, `resources/subscribe`) | **non** — tout existe dans le SDK 1.30.0 | à instruire, §7.3 (2) |
+| Le sort du broker MQTT | **non**, aucun rapport | à trancher séparément, §7.3 (1) |
+
+**Correction à ma propre §6.4 (G).** J'y ai écrit que `resources/subscribe` « n'est consommé par
+personne ». C'est une généralisation depuis **n = 1 client, 1 prompt**. La passe adversariale
+rapporte — par lecture du code source de ces clients, **non revérifiée par moi ici** — que
+VS Code / Copilot Chat l'appelle réellement (`mcpServerRequestHandler.ts`, consommé par un FS
+provider), que le MCP Inspector l'expose en bouton, et que Cursor l'envoie **même quand le serveur
+déclare `subscribe: false`**. À traiter comme indicatif, mais suffisant pour retirer l'affirmation
+absolue : la mesure a été faite contre le seul des quatre clients cités par le README qui ne
+s'abonne pas.
+
+### 7.3 Les trois constats extraits — le vrai livrable
+
+1. **Le broker MQTT bloque le démarrage, sans garde.** `src/serve-http.ts:1386` fait
+   `await wireMqtt(...)` sans `try`/`catch`, et `src/mqtt-broker.ts:297` rejette sur port occupé :
+   **port 1883 pris ⇒ le coordinateur HTTP ne démarre pas**, alors que le mode stdio prouve que le
+   produit tourne sans MQTT. Correctif de robustesse de l'ordre de dix lignes. **Ne dépend de rien.**
+2. **La couche `resources` n'a de fiche nulle part** — vérifié, A06 et A09 ont zéro
+   `resources/subscribe`. Elle n'est **pas** bloquée par la révision, elle a un consommateur nommé
+   (lecture : mesurée ici avec Claude Code ; abonnement : rapporté pour VS Code), et son périmètre
+   propre est **S/M**, pas L. Mérite son propre dossier.
+3. **`subscribe: true` sans handler renvoie `-32601`** (§6.4 J). Le jour où une ressource apparaît
+   — par cette fiche, par A09 ou par une autre porte — déclarer la capability sans installer
+   `SubscribeRequestSchema` créerait un garde-fou fantôme, et casserait les clients qui s'abonnent
+   sans regarder la capability. À écrire dans la fiche qui portera la couche `resources`.
+
+**Et l'essaim est déjà cassé.** Le consommateur externe de référence, nommé dans le README, souscrit
+à des topics d'avant la v0.7.0 et **ne reçoit plus rien depuis** (§6.4 I). C'est un constat sur le
+bus, pas sur cette fiche, mais il pèse sur le point (1).
+
+### 7.4 Trois corrections de classement
+
+- **Nature `replace-homemade-code` : fausse.** Le dépôt n'a aucune ressource MCP — on n'y remplace
+  rien. Et « on ajoute une quatrième voie de push » est faux aussi : **en stdio c'est la première**,
+  et pour un client MCP en HTTP c'est la première **in-band**. Nature juste : `opportunity`.
+- **Effort L : compté deux fois.** L'essentiel du L, c'est la migration v1 → v2 (sujet d'`A02`, XL)
+  et le coût du `_meta` stateless (sujet d'`A01`, XL). Ce qui est propre à A04 est bien plus petit.
+- **L'ordre de travail est inversé.** A04 est présentée comme conditionnant `A01`, `A05`, `C03`,
+  `C05`, `E04`. C'est le contraire : **A04 est conditionnée par `A01`/`A02`**, qui portent la
+  migration sans laquelle `subscriptions/listen` n'existe pas.
 
 ## 8. Journal
 
@@ -212,3 +511,4 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 |---|---|
 | 2026-08-14 | Fiche créée par la veille plateforme. |
 | 2026-08-14 | Vérification des faits : spec et §5 exacts, 2 marqueurs tranchés, `server/discover` ajouté, SDK v2 identifié. |
+| 2026-08-15 | **Challenge tranché : reporter, mais sur `subscriptions/listen` seul.** Bloqué aux deux bouts, mesuré : le SDK 1.30.0 a **0 occurrence** de la révision `2026-07-28` (`LATEST = 2025-11-25`), notre serveur rétrograde une demande en 2026-07-28 vers 2025-11-25, et Claude Code envoie `initialize` en 2025-11-25. **La §6.1 mélangeait trois questions** : le handler `listen` (bloqué), la couche `resources` (**pas** bloquée — `resources/subscribe`, `resources/updated`, `registerResource` existent tous dans le SDK installé), et le sort du broker MQTT (sans rapport). Corrections de classement : nature `replace-homemade-code` **fausse** (zéro ressource dans le dépôt), effort L **compté deux fois** avec A01/A02, tier T1 → **T3**, et l'ordre de travail est **inversé** — A04 est conditionnée par A01/A02, pas l'inverse. **Trois constats extraits, tous indépendants de la révision** : `wireMqtt` non gardé au boot (port 1883 occupé ⇒ le coordinateur ne démarre pas) ; la couche `resources` n'a de fiche nulle part (A06 et A09 : zéro `resources/subscribe`) ; et déclarer `capabilities.resources.subscribe: true` sans handler renvoie **-32601** — garde-fou fantôme en puissance. Constat annexe : **essaim**, le consommateur de référence du bus cité par le README, souscrit à des topics d'avant v0.7.0 et ne reçoit plus rien depuis. Deux corrections de mes propres mesures : la révision négociée (ma sonde imposait sa propre valeur) et « personne ne consomme `resources/subscribe` » (n=1, contredit par des sources externes non revérifiées ici). |
