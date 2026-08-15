@@ -9,6 +9,7 @@ import {
   ensureAuditChainKeyForBootAudit,
 } from "./boot-orgs-uniqueness.js";
 import { canRepairMigrationOrphans } from "./migration-guard.js";
+import { summarizeFkViolations } from "./fk-violation-report.js";
 
 const require = createRequire(import.meta.url);
 
@@ -2206,6 +2207,9 @@ function migrateOrgsFkV9(targetDb: DatabaseAdapter): void {
   try {
     targetDb.exec("BEGIN");
     try {
+      // Which tables this run actually recreated. Only these can carry a
+      // violation of the constraint the migration adds (issue #285).
+      const copiedTables = new Set<string>();
       for (const spec of SPECS) {
         // Idempotency check: skip tables that already have the FK. We detect
         // by parsing `PRAGMA foreign_key_list` for an entry pointing to
@@ -2249,24 +2253,45 @@ function migrateOrgsFkV9(targetDb: DatabaseAdapter): void {
         targetDb.exec(`DROP TABLE ${spec.table}`);
         targetDb.exec(`ALTER TABLE ${spec.table}_new RENAME TO ${spec.table}`);
         for (const idxSql of spec.indexCreateSqls) targetDb.exec(idxSql);
+        copiedTables.add(spec.table);
       }
 
-      // Post-copy self-check: PRAGMA foreign_key_check returns rows for every
-      // FK violation. Inside the transaction we still see all data so any
-      // violation indicates a bug in the migration itself (NOT in the data —
-      // orphans were repaired up-front). Abort + ROLLBACK so the operator
-      // sees a clean failure and the DB stays at user_version=8.
-      const fkCheck = (
-        targetDb as unknown as {
-          prepare: (sql: string) => { all: () => unknown[] };
-        }
-      )
-        .prepare("PRAGMA foreign_key_check")
-        .all() as unknown[];
+      // Post-copy check: `PRAGMA foreign_key_check` returns a row per FK
+      // violation. It is NOT scoped to what this migration touched — it reports
+      // every violation in the database — so a result here does not by itself
+      // mean the migration misbehaved (issue #285). Classify before blaming:
+      // `org_id -> orgs` on a table copied above is this migration's fault
+      // (its orphan repair should have prevented it); anything else was already
+      // illegal beforehand and is a data problem the operator has to resolve.
+      // Either way abort + ROLLBACK, leaving the DB at user_version=8.
+      const pragmaDb = targetDb as unknown as {
+        prepare: (sql: string) => { all: (...a: unknown[]) => unknown[] };
+      };
+      const fkCheck = pragmaDb.prepare("PRAGMA foreign_key_check").all() as {
+        table: string;
+        parent: string;
+        fkid: number;
+      }[];
       if (fkCheck.length > 0) {
-        throw new Error(
-          `v0.9 org_id FK migration: foreign_key_check returned ${fkCheck.length} violations after table-copy (this indicates a migration bug; orphan repair should have prevented this). Aborting.`,
-        );
+        // `fkid` indexes into PRAGMA foreign_key_list(table); a composite key
+        // is reported there as one row per column sharing an `id`.
+        const columnsByTableFk = new Map<string, string[]>();
+        for (const t of new Set(fkCheck.map((r) => r.table))) {
+          const list = pragmaDb.prepare(`PRAGMA foreign_key_list(${t})`).all() as {
+            id: number;
+            from: string;
+          }[];
+          for (const row of list) {
+            const key = `${t}:${row.id}`;
+            columnsByTableFk.set(key, [...(columnsByTableFk.get(key) ?? []), row.from]);
+          }
+        }
+        const violations = fkCheck.map((r) => ({
+          table: r.table,
+          parent: r.parent,
+          columns: columnsByTableFk.get(`${r.table}:${r.fkid}`) ?? [],
+        }));
+        throw new Error(summarizeFkViolations(violations, copiedTables).message);
       }
 
       // Bump version LAST so a partial migration (crash before this line)

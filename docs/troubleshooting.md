@@ -313,9 +313,9 @@ Two things the upgrade can report:
 - **`Cannot migrate to per-org agent ids (issue #231): rows reference agent ids
   that do not exist in 'agents' …`** — a row points at an agent absent from
   `agents`, so there is no org to re-parent it to. Such a database already
-  violates the *current* foreign key, and would have failed boot anyway (the
-  v9 migration's `foreign_key_check` catches it, with a much less helpful
-  message). Boot refuses rather than delete your rows; the message carries
+  violates the *current* foreign key, and would have failed boot anyway — the
+  whole-database integrity check described in section 8e catches it too. Boot
+  refuses rather than delete your rows; the message carries
   per-table counts. Back up the data directory, then either re-create the
   missing agent rows / remove the orphaned ones yourself, **or** set
   `COORDINATOR_ALLOW_MIGRATION_REPAIR=true` and restart: boot then recreates
@@ -356,6 +356,54 @@ thread.
 already handle `success: false` by refetching need no change. One agent holding
 two overlapping threads is still allowed — a single worker serializes itself.
 
+---
+
+## 8e. Boot aborts on foreign key violations
+
+**Symptom.** Startup fails with a message naming one or more constraints and
+row counts, e.g.:
+
+```
+The database has 3 foreign key violation(s) this migration did not create and
+cannot repair — thread_messages.thread_id -> threads (3 rows). These rows
+already violate the current schema, so this is a data problem rather than a
+coordinator bug. Back up the data directory, list them with
+`sqlite3 <data-dir>/coordinator.db 'PRAGMA foreign_key_check;'`, then delete or
+re-point them and restart. Aborting; the database is left unchanged.
+```
+
+**Cause.** The v0.9 schema migration ends with a `PRAGMA foreign_key_check`
+over the **whole database**, and the boot sequence re-enters that migration on
+every start — so in practice it is the coordinator's startup integrity gate,
+not a one-off migration self-check. Any violation anywhere in the file stops
+boot, fail-closed.
+
+A violation usually means rows were written while foreign keys were off, or a
+parent row was deleted directly in SQLite. The message distinguishes the two
+possible culprits:
+
+- *"this migration did not create and cannot repair"* — pre-existing data
+  corruption. The coordinator is reporting it, not causing it. Fix the rows.
+- *"This IS a bug in the migration"* (an `org_id -> orgs` violation on a table
+  the migration just rebuilt) — that one is ours. Please
+  [open an issue](https://github.com/swoofer/mcp-coordinator/issues) with the
+  full message.
+
+Before this was split out ([#285](https://github.com/swoofer/mcp-coordinator/issues/285))
+every violation was reported as *"this indicates a migration bug"* with no
+table, constraint or count — which sent operators looking for a coordinator
+bug that was not there.
+
+**Fix.** Back up `<data-dir>` first, then list the offending rows:
+
+```bash
+sqlite3 ~/.mcp-coordinator/coordinator.db 'PRAGMA foreign_key_check;'
+```
+
+Each result row is `table|rowid|parent|fkid`. Delete or re-point those rows
+(`DELETE FROM <table> WHERE rowid = <rowid>;`, or set the column to a row that
+exists), then restart. The coordinator never deletes them for you — losing
+coordination history to make a schema check pass is not its call.
 ---
 
 ## 9. Windows notes
