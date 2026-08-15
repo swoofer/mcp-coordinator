@@ -92,7 +92,7 @@ migration.
 
 ## MCP Streamable HTTP: no eventStore / resumability
 
-`src/serve-http.ts`'s `StreamableHTTPServerTransport` instances are
+`src/serve-http.ts`'s `NodeStreamableHTTPServerTransport` instances are
 constructed without an `eventStore`, so the transport does not support
 SSE-stream resumability (`Last-Event-ID` replay after a dropped
 connection). This is intentional (YAGNI), not an oversight: server-pushed

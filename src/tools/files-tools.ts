@@ -1,4 +1,4 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { CoordinatorServices } from "../server-setup.js";
 import type { Logger } from "../logger.js";
@@ -18,52 +18,61 @@ export function registerFilesTools(
 ): void {
   const { fileTracker } = services;
 
-  server.tool(
+  server.registerTool(
     "hot_files",
-    "List files modified by multiple agents",
     {
-      since_minutes: z.number().optional().describe("Look-back window in minutes. Defaults to 30."),
+      description: "List files modified by multiple agents",
+      inputSchema: z.object({
+        since_minutes: z
+          .number()
+          .optional()
+          .describe("Look-back window in minutes. Defaults to 30."),
+      }),
+      annotations: { readOnlyHint: true, title: "List hot files" },
     },
-    { readOnlyHint: true, title: "List hot files" },
-    async ({ since_minutes }, extra) => {
-      const claims = getSessionClaims(extra.sessionId ?? "");
+    async ({ since_minutes }, ctx) => {
+      const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError();
       const files = fileTracker.getHotFiles(claims.org, since_minutes || 30);
       return { content: [{ type: "text", text: JSON.stringify(files) }] };
     },
   );
 
-  server.tool(
+  server.registerTool(
     "get_session_files",
-    "Get files modified in a session",
     {
-      session_id: z.string().describe("Session ID to look up file activity for."),
+      description: "Get files modified in a session",
+      inputSchema: z.object({
+        session_id: z.string().describe("Session ID to look up file activity for."),
+      }),
+      annotations: { readOnlyHint: true, title: "Get session files" },
     },
-    { readOnlyHint: true, title: "Get session files" },
-    async ({ session_id }, extra) => {
-      const claims = getSessionClaims(extra.sessionId ?? "");
+    async ({ session_id }, ctx) => {
+      const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError();
       const files = fileTracker.getBySession(claims.org, session_id);
       return { content: [{ type: "text", text: JSON.stringify(files) }] };
     },
   );
 
-  server.tool(
+  server.registerTool(
     "check_file_conflict",
-    "Check if another agent is editing a file",
     {
-      file_path: z.string().describe("Repo-relative file path."),
-      agent_id: z
-        .string()
-        .describe("ID of the agent checking for conflicts (excluded from the match)."),
-      within_minutes: z
-        .number()
-        .optional()
-        .describe("Look-back window in minutes. Defaults to 30."),
+      description: "Check if another agent is editing a file",
+      inputSchema: z.object({
+        file_path: z.string().describe("Repo-relative file path."),
+        agent_id: z
+          .string()
+          .describe("ID of the agent checking for conflicts (excluded from the match)."),
+        within_minutes: z
+          .number()
+          .optional()
+          .describe("Look-back window in minutes. Defaults to 30."),
+      }),
+      annotations: { readOnlyHint: true, title: "Check file conflict" },
     },
-    { readOnlyHint: true, title: "Check file conflict" },
-    async ({ file_path, agent_id, within_minutes }, extra) => {
-      const claims = getSessionClaims(extra.sessionId ?? "");
+    async ({ file_path, agent_id, within_minutes }, ctx) => {
+      const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError();
       const result = fileTracker.checkFileConflict(
         claims.org,

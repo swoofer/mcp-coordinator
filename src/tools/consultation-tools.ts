@@ -1,4 +1,4 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { CoordinatorServices } from "../server-setup.js";
 import type { Logger } from "../logger.js";
@@ -35,53 +35,57 @@ export function registerConsultationTools(
   const { registry, consultation, conflictDetector, contextProvider, sseEmitter, mqttBridge } =
     services;
 
-  server.tool(
+  server.registerTool(
     "announce_work",
-    "Open a consultation thread before starting work",
     {
-      agent_id: z.string().describe("ID of the agent announcing the work."),
-      subject: z.string().describe("Short human-readable summary of the work being announced."),
-      plan: z
-        .string()
-        .optional()
-        .describe("Free-text plan describing the intended change, used for plan-quality scoring."),
-      target_modules: z
-        .array(z.string())
-        .describe("Module IDs (as used in the dependency map) this work will touch."),
-      target_files: z
-        .array(z.string())
-        .describe(
-          "Repo-relative file paths (forward-slash, e.g. 'src/foo.ts'). Absolute paths are not accepted in team-mode.",
-        ),
-      depends_on_files: z
-        .array(z.string())
-        .optional()
-        .describe("Repo-relative file paths your work depends on."),
-      exports_affected: z
-        .array(z.string())
-        .optional()
-        .describe("Repo-relative file paths whose exports your work modifies."),
-      keep_open: z
-        .boolean()
-        .optional()
-        .describe(
-          "Keep thread open even if no agents are concerned (for manual coordination like games or debates)",
-        ),
-      assigned_to: z
-        .string()
-        .optional()
-        .describe(
-          "Directed-dispatch: only this agent_id will be allowed to claim the thread. Use for lead→worker handoffs in maitre/chaine/relais presets. Implies keep_open=true.",
-        ),
-      target_symbols: z
-        .array(z.string().max(256))
-        .max(200)
-        .optional()
-        .describe(
-          "Qualified symbol names you intend to touch (e.g. 'UserService.getById'). Used by Layer 0.5 to annotate same-file overlaps.",
-        ),
+      description: "Open a consultation thread before starting work",
+      inputSchema: z.object({
+        agent_id: z.string().describe("ID of the agent announcing the work."),
+        subject: z.string().describe("Short human-readable summary of the work being announced."),
+        plan: z
+          .string()
+          .optional()
+          .describe(
+            "Free-text plan describing the intended change, used for plan-quality scoring.",
+          ),
+        target_modules: z
+          .array(z.string())
+          .describe("Module IDs (as used in the dependency map) this work will touch."),
+        target_files: z
+          .array(z.string())
+          .describe(
+            "Repo-relative file paths (forward-slash, e.g. 'src/foo.ts'). Absolute paths are not accepted in team-mode.",
+          ),
+        depends_on_files: z
+          .array(z.string())
+          .optional()
+          .describe("Repo-relative file paths your work depends on."),
+        exports_affected: z
+          .array(z.string())
+          .optional()
+          .describe("Repo-relative file paths whose exports your work modifies."),
+        keep_open: z
+          .boolean()
+          .optional()
+          .describe(
+            "Keep thread open even if no agents are concerned (for manual coordination like games or debates)",
+          ),
+        assigned_to: z
+          .string()
+          .optional()
+          .describe(
+            "Directed-dispatch: only this agent_id will be allowed to claim the thread. Use for lead→worker handoffs in maitre/chaine/relais presets. Implies keep_open=true.",
+          ),
+        target_symbols: z
+          .array(z.string().max(256))
+          .max(200)
+          .optional()
+          .describe(
+            "Qualified symbol names you intend to touch (e.g. 'UserService.getById'). Used by Layer 0.5 to annotate same-file overlaps.",
+          ),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: false, title: "Announce work" },
     },
-    { readOnlyHint: false, destructiveHint: false, title: "Announce work" },
     async (
       {
         agent_id,
@@ -95,9 +99,9 @@ export function registerConsultationTools(
         assigned_to,
         target_symbols,
       },
-      extra,
+      ctx,
     ) => {
-      const claims = getSessionClaims(extra.sessionId ?? "");
+      const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError();
       mcpLog.info(
         { tool: "announce_work", agent_id, subject, target_modules, target_files, assigned_to },
@@ -188,31 +192,36 @@ export function registerConsultationTools(
     },
   );
 
-  server.tool(
+  server.registerTool(
     "post_to_thread",
-    "Post a message to a consultation thread",
     {
-      thread_id: z.string().describe("Thread ID returned by announce_work or list_threads."),
-      agent_id: z.string().describe("ID of the agent posting the message."),
-      agent_name: z.string().optional().describe("Display name of the posting agent."),
-      type: z
-        .enum(["context", "suggestion", "warning"])
-        .describe(
-          "Kind of message: shared context, a suggestion, or a warning about a conflict/risk.",
-        ),
-      content: z.string().describe("Message body."),
-      context_snapshot: z
-        .string()
-        .optional()
-        .describe("Optional free-text snapshot of relevant context at post time."),
-      in_reply_to: z.string().optional().describe("ID of the message this one replies to, if any."),
+      description: "Post a message to a consultation thread",
+      inputSchema: z.object({
+        thread_id: z.string().describe("Thread ID returned by announce_work or list_threads."),
+        agent_id: z.string().describe("ID of the agent posting the message."),
+        agent_name: z.string().optional().describe("Display name of the posting agent."),
+        type: z
+          .enum(["context", "suggestion", "warning"])
+          .describe(
+            "Kind of message: shared context, a suggestion, or a warning about a conflict/risk.",
+          ),
+        content: z.string().describe("Message body."),
+        context_snapshot: z
+          .string()
+          .optional()
+          .describe("Optional free-text snapshot of relevant context at post time."),
+        in_reply_to: z
+          .string()
+          .optional()
+          .describe("ID of the message this one replies to, if any."),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: false, title: "Post to thread" },
     },
-    { readOnlyHint: false, destructiveHint: false, title: "Post to thread" },
     async (
       { thread_id, agent_id, agent_name, type, content, context_snapshot, in_reply_to },
-      extra,
+      ctx,
     ) => {
-      const claims = getSessionClaims(extra.sessionId ?? "");
+      const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError();
       mcpLog.info({ tool: "post_to_thread", thread_id, agent_id, type }, "Tool called");
       // issue #233: posting to a thread proves the agent is alive, so it
@@ -246,20 +255,24 @@ export function registerConsultationTools(
     },
   );
 
-  server.tool(
+  server.registerTool(
     "propose_resolution",
-    "Propose a resolution for the consultation",
     {
-      thread_id: z.string().describe("Thread ID returned by announce_work or list_threads."),
-      agent_id: z
-        .string()
-        .describe("ID of the agent proposing the resolution (must be the initiator or claimant)."),
-      summary: z.string().describe("Summary of the proposed resolution."),
-      plan: z.string().optional().describe("Optional revised plan accompanying the resolution."),
+      description: "Propose a resolution for the consultation",
+      inputSchema: z.object({
+        thread_id: z.string().describe("Thread ID returned by announce_work or list_threads."),
+        agent_id: z
+          .string()
+          .describe(
+            "ID of the agent proposing the resolution (must be the initiator or claimant).",
+          ),
+        summary: z.string().describe("Summary of the proposed resolution."),
+        plan: z.string().optional().describe("Optional revised plan accompanying the resolution."),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: false, title: "Propose resolution" },
     },
-    { readOnlyHint: false, destructiveHint: false, title: "Propose resolution" },
-    async ({ thread_id, agent_id, summary }, extra) => {
-      const claims = getSessionClaims(extra.sessionId ?? "");
+    async ({ thread_id, agent_id, summary }, ctx) => {
+      const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError();
       mcpLog.info({ tool: "propose_resolution", thread_id, agent_id }, "Tool called");
       consultation.proposeResolution(claims.org, thread_id, agent_id, summary);
@@ -274,16 +287,18 @@ export function registerConsultationTools(
     },
   );
 
-  server.tool(
+  server.registerTool(
     "approve_resolution",
-    "Approve the proposed resolution",
     {
-      thread_id: z.string().describe("Thread ID returned by announce_work or list_threads."),
-      agent_id: z.string().describe("ID of the agent approving the resolution."),
+      description: "Approve the proposed resolution",
+      inputSchema: z.object({
+        thread_id: z.string().describe("Thread ID returned by announce_work or list_threads."),
+        agent_id: z.string().describe("ID of the agent approving the resolution."),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: false, title: "Approve resolution" },
     },
-    { readOnlyHint: false, destructiveHint: false, title: "Approve resolution" },
-    async ({ thread_id, agent_id }, extra) => {
-      const claims = getSessionClaims(extra.sessionId ?? "");
+    async ({ thread_id, agent_id }, ctx) => {
+      const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError();
       mcpLog.info({ tool: "approve_resolution", thread_id, agent_id }, "Tool called");
       const agentInfo = registry.get(claims.org, agent_id);
@@ -293,17 +308,19 @@ export function registerConsultationTools(
     },
   );
 
-  server.tool(
+  server.registerTool(
     "contest_resolution",
-    "Contest the proposed resolution",
     {
-      thread_id: z.string().describe("Thread ID returned by announce_work or list_threads."),
-      agent_id: z.string().describe("ID of the agent contesting the resolution."),
-      reason: z.string().describe("Reason the proposed resolution is being contested."),
+      description: "Contest the proposed resolution",
+      inputSchema: z.object({
+        thread_id: z.string().describe("Thread ID returned by announce_work or list_threads."),
+        agent_id: z.string().describe("ID of the agent contesting the resolution."),
+        reason: z.string().describe("Reason the proposed resolution is being contested."),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: false, title: "Contest resolution" },
     },
-    { readOnlyHint: false, destructiveHint: false, title: "Contest resolution" },
-    async ({ thread_id, agent_id, reason }, extra) => {
-      const claims = getSessionClaims(extra.sessionId ?? "");
+    async ({ thread_id, agent_id, reason }, ctx) => {
+      const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError();
       mcpLog.info({ tool: "contest_resolution", thread_id, agent_id }, "Tool called");
       consultation.contestResolution(claims.org, thread_id, agent_id, reason);
@@ -312,19 +329,21 @@ export function registerConsultationTools(
     },
   );
 
-  server.tool(
+  server.registerTool(
     "close_thread",
-    "Close a consultation thread",
     {
-      thread_id: z.string().describe("Thread ID returned by announce_work or list_threads."),
-      agent_id: z.string().describe("ID of the agent closing the thread."),
-      summary: z
-        .string()
-        .describe("Final summary of what was done, recorded on the closed thread."),
+      description: "Close a consultation thread",
+      inputSchema: z.object({
+        thread_id: z.string().describe("Thread ID returned by announce_work or list_threads."),
+        agent_id: z.string().describe("ID of the agent closing the thread."),
+        summary: z
+          .string()
+          .describe("Final summary of what was done, recorded on the closed thread."),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: true, title: "Close thread" },
     },
-    { readOnlyHint: false, destructiveHint: true, title: "Close thread" },
-    async ({ thread_id, agent_id, summary }, extra) => {
-      const claims = getSessionClaims(extra.sessionId ?? "");
+    async ({ thread_id, agent_id, summary }, ctx) => {
+      const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError();
       mcpLog.info({ tool: "close_thread", thread_id, agent_id }, "Tool called");
       consultation.closeThread(claims.org, thread_id, agent_id, summary);
@@ -332,17 +351,19 @@ export function registerConsultationTools(
     },
   );
 
-  server.tool(
+  server.registerTool(
     "cancel_thread",
-    "Cancel a consultation thread",
     {
-      thread_id: z.string().describe("Thread ID returned by announce_work or list_threads."),
-      agent_id: z.string().describe("ID of the agent cancelling the thread."),
-      reason: z.string().optional().describe("Optional reason the thread is being cancelled."),
+      description: "Cancel a consultation thread",
+      inputSchema: z.object({
+        thread_id: z.string().describe("Thread ID returned by announce_work or list_threads."),
+        agent_id: z.string().describe("ID of the agent cancelling the thread."),
+        reason: z.string().optional().describe("Optional reason the thread is being cancelled."),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: true, title: "Cancel thread" },
     },
-    { readOnlyHint: false, destructiveHint: true, title: "Cancel thread" },
-    async ({ thread_id, agent_id, reason }, extra) => {
-      const claims = getSessionClaims(extra.sessionId ?? "");
+    async ({ thread_id, agent_id, reason }, ctx) => {
+      const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError();
       mcpLog.info({ tool: "cancel_thread", thread_id, agent_id }, "Tool called");
       consultation.cancelThread(claims.org, thread_id, agent_id, reason ?? undefined);
@@ -351,15 +372,17 @@ export function registerConsultationTools(
     },
   );
 
-  server.tool(
+  server.registerTool(
     "get_thread",
-    "Get a thread with all messages",
     {
-      thread_id: z.string().describe("Thread ID returned by announce_work or list_threads."),
+      description: "Get a thread with all messages",
+      inputSchema: z.object({
+        thread_id: z.string().describe("Thread ID returned by announce_work or list_threads."),
+      }),
+      annotations: { readOnlyHint: true, title: "Get thread" },
     },
-    { readOnlyHint: true, title: "Get thread" },
-    async ({ thread_id }, extra) => {
-      const claims = getSessionClaims(extra.sessionId ?? "");
+    async ({ thread_id }, ctx) => {
+      const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError();
       const result = consultation.getThreadWithMessages(claims.org, thread_id);
       mcpLog.debug(
@@ -376,47 +399,51 @@ export function registerConsultationTools(
     },
   );
 
-  server.tool(
+  server.registerTool(
     "get_thread_updates",
-    "Get new messages since timestamp",
     {
-      agent_id: z.string().describe("ID of the agent requesting updates."),
-      since: z
-        .string()
-        .optional()
-        .describe(
-          "ISO timestamp; only messages after this time are returned. Omit to get all updates for this agent.",
-        ),
+      description: "Get new messages since timestamp",
+      inputSchema: z.object({
+        agent_id: z.string().describe("ID of the agent requesting updates."),
+        since: z
+          .string()
+          .optional()
+          .describe(
+            "ISO timestamp; only messages after this time are returned. Omit to get all updates for this agent.",
+          ),
+      }),
+      annotations: { readOnlyHint: true, title: "Get thread updates" },
     },
-    { readOnlyHint: true, title: "Get thread updates" },
-    async ({ agent_id, since }, extra) => {
-      const claims = getSessionClaims(extra.sessionId ?? "");
+    async ({ agent_id, since }, ctx) => {
+      const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError();
       const updates = consultation.getThreadUpdates(claims.org, agent_id, since ?? undefined);
       return { content: [{ type: "text", text: JSON.stringify(updates) }] };
     },
   );
 
-  server.tool(
+  server.registerTool(
     "list_threads",
-    "List consultation threads",
     {
-      status: z
-        .enum(["open", "resolving", "resolved", "cancelled", "poisoned"])
-        .optional()
-        .describe("Filter to threads in this status."),
-      agent_id: z.string().optional().describe("Filter to threads initiated by this agent_id."),
-      module: z.string().optional().describe("Filter to threads targeting this module_id."),
-      assigned_to_me: z
-        .string()
-        .optional()
-        .describe(
-          "Filter to threads claimable by this agent_id: open pool (assigned_to NULL) OR directed to me. Use for worker agents receiving directed dispatches.",
-        ),
+      description: "List consultation threads",
+      inputSchema: z.object({
+        status: z
+          .enum(["open", "resolving", "resolved", "cancelled", "poisoned"])
+          .optional()
+          .describe("Filter to threads in this status."),
+        agent_id: z.string().optional().describe("Filter to threads initiated by this agent_id."),
+        module: z.string().optional().describe("Filter to threads targeting this module_id."),
+        assigned_to_me: z
+          .string()
+          .optional()
+          .describe(
+            "Filter to threads claimable by this agent_id: open pool (assigned_to NULL) OR directed to me. Use for worker agents receiving directed dispatches.",
+          ),
+      }),
+      annotations: { readOnlyHint: true, title: "List threads" },
     },
-    { readOnlyHint: true, title: "List threads" },
-    async ({ status, agent_id, module, assigned_to_me }, extra) => {
-      const claims = getSessionClaims(extra.sessionId ?? "");
+    async ({ status, agent_id, module, assigned_to_me }, ctx) => {
+      const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError();
       const threads = consultation.listThreads(claims.org, {
         status,
@@ -439,18 +466,20 @@ export function registerConsultationTools(
     },
   );
 
-  server.tool(
+  server.registerTool(
     "log_action_summary",
-    "Log a one-liner summary of an action",
     {
-      session_id: z.string().describe("Session ID the action was performed under."),
-      agent_id: z.string().describe("ID of the agent that performed the action."),
-      file_path: z.string().optional().describe("Repo-relative file path."),
-      summary: z.string().describe("One-liner summary of the action taken."),
+      description: "Log a one-liner summary of an action",
+      inputSchema: z.object({
+        session_id: z.string().describe("Session ID the action was performed under."),
+        agent_id: z.string().describe("ID of the agent that performed the action."),
+        file_path: z.string().optional().describe("Repo-relative file path."),
+        summary: z.string().describe("One-liner summary of the action taken."),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: false, title: "Log action summary" },
     },
-    { readOnlyHint: false, destructiveHint: false, title: "Log action summary" },
-    async ({ session_id, agent_id, file_path, summary }, extra) => {
-      const claims = getSessionClaims(extra.sessionId ?? "");
+    async ({ session_id, agent_id, file_path, summary }, ctx) => {
+      const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError();
       const result = consultation.logActionSummary(claims.org, {
         session_id,

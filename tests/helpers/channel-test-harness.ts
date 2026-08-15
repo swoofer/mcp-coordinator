@@ -33,8 +33,8 @@
  * notifications — see `tests/unit/channel-harness-self-test.ts` for the
  * minimal inline stub used to prove the wiring.
  */
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
+import { Client } from "@modelcontextprotocol/client";
 import { Aedes } from "aedes";
 import mqtt, { type MqttClient } from "mqtt";
 import { createServer as createTcpServer, type Server as NetServer } from "node:net";
@@ -66,14 +66,24 @@ const REPO_ROOT = path.resolve(path.dirname(__filename), "..", "..");
  * fields without breaking the harness — only `content` and `meta` are
  * load-bearing for assertions today.
  */
+export const CHANNEL_NOTIFICATION_METHOD = "notifications/claude/channel";
+
+/**
+ * v2's setNotificationHandler validates the PARAMS, not the whole envelope,
+ * so the params half is named separately. ChannelNotificationSchema below
+ * still describes the full notification — it is what ChannelNotification is
+ * inferred from, and what assertions in the tests read.
+ */
+export const ChannelNotificationParamsSchema = z
+  .object({
+    content: z.string(),
+    meta: z.record(z.string(), z.string()),
+  })
+  .passthrough();
+
 export const ChannelNotificationSchema = z.object({
-  method: z.literal("notifications/claude/channel"),
-  params: z
-    .object({
-      content: z.string(),
-      meta: z.record(z.string(), z.string()),
-    })
-    .passthrough(),
+  method: z.literal(CHANNEL_NOTIFICATION_METHOD),
+  params: ChannelNotificationParamsSchema,
 });
 
 export type ChannelNotification = z.infer<typeof ChannelNotificationSchema>;
@@ -195,35 +205,45 @@ export async function createChannelHarness(
   }
   const waiters: Waiter[] = [];
 
-  client.setNotificationHandler(ChannelNotificationSchema, (notification) => {
-    // `setNotificationHandler` already ran the zod parse — `notification` here
-    // is the parsed shape. Cast through `unknown` to bridge the SDK's zod v4
-    // type surface back to this file's zod v3 inference.
-    const parsed = notification as unknown as ChannelNotification;
-    receivedNotifications.push(parsed);
+  // v2 takes the method name and a schema for the PARAMS, where v1 took one
+  // schema covering the whole `{ method, params }` envelope. The handler is
+  // handed the validated params first and the raw notification second, so the
+  // envelope this harness stores is rebuilt from the two.
+  client.setNotificationHandler(
+    CHANNEL_NOTIFICATION_METHOD,
+    { params: ChannelNotificationParamsSchema },
+    (params) => {
+      // The schema already validated `params`. Cast through `unknown` to bridge
+      // the SDK's zod v4 type surface back to this file's zod v3 inference.
+      const parsed = {
+        method: CHANNEL_NOTIFICATION_METHOD,
+        params,
+      } as unknown as ChannelNotification;
+      receivedNotifications.push(parsed);
 
-    // Try to fulfill any pending waiter. Iterate by index because we mutate
-    // the array on a match.
-    for (let i = 0; i < waiters.length; i++) {
-      const w = waiters[i];
-      let matched = false;
-      try {
-        matched = w.predicate(parsed);
-      } catch (err) {
-        // A throwing predicate is a test bug — surface it.
-        clearTimeout(w.timer);
-        waiters.splice(i, 1);
-        w.reject(err instanceof Error ? err : new Error(String(err)));
-        return;
+      // Try to fulfill any pending waiter. Iterate by index because we mutate
+      // the array on a match.
+      for (let i = 0; i < waiters.length; i++) {
+        const w = waiters[i];
+        let matched = false;
+        try {
+          matched = w.predicate(parsed);
+        } catch (err) {
+          // A throwing predicate is a test bug — surface it.
+          clearTimeout(w.timer);
+          waiters.splice(i, 1);
+          w.reject(err instanceof Error ? err : new Error(String(err)));
+          return;
+        }
+        if (matched) {
+          clearTimeout(w.timer);
+          waiters.splice(i, 1);
+          w.resolve(parsed);
+          return;
+        }
       }
-      if (matched) {
-        clearTimeout(w.timer);
-        waiters.splice(i, 1);
-        w.resolve(parsed);
-        return;
-      }
-    }
-  });
+    },
+  );
 
   await client.connect(transport);
 

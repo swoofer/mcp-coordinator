@@ -75,14 +75,22 @@ describe("MCP stdio transport — smoke", () => {
 
   it("rejects an unknown tool with a structured error (not a crash)", async () => {
     // MCP servers can either throw (rejection) or return isError:true with
-    // a structured payload. mcp-coordinator chooses the latter — friendlier
-    // contract. Either signal is acceptable; the contract this test pins
-    // is "no transport crash and the connection survives".
-    const result = await harness.client.callTool({
-      name: "this_tool_definitely_does_not_exist",
-      arguments: {},
-    });
-    expect(result.isError).toBe(true);
+    // a structured payload. Either signal is acceptable; the contract this
+    // test pins is "no transport crash and the connection survives".
+    //
+    // Which of the two we get changed with the SDK v2 migration (#286):
+    // v1 returned a tool result carrying isError, v2 answers with a
+    // JSON-RPC error that the client surfaces as a thrown ProtocolError.
+    // Both are structured, and an unknown tool arguably IS a protocol-level
+    // error rather than a tool outcome — so the behaviour is accepted
+    // rather than shimmed back. The assertion below is what the comment
+    // above always said mattered.
+    await expect(
+      harness.client.callTool({
+        name: "this_tool_definitely_does_not_exist",
+        arguments: {},
+      }),
+    ).rejects.toThrow(/not found/i);
     // After the bad call, the connection MUST still be usable.
     const tools = await harness.client.listTools();
     expect(tools.tools.length).toBeGreaterThanOrEqual(20);

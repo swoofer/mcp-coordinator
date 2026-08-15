@@ -1,4 +1,4 @@
-﻿import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+﻿import { McpServer } from "@modelcontextprotocol/server";
 import { initDatabase } from "./database.js";
 import { registerConsultationTools } from "./tools/consultation-tools.js";
 import { registerAgentTools } from "./tools/agents-tools.js";
