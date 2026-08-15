@@ -7,13 +7,13 @@
 | **Statut** | GA |
 | **Disponible depuis** | `2.0.0` — publié le 2026-07-27 (dist-tag npm `latest`), aligné sur la spec `2026-07-28` |
 | **Tier** | T1-incontournable |
-| **Nature** | replace-homemade-code |
-| **Effort estimé** | XL |
+| **Nature** | ~~replace-homemade-code~~ **reduce-dependency-surface** — corrigé au challenge du 2026-08-15 : la migration ne remplace aucun code maison (voir §7.4) |
+| **Effort estimé** | ~~XL~~ **M** pour le chemin retenu (renommage 1:1) ; `XL` reste juste pour `createMcpHandler`, écarté |
 | **Confiance veille** | high |
 | **Vérification** | CONFIRMED |
 | **Vérifiée le** | 2026-08-14 |
 | **Testabilité** | ✅ testable — PoC local complet, npm public, aucun credential requis |
-| **Statut du challenge** | ⬜ à faire |
+| **Statut du challenge** | ✅ **tranché** — 2026-08-15, verdict `adopter partiellement` (§7) |
 
 ---
 
@@ -146,12 +146,36 @@ Faible à court terme, et c'est le point important : la ligne v1 reste publiée 
 
 ### 6.2 Hypothèse
 
-<Ce qu'on pense avant de tester.>
+*Pré-enregistré le 2026-08-15, AVANT toute exécution. Challenge groupé avec [`A01`](A01-mcp-2026-07-28-stateless.md).*
+
+**Hypothèse.** Les paquets v2 s'installent sans conflit (`zod ^4.4.3` ici vs `zod ^4.2.0` requis par
+`@modelcontextprotocol/server@2.0.0`, `engines.node >= 20` vs `>= 22` ici : compatibles sur le
+papier). Le codemod fait le renommage mécanique. La vraie question n'est pas « v1 ou v2 » mais
+**quel chemin v2** : le renommage 1:1 (`NodeStreamableHTTPServerTransport`) ne rapporte rien, et
+`createMcpHandler` ne rapporte quelque chose que s'il résout le problème réel du dépôt — faire
+arriver les claims jusqu'aux 26 handlers sans `Map` de sessions.
+
+**Critères de refus (ce qui me ferait conclure « non bénéfique maintenant ») :**
+
+- **A02-R1 — installation.** Si `pnpm add @modelcontextprotocol/{server,client,node}@2` échoue,
+  duplique `zod`, ou impose Express/Fastify/Hono (le repo est du `node:http` brut) → `refuser` ou
+  `reporter`.
+- **A02-R2 — le codemod ne tient pas sa promesse.** Si après codemod il reste **plus de 20 erreurs
+  `tsc`** qui demandent une décision humaine (et non un import à repointer), alors « migration
+  assistée » est un slogan : c'est une réécriture.
+- **A02-R3 — le bénéfice principal n'existe pas.** Si `AuthInfo` n'arrive **pas** jusqu'au handler
+  d'outil (`ctx.http.authInfo` ou équivalent), alors `createMcpHandler` ne supprime pas la `Map`
+  de claims maison, et il ne reste plus qu'un renommage : → `reporter`.
+- **A02-R4 — surface supprimée trop faible.** Si le `git diff --stat` du PoC sur `src/serve-http.ts`
+  ne supprime pas au moins ~80 lignes nettes de plomberie de session, l'effort XL n'est pas payé.
+- **A02-R5 — ligne trop jeune.** Si `2.0.0` n'a reçu **aucun** patch depuis le 2026-07-27 et reste
+  la seule version stable, l'attente coûte moins que l'essuyage de plâtres — d'autant qu'aucune
+  rupture ne nous presse (la ligne v1 est publiée en `1.30.0`, même jour).
 
 ### 6.3 Protocole de vérification
 
-<Comment on tranche : PoC, lecture de code, mesure, test avec un vrai client MCP, benchmark de tokens…
-Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
+*Amendé en session le 2026-08-15 : le protocole de la veille est conservé, exécuté sur une copie
+jetable du dépôt dans le scratchpad plutôt que sur une branche.*
 
 - [ ] Installer `@modelcontextprotocol/{server,client,node}@2` dans une branche jetable et lancer `@modelcontextprotocol/codemod` sur `src/tools/*.ts` + `src/server-setup.ts` ; compter les 26 `server.tool()` effectivement convertis et les erreurs `tsc` restantes.
 - [ ] PoC minimal : un `createMcpHandler(() => createMcpServer(services, getClaims))` monté via `toNodeHandler` dans le `createServer` existant de `src/serve-http.ts`, et vérifier qu'un `Client` v2 en `versionNegotiation: { pin: '2026-07-28' }` et un client v1 legacy passent tous les deux l'`initialize` + un `list_agents`.
@@ -161,17 +185,339 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 
 ### 6.4 Résultat observé
 
-<Ce qu'on a réellement mesuré/vu. Coller les sorties, pas les paraphraser.>
+*Session du 2026-08-15, poste Windows 11 / Node 22.21.0 / pnpm 10.34.5. Challenge groupé avec
+[`A01`](A01-mcp-2026-07-28-stateless.md), dont la §6.4 porte les mesures côté protocole.*
+**Tout ce qui suit a été exécuté.** L'expérience s'est faite dans un `git worktree` détaché
+(`scratchpad/wt-a02`), pas sur une branche du dépôt.
+
+---
+
+#### (1) A02-R1 — installation : aucun frein
+
+```
+$ corepack pnpm install --ignore-scripts        # baseline v1.30.0
+$ corepack pnpm exec tsc --noEmit
+erreurs: 0
+```
+
+Puis, après codemod :
+
+```
+dependencies:
++ @modelcontextprotocol/client 2.0.0
++ @modelcontextprotocol/core   2.0.0
++ @modelcontextprotocol/node   2.0.0
+- @modelcontextprotocol/sdk    1.30.0
++ @modelcontextprotocol/server 2.0.0
+Done in 2.9s using pnpm v10.34.5
+```
+
+`zod ^4.4.3` (dépôt) satisfait `zod ^4.2.0` (exigé par `@modelcontextprotocol/server@2.0.0`) ;
+`engines.node >= 20` contre `>= 22` ici. **A02-R1 non déclenché.**
+
+---
+
+#### (2) A02-R2 — le codemod tient sa promesse, et largement
+
+```
+$ mcp-codemod v1-to-v2 . --dry-run
+Changes: 108 across 21 file(s)
+Warnings (5):
+  tests/helpers/channel-test-harness.ts:198 - setNotificationHandler(Schema,…) → forme 3 arguments
+  tests/unit/mcp-tool-{ergonomics,handlers,org-scoping}.test.ts, tests/unit/mqtt-tools.test.ts
+      - RequestHandlerExtra renommé ServerContext, arguments génériques supprimés
+Info (27): 26 × « Raw object literal wrapped with z.object() » (les 26 outils) + 1 sur un import partagé
+package.json : Removed @modelcontextprotocol/sdk ; Added client, core, node, server
+```
+
+Appliqué :
+
+```
+$ git diff --stat
+ cli/channel.ts                     |   9 +-      src/tools/consultation-tools.ts | 760 +++----
+ package.json                       |   7 +-      src/tools/dependencies-tools.ts | 144 +--
+ src/index.ts                       |   2 +-      src/tools/files-tools.ts        |  92 +-
+ src/serve-http.ts                  |   9 +-      src/tools/mqtt-tools.ts         | 124 +--
+ src/server-setup.ts                |   2 +-      src/tools/status-tools.ts       | 210 +--
+ src/tools/agents-tools.ts          | 166 +--      (+ 11 fichiers de tests/helpers)
+ 22 files changed, 719 insertions(+), 885 deletions(-)
+
+$ corepack pnpm exec tsc --noEmit
+erreurs: 6
+  error TS2352 x4  error TS2345 x1  error TS2322 x1
+  1  cli/channel.ts                      1  tests/unit/mcp-tool-handlers.test.ts
+  1  tests/helpers/channel-test-harness.ts  1  tests/unit/mcp-tool-org-scoping.test.ts
+  1  tests/unit/mcp-tool-ergonomics.test.ts 1  tests/unit/mqtt-tools.test.ts
+```
+
+**6 erreurs, dont ZÉRO dans `src/`.** Les 4 `TS2352` sont le même patron répété : les tests
+fabriquent un faux `extra` `{ signal, sessionId }` que `ServerContext` refuse désormais
+(`Property 'mcpReq' is missing in type … but required in type 'BaseContext'`). Les 2 autres sont
+`cli/channel.ts` (les `setRequestHandler(Schema, …)` du canal Claude Code, qui passent à une forme
+à 3 arguments) et son harnais de test. **A02-R2 non déclenché** — et de loin (seuil : 20).
+
+---
+
+#### (3) Le résultat qui recadre la fiche : le codemod migre tout, et ne change RIEN
+
+Le daemon migré démarre et sert ses 26 outils (`scratchpad/probe-wt.mjs`, port 39413) :
+
+```
+=== /health ===                     HTTP 200 {"status":"alive","version":"2.0.1",...}
+=== initialize protocolVersion=2025-11-25 === HTTP 200 → "protocolVersion":"2025-11-25"
+=== initialize protocolVersion=2026-07-28 === HTTP 200 → "protocolVersion":"2025-11-25"   ← rétrogradé
+=== POST stateless 2026-07-28 (sans initialize) ===
+HTTP 400 {"jsonrpc":"2.0","error":{"code":-32000,"message":"Bad Request: Server not initialized"},"id":null}
+=== POST server/discover ===
+HTTP 400 {"jsonrpc":"2.0","error":{"code":-32000,"message":"Bad Request: Server not initialized"},"id":null}
+=== tools/list dans une session 2025-11-25 (serveur migre v2) ===
+HTTP 200 | outils listes : 26
+"name":"register_agent", "name":"list_agents", "name":"heartbeat", "name":"agent_activity", "name":"announce_work"
+```
+
+Et le diff de `src/serve-http.ts` tient en **5 lignes utiles** :
+
+```diff
++import { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node";
+-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+-  sessions: Map<string, StreamableHTTPServerTransport>;
++  sessions: Map<string, NodeStreamableHTTPServerTransport>;
+-            const transport = new StreamableHTTPServerTransport({
++            const transport = new NodeStreamableHTTPServerTransport({
+```
+
+**Les trois Maps, le `transport.onclose`, le sweeper TTL et la branche `/mcp` à trois cas sont
+intacts.** Le chemin « renommage 1:1 » livre les paquets v2 **sans aucun gain de protocole ni de
+plomberie** : même négociation 2025-11-25, même `-32000` sur une requête stateless, même absence de
+`server/discover`. C'est une information que la fiche ne portait pas : sa §0 disait qu'il existe
+« un chemin de migration à faible effort » — c'est vrai, et ce chemin **n'achète rien**.
+
+---
+
+#### (4) A02-R3 — `AuthInfo` atteint bien le handler, et sur les DEUX lignes
+
+PoC `createMcpHandler` + `toNodeHandler` (`scratchpad/v2probe/poc-handler.mjs`, détail en §6.4 d'A01) :
+
+```
+=== 3. tools/call whoami stateless 2026-07-28 -> ctx.http.authInfo ? ===
+"httpAuthInfo": { "token":"poc-token", "clientId":"poc-client", "scopes":["coordinator:write"],
+                  "extra": {"sub":"agent-alpha","org":"acme","role":"admin","jti":"j-1"} }
+"sessionId": null
+=== 1. server/discover === HTTP 200 {"supportedVersions":["2026-07-28"],"resultType":"complete","ttlMs":0,"cacheScope":"private",…}
+=== 4. initialize 2025-11-25 === HTTP 200 (le MÊME handler sert l'ère legacy)
+=== 5. GET === HTTP 405 (ce que la révision demande en SHOULD)
+```
+
+**A02-R3 non déclenché.** Mais — et c'est le point qui change la décision — **le même mécanisme
+existe déjà sur la ligne v1 installée** : `RequestHandlerExtra.authInfo` est déclaré dans
+`protocol.d.ts:181` de `@modelcontextprotocol/sdk@1.30.0`, alimenté par `req.auth`
+(`streamableHttp.js:131`), et un PoC avec un vrai client MCP v1 le confirme (§6.4 (3) d'A01).
+Le bénéfice « faire arriver les claims aux 26 handlers sans Map » **n'est donc pas un bénéfice de la
+migration** : il est disponible sans elle.
+
+---
+
+#### (5) A02-R4 — la surface supprimable est réelle, mais elle appartient à `createMcpHandler`
+
+| Bloc de `src/serve-http.ts` | Lignes | Supprimé par le codemod ? | Supprimé par `createMcpHandler` ? |
+|---|---|---|---|
+| Branche `/mcp` à 3 cas (session existante / nouvelle / 404) | 751-851 (~101) | ❌ | ✅ (réduite à ~20) |
+| 3 Maps + TTL + `sweepIdleMcpSessions` | 1323-1375 (~53) | ❌ | ✅ |
+| Champs `HttpHandlerCtx` + `handlerCtx` | 512-514, 1377-1383 | ❌ | ✅ |
+| `tests/integration/mcp-http-session-ttl.test.ts` | fichier entier | ❌ | ✅ (devient sans objet) |
+
+Le PoC a montré `mcp-session-id: null` **y compris sur l'`initialize` legacy** : sous
+`createMcpHandler`, il n'y a plus de session à balayer dans aucune des deux ères. Le seuil des
+80 lignes nettes est franchi (**> 130**) — mais **uniquement** par le chemin (b), celui que le
+codemod ne fait pas.
+
+---
+
+#### (6) A02-R5 — la ligne v2 n'a reçu aucun correctif depuis sa sortie
+
+```
+$ npm view @modelcontextprotocol/server versions --json
+["2.0.0-alpha.1","2.0.0-alpha.2","2.0.0-alpha.3","2.0.0-alpha.4",
+ "2.0.0-beta.1","2.0.0-beta.2","2.0.0-beta.3","2.0.0-beta.4","2.0.0-beta.5","2.0.0"]
+$ npm view @modelcontextprotocol/sdk dist-tags --json
+{ "latest": "1.30.0" }   # publié le 2026-07-27T17:56:01Z, le MÊME jour que la v2
+```
+
+Aucune `2.0.1`. La ligne v1 et la ligne v2 sont sorties le même jour ; ni l'une ni l'autre n'a bougé
+depuis 19 jours. **A02-R5 déclenché** au sens littéral du critère.
+
+---
+
+#### (7) Le fait que ni la fiche ni moi n'avions vu : −74 paquets de production
+
+*Mesure ajoutée en fin de session, après qu'un sous-agent adversarial a attaqué la justification du
+verdict. C'est elle qui l'a fait basculer.*
+
+`@modelcontextprotocol/sdk@1.30.0` déclare **17 dépendances directes**, dont une pile web complète
+que ce dépôt n'utilise nulle part (`src/serve-http.ts` est un `node:http` `createServer` nu) :
+
+```
+$ npm view @modelcontextprotocol/sdk@1.30.0 dependencies --json
+{ "ajv":"^8.17.1", "zod":"^3.25 || ^4.0", "cors":"^2.8.5", "hono":"^4.11.4", "jose":"^6.1.3",
+  "express":"^5.2.1", "raw-body":"^3.0.0", "ajv-formats":"^3.0.1", "cross-spawn":"^7.0.5",
+  "eventsource":"^3.0.2", "content-type":"^1.0.5", "pkce-challenge":"^5.0.0",
+  "@hono/node-server":"^1.19.9 || ^2.0.5", "json-schema-typed":"^8.0.2",
+  "eventsource-parser":"^3.0.0", "express-rate-limit":"^8.2.1", "zod-to-json-schema":"^3.25.1" }
+
+$ npm view @modelcontextprotocol/{core,server,node}@2.0.0 dependencies --json
+core   -> { "zod": "^4.2.0" }
+server -> { "zod": "^4.2.0", "@modelcontextprotocol/core": "2.0.0" }
+node   -> { "@hono/node-server": "^1.19.9" }
+```
+
+Mesure de la **fermeture de production réelle**, `pnpm ls --prod --depth Infinity`, dépôt actuel
+contre worktree migré :
+
+```
+DEPOT ACTUEL (sdk 1.30.0) : 189 paquets prod (closure)
+WORKTREE MIGRE (sdk v2)   : 120 paquets prod (closure)
+
+=== presents en v1, ABSENTS apres migration : 74 paquets ===
+@modelcontextprotocol/sdk accepts ajv ajv-formats body-parser bytes call-bind-apply-helpers
+call-bound content-disposition content-type cookie-signature cors depd dunder-proto ee-first
+encodeurl es-define-property es-errors es-object-atoms escape-html etag express express-rate-limit
+fast-deep-equal fast-uri finalhandler forwarded fresh function-bind get-intrinsic get-proto gopd
+has-symbols hasown http-errors iconv-lite ipaddr.js is-promise json-schema-traverse
+json-schema-typed math-intrinsics media-typer merge-descriptors mime-db mime-types negotiator
+object-assign object-inspect on-finished once parseurl path-to-regexp proxy-addr qs range-parser
+raw-body require-from-string router safer-buffer send serve-static setprototypeof side-channel
+side-channel-list side-channel-map side-channel-weakmap statuses toidentifier type-is unpipe vary
+wrappy zod-to-json-schema
+
+=== ajoutes par la migration : 4 ===
+@modelcontextprotocol/{client,core,node,server}
+```
+
+**−74 / +4, soit 189 → 120 paquets de production : −36 %.** Toute la pile Express 5 (`express`,
+`body-parser`, `router`, `send`, `serve-static`, `finalhandler`, `qs`, `path-to-regexp`,
+`proxy-addr`, `type-is`…), `cors`, `express-rate-limit`, `ajv` + `ajv-formats` + `fast-uri`, et
+`zod-to-json-schema` sortent de l'image Docker et du paquet npm — pour du code que le dépôt
+**n'importe nulle part**.
+
+Ce gain :
+
+- est **immédiat** et **indépendant de la révision 2026-07-28** ;
+- est livré par le **chemin bon marché** — le renommage 1:1 du codemod, celui dont la §6.4 (3)
+  vient de montrer qu'il n'apporte rien sur le protocole. Il n'apporte rien sur le protocole
+  **et** il enlève 36 % de l'arbre de production ;
+- compte pour ce projet en particulier : il publie un **paquet npm** et une **image GHCR** chez des
+  auto-hébergeurs, et son `package.json` porte déjà un `pnpm.overrides.ip-address` posé en réponse
+  à un GHSA (`CHANGELOG.md`). Moins de paquets = moins d'avis à traiter.
+
+*Non retenu faute de vérification propre :* le sous-agent affirmait aussi qu'`express-rate-limit`
+réintroduit une **seconde copie** d'`ip-address`. Ma mesure dédoublonne par nom et ne peut ni
+confirmer ni infirmer une seconde *version* ; `ip-address` n'apparaît pas dans le diff ci-dessus.
+Affirmation écartée — le chiffre de 74 paquets suffit et il est mesuré.
+
+#### (8) Les tests du dépôt contre le worktree migré : 48/49
+
+`better-sqlite3` reconstruit (`pnpm rebuild better-sqlite3`), puis les cinq suites qui touchent
+directement le SDK :
+
+```
+$ corepack pnpm exec vitest run tests/integration/mcp-http-session-ttl.test.ts \
+    tests/unit/mcp-tool-handlers.test.ts tests/unit/mqtt-tools.test.ts \
+    tests/integration/mcp-stdio-smoke.test.ts tests/unit/mcp-tool-org-scoping.test.ts
+
+ ❯ tests/integration/mcp-stdio-smoke.test.ts (4 tests | 1 failed) 4332ms
+     × rejects an unknown tool with a structured error (not a crash) 5ms
+⎯⎯⎯ Failed Tests 1 ⎯⎯⎯
+ FAIL  tests/integration/mcp-stdio-smoke.test.ts > MCP stdio transport — smoke
+       > rejects an unknown tool with a structured error (not a crash)
+ProtocolError: Tool this_tool_definitely_does_not_exist not found
+
+ Test Files  1 failed | 4 passed (5)
+      Tests  1 failed | 48 passed (49)
+```
+
+Deux enseignements, tous deux contre la fiche :
+
+- **`tests/integration/mcp-http-session-ttl.test.ts` PASSE.** §5 de cette fiche l'annonçait comme
+  « le premier à casser » ; il ne casse pas. Le TTL de session reste géré par notre sweeper, que le
+  renommage ne touche pas.
+- **Le seul échec est un changement de comportement réel :** en v2, un outil inconnu lève
+  `ProtocolError` au lieu de rendre un résultat structuré. Un test existant l'attrape. C'est une
+  décision à prendre (exception vs `isError: true`), pas un test à supprimer.
+
+#### (9) Frontière exécuté / lu
+
+Tout ci-dessus est exécuté. **Non exécuté :**
+
+- La **campagne de tests complète** du dépôt contre le worktree migré. Cinq suites ciblées ont été
+  lancées (49 tests), pas les ~700 du dépôt : `pnpm install --ignore-scripts` a été utilisé pour
+  éviter la reconstruction native complète (tree-sitter), donc les suites qui en dépendent
+  n'auraient rien dit d'interprétable. **C'est la principale réserve du verdict**, et elle est
+  portée en condition dans §7.2.
+- Le comportement de **clients MCP tiers réels** (Cursor, Cline, VS Code) face à un serveur v2 —
+  la §0 le signalait déjà comme la limite du test, et elle reste entière.
+
+**Levé en fin de session :** le poste a été mis à jour en **Claude Code 2.1.233** et la session
+rejouée à travers un proxy d'écoute contre le daemon (trace complète en §6.4 (5 bis) d'`A01`) :
+`initialize` en `2025-11-25`, **aucun `server/discover`**, 26 outils, `tools/call` réussi en 9 s.
+Les clients éprouvés pour ce challenge sont donc : les clients du SDK **v1** et **v2** (dans les
+trois modes de négociation) et **Claude Code 2.1.233**.
 
 ### 6.5 Contre-arguments
 
-- **Aucune urgence réelle.** La justification la plus vendeuse de la fiche brute (« le paquet n'existe plus ») est fausse. `^1.29` résout en 1.30.0 et fonctionne. Une migration XL sans deadline, sur un projet à mainteneur unique, se reporte facilement.
-- **Le repo n'utilise ni Express, ni Fastify, ni Hono.** `src/serve-http.ts` est un `node:http` `createServer` de 66 Ko avec routage maison, auth, admin, SSE, métriques. Une grande partie des helpers v2 les plus attirants (`requireBearerAuth` middleware, `mcpAuthMetadataRouter`, `createMcpExpressApp`, `originValidation`) sont Express-only et donc inutilisables sans adopter Express — ce qui transformerait une migration de SDK en réécriture de la couche HTTP.
-- **Perte de contrôle sur les sessions.** Le sweeper TTL, l'éviction des claims sur `onclose` et l'ordre `onclose` avant `connect()` (commenté dans le code comme une correction de bug réelle : assigner `onclose` après `connect` écrasait le handler du SDK) sont des comportements durement acquis. Les déléguer à `createMcpHandler` sans équivalent explicite est une régression potentielle silencieuse.
-- **Surface de rupture disproportionnée.** 6 fichiers d'outils, 2 entrées serveur, 1 serveur stdio de canal, ~8 fichiers de test et helpers importent le SDK. Le `codemod` couvre le mécanique, pas les décisions (Task 23.5, DNS rebinding, TTL).
-- **MRTR / élicitation : YAGNI aujourd'hui.** Zéro occurrence d'`elicit` ou de `registerResource` dans `src/`. La capacité est intéressante mais aucun outil actuel ne la demande ; l'invoquer comme justification de la migration, c'est justifier par une feature qu'on n'a pas encore décidé de construire.
-- **Coût pour l'auto-hébergeur.** Passer de 1 dépendance à 3+ paquets scopés versionnés ensemble augmente la surface de mise à jour et le risque de désynchronisation de versions dans les images Docker et le paquet npm.
-- **Ligne v2 très jeune.** GA depuis moins de trois semaines à la date de cette fiche. Attendre une 2.1.x et quelques retours d'écosystème coûte peu, vu qu'aucune rupture ne nous presse.
+*Repris le 2026-08-15 après l'expérience et après une passe adversariale. Barré = tombé.
+Deux se sont retournés en arguments **pour** la migration.*
+
+- **Aucune urgence réelle** → **tient pour la révision `2026-07-28`, tombe pour les paquets.**
+  `^1.29` résout bien en 1.30.0 et fonctionne. Mais « pas d'urgence » ne veut pas dire « pas de
+  bénéfice » : le changement de paquets retire **74 paquets de production** (§6.4 (7)), aujourd'hui,
+  sans rien devoir à la révision.
+- ~~**Le repo n'utilise ni Express, ni Fastify, ni Hono** (donc les helpers v2 sont inutilisables).~~
+  → **SE RETOURNE.** C'est exact et c'est précisément le problème : le repo n'utilise pas Express,
+  mais `@modelcontextprotocol/sdk@1.30.0` **le lui livre quand même** — `express@^5.2.1`, `cors`,
+  `express-rate-limit`, `ajv`, `ajv-formats`, `raw-body`, `zod-to-json-schema`… en dépendances
+  directes. Le fait que le dépôt soit du `node:http` nu n'est pas une raison de **rester** sur v1,
+  c'est la meilleure raison d'en **sortir**.
+- ~~**Perte de contrôle sur les sessions.**~~ → **TOMBE pour le chemin retenu.** Le codemod ne
+  touche **ni** le sweeper TTL, **ni** l'éviction sur `onclose`, **ni** l'ordre `onclose`-avant-
+  `connect()` : le diff de `src/serve-http.ts` fait **5 lignes utiles**, toutes des renommages de
+  type (§6.4 (3)). Et `tests/integration/mcp-http-session-ttl.test.ts` — que la fiche annonçait
+  comme « le premier à casser » — **passe** (§6.4 (9)). Ce contre-argument ne vaut que pour
+  `createMcpHandler`, qui est écarté.
+- **Surface de rupture disproportionnée** → **mesurée, et elle ne l'est pas.** 21 fichiers touchés,
+  108 changements automatiques, **6 erreurs `tsc` dont 0 dans `src/`**, **48/49 tests passent**.
+  Le reste est nommé et borné (§7.2).
+- **MRTR / élicitation : YAGNI aujourd'hui** → **tient intégralement.** Zéro `elicit`, zéro
+  `registerResource` dans `src/`. Ces capacités ne justifient rien et ne sont pas invoquées dans
+  le verdict.
+- ~~**Coût pour l'auto-hébergeur : passer de 1 dépendance à 3+ paquets augmente la surface.**~~
+  → **SE RETOURNE, et c'est l'argument décisif.** Mesuré `pnpm ls --prod --depth Infinity` :
+  **189 → 120 paquets de production, −74 / +4** (§6.4 (7)). La surface de mise à jour ne grossit
+  pas, elle **fond de 36 %** — dans l'image GHCR comme dans le paquet npm. Le risque de
+  désynchronisation reste réel mais les 4 paquets sont versionnés **à l'identique** (`2.0.0` exact,
+  `@modelcontextprotocol/core` épinglé sans caret par `server`).
+- **Ligne v2 très jeune** → **tient à moitié, et il faut regarder l'autre ligne.** Aucune `2.0.1`
+  en 19 jours, c'est vrai. Mais : 9 préversions publiques sur 4 mois (`2.0.0-alpha.1` le
+  2026-04-01 → `2.0.0-beta.5`), et surtout la ligne v1 est **gelée** — `1.29.0` (2026-03-30) puis
+  `1.30.0` publiée le **2026-07-27 à 17h56**, six heures avant la v2 du même jour. Ce n'est pas un
+  signe de vie, c'est une release d'adieu. Rester sur v1 n'est pas « attendre que ça se stabilise »,
+  c'est s'installer sur une branche morte.
+
+**Ajouté par l'expérience :**
+
+- **Le chemin bon marché n'achète rien sur le protocole — et c'est démontré, pas supposé.** Le
+  daemon migré par codemod négocie toujours `2025-11-25`, rejette une requête stateless
+  `2026-07-28` avec `-32000`, et n'a pas `server/discover` (§6.4 (3)). Quiconque justifierait cette
+  migration par « on se met à jour sur la spec » se tromperait. La seule justification valable est
+  l'arbre de dépendances.
+- **Un vrai changement de comportement, attrapé par un test existant.** `vitest` sur le worktree
+  migré : `tests/integration/mcp-stdio-smoke.test.ts > rejects an unknown tool with a structured
+  error (not a crash)` échoue — v2 lève `ProtocolError: Tool … not found` là où v1 rendait un
+  résultat structuré. C'est exactement ce que ce test existe pour attraper, mais il faut le traiter
+  (décider si l'erreur remonte en exception ou en `isError: true`), pas le supprimer.
+- **`cli/channel.ts` demande une vraie décision, pas un renommage.** `setRequestHandler(Schema, …)`
+  passe à une forme à 3 arguments (`setRequestHandler('method/name', { params, result? }, handler)`),
+  et le harnais `channel-test-harness.ts:198` suit. C'est 2 des 6 erreurs `tsc`, et le seul endroit
+  du chantier où il faut réfléchir.
 
 ---
 
@@ -179,11 +525,74 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 
 | | |
 |---|---|
-| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ⬜ refuser |
-| **Date** | |
-| **Justification** | |
-| **Issue / PR** | |
-| **Jalon visé** | |
+| **Verdict** | ⬜ adopter · ✅ **adopter partiellement** · ⬜ reporter · ⬜ refuser |
+| **Date** | 2026-08-15 |
+| **Justification** | **Retenu : le changement de paquets seul**, par le codemod — mesuré à 6 erreurs `tsc` (0 dans `src/`), 48/49 tests, daemon fonctionnel servant ses 26 outils, et **189 → 120 paquets de production (−74)**, dont toute la pile Express 5, `cors`, `express-rate-limit`, `ajv` et `zod-to-json-schema` que ce dépôt n'importe nulle part. **Écarté : `createMcpHandler` et la révision `2026-07-28`** — ils n'ont aucun client qui les exige (voir [`A01`](A01-mcp-2026-07-28-stateless.md) §7). |
+| **Issue / PR** | [#286](https://github.com/swoofer/mcp-coordinator/issues/286) — périmètre en §7.3 |
+| **Jalon visé** | Prochaine release mineure |
+
+### 7.1 La réponse à la question de §6.1
+
+La question opposait « basculer sur `createMcpHandler` + `toNodeHandler` » à « rester sur v1 en
+n'empruntant que des briques isolables ». **Les deux termes sont mauvais.** Il existe une troisième
+option que la fiche décrivait sans en voir la valeur : **changer de paquets sans changer
+d'architecture**.
+
+- `createMcpHandler` **marche** et livre toute la révision gratuitement (§6.4 (4)) — mais personne
+  ne la demande, et il impose de réécrire la branche `/mcp`, la façon dont les claims atteignent
+  les 26 handlers, et 43 sites de test (détail en §6.5 d'`A01`).
+- « N'emprunter que des briques isolables » **ne rapporte rien** : le dépôt n'est pas un *resource
+  server* mais un serveur d'autorisation OAuth complet (`src/auth.ts` + `src/auth/`), et
+  `src/discovery.ts` émet un document **RFC 8414** là où le helper v2 émet du **RFC 9728** — ce ne
+  sont pas les mêmes documents. `validateHostHeader` ne remplace pas le check d'`Origin` maison
+  (deux en-têtes différents), et `enableDnsRebindingProtection: true` est déjà passé au transport.
+- **Le renommage 1:1, lui, ne rapporte rien sur le protocole — et retire 36 % de l'arbre de
+  production.** C'est le seul bénéfice mesuré, il est immédiat, et il est indépendant de tout ce
+  qu'Anthropic fera de la révision.
+
+### 7.2 Ce qui reste à faire avant de fusionner — nommé, pas balayé
+
+| # | Point | État |
+|---|---|---|
+| 1 | **Campagne `vitest` complète** (avec builds natifs), pas les 5 suites ciblées | ⚠️ **non fait — condition bloquante** |
+| 2 | `tests/integration/mcp-stdio-smoke.test.ts` : outil inconnu → `ProtocolError` au lieu d'un résultat structuré | Décision à prendre (exception vs `isError: true`) |
+| 3 | `cli/channel.ts` : `setRequestHandler(Schema,…)` → forme à 3 arguments (+ `channel-test-harness.ts:198`) | 2 des 6 erreurs `tsc` ; seule vraie réflexion du chantier |
+| 4 | 4 fichiers de test : faux `extra` `{signal, sessionId}` refusé par `ServerContext` (`mcpReq` manquant) | 4 des 6 erreurs `tsc`, mécanique |
+| 5 | `docs/ARCHITECTURE.md` : le câblage transport cité par son ancien nom | Documentaire |
+
+### 7.3 Périmètre exact de l'issue proposée
+
+> **Migrer `@modelcontextprotocol/sdk@1.30.0` vers `@modelcontextprotocol/{core,server,node,client}@2.0.0`
+> par renommage 1:1 (codemod), sans changer d'architecture de transport.**
+>
+> **Inclus :** `pnpm dlx @modelcontextprotocol/codemod v1-to-v2` (108 changements sur 21 fichiers),
+> résolution des 6 erreurs `tsc` (§7.2 points 3 et 4), décision sur le changement de comportement
+> « outil inconnu » (§7.2 point 2), campagne `vitest` complète verte, mise à jour de
+> `docs/ARCHITECTURE.md`.
+>
+> **Exclu explicitement :** `createMcpHandler`, `toNodeHandler`, `serveStdio`, `server/discover`,
+> `subscriptions/listen`, MRTR/`inputRequired`, `registerTool`/`outputSchema`, la suppression des
+> Maps de session et du sweeper TTL, et tout changement de la façon dont les claims atteignent les
+> 26 handlers. Le transport reste `NodeStreamableHTTPServerTransport` avec `sessionIdGenerator`,
+> la négociation reste `2025-11-25`.
+>
+> **Critère d'acceptation :** `pnpm build` et `pnpm test` verts, et `pnpm ls --prod --depth Infinity`
+> passant de **189 à ~120 paquets**.
+
+### 7.4 Corrections apportées à la fiche par ce challenge
+
+1. **Le tag `Nature: replace-homemade-code` est faux** — la migration ne remplace **aucun** code
+   maison : ni l'AS OAuth (`src/auth.ts` + `src/auth/`), ni `src/discovery.ts` (RFC 8414 ≠ RFC 9728),
+   ni le check d'`Origin`. Elle **réduit une surface de dépendances**. Corrigé en en-tête.
+2. **§4 « Risque si on ne fait rien : faible à court terme » est faux** — il est chiffrable et non
+   nul : 74 paquets de production inutiles, dont Express 5 et `cors`, sur une ligne v1 qui n'a rien
+   reçu entre le 2026-03-30 et sa release d'adieu du 2026-07-27.
+3. **§5 « `tests/integration/mcp-http-session-ttl.test.ts` est le premier à casser » est faux** —
+   il passe (§6.4 (8)).
+4. **§4 invoquait MRTR/élicitation comme bénéfice** — écarté : YAGNI confirmé, zéro `elicit` et zéro
+   `registerResource` dans `src/`. Le bénéfice réel est ailleurs et la fiche ne le mentionnait pas.
+5. **Effort `XL` est surévalué pour le chemin retenu.** Le renommage est un **M** au plus. `XL`
+   reste juste pour `createMcpHandler`, qui est écarté.
 
 ## 8. Journal
 
@@ -191,3 +600,4 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 |---|---|
 | 2026-08-14 | Fiche créée par la veille plateforme. |
 | 2026-08-14 | Vérification des faits : GA et lignes repo confirmées ; `StreamableHTTPServerTransport` renommé, pas supprimé — corrigé. |
+| 2026-08-15 | Challenge groupé avec `A01`. Codemod appliqué dans un worktree jetable, daemon migré démarré et sondé, 49 tests lancés, arbre de dépendances mesuré, 1 passe adversariale. **Verdict : adopter partiellement** — le changement de paquets (−74 paquets prod), pas la révision. Corrections : `Nature` erroné, « risque faible » erroné, `mcp-http-session-ttl` ne casse pas, effort `XL` → `M` pour le chemin retenu. |

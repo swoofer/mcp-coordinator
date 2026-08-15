@@ -42,22 +42,22 @@ Le détail par fiche est dans sa **section 0**.
 
 | # | Dossier | Tier | Statut | Nature | Effort | Fiche | Testable | Challenge |
 |---|---|---|---|---|---|---|---|---|
-| `A01` | [MCP 2026-07-28 : cœur stateless, HTTP+SSE déprécié, `server/discover`](A01-mcp-2026-07-28-stateless.md) | 🔴 T1 | GA | menace | XL | 🟡 | ✅ | ⬜ |
-| `A02` | [Migration @modelcontextprotocol/sdk ^1.29 vers le SDK TypeScript v2](A02-mcp-sdk-typescript-v2.md) | 🔴 T1 | GA | remplace du code maison | XL | 🟡 | ✅ | ⬜ |
-| `A03` | [Multi Round-Trip Requests : forcer l'agent à répondre au conflit](A03-mrtr-input-required.md) | 🔴 T1 | GA | opportunité | L | 🟡 | ⚠️ | ⬜ |
-| `A04` | [`subscriptions/listen` : le push standardisé face à `sse-emitter` et `mqtt-bridge`](A04-subscriptions-listen.md) | 🔴 T1 | GA | remplace du code maison | L | ✅ | ⚠️ | ⬜ |
-| `A05` | [Extension MCP Tasks : la consultation inter-agents comme opération longue](A05-mcp-tasks-extension.md) | 🟠 T2 | experimental | remplace du code maison | L | 🟡 | ⚠️ | ⬜ |
-| `A06` | [Surface d'outils moderne : outputSchema, annotations, ttlMs, progress](A06-tool-metadata-modern-surface.md) | 🔴 T1 | GA | opportunité | M | 🟡 | ⚠️ | ⬜ |
-| `A07` | [Elicitation (modes `form` et `url`) : arbitrer un conflit sans passer par un thread](A07-elicitation.md) | 🔴 T1 | GA | opportunité | M | 🟡 | ⚠️ | ⬜ |
-| `A08` | [MCP Apps (`ui://`) : le dashboard rendu dans la conversation](A08-mcp-apps-ui.md) | 🟠 T2 | GA | remplace du code maison | L | ✅ | ⚠️ | ⬜ |
-| `A09` | [Organiser 26 outils : extensions, primitive grouping, skills-over-MCP](A09-extensions-grouping-skills.md) | 🟠 T2 | mixte | opportunité | M | ✅ | ⚠️ | ⬜ |
-| `A10` | [Identité et découverte : mcpName, server.json, /server-card, Inspector en CI](A10-registry-servercard-conformance.md) | 🔴 T1 | mixte | opportunité | M | 🟡 | ✅ | ⬜ |
+| `A01` | [MCP 2026-07-28 : cœur stateless, HTTP+SSE déprécié, `server/discover`](A01-mcp-2026-07-28-stateless.md) | ~~🔴 T1~~ 🟠 T2 | GA | menace | XL | 🟡 | ✅ | ✅ |
+| `A02` | [Migration @modelcontextprotocol/sdk ^1.29 vers le SDK TypeScript v2](A02-mcp-sdk-typescript-v2.md) | 🔴 T1 | GA | ~~remplace du code maison~~ réduit la surface de dépendances | ~~XL~~ M | 🟡 | ✅ | ✅ |
+| `A03` | [Multi Round-Trip Requests : forcer l'agent à répondre au conflit](A03-mrtr-input-required.md) | 🔴 T1 | GA | opportunité | L | 🟡 | ~~⚠️~~ ✅ | ✅ |
+| `A04` | [`subscriptions/listen` : le push standardisé face à `sse-emitter` et `mqtt-bridge`](A04-subscriptions-listen.md) | ~~🔴 T1~~ 🟡 T3 | GA | ~~remplace du code maison~~ opportunité | L | ✅ | ⚠️ | ✅ |
+| `A05` | [Extension MCP Tasks : la consultation inter-agents comme opération longue](A05-mcp-tasks-extension.md) | ~~🟠 T2~~ 🟡 T3 | experimental | ~~remplace du code maison~~ opportunité | L | 🟡 | ⚠️ | ✅ |
+| `A06` | [Surface d'outils moderne : outputSchema, annotations, ttlMs, progress](A06-tool-metadata-modern-surface.md) | ~~🔴 T1~~ 🟡 T3 | GA | opportunité | ~~M~~ — | 🟡 | ~~⚠️~~ ✅ | ✅ |
+| `A07` | [Elicitation (modes `form` et `url`) : arbitrer un conflit sans passer par un thread](A07-elicitation.md) | ~~🔴 T1~~ 🟠 T2 | GA | opportunité | M | 🟡 | ⚠️ | ✅ |
+| `A08` | [MCP Apps (`ui://`) : le dashboard rendu dans la conversation](A08-mcp-apps-ui.md) | ~~🟠 T2~~ 🟡 T3 | GA | ~~remplace du code maison~~ opportunité | L | ✅ | ⚠️ | ✅ |
+| `A09` | [Organiser 26 outils : extensions, primitive grouping, skills-over-MCP](A09-extensions-grouping-skills.md) | ~~🟠 T2~~ 🟡 T3 | mixte | opportunité | ~~M~~ S | ✅ | ~~⚠️~~ ✅ | ✅ |
+| `A10` | [Identité et découverte : mcpName, server.json, /server-card, Inspector en CI](A10-registry-servercard-conformance.md) | ~~🔴 T1~~ 🟡 T3 | mixte | opportunité | ~~M~~ S | 🟡 | ✅ | ✅ |
 
 ## B. Securite et auth
 
 | # | Dossier | Tier | Statut | Nature | Effort | Fiche | Testable | Challenge |
 |---|---|---|---|---|---|---|---|---|
-| `B01` | [CIMD : la fin du Dynamic Client Registration](B01-cimd-dcr-deprecated.md) | 🔴 T1 | GA | intégration | M | 🟡 | ⚠️ | ⬜ |
+| `B01` | [CIMD : la fin du Dynamic Client Registration](B01-cimd-dcr-deprecated.md) | ~~🔴 T1~~ 🟡 T3 | GA | intégration | ~~M~~ — | 🟡 | ⚠️ | ✅ |
 | `B02` | [Enterprise-Managed Authorization (ID-JAG) et OAuth Client Credentials](B02-enterprise-managed-auth-idjag.md) | 🟠 T2 | mixte | opportunité | L | 🟡 | ⚠️ | ⬜ |
 | `B03` | [Durcissement auth 2026 : RFC 9207, application_type, SSRF sur la découverte](B03-auth-hardening-ssrf.md) | 🔴 T1 | GA | menace | S | 🟡 | ⚠️ | ⬜ |
 | `B04` | [Scope minimal, step-up 403 et lazy authentication par outil](B04-scope-step-up-lazy-auth.md) | 🔴 T1 | GA | opportunité | M | 🟡 | ⚠️ | ⬜ |
@@ -67,15 +67,15 @@ Le détail par fiche est dans sa **section 0**.
 
 | # | Dossier | Tier | Statut | Nature | Effort | Fiche | Testable | Challenge |
 |---|---|---|---|---|---|---|---|---|
-| `C01` | [Hooks de type `mcp_tool` : rendre l'annonce obligatoire au lieu de l'espérer](C01-hook-mcp-tool-gate.md) | 🔴 T1 | GA | opportunité | S | 🟡 | ✅ | ⬜ |
+| `C01` | [Hooks de type `mcp_tool` : rendre l'annonce obligatoire au lieu de l'espérer](C01-hook-mcp-tool-gate.md) | 🔴 T1 | GA | opportunité | ~~S~~ L | 🟡 | ✅ | ✅ |
 | `C02` | [Les 31 hook events de Claude Code et le pack @mcp-coordinator/hooks](C02-hooks-coordination-events.md) | 🔴 T1 | mixte | intégration | M | 🟡 | ✅ | ⬜ |
 | `C03` | [Channels : aligner `cli/channel.ts` sur le contrat officiel `claude/channel`](C03-channels-official-contract.md) | 🔴 T1 | research-preview | remplace du code maison | M | 🟡 | ⚠️ | ⬜ |
 | `C04` | [Relais de permission : le dashboard devient console d'approbation](C04-channel-permission-relay.md) | 🔴 T1 | research-preview | opportunité | M | 🟡 | ⚠️ | ⬜ |
 | `C05` | [Outil `Monitor` et transport MCP `ws` : le plan B du push, sans allowlist](C05-monitor-websocket-push.md) | 🔴 T1 | mixte | opportunité | M | 🟡 | ⚠️ | ⬜ |
-| `C06` | [Tool search et defer_loading : que faire des 26 outils MCP](C06-tool-search-defer-loading.md) | 🔴 T1 | GA | menace | S | 🟡 | ✅ | ⬜ |
+| `C06` | [Tool search et defer_loading : que faire des 26 outils MCP](C06-tool-search-defer-loading.md) | 🔴 T1 | GA | ~~menace~~ opportunité | S | 🟡 | ✅ | ✅ |
 | `C07` | [Distribution : plugin Claude Code, marketplace et bundles .mcpb](C07-plugin-marketplace-mcpb.md) | 🔴 T1 | GA | opportunité | M | 🟡 | ⚠️ | ⬜ |
-| `C08` | [Status line : trois autres agents sur ce repo, un conflit, à zéro token](C08-statusline.md) | 🔴 T1 | GA | opportunité | S | ✅ | ✅ | ⬜ |
-| `C09` | [Sandbox Bash et egress : l'échec d'onboarding silencieux à corriger](C09-bash-sandbox-egress.md) | 🔴 T1 | GA | menace | S | 🟡 | ⚠️ | ⬜ |
+| `C08` | [Status line : trois autres agents sur ce repo, un conflit, à zéro token](C08-statusline.md) | ~~🔴 T1~~ 🟡 T3 | GA | opportunité | S | ✅ | ✅ | ✅ |
+| `C09` | [Sandbox Bash et egress : l'échec d'onboarding silencieux à corriger](C09-bash-sandbox-egress.md) | 🔴 T1 | GA | menace | ~~S~~ M | 🟡 | ⚠️ | ✅ |
 | `C10` | [Déploiement entreprise : managed-mcp.json, gateway, self-hosted runners](C10-enterprise-deployment.md) | 🟠 T2 | mixte | intégration | M | 🟡 | ⚠️ | ⬜ |
 | `C11` | [Observabilité : traceparent, OTel multi-agents, APIs Analytics](C11-otel-traceparent-analytics.md) | 🟠 T2 | mixte | remplace du code maison | M | 🟡 | ⚠️ | ⬜ |
 | `C12` | [Matrice de portabilité : ce que le natif ne couvre pas (Windows, Bedrock, conteneurs)](C12-portability-matrix.md) | 🔴 T1 | GA | opportunité | S | 🟡 | ⚠️ | ⬜ |
@@ -87,7 +87,7 @@ Le détail par fiche est dans sa **section 0**.
 |---|---|---|---|---|---|---|---|---|
 | `D01` | [MENACE : cross-session messaging natif (SendMessage / ListAgents)](D01-threat-cross-session-messaging.md) | 🔴 T1 | GA | menace | M | 🟡 | ⚠️ | ⬜ |
 | `D02` | [MENACE : Agent Teams (task list partagée, mailbox, file locking)](D02-threat-agent-teams.md) | 🔴 T1 | experimental | menace | L | 🟡 | ⚠️ | ⬜ |
-| `D03` | [MENACE : worktrees natifs, le conflit d'écriture disparaît-il ?](D03-threat-native-worktrees.md) | 🔴 T1 | GA | menace | M | 🟡 | ✅ | ⬜ |
+| `D03` | [MENACE : worktrees natifs, le conflit d'écriture disparaît-il ?](D03-threat-native-worktrees.md) | 🔴 T1 | GA | menace | M | 🟡 | ✅ | ✅ |
 | `D04` | [Dynamic workflows, `ultracode` et `/batch` : l'orchestration parallèle native](D04-threat-dynamic-workflows.md) | 🔴 T1 | GA | menace | M | ✅ | ✅ | ⬜ |
 | `D05` | [MENACE : agent view, le dashboard natif dans le terminal](D05-threat-agent-view.md) | 🟠 T2 | research-preview | menace | M | 🟡 | ✅ | ⬜ |
 

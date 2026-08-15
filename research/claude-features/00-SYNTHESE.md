@@ -63,6 +63,32 @@ Un projet qui détecte les conflits mais ne peut pas les empêcher vend un rappo
 vend une garantie. Le passage de l'un à l'autre est maintenant à portée d'API, sur trois surfaces
 indépendantes — ce qui limite le pari sur une seule.
 
+> 🛠 **Tranché le 2026-08-15 (ligne `A03`) — la contrainte marche, et c'est son succès qui pose problème.**
+> `InputRequiredResult` a été exécuté de bout en bout contre **Claude Code 2.1.233**, via le **shim
+> legacy** du SDK v2 (`ServerOptions.inputRequired.legacyShim`, défaut `true`) qui traduit un
+> `inputRequired()` en une vraie requête `elicitation/create` **sur une connexion d'ère 2025** — donc
+> sans attendre que quiconque adopte `2026-07-28`, et sur le transport que
+> [`A02`](A02-mcp-sdk-typescript-v2.md) vient d'adopter.
+>
+> C'est **le seul** des quatre mécanismes testés où l'acquittement échappe au modèle : avec
+> `isError` + un paramètre `acknowledge_conflicts`, c'est le modèle qui se donne l'autorisation (et
+> il s'en sert sous pression, 1 fois sur 3) ; avec MRTR, c'est le **client** qui répond. Le tableau
+> ci-dessus est donc validé sur sa ligne `A03` — la contrainte est réelle.
+>
+> **Mais en mode non interactif, `claude -p` répond `{"action":"cancel"}` sans consulter le
+> modèle**, et il n'existe **aucun chemin de forçage** pour un agent non surveillé : écriture
+> bloquée 3/3. Or essaim, CI, sessions background et `/batch` sont le profil d'usage central du
+> projet. La question ouverte n'est pas technique, elle est produit : *que doit faire un agent non
+> surveillé face à un conflit `warning` ?* Tant qu'elle n'est pas tranchée, `A03` est **reportée**.
+>
+> Deux corrections de cadrage pour cette section : MRTR ne se déclenche **que** sur `tools/call`
+> (« Servers **MUST NOT** send `InputRequiredResult` responses on any other client requests ») — il
+> ne peut donc rien contre l'agent qui n'annonce pas, ce qui reste le domaine de
+> [`C06`](C06-tool-search-defer-loading.md) et [`C01`](C01-hook-mcp-tool-gate.md). Et le « sans
+> table serveur » qu'on prête à `requestState` est faux pour un acquittement : la spec exige la
+> garantie d'usage unique **côté serveur**. Détail en §6.4 et §7 de
+> [`A03`](A03-mrtr-input-required.md).
+
 ### Mouvement 2 — Payer la dette de protocole
 
 C'est la seule partie de cette veille qui a une horloge. Le transport implémenté par `src/serve-http.ts` et
@@ -75,11 +101,75 @@ round-robin, sans affinité de session ni store partagé — ce qui simplifie fr
 → [A01](A01-mcp-2026-07-28-stateless.md), [A02](A02-mcp-sdk-typescript-v2.md),
 [A04](A04-subscriptions-listen.md), [A06](A06-tool-metadata-modern-surface.md)
 
+> 🛠 **Tranché le 2026-08-15 — « la seule partie qui a une horloge » n'en a pas, et le vrai bénéfice
+> est ailleurs que là où cette section le cherche.**
+>
+> **(1) Il n'y a pas d'horloge.** `/specification/2026-07-28/deprecated`, fetchée le 2026-08-15 :
+> section **« Removed » vide**, HTTP+SSE « Three months after SEP-2596 reaches Final » (non daté),
+> Roots/Sampling/Logging/DCR « First revision released on or after **2027-07-28** ». Et surtout, le
+> **repli fonctionne** : un client `@modelcontextprotocol/client@2.0.0` en `mode: 'auto'` — celui
+> qui sonde `server/discover` — se connecte au daemon actuel **en 33 ms et liste ses 26 outils**.
+> Seul `{ pin: '2026-07-28' }`, qui refuse tout repli, échoue. « Devenir un serveur legacy 2025 »
+> est exact et **sans conséquence fonctionnelle mesurable**.
+>
+> **(2) « Le SDK cible n'existe plus sous son nom actuel » est faux** (déjà corrigé en §6 de ce
+> document, mais §1 et §2 le répètent) : `@modelcontextprotocol/sdk@1.30.0` est publié — le
+> **2026-07-27 à 17h56**, six heures avant la famille v2 du même jour.
+>
+> **(3) Le bénéfice réel de la migration SDK n'est pas le protocole, c'est l'arbre de dépendances.**
+> Mesuré `pnpm ls --prod --depth Infinity` sur un worktree migré par le codemod officiel :
+> **189 → 120 paquets de production, −74 / +4**. Sortent notamment `express@5`, `cors`,
+> `express-rate-limit`, `ajv`, `ajv-formats`, `raw-body`, `zod-to-json-schema` — que ce dépôt, un
+> `node:http` nu, **n'importe nulle part**. Coût mesuré du chemin : 108 changements automatiques
+> sur 21 fichiers, **6 erreurs `tsc` dont 0 dans `src/`**, **48/49 tests**, daemon fonctionnel.
+>
+> **(4) Le « gain multi-instance » ne se matérialise pas, et on sait pourquoi.** Porter les claims
+> par requête ne débloque aucun round-robin tant que `sessionIdGenerator` est fourni ; le stateless
+> impose un transport + un `McpServer` **neufs par requête HTTP**. Et SQLite + le broker MQTT
+> embarqué restent les vrais points de sérialisation.
+>
+> **Verdicts :** [`A01`](A01-mcp-2026-07-28-stateless.md) **reporter** (tier T1 → **T2**) ;
+> [`A02`](A02-mcp-sdk-typescript-v2.md) **adopter partiellement** — le changement de paquets, pas la
+> révision (nature `replace-homemade-code` → **`reduce-dependency-surface`**, effort `XL` → **M**).
+> Détail en §6.4 et §7 des deux fiches.
+>
+> **(5) Capacité v2 ≠ trafic v2 — et c'est mesuré sur le fil.** Le changelog officiel de Claude Code
+> donne « protocol-version **probe** » en **2.1.232** et « **MCP v2** … **subscriptions/listen** »
+> en **2.1.233** : Claude Code **est** un client de la révision. Le poste a donc été mis à jour
+> (2.1.219 → **2.1.233**) et la session rejouée à travers un proxy d'écoute. Résultat :
+>
+> ```
+> >>> POST /mcp  initialize  protocolVersion: "2025-11-25"  clientInfo: claude-code 2.1.233
+> >>> POST /mcp  notifications/initialized     mcp-session-id: b688aca8-…
+> >>> GET  /mcp  (endpoint que la revision supprime)
+> >>> POST /mcp  tools/list  -> 26 outils      >>> tools/call list_agents -> OK   (9 s)
+> ```
+>
+> **Aucun `server/discover`. Aucune sonde. `2025-11-25` sur le fil.** Le binaire « MCP v2 »
+> négocie l'ère legacy avec notre daemon et utilise même l'endpoint GET que la révision retire.
+> Conséquence : la mesure de [`A04`](A04-subscriptions-listen.md) est **re-confirmée**, pas périmée.
+
 Un cas mérite d'être isolé : **`subscriptions/listen`**. Le broker MQTT embarqué, `src/mqtt-bridge.ts` et
 `src/sse-emitter.ts` existent en grande partie parce que le push temps réel n'était pas standardisé dans MCP.
 Il l'est désormais. La question n'est pas de savoir si le code maison marche — il marche — mais de savoir
 combien de temps il vaut de le maintenir face à un canal standard, négocié et compatible load-balancer.
 → [A04](A04-subscriptions-listen.md)
+
+> 🛠 **Tranché le 2026-08-15 — ce paragraphe attribue à `A04` une question qu'elle ne peut pas trancher.**
+> `subscriptions/listen` est bloqué **aux deux bouts** : le SDK installé (1.30.0) a **0 occurrence** de la
+> révision `2026-07-28` (`LATEST_PROTOCOL_VERSION = '2025-11-25'`), notre serveur rétrograde une demande en
+> 2026-07-28 vers 2025-11-25, et Claude Code 2.1.219 envoie `initialize` en 2025-11-25. Le sort du broker
+> MQTT, lui, **ne dépend pas de cette révision** et se tranche aujourd'hui — la fiche `A04` mélangeait trois
+> questions distinctes (§7.2). **L'ordre de travail est d'ailleurs inversé :** `A04` est conditionnée par
+> [`A01`](A01-mcp-2026-07-28-stateless.md)/[`A02`](A02-mcp-sdk-typescript-v2.md), qui portent la migration,
+> et non l'inverse. Corrections de classement : tier T1 → **T3**, nature `replace-homemade-code` →
+> **opportunity** (le dépôt n'a **aucune** ressource MCP — on n'y remplace rien).
+>
+> Trois constats extraits, tous indépendants de la révision : le broker **bloque le démarrage** du
+> coordinateur si le port 1883 est pris (`serve-http.ts:1386`, sans `try`/`catch`) ; **essaim**, le
+> consommateur de référence du bus cité par le README, souscrit à des topics d'avant la v0.7.0 et **ne reçoit
+> plus rien depuis** ; et déclarer `capabilities.resources.subscribe: true` sans installer le handler renvoie
+> **-32601** — garde-fou fantôme en puissance. Détail en §6.4 et §7 de [A04](A04-subscriptions-listen.md).
 
 ### Mouvement 3 — Occuper explicitement ce que le natif ne couvre pas
 
@@ -122,6 +212,29 @@ l'isolation par worktree n'apporte rien.
 Cette reformulation est un travail de positionnement, pas de code. Elle conditionne la valeur de tout le
 reste. → [D03](D03-threat-native-worktrees.md), [G02](G02-worktree-orchestrators.md)
 
+> 🛠 **Tranché le 2026-08-15 — cette section se trompe sur les deux points qui comptent.**
+>
+> **(1) « C'est ce que mesurent déjà `dependency-map`, `impact-scorer`, `git-cochange-builder` et
+> `conflict-detector` »** — non. Vérifié commande par commande : le serveur **n'ouvre jamais un
+> fichier source du dépôt** (les seuls `readFileSync` de `src/` sont les assets du dashboard et
+> `package.json` ; aucun `fs.watch`, aucun `chokidar`) ; `treeSitter.extract()` n'a **qu'un seul
+> appelant**, alimenté par un `body.content` **optionnel** poussé par le client ; la dependency-map
+> est **intégralement uploadée** (`setMap` ← l'outil MCP `set_dependency_map` ; `setDependencies`
+> n'a aucun appelant de production) ; et les quatre signaux de `ConflictDetector` comparent des
+> **déclarations d'agent**. La seule observation autonome, `git-cochange`, ne rend que des **noms de
+> fichiers commités**, est aveugle au travail en cours (non commité) des worktrees, et
+> `COORDINATOR_REPO_ROOT` est absent du `Dockerfile` et du `docker-compose.yml` — donc désactivée
+> par défaut. **mcp-coordinator est aujourd'hui un agrégateur de déclarations.**
+>
+> **(2) « un travail de positionnement, pas de code »** — l'inverse. Le positionnement est **déjà
+> écrit** : `docs/index.html:2077` dit mot pour mot « Worktrees isolate filesystems. mcp-coordinator
+> coordinates intent. » Ce qui manque, c'est le code.
+>
+> **La menace n'est donc pas surestimée — elle est sous-spécifiée.** Elle ne dit pas seulement que
+> le conflit d'écriture rétrécit ; elle dit que le repli annoncé n'a pas d'implémentation. C'est
+> plus grave, et plus actionnable : ça ne dépend d'aucune décision d'Anthropic. Voir §7.1 de
+> [D03](D03-threat-native-worktrees.md).
+
 ---
 
 ## 4. Deux choses à vérifier tout de suite
@@ -135,11 +248,34 @@ ne pas savoir que l'outil existe — donc ne jamais annoncer. Avec ~26 outils, l
 zone concernée. Le correctif candidat (`alwaysLoad: true` sur le sous-ensemble critique) est peu coûteux ; le
 préalable est de **mesurer si la régression est réelle**. → [C06](C06-tool-search-defer-loading.md)
 
+> 🛠 **Mesuré le 2026-08-15 — ce paragraphe est faux, sur les deux points.** (1) Le tool search n'a rien
+> cassé : avec `ENABLE_TOOL_SEARCH=false` et les 26 schémas pleinement en contexte, l'agent édite sans
+> annoncer. Le workflow ne fonctionnait **pas non plus avant**. (2) Le correctif candidat était le mauvais :
+> `alwaysLoad: true` a été testé seul, et avec un impératif dans la description d'`announce_work` — 0/3.
+> Ce qui fonctionne est le champ **`instructions`** du serveur (5/5), aujourd'hui absent de
+> `createMcpServer()`. Conséquence pour cette section : `C06` n'est pas une régression en production,
+> c'est une capacité neuve — et le fait que rien ne contraigne l'annonce **renforce** la priorité du
+> Mouvement 1 ([`C01`](C01-hook-mcp-tool-gate.md), [`F02`](F02-canusetool-distributed-lock.md)) au lieu
+> de la réduire. Détail et sorties brutes en §6.4 et §7.3 de [C06](C06-tool-search-defer-loading.md).
+
 **Le sandbox Bash bloque probablement l'onboarding en silence.** Le sandbox de Claude Code (GA sur macOS et
 Linux) applique un egress deny-by-default. Un daemon écoutant sur `localhost` n'est pas joignable sans une
 entrée explicite dans `sandbox.network.allowedDomains`. L'utilisateur ne voit pas une erreur de configuration :
 il voit un coordinateur qui ne répond pas. `cli/doctor.ts` devrait détecter le cas et dire exactement quelle
 ligne ajouter. → [C09](C09-bash-sandbox-egress.md)
+
+> 🛠 **Tranché le 2026-08-15 — ce paragraphe est faux sur ses trois affirmations.** (1) *« en silence »* : la
+> doc dit que Claude Code **prompt** à la première connexion vers un hôte inconnu ; le refus muet exige
+> `strictAllowlist` (settings user/managed/CLI) ou `allowManagedDomainsOnly` (managed) — une organisation
+> durcie, pas un auto-hébergeur. (2) *« le daemon n'est pas joignable »* : le sandbox **ne couvre que Bash**.
+> `sandbox-environments` écrit *« MCP servers and hooks are separate processes that run unconstrained on the
+> host »* — le chemin MCP, donc tout le produit, n'est pas concerné. (3) *« dire quelle ligne ajouter »* : la
+> ligne en question est **rapportée inopérante** ([#28018](https://github.com/anthropics/claude-code/issues/28018),
+> OPEN — loopback refusé même listé dans `allowedDomains`). Un seul des trois échecs annoncés par la fiche est
+> confirmé (`.mcp.json` est un chemin protégé). **Le vrai défaut est ailleurs et n'a rien à voir avec le
+> sandbox :** `server start --daemon` écrit le PID et sort `0` sans vérifier que le daemon écoute, et `doctor`
+> conseille ensuite de démarrer un serveur dont il vient d'afficher le PID. Détail en §6.4 et §7.4 de
+> [C09](C09-bash-sandbox-egress.md).
 
 ---
 

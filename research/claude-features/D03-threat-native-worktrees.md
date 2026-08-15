@@ -13,7 +13,7 @@
 | **Vérification** | CONFIRMED |
 | **Vérifiée le** | 2026-08-14 |
 | **Testabilité** | ✅ testable — PoC local complet, Claude Code 2.1.219 installé |
-| **Statut du challenge** | ⬜ à faire |
+| **Statut du challenge** | ✅ **tranché** (2026-08-15) — contre-mesure technique, voir §7 |
 
 ---
 
@@ -175,22 +175,363 @@ Point de vigilance opérationnel : le 4e verrou (« command shape ») refuse les
 
 ### 6.2 Hypothèse
 
-<Ce qu'on pense avant de tester.>
+**Pré-enregistré le 2026-08-15, avant toute exécution.** Claude Code **2.1.219**, Node 22.21.0,
+Windows 11. Fiche « menace » : le verdict portera sur la **réponse**, pas sur une adoption.
+
+**Découverte de lecture, faite avant de poser les critères** (elle les oriente, donc elle est
+déclarée) : les trois branches de `src/conflict-detector.ts` opèrent sur `params.target_modules` et
+`params.target_files` — c'est-à-dire sur ce que l'agent **déclare** dans `announce_work`, jamais sur
+ce qu'il fait. Aucune n'inspecte le disque. Le sort de la détection sous worktree ne dépend donc pas
+de git : il dépend **du format de chemin que l'agent transmet**.
+
+**Hypothèse.** La fiche suppose que les agents rapportent `.claude/worktrees/<nom>/src/types.ts`.
+Or `normalizePath` (`src/path-normalize.ts:29`) ne retire le préfixe `repoRoot` que pour les chemins
+**absolus** ; un chemin **relatif** traverse inchangé. Si un agent lancé dans un worktree déclare
+`src/types.ts` — la forme naturelle, relative à son cwd — alors `file_overlap` **fonctionne
+normalement entre worktrees**, et le risque n° 1 de §4 (« le tracking décroche silencieusement »)
+est faux. Je m'attends à ce que ce soit le cas, et donc à ce que la menace soit **plus petite que
+la fiche ne le dit sur le plan technique, et plus grande sur le plan narratif**.
+
+**Critères de refus, posés avant de mesurer :**
+
+| # | Ce qui tue quoi | Seuil |
+|---|---|---|
+| K1 | Si les agents en worktree déclarent des chemins **relatifs**, le risque n° 1 de §4 est **faux** et la canonicalisation worktree-relative de §6.1 est inutile — pire, elle serait nuisible. | observation directe de ce qui arrive au daemon |
+| K2 | Si les agents déclarent des chemins **absolus** préfixés worktree, le risque n° 1 est confirmé et il faut une réponse technique. | idem |
+| K3 | Si le noyau sémantique (`module_overlap`, `dependency_chain`) ne repose que sur des **déclarations** d'agent et jamais sur une observation du dépôt, alors la position de repli « nous tenons le conflit sémantique » est une promesse, pas une capacité — et le recadrage de la synthèse §3 doit le dire. | lecture + exécution |
+| K4 | Si `git-cochange` ne voit pas les branches `worktree-*`, la Layer 4 est aveugle exactement là où la menace se joue. | `git log` sans `--all` → à confirmer par exécution |
+| K5 | Si `--worktree` n'est **pas** le défaut d'une session interactive normale, la menace de la synthèse §3 (« deux agents ne travaillent plus jamais sur le même checkout ») est surestimée. | comportement observé |
+| K6 | Si le hook `WorktreeCreate` ne peut pas porter `worktree_path` sans le recalculer lui-même, le coût de « enregistrement via hook » de §6.1 est sous-estimé. | doc + PoC hook |
+
+**Verdict interdit d'avance :** si aucune des deux branches de §6.1 ne survit, le verdict doit le
+dire au lieu d'en choisir une par défaut.
 
 ### 6.3 Protocole de vérification
 
-<Comment on tranche : PoC, lecture de code, mesure, test avec un vrai client MCP, benchmark de tokens…
-Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
+Amendé le 2026-08-15. Ordre choisi pour que les tests les moins chers tranchent les critères les
+plus lourds.
 
-- [ ] Lancer deux sessions `claude --worktree a` et `claude --worktree b` sur ce dépôt, faire éditer `src/types.ts` par les deux, et observer ce que reçoit réellement `POST /api/working-files/start` : chemin brut, chemin après `normalizePath`, et si `check_file_conflict` remonte quoi que ce soit.
-- [ ] Vérifier le comportement de `normalizePath` avec un worktree placé **hors** de `COORDINATOR_REPO_ROOT` : confirmer le 400 et mesurer si l'agent le voit ou l'avale.
-- [ ] Écrire un hook `WorktreeCreate` minimal qui appelle `POST /api/register` avec `worktree_path` et vérifier qu'un exit non-zéro avorte bien la création — et vérifier si `EnterWorktree` déclenche le hook (issue amont #36205).
-- [ ] Instrumenter `FileTracker.fileToModule` sur un chemin de worktree réel et confirmer l'agrégation parasite sur le module `.claude/worktrees`.
-- [ ] Monter le scénario sémantique complet : agent A change une signature exportée dans le worktree `a`, agent B consomme l'ancienne dans `b` ; mesurer si `impact-scorer` + `dependency-map` catégorisent B en `concerned` **sans** aucun signal de chevauchement de fichier.
+- [x] **T1 — Unitaire, déterministe.** `normalizePath` et `fileToModule` sur des chemins de worktree
+      réels, en relatif **et** en absolu, plus le cas « worktree hors `repoRoot` ». Tranche K1/K2 sur
+      le plan mécanique avant d'engager des sessions.
+- [x] **T2 — Le vrai chemin.** Daemon lancé, deux worktrees natifs créés par Claude Code lui-même,
+      deux sessions `claude` qui annoncent puis éditent le **même fichier logique**. Lire ce qui
+      arrive réellement dans `working_files` et ce que renvoie `check_file_conflict`. Tranche
+      K1/K2 pour de bon.
+- [x] **T3 — Le noyau sémantique sous worktree.** Le scénario que le produit revendique : A change
+      une signature exportée dans le worktree `a`, B consomme l'ancienne dans `b`. Mesurer si
+      `dependency_chain` / `get_blast_radius` remontent quoi que ce soit, et **d'où** vient
+      l'information. Tranche K3.
+- [x] **T4 — `git-cochange` et les branches worktree.** Rejouer la commande exacte du builder et
+      compter ce qu'elle voit du travail vivant sur `worktree-*`. Tranche K4.
+- [x] **T5 — Le défaut.** Vérifier si une session interactive ordinaire crée un worktree. Tranche K5.
+- [x] **T6 — Le hook.** `WorktreeCreate` minimal : vérifier le contrat d'entrée/sortie réel
+      (le hook reçoit-il `name` seul ? doit-il retourner le chemin ?) et si un exit non-zéro avorte
+      la création. Tranche K6. Le sous-point #36205 (`EnterWorktree` déclenche-t-il les hooks) est
+      traité s'il reste du budget.
 
 ### 6.4 Résultat observé
 
-<Ce qu'on a réellement mesuré/vu. Coller les sorties, pas les paraphraser.>
+Exécuté le 2026-08-15. Claude Code **2.1.219**, Node 22.21.0, Windows 11.
+**Tout s'est passé dans un clone jetable** (`scratchpad/d03repo`) avec un daemon dédié
+(`COORDINATOR_REPO_ROOT` = ce clone, base neuve) : le dépôt de travail n'a pas été touché.
+Trois worktrees natifs ont été créés **par Claude Code lui-même** via `claude --worktree`.
+
+---
+
+**(A) T1 — unitaire, déterministe.** `normalizePath` + `fileToModule` sur des chemins de worktree :
+
+```
+cas                              normalizePath                            fileToModule
+--------------------------------------------------------------------------------------
+RELATIF depuis le worktree a     src/types.ts                             src/types.ts
+RELATIF depuis le worktree b     src/types.ts                             src/types.ts
+ABSOLU worktree a                .claude/worktrees/a/src/types.ts         .claude/worktrees
+ABSOLU worktree b                .claude/worktrees/b/src/types.ts         .claude/worktrees
+ABSOLU main checkout             src/types.ts                             src/types.ts
+
+--- worktree HORS repoRoot ---
+THROW: path is outside repoRoot: C:/ailleurs/wt-a/src/types.ts
+
+si les agents declarent RELATIF -> overlap detecte ? true (src/types.ts)
+si les agents declarent ABSOLU  -> overlap detecte ? false
+module_overlap en ABSOLU (faux positif ?) : true   (les deux -> .claude/worktrees)
+```
+
+`normalizePath` ne retire le préfixe `repoRoot` que pour les chemins **absolus**
+(`src/path-normalize.ts:29-38`) : un chemin relatif traverse inchangé. **Tout dépend donc de la
+forme déclarée**, et le comportement est asymétrique — en absolu, `file_overlap` devient aveugle
+*pendant que* `fileToModule` collapse les deux worktrees sur le même module `.claude/worktrees`.
+
+**(B) T2 — le vrai chemin, trois worktrees natifs.** Worktrees créés par Claude Code :
+
+```
+.../d03repo/.claude/worktrees/d03a  [worktree-d03a] locked
+.../d03repo/.claude/worktrees/d03b  [worktree-d03b] locked
+```
+
+`agent-A`, cwd = `…\.claude\worktrees\d03a` :
+
+```
+[tool_use] mcp__coordinator__register_agent {"agent_id":"agent-A","modules":["src"]}
+[tool_use] mcp__coordinator__announce_work  {"target_modules":["src"],"target_files":["src/types.ts"]}
+[tool_use] Edit  …\.claude\worktrees\d03a\src\types.ts
+```
+
+`agent-B`, cwd = `…\.claude\worktrees\d03b`, annonce le même fichier logique — **réponse brute du
+serveur** :
+
+```json
+[
+  { "type": "module_overlap", "severity": "warning", "agent_id": "agent-A",
+    "description": "Module overlap on: src" },
+  { "type": "file_overlap",   "severity": "warning", "agent_id": "agent-A",
+    "description": "File overlap on: src/types.ts" }
+]
+```
+
+> **Le conflit EST détecté entre deux worktrees natifs isolés.** Le risque n° 1 de §4 (« zéro
+> chevauchement détecté ») est **faux**. La raison est mécanique : l'agent déclare `src/types.ts`,
+> un chemin **relatif à son cwd**, et `normalizePath` le laisse passer tel quel — la clé est donc
+> identique des deux côtés.
+
+**(C) ~~Confondant levé~~ — confondant DÉPLACÉ, pas levé.** Les prompts de A et B nommaient
+`src/types.ts`. Troisième run, prompt qui ne dicte **ni** le chemin **ni** sa forme (« ajoute un
+commentaire en tête du fichier qui définit les types TypeScript du projet, choisis toi-même comment
+remplir les champs ») :
+
+```
+[register_agent]  {"agent_id":"agent-C","name":"Agent C","modules":["src/types.ts"]}
+[announce_work]   target_files = ["src/types.ts"] | target_modules = ["src/types.ts"]
+   [conflits vus par C] 2 -> file_overlap vs agent-B | file_overlap vs agent-A
+```
+
+Relatif à nouveau, et **deux** conflits remontés à travers trois worktreesisolés. Trois agents sur
+trois déclarent relatif.
+
+*Note incidente :* C a rempli `target_modules` avec un **fichier** (`src/types.ts`) là où A et B
+avaient mis `src`. Le champ n'est contraint par rien — d'où l'absence de `module_overlap` pour C.
+La déclaration de module est libre et incohérente d'un agent à l'autre.
+
+> ⚠️ **Ce que la passe adversariale a trouvé et que j'avais manqué.** Le prompt ne dictait plus la
+> forme, mais **la description de l'outil, si** — `src/tools/consultation-tools.ts:49-53` :
+>
+> ```
+> target_files: z.array(z.string()).describe(
+>   "Repo-relative file paths (forward-slash, e.g. 'src/foo.ts'). Absolute paths are not accepted in team-mode.")
+> ```
+>
+> Et j'avais mis `alwaysLoad: true` dans le `.mcp.json` du PoC — donc, d'après le résultat établi en
+> [`C06`](C06-tool-search-defer-loading.md), les schémas **étaient** chargés en contexte et les trois
+> agents ont lu cette phrase, exemple `src/foo.ts` compris. L'expérience établit donc « Opus 5, via
+> le client MCP de Claude Code, suit une `.describe()` » — **pas** « les agents déclarent relatif ».
+> La dérive observée sur le champ voisin `target_modules` (1 run sur 3) montre d'ailleurs que le
+> respect de la consigne n'est pas acquis.
+>
+> Pire, la phrase est un **garde-fou fantôme** : le schéma est un `z.array(z.string())` nu, sans
+> `refine` ni normalisation. « Absolute paths are not accepted » est **faux** — ils sont acceptés,
+> stockés tels quels, et rediffusés en SSE/MQTT.
+
+**(D) Ce qui casse vraiment — le chemin *observé*.** Toujours pour B :
+
+```
+[tool_use] mcp__coordinator__check_file_conflict {"file_path":"src/types.ts"}
+   [RESULT] {"conflict":false,"agents":[]}
+```
+
+et `GET /api/hot-files` → `[]`. `check_file_conflict` et les hot files lisent `file_activity`, que
+**rien n'alimente** ici : il n'existe aucun hook de collecte livré (`cli/init.ts` : zéro
+scaffolding, déjà vérifié en §0). Et s'il en existait un, il tournerait *dans* le worktree et
+enverrait vraisemblablement des chemins absolus — cas où T1 montre que le match échoue **et** que
+`fileToModule` pollue. Le seul consommateur de `fileToModule` est `src/file-tracker.ts:16`, qui
+écrit la colonne `module` de `file_activity`.
+
+**(E) T4 — `git-cochange` est structurellement aveugle aux branches worktree.** Mesure propre, sur
+un commit créé exprès dans le worktree `d03a` :
+
+```
+commit cree sur worktree-d03a: 2b9c126
+git log (commande exacte du builder, cwd=repoRoot, SANS --all) voit-il ce commit ? NON
+avec --all il le verrait ?                                                        OUI
+```
+
+> ⚠️ **Correction d'une mesure que j'avais failli retenir.** J'avais d'abord comparé
+> `git rev-list --count HEAD` (15) à `--all` (743) et j'allais en conclure « 728 commits
+> invisibles ». **Faux** : ce dépôt est un **clone shallow** (`.git/shallow` existe), ce qui
+> explique l'essentiel de l'écart. La mesure ci-dessus, sur un commit contrôlé, est la bonne.
+
+Et sur clone shallow, le daemon coupe la couche entièrement :
+
+```
+{"component":"gitcc","msg":"Layer 4 unavailable: shallow clone"}
+```
+
+**(F) K3 — la « position de repli » est déclarative, pas observationnelle.** `setMap()` n'a
+**qu'un seul appelant** dans tout le dépôt :
+
+```
+src/dependency-map.ts:118:  setMap(orgId: string, map: DependencyMap): void {
+src/tools/dependencies-tools.ts:68:      depMap.setMap(claims.org, parsed as DependencyMap);
+```
+
+C'est-à-dire l'outil MCP `set_dependency_map` : **la carte de dépendances doit être uploadée par un
+client**. Aucun builder automatique côté serveur. Combiné au fait que `module_overlap` et
+`dependency_chain` comparent `params.target_modules` — ce que l'agent **déclare** —, il n'existe
+aujourd'hui **aucun chemin par lequel le coordinateur observe le contenu de deux worktrees et en
+déduit un conflit sémantique**. Le noyau que §4 et la synthèse §3 présentent comme le
+différenciateur est alimenté par des déclarations d'agents et un upload client.
+
+**(F-bis) Le cas « worktree hors du repo root » n'est pas théorique — il est déjà là.** Inventaire
+du dépôt de travail réel, après l'expérience :
+
+```
+C:/Users/gagno/projet/mcp-coordinator-new                              [docs/veille-claude-features]
+C:/Users/gagno/AppData/Local/Temp/claude/wt-99                         [fix/99-auth-claims-error]   <-- HORS repoRoot
+C:/…/mcp-coordinator-new/.claude/worktrees/agent-a75517e54a2ee66af     [fix/78-status-exit-code]
+C:/…/mcp-coordinator-new/.claude/worktrees/docs-i18n-v07-alignment     [worktree-docs-i18n-v07-alignment]
+```
+
+`wt-99` vit sous `Temp/`, hors de `COORDINATOR_REPO_ROOT`. Un agent y travaillant et déclarant un
+chemin **absolu** déclencherait le `THROW: path is outside repoRoot` de (A) — donc un **400** sur
+`/api/working-files/start` (`src/http/rest-handlers.ts:836,879,903`), et la claim disparaît. Ce
+n'est pas un scénario inventé pour le challenge : c'est l'état actuel du dépôt du mainteneur.
+
+**(G) T5 — ~~`--worktree` n'est pas le défaut~~ : MESURE INVALIDE, retirée.** J'avais écrit que sur
+les ~30 sessions `claude -p` des challenges `C06` et `C09`, aucune n'avait créé de worktree, et j'en
+concluais « opt-in ». **La mesure ne prouve rien** : `claude -p` est précisément le mode où l'app
+desktop, `/bg`, agent view, `/fork` et `/batch` n'existent pas. Mesurer l'auto-création de worktrees
+en `-p`, c'est mesurer la pluie à l'intérieur — le 0/30 était structurellement garanti.
+
+Ce que je peux affirmer de première main : dans **cette session-ci**, l'outil `Agent` expose un
+paramètre `isolation: "worktree"`, et `EnterWorktree` / `ExitWorktree` figurent dans la liste
+d'outils. **Le modèle peut donc créer un worktree sans qu'aucun humain ne tape quoi que ce soit.**
+La §0 de cette fiche (vérifiée le 2026-08-14) confirme par ailleurs les autres chemins automatiques :
+subagents `isolation: worktree`, isolation des sessions background (`worktree.bgIsolation`, défaut
+`"worktree"`), `/batch`. **`--worktree` est un chemin sur plusieurs, et le seul qui exige un flag.**
+
+---
+
+**(H) Le défaut le plus grave n'a rien à voir avec les worktrees : la jointure déclaré ↔ observé
+est cassée.** Vérifié fichier par fichier :
+
+| Voie | Normalisation |
+|---|---|
+| `announce_work` (MCP) — `src/tools/consultation-tools.ts` | **aucune** |
+| `announce-workflow.ts`, `consultation.ts` | **aucune** |
+| `check_file_conflict` (MCP) — `src/tools/files-tools.ts` | **aucune** |
+| `POST /api/announce` — `src/http/rest-schemas.ts:67` | **aucune** (`z.array(z.string())`, même pas de `.describe()`) |
+| `POST /api/file-activity` — `rest-handlers.ts:834` | `normalizePath` |
+| `POST /api/working-files/{start,stop}` — `rest-handlers.ts:877,901` | `normalizePath` |
+
+Et `src/impact-scorer.ts:74` joint les deux côtés en passant `params.target_files` **brut** à
+`fileTracker.getFileToAgentsIndex` et `workingFiles.getIndex` — qui interrogent des colonnes
+normalisées par **égalité SQL exacte**. Mesure :
+
+```
+declare              | cle DECLAREE (brute)  | cle OBSERVEE (normalisee) | match
+--------------------------------------------------------------------------------
+"src/types.ts"       | src/types.ts          | src/types.ts              | OUI
+"src/Types.ts"       | src/Types.ts          | src/types.ts              | *** NON ***
+"./src/types.ts"     | ./src/types.ts        | src/types.ts              | *** NON ***
+"SRC/Types.ts"       | SRC/Types.ts          | src/types.ts              | *** NON ***
+```
+
+`normalizePath` **passe tout en minuscules** dès que `repoRoot` porte une lettre de lecteur
+(`src/path-normalize.ts:20-23,41`) — c'est-à-dire **sur Windows, la plateforme du mainteneur**. Un
+agent qui annonce `src/Types.ts` ou `./src/types.ts` ne matchera jamais sa propre activité
+observée. **Ce défaut existe sans aucun worktree**, et il touche le signal le plus fort du scoring.
+
+La symétrie observée en (B) et (C) n'existe que parce que les deux côtés comparés étaient
+*tous deux non normalisés* (`announce` ∩ `announce`). C'est une symétrie **par absence de
+traitement**, pas par correction.
+
+---
+
+**Frontière factuelle — ce que le natif fait, ce qu'il ne fait pas :**
+
+| | Constat mesuré |
+|---|---|
+| Le natif **isole réellement** | 3 worktrees créés, `.claude/worktrees/<nom>/`, branches `worktree-<nom>`, `locked`. Deux agents n'écrivent physiquement jamais le même inode. |
+| Le natif **ne supprime pas** la détection d'intention | `file_overlap` + `module_overlap` remontent entre worktrees isolés, parce que les agents déclarent relatif. **Contredit §4 risque n° 1.** |
+| Ce qui décroche vraiment (1) | Le chemin **observé** : `file_activity` / `check_file_conflict` / hot files. Vide ici, et cassé en absolu. |
+| Ce qui décroche vraiment (2) | **`git-cochange`** : `git log` sans `--all` ne voit pas les branches `worktree-*` — mesuré. C'est la couche qui compterait le plus, puisque le travail en worktree y vit jusqu'au merge. |
+| Ce qui n'existe pas | Une **observation** du conflit sémantique. Tout est déclaré par l'agent ou uploadé par un client. |
+
+---
+
+### 6.4-bis Ce que la passe adversariale a retourné
+
+Deux réfutateurs, deux angles. **Les deux ont gagné**, et le second a inversé le verdict que
+j'allais écrire. Ce qui suit est vérifié ici, commande par commande, pas repris sur parole.
+
+**(I) Le coordinateur n'observe jamais le dépôt. Aucune couche d'observation n'existe.**
+
+```
+# tous les readFileSync de src/ (hors tests) :
+src/serve-http.ts:611   -> assets du dashboard
+src/version.ts:24       -> package.json
+# fs.watch / chokidar : AUCUN
+
+# appelants de treeSitter.extract() en production : UN SEUL
+src/http/rest-handlers.ts:848:  symbols = ctx.services.treeSitter.extract(filePath, body.content, null);
+#                                                                                  ^^^^^^^^^^^^
+#                                    le buffer vient du CLIENT, et body.content est OPTIONNEL
+
+# setDependencies(...) : defini l.11, AUCUN appelant de production
+# setMap(...)          : un seul appelant -> l'outil MCP set_dependency_map
+```
+
+Le serveur **n'ouvre jamais un fichier source du dépôt**. L'AST n'est calculé que sur un buffer que
+le client a bien voulu pousser. Le graphe de dépendances est intégralement uploadé. Les quatre
+signaux de `ConflictDetector.detect()` sont donc **tous** déclarés ou uploadés — y compris la
+branche « hot file », dont le commentaire l.114 (« *from actual file activity, not just declared
+files* ») est trompeur : « actual » y désigne ce qu'un hook a bien voulu POSTer.
+
+La seule observation autonome est `git-cochange` — et elle ne sauve pas la position : `--name-only`
+ne rend que des **noms de fichiers** (jamais un diff, jamais un symbole), c'est un **prior
+historique sur du commité** alors que deux agents en worktree n'ont justement **rien commité**, et
+elle est **désactivée par défaut** dans tout ce qui est livré :
+
+```
+COORDINATOR_REPO_ROOT :  .env.example 1 (exemple)  |  Dockerfile 0  |  docker-compose.yml 0
+```
+
+> **Correction de mon propre diagnostic.** J'avais écrit en (E) que `git-cochange` « est aveugle aux
+> branches `worktree-*` », ce qui laisse croire à un bug réparable par `--all`. C'est un mauvais
+> diagnostic : `--all` déplacerait le prior à la marge, il ne ferait **jamais** observer au
+> coordinateur le travail en cours du pair, puisque ce travail n'est pas commité. Le fait mesuré en
+> (E) reste vrai ; l'inférence « donc il suffit d'ajouter `--all` » est fausse.
+
+**(J) Le site du projet recommande la configuration qui casse son propre chemin observé.**
+
+```
+docs/index.html:2264  (+ 3171 en, 3543 fr, 3917 es, … — 6 langues)
+  "git worktree add ../feature-x main and run each agent in its own worktree"
+```
+
+`../feature-x` est **hors** de `COORDINATOR_REPO_ROOT`. C'est exactement le cas où `normalizePath`
+lève, et où `/api/working-files/start` et `/api/file-activity` renvoient **400**
+(`rest-handlers.ts:836,879,903`). La page d'accueil prescrit la disposition qui met la voie observée
+en erreur, dans six langues.
+
+**(K) Le recadrage que la synthèse propose est déjà écrit — ce n'est pas ce qui manque.**
+
+```
+docs/index.html:2077 (+ 3128) : "Worktrees isolate filesystems. mcp-coordinator coordinates
+                                 intent. A clean merge of two i[ndependent worktrees]…"
+```
+
+La réponse « worktrees isolent les fichiers, nous coordonnons l'intention » est **déjà sur la page
+produit**. Ce qui manque n'est donc pas le positionnement : c'est l'implémentation derrière.
+
+**(L) Deux formulations du dépôt ne survivent pas à ce qui précède.**
+
+- `README.md:44` — « conflicts are detected **before a single line is written** ». Suppose que
+  l'agent *veuille* annoncer — mesuré **0/3 sans `instructions`** dans
+  [`C06`](C06-tool-search-defer-loading.md) — **et** qu'il déclare juste, ce que rien ne valide.
+- `README.md:197` — « tree-sitter extracts symbols **server-side** from 15 languages ».
+  Littéralement vrai (le parse tourne dans le daemon) mais se lit comme une observation, alors que
+  les octets viennent de `body.content`, champ **optionnel** qu'aucun hook livré ne remplit.
 
 ### 6.5 Contre-arguments
 
@@ -206,13 +547,90 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 
 ## 7. Décision
 
+Fiche « menace » : le verdict porte sur la **réponse**, pas sur une adoption.
+
 | | |
 |---|---|
-| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ⬜ refuser |
-| **Date** | |
-| **Justification** | |
-| **Issue / PR** | |
-| **Jalon visé** | |
+| **Verdict** | ✅ **contre-mesure technique** — et **rejet** des deux branches de §6.1, qui posaient la mauvaise question |
+| **Date** | 2026-08-15 |
+| **Justification** | Voir §7.1 à §7.4. La menace n'est pas surestimée : elle est **sous-spécifiée**. |
+| **Issue / PR** | [#275](https://github.com/swoofer/mcp-coordinator/issues/275) — périmètre en §7.3 ; le point (2) y est marqué « à cadrer séparément » |
+| **Jalon visé** | prochaine mineure pour §7.3 (1) et (3) ; à cadrer pour (2) |
+
+### 7.1 Le résultat principal
+
+**La menace de la synthèse §3 n'est pas « le conflit d'écriture disparaît ». C'est que la position
+de repli annoncée n'a pas d'implémentation.**
+
+La synthèse écrit : *« un worktree évite la collision d'écriture, pas le conflit sémantique […]
+C'est ce que mesurent déjà `dependency-map`, `impact-scorer`, `git-cochange-builder` et
+`conflict-detector`. Cette reformulation est un travail de positionnement, pas de code. »*
+
+Les deux moitiés sont fausses.
+
+- **« C'est ce que mesurent déjà… »** — non. Vérifié en §6.4 (I) : le serveur n'ouvre jamais un
+  fichier source du dépôt, `treeSitter.extract()` n'a qu'un appelant alimenté par un `body.content`
+  **optionnel** venu du client, le graphe de dépendances est **intégralement uploadé**
+  (`setMap` ← `set_dependency_map`, `setDependencies` sans aucun appelant de production), et les
+  quatre signaux de `ConflictDetector` comparent des **déclarations**. La seule observation
+  autonome, `git-cochange`, ne rend que des **noms de fichiers commités** et est désactivée par
+  défaut dans tout ce qui est livré. **mcp-coordinator est un agrégateur de déclarations.**
+- **« un travail de positionnement, pas de code »** — non plus : le positionnement est **déjà
+  écrit** (`docs/index.html:2077`, en 6 langues). Ce qui manque est exactement le code.
+
+C'est un résultat plus grave que celui que la fiche annonçait, et **plus actionnable** : il ne
+dépend d'aucune décision d'Anthropic.
+
+### 7.2 Ce que le natif fait vraiment, et ce que j'avais mal mesuré
+
+- **`--worktree` n'est pas « opt-in ».** Ma mesure « 0 worktree sur ~30 sessions » était **invalide**
+  (§6.4 (G)) : `claude -p` est le seul mode où l'app desktop, `/bg`, agent view, `/fork` et
+  `/batch` n'existent pas. De première main dans cette session : l'outil `Agent` porte
+  `isolation: "worktree"` et `EnterWorktree` est disponible — **le modèle crée des worktrees sans
+  intervention humaine**.
+- **Le natif ne supprime pas la détection d'intention** — `file_overlap` + `module_overlap` sont bien
+  remontés entre trois worktrees isolés (§6.4 (B)/(C)). Mais **pas pour la raison que je croyais** :
+  les agents ont déclaré relatif parce que la `.describe()` de `target_files` le leur disait, et
+  parce que `alwaysLoad: true` la rendait visible. Le risque n° 1 de §4 n'est donc **pas faux** :
+  il est **conditionnel à une convention que rien n'impose**.
+- **Et la phrase qui l'impose est un garde-fou fantôme** : « Absolute paths are not accepted in
+  team-mode » alors que le schéma est un `z.array(z.string())` nu.
+
+### 7.3 La réponse — contre-mesure technique, par ordre de levier
+
+1. **Normaliser `target_files` à l'entrée d'`announce_work` (MCP et REST) et de
+   `check_file_conflict`.** C'est le défaut mesuré en §6.4 (H) : le côté **déclaré** n'est jamais
+   normalisé, le côté **observé** l'est (et passe en minuscules sur Windows), et
+   `impact-scorer.ts:74` joint les deux en brut. Résultat : `src/Types.ts`, `./src/types.ts` et
+   `SRC/Types.ts` ne matchent jamais l'activité observée du même fichier. **Ce bug existe sans
+   aucun worktree**, il touche le signal le plus fort du scoring, et il rend la détection
+   inter-worktree robuste au passage. Effort S, aucun couplage à Claude Code.
+2. **Décider ce que devient le conflit sémantique : capacité ou déclaration assumée.** Soit un
+   builder de dependency-map côté serveur (le `--repo-root` promet déjà un « FS fallback » qui
+   n'existe pas — `cli/server/start.ts:169`), soit on **documente honnêtement** que la carte est
+   uploadée par le client. Ce qui n'est pas tenable, c'est l'état actuel : une capacité annoncée
+   dans le pitch et absente du code. **C'est la vraie question de cadrage de cette fiche**, et elle
+   mérite sa propre instruction.
+3. **Corriger deux textes faux.** `docs/index.html:2264` (6 langues) recommande
+   `git worktree add ../feature-x main`, c'est-à-dire hors `repoRoot` — la disposition qui met
+   `/api/file-activity` et `/api/working-files/start` en **400**. Et `README.md:44` (« conflicts
+   are detected before a single line is written ») n'est pas tenable : `C06` a mesuré **0/3**
+   annonces spontanées, et rien ne valide ce qui est déclaré. Le mot juste est déjà employé
+   ailleurs sur le site — *« scores every **claim** »*.
+
+### 7.4 Ce qui est explicitement rejeté
+
+- **Les deux branches de §6.1.** Ni « faire du worktree une entité de première classe »
+  (`worktree_path` sur `agents`, canonicalisation worktree-relative, enregistrement par hook
+  `WorktreeCreate`) — c'est du vocabulaire propriétaire Claude Code, mort pour Cursor/Cline/Aider,
+  et le hook ne **reçoit** même pas le chemin (§0). Ni « acter que `working_files` et `file_overlap`
+  deviennent du bruit » — ils fonctionnent, c'est mesuré. La question posée en §6.1 opposait deux
+  réponses à un problème mal identifié.
+- **Ajouter `--all` à `git-cochange`.** §6.4 (E) mesure bien la cécité, mais §6.4-bis (I) montre que
+  le correctif est illusoire : Layer 4 est un prior sur du **commité**, et le travail en worktree ne
+  l'est pas. À ne pas inscrire au périmètre en croyant réparer quelque chose.
+- **Le recadrage éditorial comme réponse principale.** Il est déjà écrit
+  (`docs/index.html:2077`). Le répéter ne comble pas le trou.
 
 ## 8. Journal
 
@@ -220,3 +638,4 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 |---|---|
 | 2026-08-14 | Fiche créée par la veille plateforme. |
 | 2026-08-14 | Vérification des faits : input `WorktreeCreate` corrigé (`name`, pas `worktree_path`/`base_ref`), settings.md à jour, lignes conflict-detector recalées. Testable. |
+| 2026-08-15 | **Challenge tranché : contre-mesure technique, et rejet des deux branches de §6.1.** PoC réel dans un clone jetable : 3 worktrees natifs créés par Claude Code, daemon dédié. `file_overlap` + `module_overlap` **sont** remontés entre worktrees isolés — mais parce que la `.describe()` de `target_files` dicte le format relatif et qu'`alwaysLoad` la rendait visible ; le risque n° 1 de §4 est **conditionnel**, pas faux, et la phrase « Absolute paths are not accepted » est un **garde-fou fantôme**. Défaut plus grave découvert, indépendant des worktrees : le côté **déclaré** n'est jamais normalisé alors que le côté **observé** l'est et passe en minuscules sur Windows — `src/Types.ts` et `./src/types.ts` ne matchent jamais leur propre activité (`impact-scorer.ts:74` joint du brut). **Résultat principal : la position de repli du produit n'a pas d'implémentation** — zéro lecture de fichier source côté serveur, `treeSitter.extract()` alimenté par un `body.content` optionnel du client, dependency-map intégralement uploadée, `git-cochange` limitée à des noms de fichiers commités et désactivée par défaut. La synthèse §3 se trompe deux fois : ce n'est pas « ce que mesurent déjà » ces modules, et ce n'est pas « un travail de positionnement, pas de code » — le positionnement est déjà écrit, c'est le code qui manque. Deux mesures de ma part corrigées en cours de route : le comptage git contaminé par le clone shallow, et le « 0 worktree sur 30 sessions » invalide car mesuré en `claude -p`. Verdict retourné par 2 réfutateurs. |
