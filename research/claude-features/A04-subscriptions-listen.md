@@ -437,7 +437,7 @@ ne bouge pas.
 | **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ✅ **reporter** (sur `subscriptions/listen` seul) · ⬜ refuser |
 | **Date** | 2026-08-15 |
 | **Justification** | Bloqué aux **deux bouts**, mesuré. Mais la fiche mélangeait trois questions : voir §7.2 et §7.3. |
-| **Issue / PR** | à créer — trois constats extraits, §7.3 |
+| **Issue / PR** | [#280](https://github.com/swoofer/mcp-coordinator/issues/280) (garde-boot MQTT + essaim désabonné) · [#281](https://github.com/swoofer/mcp-coordinator/issues/281) (couche `resources`, qui porte aussi le piège `-32601`). **Le sort du broker MQTT reste ouvert** — voir §7.2. |
 | **Tier** | ~~T1~~ → **T3** pour `subscriptions/listen` lui-même |
 | **Effort** | ~~L~~ → l'essentiel du L est **compté deux fois** avec `A01`/`A02` (voir §7.4) |
 
