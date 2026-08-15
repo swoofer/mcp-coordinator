@@ -6,14 +6,14 @@
 | **Surface** | claude-code |
 | **Statut** | GA (aucun label beta/preview sur la page `statusline`) |
 | **Disponible depuis** | non daté par la doc — `refreshInterval`, `workspace.repo.*` et `workspace.git_worktree` sont documentés sans note de version |
-| **Tier** | T1-incontournable |
+| **Tier** | ~~T1-incontournable~~ → **T3** (déclassé au challenge du 2026-08-15, voir §7.1) |
 | **Nature** | opportunity |
 | **Effort estimé** | S |
 | **Confiance veille** | high (mécanisme) · medium (noms de champs : une seule source de veille, non recoupée) |
 | **Vérification** | CONFIRMED |
 | **Vérifiée le** | 2026-08-14 |
 | **Testabilité** | ✅ testable — tout se joue en local, aucun accès externe requis |
-| **Statut du challenge** | ⬜ à faire |
+| **Statut du challenge** | ✅ **tranché** (2026-08-15) — refuser en tant que feature, voir §7 |
 
 ---
 
@@ -142,7 +142,25 @@ Réglage voisin mentionné par la même source : `footerLinksRegexes` (settings)
 
 ### 6.2 Hypothèse
 
-<Ce qu'on pense avant de tester.>
+**Pré-enregistré le 2026-08-15, avant toute exécution.** Claude Code **2.1.219**, Node 22.21.0,
+Windows 11.
+
+**Hypothèse.** Le mécanisme marchera et le payload sera conforme — la §0 a déjà tout confirmé sur
+doc. Le vrai enjeu est ailleurs : le **coût par tick sous Windows** et le **slot unique**. Je
+m'attends à ce que le démarrage d'un CLI Node dépasse largement le seuil de 300 ms que la fiche
+se donne, ce qui disqualifie la forme « `mcp-coordinator statusline` » à `refreshInterval: 1` — et
+donc à ce que le verdict porte sur *quelle forme* de status line, pas sur *si*.
+
+**Critères de refus, posés avant de mesurer :**
+
+| # | Ce qui tue quoi | Seuil |
+|---|---|---|
+| K1 | Si le payload stdin réel ne porte **pas** `workspace.repo.*`, l'argument §4.3 (« l'identité de repo, gratuite ») meurt. | absence dans le JSON capturé |
+| K2 | Si un tick CLI Node coûte **> 300 ms** en p50, la forme « commande Node » est disqualifiée à `refreshInterval` court (seuil que la fiche se donne elle-même en §6.3). | p50 mesuré |
+| K3 | Si `GET /api/status` exige un token en profil ouvert, le « zéro code serveur » de §4.2 tombe. | code HTTP |
+| K4 | Si le TTL de 900 s fait effectivement mentir la ligne, l'affichage **permanent** devient un passif — un chiffre faux en continu est pire qu'un chiffre absent. | lecture du code + calcul |
+| K5 | Si écrire `statusLine` écrase une ligne existante chez un utilisateur réel, `init --write-statusline` est inacceptable et l'adoption retombe sur « documenter un snippet ». | inspection d'un poste réel |
+| K6 | Si la ligne ne peut pas nommer le fichier en conflit sans nouvel endpoint, la branche « quatre entiers » de §6.1 livre un bénéfice très faible. | shape de `/api/status` |
 
 ### 6.3 Protocole de vérification
 
@@ -156,7 +174,111 @@ Réglage voisin mentionné par la même source : `footerLinksRegexes` (settings)
 
 ### 6.4 Résultat observé
 
-<Ce qu'on a réellement mesuré/vu. Coller les sorties, pas les paraphraser.>
+Exécuté le 2026-08-15. Claude Code **2.1.219**, Node 22.21.0, Windows 11.
+
+> **Frontière exécuté / lu.** Exécuté : K2 (coût par tick), K3/K6 (contrat serveur), K4 (TTL),
+> K5 (slot occupé). **Non exécutable ici : la capture du payload stdin.** La status line ne se
+> déclenche **pas** en `claude -p` — c'est une surface d'interface, pas de session headless
+> (vérifié : un `statusLine.command` qui recopie son stdin n'a produit aucune capture). Les noms de
+> champs de §2 restent donc sur **preuve documentaire**, déjà établie par la §0. **Correction à
+> §0 :** son champ *Testabilité* affirme que « tous les points du §6.3 s'exécutent ici », dont la
+> capture du stdin. C'est faux depuis une session d'agent ; il faut un TTY interactif.
+
+**(A) K2 — le coût par tick, et il disqualifie la forme proposée.** 20 mesures de
+`node dist/cli/index.js --version` (proxy du démarrage de notre CLI), plus le plancher Node :
+
+```
+CLI mcp-coordinator (node dist)    p50=  1 036 ms   p95=  1 116 ms   min= 1 009   max= 1 182
+node -e 0 (plancher Node)          p50=     62 ms   p95=    101 ms   min=    56   max=    101
+
+seuil de disqualification de la fiche : p50 > 300 ms
+K2 DECLENCHE — p50 = 1 036 ms > 300 ms
+```
+
+**Le seuil que la fiche s'était donné en §6.3 est franchi d'un facteur 3,5.** Et le plancher Node
+n'étant que de 62 ms, ~**975 ms sont le démarrage de notre propre CLI** — exactement ce que le
+contre-argument de §6.5 anticipait (« Commander plus neuf sous-commandes avant même d'atteindre le
+code utile »). À `refreshInterval: 1`, le tick ne peut pas suivre : le processus dure plus longtemps
+que l'intervalle.
+
+**(B) K3 et K6 — le serveur, lui, est gratuit et instantané.** Profil ouvert
+(`COORDINATOR_AUTH_ENABLED` non défini), sans token :
+
+```
+HTTP 200  |  0.006936s
+payload : {"online":0,"open_threads":0,"hot_files":0,"mqtt":true}
+```
+
+**7 ms, 200, aucun token, aucun code serveur à écrire** — §4.2 est confirmée. Et §5 est confirmée
+aussi : quatre entiers, **aucun nom de fichier ni d'agent**
+(`src/http/rest-handlers.ts:970-985`). « 1 conflit sur `src/auth.ts` » n'est pas atteignable sans
+nouvel endpoint. **K6 est déclenché** : la branche « quatre entiers » de §6.1 livre un bénéfice
+faible.
+
+> Le rapport est écrasant : **7 ms de serveur pour 1 036 ms de client**. Le coût d'un tick est à
+> **99,3 % le démarrage de notre CLI**, pas la coordination.
+
+**(C) K5 — le slot est déjà occupé, chez le mainteneur lui-même.** `~/.claude/settings.json` :
+
+```json
+"statusLine": { "type": "command", "command": "npx -y ccstatusline@latest",
+                "padding": 0, "refreshInterval": 10 }
+```
+
+Le contre-argument « un seul slot, déjà occupé » de §6.5 n'est pas théorique : **la personne qui
+déciderait d'écrire cette feature l'a déjà rempli**, avec un produit tiers dédié. Un
+`init --write-statusline` écraserait son propre réglage. **K5 est déclenché.**
+
+**(D) K4 — le TTL.** `src/agent-registry.ts:12` : `DEFAULT_ONLINE_TTL_SECONDS = 900`. Un agent tué
+reste compté **jusqu'à 15 minutes**. Toléré pour un appel ponctuel, ce décalage devient un passif
+quand il est affiché **en permanence**.
+
+---
+
+**(E) Ce que la passe adversariale a corrigé, vérifié ici commande par commande.**
+
+**K6 était faux — je le retire.** J'avais écrit que nommer le fichier en conflit exigeait un nouvel
+endpoint. `/api/hot-files` (`src/http/handle-rest.ts:77`) est routé, **absent** de
+`MUTATING_ROUTES` (donc joignable sans POST), présent dans `isPoll`, et
+`FileTracker.getHotFiles()` renvoie déjà `{ file_path, agent_count, agents[] }`. **La ligne
+pourrait nommer les fichiers sans une ligne de code serveur.** Cela ne sauve pas la fiche, mais
+c'était une erreur de ma part et de la §5.
+
+**Les deux fenêtres affichées sont arithmétiquement incohérentes.** `listOnline` filtre à
+**900 s** ; `getHotFiles(org, 30)` regarde **30 minutes** et n'émet une ligne que si
+`HAVING COUNT(DISTINCT agent_id) > 1` :
+
+```sql
+WHERE org_id = ? AND created_at > datetime('now','-' || ? || ' minutes')
+GROUP BY file_path
+HAVING COUNT(DISTINCT agent_id) > 1
+```
+
+Un « fichier chaud » exige donc **≥ 2 agents distincts**, alors qu'`online` peut être retombé à 1.
+La ligne peut afficher `online: 1 · hot: 1` — un état que l'utilisateur réfute mentalement en une
+seconde. C'est K4 en pire que ce que la fiche anticipait.
+
+**Et rien ne réduit ce mensonge.** Le commentaire de `listOnline` le dit lui-même
+(`src/agent-registry.ts:80-90`) : *« an MQTT last-will that real agents do not register »* et
+*« This is a read-time filter, **not a sweeper**: no background job »*.
+
+**Le dashboard domine strictement.** `dashboard/public/dashboard.js:673` rend déjà
+`` `${f.file_path} … ${f.agent_count} agents` `` — les **noms** —, rafraîchi toutes les 5 s, en plus
+d'un flux SSE. La status line n'apporterait qu'un sur-ensemble vide : moins d'information, moins
+frais, dans une fenêtre qu'on n'a pas besoin d'ouvrir. C'est un gain d'ergonomie, pas
+d'architecture.
+
+**Le besoin de scoping par dépôt (§4.3) est réel, et pire que décrit.** Vérifié :
+`wait_for_peers` (`src/tools/status-tools.ts:111`) fait
+`registry.listOnline(claims.org).filter(a => a.id !== agent_id)` — **org seule, aucune notion de
+dépôt**. Et comme `normalizePath` rend des chemins **repo-relatifs** et que `getHotFiles` fait
+`GROUP BY file_path`, `src/index.ts` du dépôt A et `src/index.ts` du dépôt B sont **la même
+ligne** : deux agents sur deux dépôts sans rapport produisent un **conflit fantôme**.
+
+**Et « un daemon = un checkout » n'est pas atteignable aujourd'hui** : `server.pid` est écrit et lu
+sur un chemin **unique**, indépendant de `--port` et `--data-dir`, en 6 endroits
+(`cli/server/{start,stop,restart,status,backup}.ts`). Lancer un second daemon pour un second dépôt
+écrase le PID du premier, et `server stop` tue le mauvais processus.
 
 ### 6.5 Contre-arguments
 
@@ -171,15 +293,103 @@ Réglage voisin mentionné par la même source : `footerLinksRegexes` (settings)
 
 ---
 
+**(F) Correction de mon propre K2 — il visait la mauvaise cause.** Le second réfutateur a
+identifié le coupable et je l'ai remesuré ici :
+
+```
+node -e 0 (plancher)                          61 ms
+import src/boot.js                           758 ms      <-- ~697 ms de graphe serveur
+import cli/init.js                           796 ms
+CLI complet (--version)                    1 059 ms
+node + require('http') seul                   63 ms      <-- ce que coute un chemin paresseux
+```
+
+`cli/init.ts:7` fait `import { bootPhase2 } from "../src/boot.js"`, et `cli/index.ts` importe les
+11 sous-commandes **à froid**. Le graphe d'auth complet (providers GitHub/Google/OIDC, rate
+limiters, audit-chain, sweeper, chiffrement) est chargé pour afficher `--version`.
+
+> **K2 ne disqualifie donc pas « une commande Node » — il disqualifie `dist/cli/index.js` tel
+> qu'écrit aujourd'hui.** Un chemin paresseux coûte **63 ms**, soit 5× sous le seuil de 300 ms.
+> Mon attribution était fausse.
+
+Et ce défaut dépasse largement cette fiche : **toute** invocation de `mcp-coordinator` —
+`doctor`, `channel`, `server status`, complétion shell — paie ~700 ms pour un graphe qu'elle
+n'utilise pas.
+
+---
+
 ## 7. Décision
 
 | | |
 |---|---|
-| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ⬜ refuser |
-| **Date** | |
-| **Justification** | |
-| **Issue / PR** | |
-| **Jalon visé** | |
+| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ✅ **refuser** (en tant que feature) |
+| **Date** | 2026-08-15 |
+| **Justification** | Bénéfice net ≈ 0, mesuré : dominé par le dashboard, incohérent avec lui-même, et vide dans le profil dominant. Voir §7.1. |
+| **Issue / PR** | deux constats **extraits**, voir §7.3 — la fiche elle-même n'en produit aucune |
+| **Jalon visé** | aucun |
+
+### 7.1 Pourquoi refuser
+
+Quatre raisons mesurées, pas une seule d'opinion :
+
+1. **Le dashboard domine strictement.** `dashboard/public/dashboard.js:673` affiche déjà
+   `` `${f.file_path} … ${f.agent_count} agents` `` — **les noms** — rafraîchi toutes les 5 s, plus
+   un flux SSE. La status line offrirait moins d'information, moins fraîche. Le seul gain réel est
+   « pas de seconde fenêtre » : de l'ergonomie, pas de l'architecture.
+2. **La ligne serait incohérente avec elle-même.** `listOnline` filtre à 900 s ; `getHotFiles`
+   regarde 30 min avec `HAVING COUNT(DISTINCT agent_id) > 1`. `online: 1 · hot: 1` est donc
+   affichable — et absurde. Et rien ne corrige la dérive : le code dit lui-même *« not a sweeper »*
+   et *« an MQTT last-will that real agents do not register »*.
+3. **Elle est vide chez son lecteur type.** Profil solo : `online = 1`, `open_threads = 0`. Pour
+   éviter d'afficher du bruit permanent, tout snippet raisonnable filtre sur `online > 1` — donc
+   n'affiche **rien**.
+4. **Elle ne parle pas à l'agent.** « Zéro token » signifie littéralement « aucun effet sur le
+   comportement du modèle ». La contrainte est le sujet de [`C01`](C01-hook-mcp-tool-gate.md), dont
+   ce challenge vient de prouver qu'il peut, lui, bloquer un `Write`.
+
+**Le classement T1-incontournable / effort S ne tient pas** — et la fiche s'auto-neutralise en §4 :
+*« Risque si on ne fait rien : aucun »*. Un T1 « incontournable » sans risque d'inaction est une
+contradiction.
+
+**Condition de réveil :** si un utilisateur le demande, la bonne forme n'est ni notre commande ni un
+snippet collé dans `statusLine`, mais le widget `custom-command` de **`ccstatusline`** — l'outil que
+le mainteneur a déjà installé dans ce slot. Il compose au lieu d'écraser, ce qui contourne K5 au
+lieu de le subir. À condition d'avoir d'abord réglé §7.3 (1) : `ccstatusline` applique un `timeout`
+d'1 s par widget, et notre CLI à 1 059 ms afficherait `[Timeout]`.
+
+### 7.2 Ce que j'ai eu faux, et qui est corrigé dans la fiche
+
+- **K6 était faux.** J'ai écrit que nommer le fichier en conflit exigeait un nouvel endpoint.
+  `/api/hot-files` est joignable, hors `MUTATING_ROUTES`, et renvoie déjà
+  `{file_path, agent_count, agents[]}`. La §5 de la fiche portait la même erreur.
+- **K2 visait la mauvaise cause** (§6.4 F) : le coût n'est pas « une commande Node », c'est notre
+  graphe d'imports.
+- **La §0 surestime la testabilité** : la capture du payload stdin **n'est pas** exécutable ici, la
+  status line ne se déclenchant pas en `claude -p`.
+- **La §2 présente `subagentStatusLine` comme une piste à exploiter.** Vérification faite : c'est un
+  formateur de lignes du panneau de subagents, avec un payload différent, qui ne rend rien quand
+  aucun subagent ne tourne. Ce n'est pas un emplacement d'affichage libre.
+
+### 7.3 Les deux constats à extraire — c'est le vrai livrable
+
+Ni l'un ni l'autre n'appartient à la status line ; tous deux ont été trouvés en la challengeant.
+
+1. **Le CLI paie ~700 ms de graphe serveur à chaque invocation.** `cli/init.ts:7` importe
+   `../src/boot.js` (758 ms mesurés contre 61 ms de plancher), et `cli/index.ts` charge ses 11
+   sous-commandes à froid. `doctor`, `channel`, `server status` et la complétion shell paient tous
+   cette taxe. Correctif plausible : import paresseux par sous-commande.
+2. **Le scoping par dépôt n'existe pas, et produit des faux positifs aujourd'hui.** Zéro occurrence
+   de `repo_id`/`project_id` dans tout le dépôt ; `wait_for_peers`
+   (`src/tools/status-tools.ts:111`) ne filtre que sur l'org ; et comme `normalizePath` rend des
+   chemins **repo-relatifs** et que `getHotFiles` fait `GROUP BY file_path`, `src/index.ts` de deux
+   dépôts distincts fusionnent en une seule ligne → **conflit fantôme**. Aggravant : « un daemon =
+   un checkout » n'est pas atteignable, `server.pid` étant écrit sur un chemin **unique**,
+   indépendant de `--port` et `--data-dir` (6 sites dans `cli/server/`).
+   **La clé doit venir de `register_agent`/SDK — jamais de `workspace.repo.*`**, qui est
+   mono-vendor, absent sans remote `origin`, identique pour deux worktrees du même dépôt (le cas
+   [`D03`](D03-threat-native-worktrees.md)), et qu'une status line — canal stdout vers l'humain —
+   ne peut de toute façon pas transmettre au serveur. À rapprocher de
+   [`C13`](C13-agent-roster-reconciliation.md).
 
 ## 8. Journal
 
@@ -187,3 +397,4 @@ Réglage voisin mentionné par la même source : `footerLinksRegexes` (settings)
 |---|---|
 | 2026-08-14 | Fiche créée par la veille plateforme. |
 | 2026-08-14 | Vérification des faits : noms de champs tous confirmés, 3 `(à vérifier)` tranchés, statut GA maintenu, fiche testable. |
+| 2026-08-15 | **Challenge tranché : refuser en tant que feature.** Bénéfice net ≈ 0, mesuré : le dashboard affiche déjà les **noms** de fichiers toutes les 5 s via SSE ; la ligne serait incohérente avec elle-même (`online` à 900 s vs `hot_files` à 30 min avec `HAVING agent_count > 1`, donc `online:1 · hot:1` affichable) ; elle est **vide** en profil solo ; et « zéro token » veut dire « aucun effet sur l'agent ». Le classement T1/S ne tient pas — la fiche dit elle-même « Risque si on ne fait rien : aucun ». Serveur confirmé gratuit (`/api/status` : **200 sans token en 7 ms**). Slot déjà occupé chez le mainteneur (`ccstatusline`). **Deux de mes propres conclusions corrigées** : K6 était faux (`/api/hot-files` nomme déjà les fichiers, sans code serveur), et K2 visait la mauvaise cause — les 1 059 ms sont ~700 ms de `src/boot.js` importé par `cli/init.ts`, pas une fatalité de Node (chemin paresseux : **63 ms**). **Deux constats extraits**, qui sont le vrai livrable : la taxe de ~700 ms sur **toute** invocation du CLI, et l'absence de scoping par dépôt qui produit des **conflits fantômes** entre dépôts distincts (`GROUP BY file_path` sur des chemins repo-relatifs) — clé à faire venir de `register_agent`, jamais de `workspace.repo.*`. Verdict passé au feu de 2 réfutateurs. |
