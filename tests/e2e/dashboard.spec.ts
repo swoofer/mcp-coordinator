@@ -6,25 +6,28 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
- * tests-05 — the main dashboard (dashboard/public/index.html, served at
- * /dashboard/) is the product's showcase and had zero e2e coverage before
- * this file.
+ * tests-05 — the main dashboard (dashboard/public/index.html plus its
+ * extracted dashboard/public/dashboard.js, served at /dashboard/) is the
+ * product's showcase and had zero e2e coverage before this file.
  *
- * This spec does NOT reuse tests/e2e/helpers/coordinator-fixture.ts's
- * `coordinatorFixture`: that fixture assigns the coordinator an OS-ephemeral
- * port (`findFreePort()`), which is right for the OAuth/admin specs (those
- * pages call relative-ish endpoints reachable regardless of port). The main
- * dashboard's client-side JS, however, hardcodes
- * `const COORDINATOR_URL = 'http://localhost:3100'` in
- * dashboard/public/index.html (no window.location-based origin detection —
- * every fetch()/EventSource call in that file targets port 3100 literally).
- * A random port would leave the dashboard's own JS talking to nothing.
- * `dashboardFixture` below pins PORT=3100 instead so the page's hardcoded
- * calls actually reach this test's coordinator. Tests in this file
- * necessarily run serially against a fixed port (playwright.config.ts
- * already sets workers=1 / fullyParallel=false repo-wide, so this doesn't
- * introduce new contention — just makes explicit why this spec can't share
- * coordinator-fixture.ts's free-port pattern).
+ * PORT IS DELIBERATELY RANDOM. This spec used to pin PORT=3100 because
+ * dashboard.js:1 hardcoded `const COORDINATOR_URL = 'http://localhost:3100'`
+ * and every fetch()/EventSource in it targeted that literal port. Since
+ * src/serve-http.ts serves the asset under `connect-src 'self'`, on any
+ * other port the page's own CSP blocked all 9 data calls and the dashboard
+ * rendered empty with nothing visible to the user. dashboard.js now derives
+ * its origin from window.location, so the free port below is the regression
+ * guard: if anyone reintroduces a hardcoded origin, the "Connecté"
+ * assertions (which require the EventSource to actually open) and the
+ * no-CSP-violation assertion in the render test fail immediately.
+ *
+ * `dashboardFixture` still doesn't reuse tests/e2e/helpers/
+ * coordinator-fixture.ts's `coordinatorFixture` — not over ports (both pick
+ * a free one now) but because that fixture sets COORDINATOR_OAUTH_ENABLED
+ * and spawns a mock GitHub server, which would put this spec's REST calls
+ * (POST /api/register, /api/reset) behind a login step it doesn't intend to
+ * cover, and because it has no COORDINATOR_SSE_HEARTBEAT_MS override (see
+ * below) so every "Connecté" assertion would race the 30s default heartbeat.
  *
  * Also unlike tests/e2e/admin-ui.spec.ts, the main dashboard and its
  * REST/SSE surface (/dashboard/, /api/register, /api/events, /api/reset) do
@@ -55,8 +58,6 @@ const REPO_ROOT = path.resolve(path.dirname(__filename), "..", "..");
 
 const STARTUP_TIMEOUT_MS = 30_000;
 const POLL_INTERVAL_MS = 100;
-// See file header: dashboard/public/index.html hardcodes this port.
-const DASHBOARD_PORT = 3100;
 
 interface DashboardFixtures {
   coordinatorUrl: string;
@@ -99,9 +100,12 @@ async function waitForCoordinator(url: string): Promise<void> {
 const dashboardFixture = base.extend<DashboardFixtures>({
   // eslint-disable-next-line no-empty-pattern
   coordinatorUrl: async ({}, use) => {
+    // Free port, not a pinned 3100 — see file header: this is what makes the
+    // spec a regression test for the dashboard's same-origin API calls.
+    const port = await findFreePort();
     const mqttPort = await findFreePort();
     const dataDir = mkdtempSync(path.join(tmpdir(), "mcp-coord-e2e-dash-"));
-    const coordinatorUrl = `http://localhost:${DASHBOARD_PORT}`;
+    const coordinatorUrl = `http://localhost:${port}`;
 
     const child: ChildProcess = spawn("npx", ["tsx", "src/serve-http.ts"], {
       cwd: REPO_ROOT,
@@ -109,7 +113,7 @@ const dashboardFixture = base.extend<DashboardFixtures>({
       shell: true,
       env: {
         ...process.env,
-        PORT: String(DASHBOARD_PORT),
+        PORT: String(port),
         COORDINATOR_DATA_DIR: dataDir,
         COORDINATOR_MQTT_TCP_PORT: String(mqttPort),
         // handleSse() in src/serve-http.ts writeHead()s the SSE response but
@@ -171,6 +175,18 @@ const test = dashboardFixture;
 
 test.describe("main dashboard — render", () => {
   test("loads /dashboard/ and renders the core panels", async ({ page, coordinatorUrl }) => {
+    // The dashboard's own CSP is `connect-src 'self'`, so any data call built
+    // from a hardcoded origin is refused by the browser rather than failing
+    // loudly in the UI. Capture those refusals so the assertion below names
+    // the actual bug instead of surfacing as a confusing "Connecté" timeout.
+    const cspErrors: string[] = [];
+    page.on("console", (msg) => {
+      const text = msg.text();
+      if (msg.type() === "error" && /Content Security Policy|Refused to connect/i.test(text)) {
+        cspErrors.push(text);
+      }
+    });
+
     await page.goto(`${coordinatorUrl}/dashboard/`);
 
     await expect(page.locator("h1")).toContainText("MCP Coordinator");
@@ -182,9 +198,15 @@ test.describe("main dashboard — render", () => {
     await expect(page.locator("button", { hasText: "Reset Server" })).toBeVisible();
 
     // Connection status flips from "Connecting..." to "Connecté" once the
-    // SSE EventSource opens (es.onopen in index.html) — proves the /api/events
-    // stream is actually reachable, not just that the HTML shipped.
+    // SSE EventSource opens (es.onopen in dashboard.js) — proves the
+    // /api/events stream is actually reachable, not just that the HTML
+    // shipped. On a random port this only passes if dashboard.js resolved
+    // its origin from window.location.
     await expect(page.locator("#conn-status")).toContainText("Connecté");
+
+    // Same-origin regression guard: no data call may be CSP-refused. This
+    // fails loudly if a hardcoded origin ever comes back into dashboard.js.
+    expect(cspErrors).toEqual([]);
   });
 });
 
@@ -239,7 +261,7 @@ test.describe("main dashboard — Reset Server is gated, not a bare click", () =
       dialogType = dialog.type();
       dialogMessage = dialog.message();
       // Cancel — simulates a user backing out. This is the gate: resetServer()
-      // in dashboard/public/index.html does `if (!confirm(msg)) return;`
+      // in dashboard/public/dashboard.js does `if (!confirm(msg)) return;`
       // before the fetch, so dismissal must short-circuit before /api/reset.
       await dialog.dismiss();
     });

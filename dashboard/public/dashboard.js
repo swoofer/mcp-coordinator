@@ -1,4 +1,11 @@
-    const COORDINATOR_URL = 'http://localhost:3100';
+    // issue #292: this was hardcoded to 'http://localhost:3100', so on any
+    // other port every fetch()/EventSource below became cross-origin and was
+    // refused by the page's own CSP (src/serve-http.ts serves this asset with
+    // `connect-src 'self'`) — the dashboard rendered empty with no visible
+    // error. Derive the origin from the page instead; the admin pages in this
+    // directory already call same-origin paths via admin-common.js's
+    // fetchJSON(). Companion to the #69 fix on the opener side (cli/dashboard.ts).
+    const COORDINATOR_URL = window.location.origin;
     const FILTER_CATEGORIES = ['workflow', 'activity', 'impact', 'coordination', 'tokens'];
     const FILTER_LABELS = { workflow: 'Workflow', activity: 'Activity', impact: 'Impact', coordination: 'Coordination', tokens: 'Tokens' };
     const state = {
