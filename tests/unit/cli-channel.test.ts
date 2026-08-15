@@ -325,6 +325,10 @@ describe("buildChannelServer — post_to_thread tool registration", () => {
         requestId: 1,
         sendNotification: async () => {},
         sendRequest: async () => ({}),
+        // v2 reads ctx.mcpReq while dispatching (input-required handling), so
+        // a v1-shaped extra makes the dispatcher throw before the handler is
+        // ever reached. Only id/method are consulted on this path.
+        mcpReq: { id: 1, method: "tools/call", requestState: () => undefined },
       },
     )) as {
       tools: Array<{ name: string; description: string; inputSchema: { required?: string[] } }>;
@@ -363,6 +367,10 @@ describe("buildChannelServer — post_to_thread tool registration", () => {
         requestId: 2,
         sendNotification: async () => {},
         sendRequest: async () => ({}),
+        // v2 reads ctx.mcpReq while dispatching (input-required handling),
+        // so a v1-shaped extra makes the dispatcher throw before the handler
+        // is ever reached. Only id/method are consulted on this path.
+        mcpReq: { id: 2, method: "tools/call", requestState: () => undefined },
       },
     )) as { isError?: boolean; content: Array<{ type: string; text: string }> };
 
@@ -404,6 +412,10 @@ describe("buildChannelServer — post_to_thread tool registration", () => {
         requestId: 3,
         sendNotification: async () => {},
         sendRequest: async () => ({}),
+        // v2 reads ctx.mcpReq while dispatching (input-required handling), so
+        // a v1-shaped extra makes the dispatcher throw before the handler is
+        // ever reached. Only id/method are consulted on this path.
+        mcpReq: { id: 3, method: "tools/call", requestState: () => undefined },
       },
     )) as { isError?: boolean; content: Array<{ text: string }> };
     expect(result.isError).toBe(true);
@@ -428,6 +440,10 @@ describe("buildChannelServer — post_to_thread tool registration", () => {
         requestId: 4,
         sendNotification: async () => {},
         sendRequest: async () => ({}),
+        // v2 reads ctx.mcpReq while dispatching (input-required handling), so
+        // a v1-shaped extra makes the dispatcher throw before the handler is
+        // ever reached. Only id/method are consulted on this path.
+        mcpReq: { id: 4, method: "tools/call", requestState: () => undefined },
       },
     )) as { isError?: boolean; content: Array<{ text: string }> };
     expect(result.isError).toBe(true);

@@ -13,8 +13,8 @@
  * The whole point is to prove the harness wiring works end-to-end without
  * blocking on the not-yet-existing `cli/channel.ts`.
  */
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StdioServerTransport } from "@modelcontextprotocol/server/stdio";
+import { Server } from "@modelcontextprotocol/server";
 
 const server = new Server(
   { name: "channel-stub", version: "0.0.0-test" },

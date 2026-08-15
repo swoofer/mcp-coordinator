@@ -1,4 +1,4 @@
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StdioServerTransport } from "@modelcontextprotocol/server/stdio";
 import { pathToFileURL } from "url";
 import path from "path";
 import { createServices, createMcpServer } from "./server-setup.js";

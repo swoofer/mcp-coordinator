@@ -3,6 +3,8 @@ import { randomUUID } from "crypto";
 import path from "path";
 import { readFileSync, existsSync } from "fs";
 import { fileURLToPath } from "url";
+import { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node";
+
 let __filename: string;
 try {
   __filename = fileURLToPath(import.meta.url);
@@ -10,7 +12,6 @@ try {
   __filename = process.cwd();
 }
 const __dirname = path.dirname(__filename);
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createServices, createMcpServer, CoordinatorServices } from "./server-setup.js";
 import { createLogger, type Logger } from "./logger.js";
 import {
@@ -509,7 +510,7 @@ export interface ServerHandle {
 interface HttpHandlerCtx {
   phase2Bootstrap: Phase2Bootstrap | null;
   port: number;
-  sessions: Map<string, StreamableHTTPServerTransport>;
+  sessions: Map<string, NodeStreamableHTTPServerTransport>;
   sessionClaims: Map<string, AuthClaims>;
   sessionLastActivity: Map<string, number>;
 }
@@ -798,7 +799,7 @@ function createHttpHandler(
                 /* malformed COORDINATOR_PUBLIC_URL — ignore */
               }
             }
-            const transport = new StreamableHTTPServerTransport({
+            const transport = new NodeStreamableHTTPServerTransport({
               sessionIdGenerator: () => randomUUID(),
               enableDnsRebindingProtection: true,
               allowedOrigins: allowedOriginsForTransport,
@@ -1321,7 +1322,7 @@ async function startServerInner(opts?: ServerOptions): Promise<ServerHandle> {
   }
 
   // Multi-session: one transport+server per MCP client session
-  const sessions = new Map<string, StreamableHTTPServerTransport>();
+  const sessions = new Map<string, NodeStreamableHTTPServerTransport>();
   // Task 23.5: per-session claims map. Populated when a session is opened or
   // re-verified (mid-session JWT rotation); evicted when the transport closes.
   const sessionClaims = new Map<string, AuthClaims>();

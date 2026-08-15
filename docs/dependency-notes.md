@@ -44,7 +44,7 @@ Deliberately not migrated in this pass — YAGNI until one of these actually blo
 
 | Package | Current | Latest major | Why deferred |
 |---|---|---|---|
-| `zod` | 3.25.76 | 4.x | Real migration work (schema API changes), but no urgency: `@modelcontextprotocol/sdk` already declares `"zod": "^3.25 \|\| ^4.0"`, so the upgrade window is open whenever it's prioritized — nothing here is blocking on the SDK side. |
+| `zod` | 3.25.76 | 4.x | Real migration work (schema API changes), but no urgency: the MCP SDK packages (`@modelcontextprotocol/{core,server,node,client}`) already declare `"zod": "^3.25 \|\| ^4.0"`, so the upgrade window is open whenever it's prioritized — nothing here is blocking on the SDK side. |
 | `typescript` | 5.9.3 | 7.x | TS 6 and 7 both shipped since this repo last bumped; jumping straight to the current major without an intermediate validation pass on this codebase's strict settings is riskier than it's worth outside a dedicated migration branch. |
 | `commander` | 14.0.3 | 15.x | CLI-parsing library; low churn, low risk, but a major bump warrants its own smoke pass across every `cli/` subcommand rather than folding into a dependency-hygiene PR. |
 | `cookie` | 1.1.1 | 2.x | Used in the OIDC/session-cookie path; a security-sensitive surface where a major bump deserves isolated review of any signature/parsing behavior changes, not a drive-by bump. |

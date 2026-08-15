@@ -1,4 +1,4 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { CoordinatorServices } from "../server-setup.js";
 import type { Logger } from "../logger.js";
@@ -19,21 +19,23 @@ export function registerDependenciesTools(
 ): void {
   const { depMap } = services;
 
-  server.tool(
+  server.registerTool(
     "set_dependency_map",
-    "Load module dependency graph",
     {
-      modules: z
-        .string()
-        .describe(
-          "JSON-encoded DependencyMap: a JSON object string mapping module_id -> " +
-            "{ depends_on: string[], exports: string[], owners: string[] }. " +
-            'Example: \'{"src/foo.ts":{"depends_on":[],"exports":["Foo"],"owners":["alice"]}}\'.',
-        ),
+      description: "Load module dependency graph",
+      inputSchema: z.object({
+        modules: z
+          .string()
+          .describe(
+            "JSON-encoded DependencyMap: a JSON object string mapping module_id -> " +
+              "{ depends_on: string[], exports: string[], owners: string[] }. " +
+              'Example: \'{"src/foo.ts":{"depends_on":[],"exports":["Foo"],"owners":["alice"]}}\'.',
+          ),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: true, title: "Set dependency map" },
     },
-    { readOnlyHint: false, destructiveHint: true, title: "Set dependency map" },
-    async ({ modules }, extra) => {
-      const claims = getSessionClaims(extra.sessionId ?? "");
+    async ({ modules }, ctx) => {
+      const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError();
 
       let parsed: unknown;
@@ -72,32 +74,36 @@ export function registerDependenciesTools(
     },
   );
 
-  server.tool(
+  server.registerTool(
     "get_blast_radius",
-    "Calculate impact of changes to a module",
     {
-      module_id: z
-        .string()
-        .describe("Module ID to compute the blast radius for (as used in the dependency map)."),
+      description: "Calculate impact of changes to a module",
+      inputSchema: z.object({
+        module_id: z
+          .string()
+          .describe("Module ID to compute the blast radius for (as used in the dependency map)."),
+      }),
+      annotations: { readOnlyHint: true, title: "Get blast radius" },
     },
-    { readOnlyHint: true, title: "Get blast radius" },
-    async ({ module_id }, extra) => {
-      const claims = getSessionClaims(extra.sessionId ?? "");
+    async ({ module_id }, ctx) => {
+      const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError();
       const radius = depMap.getBlastRadius(claims.org, module_id);
       return { content: [{ type: "text", text: JSON.stringify(radius) }] };
     },
   );
 
-  server.tool(
+  server.registerTool(
     "get_module_info",
-    "Get module dependency info",
     {
-      module_id: z.string().describe("Module ID to look up (as used in the dependency map)."),
+      description: "Get module dependency info",
+      inputSchema: z.object({
+        module_id: z.string().describe("Module ID to look up (as used in the dependency map)."),
+      }),
+      annotations: { readOnlyHint: true, title: "Get module info" },
     },
-    { readOnlyHint: true, title: "Get module info" },
-    async ({ module_id }, extra) => {
-      const claims = getSessionClaims(extra.sessionId ?? "");
+    async ({ module_id }, ctx) => {
+      const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError();
       const info = depMap.getModuleInfo(claims.org, module_id);
       return { content: [{ type: "text", text: JSON.stringify(info) }] };

@@ -15,7 +15,8 @@
  *  4. Tool scopes underlying service calls to claims.org (not literal "default").
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer } from "@modelcontextprotocol/server";
+import type { ServerContext } from "@modelcontextprotocol/server";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
 import { initAuth } from "../../src/auth.js";
 import { AgentRegistry } from "../../src/agent-registry.js";
@@ -40,8 +41,6 @@ import { registerFilesTools } from "../../src/tools/files-tools.js";
 import { registerDependenciesTools } from "../../src/tools/dependencies-tools.js";
 import type { CoordinatorServices } from "../../src/server-setup.js";
 import type { AuthClaims } from "../../src/auth.js";
-import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
-import type { ServerRequest, ServerNotification } from "@modelcontextprotocol/sdk/types.js";
 import fs from "fs";
 
 import { missingClaimsError } from "../../src/tools/tool-errors.js";
@@ -90,11 +89,17 @@ function makeServices(): CoordinatorServices {
 }
 
 /** Build a fake RequestHandlerExtra with the given sessionId. */
-function fakeExtra(sessionId?: string): RequestHandlerExtra<ServerRequest, ServerNotification> {
+function fakeExtra(sessionId?: string): ServerContext {
+  // v2's ServerContext requires `mcpReq` (the JSON-RPC id + method of the
+  // request being handled). The tools under test read only
+  // `extra.sessionId`, so the rest is stubbed to the smallest shape that is
+  // still recognisably a tools/call, and the cast goes through unknown
+  // because this is deliberately a partial fake, not a real context.
   return {
     signal: new AbortController().signal,
     sessionId,
-  } as RequestHandlerExtra<ServerRequest, ServerNotification>;
+    mcpReq: { id: 1, method: "tools/call" },
+  } as unknown as ServerContext;
 }
 
 /** Retrieve a registered tool handler by name from a McpServer.
@@ -109,10 +114,7 @@ function getHandler(server: McpServer, toolName: string) {
   };
   const registered = _server._registeredTools[toolName];
   if (!registered) throw new Error(`Tool not registered: ${toolName}`);
-  return registered.handler as (
-    args: unknown,
-    extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
-  ) => Promise<unknown>;
+  return registered.handler as (args: unknown, extra: ServerContext) => Promise<unknown>;
 }
 
 beforeAll(() => {

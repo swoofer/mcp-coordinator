@@ -13,7 +13,8 @@
  *    caller-supplied timeout instead of blocking indefinitely.
  */
 import { describe, it, expect, vi } from "vitest";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer } from "@modelcontextprotocol/server";
+import type { ServerContext } from "@modelcontextprotocol/server";
 import { registerDependenciesTools } from "../../src/tools/dependencies-tools.js";
 import { registerConsultationTools } from "../../src/tools/consultation-tools.js";
 import { registerAgentTools } from "../../src/tools/agents-tools.js";
@@ -29,9 +30,6 @@ import {
 import { silentLogger } from "../../src/logger.js";
 import type { CoordinatorServices } from "../../src/server-setup.js";
 import type { AuthClaims } from "../../src/auth.js";
-import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
-import type { ServerRequest, ServerNotification } from "@modelcontextprotocol/sdk/types.js";
-
 const CLAIMS: AuthClaims = {
   sub: "agent-1",
   user_id: "u-1",
@@ -41,18 +39,21 @@ const CLAIMS: AuthClaims = {
 };
 const GET_CLAIMS = (_sid: string): AuthClaims | null => CLAIMS;
 
-function fakeExtra(sessionId = "sess-1"): RequestHandlerExtra<ServerRequest, ServerNotification> {
-  return { signal: new AbortController().signal, sessionId } as RequestHandlerExtra<
-    ServerRequest,
-    ServerNotification
-  >;
+function fakeExtra(sessionId = "sess-1"): ServerContext {
+  // v2's ServerContext requires `mcpReq` (the JSON-RPC id + method of the
+  // request being handled). The tools under test read only
+  // `extra.sessionId`, so the rest is stubbed to the smallest shape that
+  // is still recognisably a tools/call, and the cast goes through unknown
+  // because this is deliberately a partial fake, not a real context.
+  return {
+    signal: new AbortController().signal,
+    sessionId,
+    mcpReq: { id: 1, method: "tools/call" },
+  } as unknown as ServerContext;
 }
 
 interface RegisteredToolInternals {
-  handler: (
-    args: unknown,
-    extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
-  ) => Promise<unknown>;
+  handler: (args: unknown, extra: ServerContext) => Promise<unknown>;
   annotations?: { readOnlyHint?: boolean; destructiveHint?: boolean };
   inputSchema?: { shape: Record<string, { description?: string }> };
 }

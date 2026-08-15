@@ -29,11 +29,7 @@ export interface CheckResult {
  * it pulls worker-timers -> worker-timers-broker -> broker-factory ->
  * @babel/runtime, and that last link is the one that goes missing.
  */
-const CRITICAL_MODULES = [
-  "@modelcontextprotocol/sdk/server/mcp.js",
-  "better-sqlite3",
-  "mqtt",
-] as const;
+const CRITICAL_MODULES = ["@modelcontextprotocol/server", "better-sqlite3", "mqtt"] as const;
 
 const MODULE_MISSING_CODES = new Set(["ERR_MODULE_NOT_FOUND", "MODULE_NOT_FOUND"]);
 

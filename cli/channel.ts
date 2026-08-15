@@ -33,9 +33,8 @@
  * Channels API leaves preview. Document this in your README before publishing.
  */
 import { Command } from "commander";
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import { StdioServerTransport } from "@modelcontextprotocol/server/stdio";
+import { Server } from "@modelcontextprotocol/server";
 import mqtt, { type MqttClient } from "mqtt";
 import { z } from "zod";
 import { loadConfig } from "./config.js";
@@ -249,7 +248,11 @@ const POST_TO_THREAD_TOOL_DESCRIPTION =
  * schema above — both list `thread_id` and `content` as required.
  */
 const POST_TO_THREAD_INPUT_SCHEMA = {
-  type: "object",
+  // `type` stays a literal because the tools/list result type demands
+  // exactly "object". The whole object is deliberately NOT `as const`:
+  // that made `required` a readonly tuple, which the v2 result type rejects
+  // (it wants a mutable string[]). Narrow only what has to be narrow.
+  type: "object" as const,
   properties: {
     thread_id: {
       type: "string",
@@ -267,7 +270,7 @@ const POST_TO_THREAD_INPUT_SCHEMA = {
   },
   required: ["thread_id", "content"],
   additionalProperties: false,
-} as const;
+};
 
 /**
  * Build the Server + MQTT client. Exported so tests can spin one up without
@@ -337,7 +340,7 @@ export function buildChannelServer(opts: {
   // surface minimal (stdio in, MQTT out) and aligns with the daemon's
   // "MQTT is the canonical bus" contract.
 
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({
+  server.setRequestHandler("tools/list", async () => ({
     tools: [
       {
         name: "post_to_thread",
@@ -347,7 +350,7 @@ export function buildChannelServer(opts: {
     ],
   }));
 
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  server.setRequestHandler("tools/call", async (request) => {
     if (request.params.name !== "post_to_thread") {
       return {
         isError: true,

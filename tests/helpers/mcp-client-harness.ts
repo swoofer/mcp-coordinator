@@ -18,9 +18,8 @@
  * The cleanup function MUST run in afterAll (or the test's finally block);
  * otherwise subprocesses and HTTP listeners leak across the suite.
  */
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";

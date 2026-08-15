@@ -1,4 +1,4 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import type { CoordinatorServices } from "../server-setup.js";
 import type { Logger } from "../logger.js";
@@ -31,13 +31,15 @@ export function registerStatusTools(
 ): void {
   const { registry, consultation, fileTracker, mqttBridge } = services;
 
-  server.tool(
+  server.registerTool(
     "coordinator_status",
-    "Full system status",
-    {},
-    { readOnlyHint: true, title: "Coordinator status" },
-    async (_args, extra) => {
-      const claims = getSessionClaims(extra.sessionId ?? "");
+    {
+      description: "Full system status",
+      inputSchema: z.object({}),
+      annotations: { readOnlyHint: true, title: "Coordinator status" },
+    },
+    async (_args, ctx) => {
+      const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError();
       const online = registry.listOnline(claims.org);
       const openThreads = consultation.listThreads(claims.org, { status: "open" });
@@ -72,27 +74,30 @@ export function registerStatusTools(
     },
   );
 
-  server.tool(
+  server.registerTool(
     "wait_for_peers",
-    "Block until at least N other online agents are registered, or timeout. Use before the first announce_work to avoid the race where one agent announces before peers have booted.",
     {
-      agent_id: z
-        .string()
-        .describe("ID of the agent waiting for peers (excluded from the peer count)."),
-      min_peers: z
-        .number()
-        .optional()
-        .describe("Minimum number of other online agents to wait for. Defaults to 1."),
-      timeout_seconds: z
-        .number()
-        .optional()
-        .describe(
-          `How long to block, in seconds. Defaults to 30, capped at ${MAX_WAIT_TIMEOUT_SECONDS}.`,
-        ),
+      description:
+        "Block until at least N other online agents are registered, or timeout. Use before the first announce_work to avoid the race where one agent announces before peers have booted.",
+      inputSchema: z.object({
+        agent_id: z
+          .string()
+          .describe("ID of the agent waiting for peers (excluded from the peer count)."),
+        min_peers: z
+          .number()
+          .optional()
+          .describe("Minimum number of other online agents to wait for. Defaults to 1."),
+        timeout_seconds: z
+          .number()
+          .optional()
+          .describe(
+            `How long to block, in seconds. Defaults to 30, capped at ${MAX_WAIT_TIMEOUT_SECONDS}.`,
+          ),
+      }),
+      annotations: { readOnlyHint: true, title: "Wait for peers" },
     },
-    { readOnlyHint: true, title: "Wait for peers" },
-    async ({ agent_id, min_peers, timeout_seconds }, extra) => {
-      const claims = getSessionClaims(extra.sessionId ?? "");
+    async ({ agent_id, min_peers, timeout_seconds }, ctx) => {
+      const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError();
       const targetPeers = min_peers ?? 1;
       const cappedSeconds = Math.min(timeout_seconds ?? 30, MAX_WAIT_TIMEOUT_SECONDS);
