@@ -67,7 +67,7 @@ Le détail par fiche est dans sa **section 0**.
 
 | # | Dossier | Tier | Statut | Nature | Effort | Fiche | Testable | Challenge |
 |---|---|---|---|---|---|---|---|---|
-| `C01` | [Hooks de type `mcp_tool` : rendre l'annonce obligatoire au lieu de l'espérer](C01-hook-mcp-tool-gate.md) | 🔴 T1 | GA | opportunité | S | 🟡 | ✅ | ⬜ |
+| `C01` | [Hooks de type `mcp_tool` : rendre l'annonce obligatoire au lieu de l'espérer](C01-hook-mcp-tool-gate.md) | 🔴 T1 | GA | opportunité | ~~S~~ L | 🟡 | ✅ | ✅ |
 | `C02` | [Les 31 hook events de Claude Code et le pack @mcp-coordinator/hooks](C02-hooks-coordination-events.md) | 🔴 T1 | mixte | intégration | M | 🟡 | ✅ | ⬜ |
 | `C03` | [Channels : aligner `cli/channel.ts` sur le contrat officiel `claude/channel`](C03-channels-official-contract.md) | 🔴 T1 | research-preview | remplace du code maison | M | 🟡 | ⚠️ | ⬜ |
 | `C04` | [Relais de permission : le dashboard devient console d'approbation](C04-channel-permission-relay.md) | 🔴 T1 | research-preview | opportunité | M | 🟡 | ⚠️ | ⬜ |
