@@ -57,7 +57,7 @@ Le détail par fiche est dans sa **section 0**.
 
 | # | Dossier | Tier | Statut | Nature | Effort | Fiche | Testable | Challenge |
 |---|---|---|---|---|---|---|---|---|
-| `B01` | [CIMD : la fin du Dynamic Client Registration](B01-cimd-dcr-deprecated.md) | 🔴 T1 | GA | intégration | M | 🟡 | ⚠️ | ⬜ |
+| `B01` | [CIMD : la fin du Dynamic Client Registration](B01-cimd-dcr-deprecated.md) | ~~🔴 T1~~ 🟡 T3 | GA | intégration | ~~M~~ — | 🟡 | ⚠️ | ✅ |
 | `B02` | [Enterprise-Managed Authorization (ID-JAG) et OAuth Client Credentials](B02-enterprise-managed-auth-idjag.md) | 🟠 T2 | mixte | opportunité | L | 🟡 | ⚠️ | ⬜ |
 | `B03` | [Durcissement auth 2026 : RFC 9207, application_type, SSRF sur la découverte](B03-auth-hardening-ssrf.md) | 🔴 T1 | GA | menace | S | 🟡 | ⚠️ | ⬜ |
 | `B04` | [Scope minimal, step-up 403 et lazy authentication par outil](B04-scope-step-up-lazy-auth.md) | 🔴 T1 | GA | opportunité | M | 🟡 | ⚠️ | ⬜ |
