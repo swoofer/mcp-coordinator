@@ -63,6 +63,32 @@ Un projet qui détecte les conflits mais ne peut pas les empêcher vend un rappo
 vend une garantie. Le passage de l'un à l'autre est maintenant à portée d'API, sur trois surfaces
 indépendantes — ce qui limite le pari sur une seule.
 
+> 🛠 **Tranché le 2026-08-15 (ligne `A03`) — la contrainte marche, et c'est son succès qui pose problème.**
+> `InputRequiredResult` a été exécuté de bout en bout contre **Claude Code 2.1.233**, via le **shim
+> legacy** du SDK v2 (`ServerOptions.inputRequired.legacyShim`, défaut `true`) qui traduit un
+> `inputRequired()` en une vraie requête `elicitation/create` **sur une connexion d'ère 2025** — donc
+> sans attendre que quiconque adopte `2026-07-28`, et sur le transport que
+> [`A02`](A02-mcp-sdk-typescript-v2.md) vient d'adopter.
+>
+> C'est **le seul** des quatre mécanismes testés où l'acquittement échappe au modèle : avec
+> `isError` + un paramètre `acknowledge_conflicts`, c'est le modèle qui se donne l'autorisation (et
+> il s'en sert sous pression, 1 fois sur 3) ; avec MRTR, c'est le **client** qui répond. Le tableau
+> ci-dessus est donc validé sur sa ligne `A03` — la contrainte est réelle.
+>
+> **Mais en mode non interactif, `claude -p` répond `{"action":"cancel"}` sans consulter le
+> modèle**, et il n'existe **aucun chemin de forçage** pour un agent non surveillé : écriture
+> bloquée 3/3. Or essaim, CI, sessions background et `/batch` sont le profil d'usage central du
+> projet. La question ouverte n'est pas technique, elle est produit : *que doit faire un agent non
+> surveillé face à un conflit `warning` ?* Tant qu'elle n'est pas tranchée, `A03` est **reportée**.
+>
+> Deux corrections de cadrage pour cette section : MRTR ne se déclenche **que** sur `tools/call`
+> (« Servers **MUST NOT** send `InputRequiredResult` responses on any other client requests ») — il
+> ne peut donc rien contre l'agent qui n'annonce pas, ce qui reste le domaine de
+> [`C06`](C06-tool-search-defer-loading.md) et [`C01`](C01-hook-mcp-tool-gate.md). Et le « sans
+> table serveur » qu'on prête à `requestState` est faux pour un acquittement : la spec exige la
+> garantie d'usage unique **côté serveur**. Détail en §6.4 et §7 de
+> [`A03`](A03-mrtr-input-required.md).
+
 ### Mouvement 2 — Payer la dette de protocole
 
 C'est la seule partie de cette veille qui a une horloge. Le transport implémenté par `src/serve-http.ts` et
