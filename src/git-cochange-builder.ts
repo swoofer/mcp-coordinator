@@ -3,6 +3,7 @@ import { spawn } from "child_process";
 import { existsSync } from "fs";
 import path from "path";
 import { getDb } from "./database.js";
+import { normalizePath } from "./path-normalize.js";
 import { silentLogger, type Logger } from "./logger.js";
 import type { Metrics } from "./metrics.js";
 
@@ -136,7 +137,16 @@ export class GitCochangeBuilder {
         // as target only, but a pair where it's a predictor is dropped). For the
         // index entry to be useful, both files must be non-promiscuous predictors.
         if (promiscuous.has(a) || promiscuous.has(b)) continue;
-        if (a < b) stmt.run(orgId, a, b, count, totalCommits);
+        // issue #275: git reports true-case paths; the rest of the schema
+        // stores the normalized form. Layer 4 is looked up by the SAME
+        // declared path the other layers use, so this key has to match --
+        // otherwise normalizing the declared side would fix Layers 1/2 and
+        // break co-change instead. The table is wiped and rebuilt on every
+        // refresh (the DELETE above), so no migration is needed.
+        const na = normalizePath(this.repoRoot, a);
+        const nb = normalizePath(this.repoRoot, b);
+        if (na < nb) stmt.run(orgId, na, nb, count, totalCommits);
+        else if (nb < na) stmt.run(orgId, nb, na, count, totalCommits);
       }
     });
     insertMany();

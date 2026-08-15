@@ -42,3 +42,44 @@ export function normalizePath(repoRoot: string | null, input: string): string {
 
   return p;
 }
+
+/** A declared path that could not be normalized, and why. */
+export interface DeclaredPathRejection {
+  path: string;
+  message: string;
+}
+
+export type DeclaredPathsResult =
+  { ok: true; paths: string[] } | { ok: false; rejected: DeclaredPathRejection };
+
+/**
+ * Normalize a list of DECLARED paths — what an agent says it will touch —
+ * into the same canonical form the OBSERVED side is already stored in.
+ *
+ * issue #275: `normalizePath` had exactly three call sites, all on the
+ * observed side (`/api/file-activity`, `/api/working-files/{start,stop}`).
+ * The declared side (`announce_work`, `POST /api/announce`,
+ * `check_file_conflict`) passed raw strings straight through to queries that
+ * match observed columns by exact SQL equality. On Windows the normalizer
+ * lower-cases, so an agent announcing `src/Types.ts` never joined against its
+ * own activity — Layer 1, the strongest signal in the scoring, silently
+ * returned nothing. `./src/types.ts` and a backslash path missed the same way.
+ *
+ * Returns the first rejection rather than throwing, so each caller can answer
+ * in its own idiom (HTTP 400, or a structured MCP tool error).
+ */
+export function normalizeDeclaredPaths(
+  repoRoot: string | null,
+  paths: readonly string[] | undefined,
+): DeclaredPathsResult {
+  if (!paths || paths.length === 0) return { ok: true, paths: [] };
+  const out: string[] = [];
+  for (const p of paths) {
+    try {
+      out.push(normalizePath(repoRoot, p));
+    } catch (err) {
+      return { ok: false, rejected: { path: p, message: (err as Error).message } };
+    }
+  }
+  return { ok: true, paths: out };
+}

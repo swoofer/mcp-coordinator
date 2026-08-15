@@ -5,6 +5,7 @@ import type { Logger } from "../logger.js";
 import type { AuthClaims } from "../auth.js";
 
 import { missingClaimsError } from "./tool-errors.js";
+import { normalizeDeclaredPaths } from "../path-normalize.js";
 
 /**
  * S1: file tracking MCP tools (3 tools).
@@ -60,7 +61,11 @@ export function registerFilesTools(
     {
       description: "Check if another agent is editing a file",
       inputSchema: z.object({
-        file_path: z.string().describe("Repo-relative file path."),
+        file_path: z
+          .string()
+          .describe(
+            "Repo-relative file path, forward-slash. Normalized on arrival so it matches observed activity.",
+          ),
         agent_id: z
           .string()
           .describe("ID of the agent checking for conflicts (excluded from the match)."),
@@ -74,9 +79,25 @@ export function registerFilesTools(
     async ({ file_path, agent_id, within_minutes }, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError();
+      // issue #275: same canonical form as the observed side, or the lookup
+      // compares a raw string against a normalized column and finds nothing.
+      const declared = normalizeDeclaredPaths(process.env.COORDINATOR_REPO_ROOT || null, [
+        file_path,
+      ]);
+      if (!declared.ok) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text" as const,
+              text: `invalid file_path ${declared.rejected.path}: ${declared.rejected.message}`,
+            },
+          ],
+        };
+      }
       const result = fileTracker.checkFileConflict(
         claims.org,
-        file_path,
+        declared.paths[0],
         agent_id,
         within_minutes || 30,
       );
