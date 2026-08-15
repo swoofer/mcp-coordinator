@@ -116,6 +116,8 @@ curl -X POST https://coordinator.example.com/api/auth/register \
 
 **Token rotation**: tokens expire per `COORDINATOR_JWT_EXPIRY` (default 24h). Refresh via `POST /api/auth/refresh` with the current Bearer token. The admin can revoke a specific agent via `POST /api/auth/revoke` (admin token required).
 
+Revocation is scoped to the admin's own org ([#287](https://github.com/swoofer/mcp-coordinator/issues/287)): since agent ids became unique per org rather than globally ([#231](https://github.com/swoofer/mcp-coordinator/issues/231)), two orgs may each have a `builder` and they are different agents. Revoking `builder` blocks only your org's. Existing revocations are moved onto their agent's org on first boot after the upgrade — if the same id exists in several orgs, the revocation is applied to all of them, because which one it originally targeted cannot be recovered.
+
 For OAuth-based deployments (GitHub/Google/OIDC), see [docs/onboarding-self-host.md](./onboarding-self-host.md).
 
 ## Telling Claude to use the coordinator

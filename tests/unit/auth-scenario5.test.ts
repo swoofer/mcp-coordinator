@@ -454,13 +454,11 @@ describe("Scenario 5 — route guards (cookie path parity with Bearer)", () => {
   it("revoked sub cookie → 403 Agent has been revoked, even on a non-admin route", async () => {
     seedOrg();
     seedUser();
-    // revokeAgent() inserts with org_id defaulting to 'default' (it isn't
-    // org-scoped for this check); the 'default' org row was cleared by
-    // beforeEach's `DELETE FROM orgs`, so re-seed it to satisfy the FK.
-    getDb()
-      .prepare("INSERT INTO orgs (id, name, allowlist_github_org) VALUES (?, ?, ?)")
-      .run("default", "Default Organization", "default-org");
-    revokeAgent("u-alice", "admin-1");
+    // issue #287: revokeAgent is org-scoped now, so the revocation goes to the
+    // org the session token actually carries. The 'default' org no longer has
+    // to be re-seeded just to satisfy a foreign key on a row that was never
+    // about 'default' in the first place.
+    revokeAgent("org-acme", "u-alice", "admin-1");
     const token = await mintSessionJWT();
     const result = await authenticateRequest(
       mockReq({ cookie: sessionCookie(token), url: "/api/something", method: "POST" }),
@@ -476,13 +474,11 @@ describe("Scenario 5 — route guards (cookie path parity with Bearer)", () => {
   it("revoked admin sub cookie → 403 Agent has been revoked, even on an admin route", async () => {
     seedOrg();
     seedUser();
-    // revokeAgent() inserts with org_id defaulting to 'default' (it isn't
-    // org-scoped for this check); the 'default' org row was cleared by
-    // beforeEach's `DELETE FROM orgs`, so re-seed it to satisfy the FK.
-    getDb()
-      .prepare("INSERT INTO orgs (id, name, allowlist_github_org) VALUES (?, ?, ?)")
-      .run("default", "Default Organization", "default-org");
-    revokeAgent("u-alice", "admin-1");
+    // issue #287: revokeAgent is org-scoped now, so the revocation goes to the
+    // org the session token actually carries. The 'default' org no longer has
+    // to be re-seeded just to satisfy a foreign key on a row that was never
+    // about 'default' in the first place.
+    revokeAgent("org-acme", "u-alice", "admin-1");
     const token = await mintSessionJWT({ role: "admin" });
     const result = await authenticateRequest(
       mockReq({ cookie: sessionCookie(token), url: "/api/reset", method: "POST" }),

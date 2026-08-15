@@ -180,7 +180,7 @@ describe("authenticateRequest guard", () => {
 
   it("rejects revoked agent token", async () => {
     const token = await createToken("agent-revoked", "agent");
-    revokeAgent("agent-revoked", "admin-1");
+    revokeAgent("default", "agent-revoked", "admin-1");
     const result = await authenticateRequest(mockRequest({ authorization: `Bearer ${token}` }), {
       authEnabled: true,
     });
@@ -222,18 +222,49 @@ describe("authenticateRequest guard", () => {
 
 describe("Revocation", () => {
   it("isRevoked returns false for non-revoked agent", () => {
-    expect(isRevoked("agent-not-revoked")).toBe(false);
+    expect(isRevoked("default", "agent-not-revoked")).toBe(false);
   });
 
   it("revokeAgent marks agent as revoked", () => {
-    revokeAgent("agent-to-revoke", "admin-1");
-    expect(isRevoked("agent-to-revoke")).toBe(true);
+    revokeAgent("default", "agent-to-revoke", "admin-1");
+    expect(isRevoked("default", "agent-to-revoke")).toBe(true);
   });
 
   it("revokeAgent is idempotent", () => {
-    revokeAgent("agent-idem", "admin-1");
-    revokeAgent("agent-idem", "admin-1");
-    expect(isRevoked("agent-idem")).toBe(true);
+    revokeAgent("default", "agent-idem", "admin-1");
+    revokeAgent("default", "agent-idem", "admin-1");
+    expect(isRevoked("default", "agent-idem")).toBe(true);
+  });
+
+  it("revoking an id in one org leaves the same id in another org alone (#287)", () => {
+    // Since the v11 per-org id migration (#231) two orgs may each have a
+    // `builder`; they are different agents and one revocation must not
+    // silently lock the other out of every request.
+    getDb()
+      .prepare("INSERT OR IGNORE INTO orgs (id, name) VALUES ('org-a','A'), ('org-b','B')")
+      .run();
+    revokeAgent("org-a", "builder", "admin-a");
+
+    expect(isRevoked("org-a", "builder")).toBe(true);
+    expect(isRevoked("org-b", "builder")).toBe(false);
+  });
+
+  it("each org can revoke its own copy of an id independently (#287)", () => {
+    getDb()
+      .prepare("INSERT OR IGNORE INTO orgs (id, name) VALUES ('org-a','A'), ('org-b','B')")
+      .run();
+    revokeAgent("org-a", "shared", "admin-a");
+    revokeAgent("org-b", "shared", "admin-b");
+
+    const rows = getDb()
+      .prepare(
+        "SELECT org_id, revoked_by FROM revoked_agents WHERE agent_id = 'shared' ORDER BY org_id",
+      )
+      .all() as { org_id: string; revoked_by: string }[];
+    expect(rows).toEqual([
+      { org_id: "org-a", revoked_by: "admin-a" },
+      { org_id: "org-b", revoked_by: "admin-b" },
+    ]);
   });
 });
 
@@ -261,7 +292,7 @@ describe("Auth endpoint flows", () => {
     });
     expect(before.ok).toBe(true);
 
-    revokeAgent(agentId, "admin-test");
+    revokeAgent("default", agentId, "admin-test");
 
     const after = await authenticateRequest(mockRequest({ authorization: `Bearer ${token}` }), {
       authEnabled: true,

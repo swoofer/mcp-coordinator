@@ -14,7 +14,7 @@ const require = createRequire(import.meta.url);
 
 let db: DatabaseAdapter;
 
-const CURRENT_USER_VERSION = 11;
+const CURRENT_USER_VERSION = 12;
 
 /**
  * Narrow type alias for the migration code paths in this file. The
@@ -1139,6 +1139,14 @@ export function initDatabase(dataDir: string): void {
   // real, FK-backed column.
   migrateAgentIdPerOrgV11(db);
 
+  // ============================================================================
+  // v0.12 (issue #287): revoked_agents rows re-scoped onto their agent's org
+  // ============================================================================
+  // Must run while an agent id still resolves to a single agent in practice.
+  // See migrateRevokedAgentsPerOrgV12 for why moving them is a prerequisite
+  // for making isRevoked org-scoped at all.
+  migrateRevokedAgentsPerOrgV12(db);
+
   // v0.10.6 T03: if the pre-flight guard accepted duplicate org names via
   // COORDINATOR_ALLOW_DUPLICATE_ORG_NAMES=1, emit the Tier 1 audit row NOW —
   // SCHEMA has run (audit_log exists with id/created_at/prev_hash/row_hash)
@@ -1282,6 +1290,139 @@ function resolveDanglingAgentRefs(targetDb: DatabaseAdapter): void {
     );
   } catch {
     /* audit_log shape mismatch; non-fatal */
+  }
+}
+
+/**
+ * v0.12 (issue #287): re-scope `revoked_agents` rows onto the org that owns
+ * the agent, so revocation can become per-org without weakening.
+ *
+ * `revokeAgent` never wrote an `org_id`, and the column arrived by
+ * `ALTER TABLE ... DEFAULT 'default'`, so EVERY pre-existing row sits under
+ * 'default' whatever org its agent actually belongs to. Under the old global
+ * `isRevoked(agent_id)` that did not matter — the lookup ignored org. The
+ * moment the lookup becomes `(org_id, agent_id)`, every one of those rows
+ * stops matching, and an agent revoked before the upgrade is silently
+ * un-revoked. A tenant-isolation fix that re-opens revoked access is worse
+ * than the problem it fixes, so the rows are moved first.
+ *
+ * `revoked_agents` has no foreign key to `agents`, which is why the v11
+ * migration did not touch it.
+ *
+ * Rules, all of them chosen so a revocation can only ever get STRONGER:
+ *
+ *   - agent id matches exactly one agent  -> the row moves to that org.
+ *   - agent id matches several agents (possible only after v11 dropped the
+ *     global unique index) -> the agent the admin meant is unknowable, so
+ *     EVERY org holding that id gets a row. Over-revoking is recoverable by
+ *     an admin; under-revoking is a security hole.
+ *   - agent id matches no agent (agent deleted since) -> left exactly as is.
+ *     Nothing can be inferred, and dropping it would weaken a revocation.
+ *
+ * `revoked_at` / `revoked_by` are carried from the EARLIEST row for that id,
+ * so the surviving record points at the original revocation rather than a
+ * later duplicate.
+ *
+ * Gated on user_version so it runs exactly once: re-running it after an admin
+ * has legitimately revoked an id in ONE org would spread that revocation to
+ * every org holding the id.
+ */
+function migrateRevokedAgentsPerOrgV12(targetDb: DatabaseAdapter): void {
+  const q = targetDb as unknown as {
+    prepare: (sql: string) => {
+      get: (...a: unknown[]) => unknown;
+      all: (...a: unknown[]) => unknown[];
+      run: (...a: unknown[]) => { changes: number };
+    };
+  };
+
+  const v = q.prepare("PRAGMA user_version").get() as { user_version: number } | undefined;
+  if ((v?.user_version ?? 0) >= 12) return;
+
+  // One entry per agent id, carrying the EARLIEST revocation's own
+  // revoked_at/revoked_by. Picked in JS rather than with GROUP BY: aggregating
+  // each column separately (MIN(revoked_at), MIN(revoked_by)) can pair a
+  // timestamp with a different row's actor.
+  const allRows = q
+    .prepare(
+      `SELECT agent_id AS agentId, revoked_at AS revokedAt, revoked_by AS revokedBy
+       FROM revoked_agents ORDER BY agent_id, revoked_at`,
+    )
+    .all() as { agentId: string; revokedAt: string; revokedBy: string }[];
+  const earliest = new Map<string, { agentId: string; revokedAt: string; revokedBy: string }>();
+  for (const r of allRows) if (!earliest.has(r.agentId)) earliest.set(r.agentId, r);
+  const rows = [...earliest.values()];
+
+  const moved: { agent_id: string; orgs: string[] }[] = [];
+
+  targetDb.exec("BEGIN");
+  try {
+    const orgsOf = q.prepare("SELECT org_id AS orgId FROM agents WHERE id = ? ORDER BY org_id");
+    const insert = q.prepare(
+      `INSERT OR IGNORE INTO revoked_agents (agent_id, org_id, revoked_at, revoked_by)
+       VALUES (?, ?, ?, ?)`,
+    );
+
+    for (const r of rows) {
+      const orgs = (orgsOf.all(r.agentId) as { orgId: string }[]).map((o) => o.orgId);
+      if (orgs.length === 0) continue; // no agent to attribute it to; leave untouched
+
+      // Only STALE rows are rewritten: those sitting in an org that holds no
+      // agent with this id. A row already in one of the agent's orgs is either
+      // correct or a deliberate per-org revocation someone made later, and
+      // must be left exactly as it is.
+      //
+      // This is what makes the pass idempotent, and it has to be: the boot
+      // sequence rewinds user_version to 8 before the migrations run, so every
+      // guard below it is re-entered on every start. A rule that keyed off
+      // "has this migration run" instead would spread a deliberate single-org
+      // revocation to every org holding that id, on the next boot.
+      const placeholders = orgs.map(() => "?").join(",");
+      const stale = q
+        .prepare(
+          `SELECT COUNT(*) AS n FROM revoked_agents
+           WHERE agent_id = ? AND org_id NOT IN (${placeholders})`,
+        )
+        .get(r.agentId, ...orgs) as { n: number };
+      if (stale.n === 0) continue;
+
+      let changed = 0;
+      for (const org of orgs)
+        changed += insert.run(r.agentId, org, r.revokedAt, r.revokedBy).changes;
+
+      // Delete only after the inserts, so this can never leave an id
+      // un-revoked even if it fails partway.
+      const res = q
+        .prepare(
+          `DELETE FROM revoked_agents WHERE agent_id = ? AND org_id NOT IN (${placeholders})`,
+        )
+        .run(r.agentId, ...orgs);
+      if (changed > 0 || res.changes > 0) moved.push({ agent_id: r.agentId, orgs });
+    }
+
+    if (moved.length > 0) {
+      try {
+        q.prepare(
+          "INSERT INTO audit_log (action, outcome, metadata_json, created_at) " +
+            "VALUES ('migration.revoked_agents_rescope', 'success', ?, CURRENT_TIMESTAMP)",
+        ).run(
+          JSON.stringify({
+            agents_rescoped: moved.length,
+            sample: moved.slice(0, 50),
+            from_version: 11,
+            to_version: 12,
+          }),
+        );
+      } catch {
+        /* audit_log shape mismatch; non-fatal */
+      }
+    }
+
+    targetDb.exec("PRAGMA user_version = 12");
+    targetDb.exec("COMMIT");
+  } catch (err) {
+    targetDb.exec("ROLLBACK");
+    throw err;
   }
 }
 

@@ -293,7 +293,11 @@ describe("handleDeviceApprove — auth", () => {
       .run("agent-revoked-da", "tester");
     const token = await createToken("agent-revoked-da", "agent", undefined, {
       user_id: "agent-revoked-da",
-      org: "org-acme",
+      // issue #287: revocation is org-scoped now. The row above defaults to
+      // org_id='default', so the token has to sit in that org for the
+      // revoked-agent branch to fire — the global lookup used to hide the
+      // mismatch. Which org is incidental to what this test asserts.
+      org: "default",
     });
     const req = mockRequest({ body: "" });
     (req.headers as Record<string, string>).authorization = `Bearer ${token}`;

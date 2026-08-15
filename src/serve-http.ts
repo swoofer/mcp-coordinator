@@ -269,7 +269,7 @@ async function handleAuth(req: IncomingMessage, res: ServerResponse): Promise<vo
       return;
     }
 
-    revokeAgent(agent_id, authResult.claims.sub);
+    revokeAgent(authResult.claims.org, agent_id, authResult.claims.sub);
     authLog.info({ agent_id, revoked_by: authResult.claims.sub }, "Agent revoked");
     json(res, { ok: true, agent_id, revoked_by: authResult.claims.sub });
   } else {
