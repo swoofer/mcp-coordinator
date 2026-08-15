@@ -44,7 +44,19 @@ mcp-coordinator server start --daemon
 # }
 ```
 
-That's it. Claude now has all 26 tools available. State surfaces via tool calls between turns.
+That's it — the 26 tools are registered and reachable. What actually enters the
+model's context at session start is narrower: with tool search on (the default in
+Claude Code), only tool NAMES and the server's `instructions` are loaded up front,
+and schemas are materialised on demand. The coordinator's `instructions` describe
+the announce workflow and name the tools to search for, so that first turn is not
+empty. State surfaces via tool calls between turns.
+
+One caveat worth knowing before you rely on it: `instructions` arrive as a
+connection-time delta. On a task where the agent writes immediately, it can reach
+its first edit before the text lands. Setting `MCP_CONNECTION_NONBLOCKING=0` in the
+client closes that race, at two costs to weigh yourself: about +678 tokens on the
+first-turn prefix, and a blocking startup for **every** MCP server you have
+configured, not just this one.
 
 ### When this is enough
 

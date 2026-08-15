@@ -1,5 +1,6 @@
 ﻿import { McpServer } from "@modelcontextprotocol/server";
 import { initDatabase } from "./database.js";
+import { MCP_INSTRUCTIONS } from "./mcp-instructions.js";
 import { registerConsultationTools } from "./tools/consultation-tools.js";
 import { registerAgentTools } from "./tools/agents-tools.js";
 import { registerFilesTools } from "./tools/files-tools.js";
@@ -223,16 +224,25 @@ export function createMcpServer(
   } = services;
   const mcpLog = services.logger.child({ component: "mcp" });
 
-  const server = new McpServer({
-    // protocole-mcp-13: aligned with package.json's `mcpName` (the MCP
-    // registry-recommended `io.github.<owner>/<repo>` form) instead of the
-    // legacy internal "mcp-coordinator-v3" label, which leaked an
-    // implementation detail and matched neither the npm package name nor
-    // the registry name. See docs/maintainer-notes.md for registry
-    // publication status.
-    name: "io.github.swoofer/mcp-coordinator",
-    version: VERSION,
-  });
+  const server = new McpServer(
+    {
+      // protocole-mcp-13: aligned with package.json's `mcpName` (the MCP
+      // registry-recommended `io.github.<owner>/<repo>` form) instead of the
+      // legacy internal "mcp-coordinator-v3" label, which leaked an
+      // implementation detail and matched neither the npm package name nor
+      // the registry name. See docs/maintainer-notes.md for registry
+      // publication status.
+      name: "io.github.swoofer/mcp-coordinator",
+      version: VERSION,
+    },
+    // issue #271: the SECOND argument is ServerOptions, not Implementation.
+    // Under tool-search-by-default a client materialises tool schemas on demand,
+    // so at session start this text is the ONLY thing the server contributes
+    // beyond bare tool names — without it the announce workflow has no
+    // first-turn discovery surface. cli/channel.ts has passed instructions here
+    // since it was written; the daemon never did.
+    { instructions: MCP_INSTRUCTIONS },
+  );
 
   // S1: all 26 MCP tools registered via per-domain modules under src/tools/.
   // Each register*Tools function takes (server, services, mcpLog, getSessionClaims)
