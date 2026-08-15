@@ -6,14 +6,14 @@
 | **Surface** | mcp-spec |
 | **Statut** | experimental (extension officielle en cours de stabilisation — voir §1) |
 | **Disponible depuis** | expérimental dans le cœur MCP en `2025-11-25` ; sorti du cœur vers l'extension `io.modelcontextprotocol/tasks` avec la spec `2026-07-28` (SEP-2663 mergé le 2026-05-15) |
-| **Tier** | T2-fort-levier |
-| **Nature** | replace-homemade-code |
+| **Tier** | ~~T2-fort-levier~~ **T3** — déclassée au challenge du 2026-08-15 : zéro client des deux côtés du fil, à suivre sans agir (§7.2) |
+| **Nature** | ~~replace-homemade-code~~ **opportunity** — elle ne remplace rien : le handle durable (`thread.id`) et le TTL (`timeout_seconds`) existent déjà, et `pollIntervalMs` est dominé par `wait_for_message` (§7.4) |
 | **Effort estimé** | L (probablement sous-estimé tant que les SDK ne l'exposent pas) |
 | **Confiance veille** | medium |
 | **Vérification** | PLAUSIBLE |
 | **Vérifiée le** | 2026-08-14 |
 | **Testabilité** | ⚠️ partielle — aucun client tiers implémente l'extension |
-| **Statut du challenge** | ⬜ à faire |
+| **Statut du challenge** | ✅ **tranché** — 2026-08-15, verdict `reporter` (§7) |
 
 ---
 
@@ -118,13 +118,60 @@ Modéré, et pas immédiat. Si le push d'événements devient une primitive de p
 
 ### 6.2 Hypothèse
 
-<Ce qu'on pense avant de tester.>
+*Pré-enregistré le 2026-08-15, AVANT toute exécution.*
+
+**Hypothèse.** La fiche décrit une extension dont personne ne veut. Je m'attends à trouver pire que
+« pas encore adoptée » : que la ligne SDK vers laquelle le projet **vient de décider de migrer**
+([#286](https://github.com/swoofer/mcp-coordinator/issues/286), fiche
+[`A02`](A02-mcp-sdk-typescript-v2.md) tranchée le même jour) ait **retiré le runtime Tasks**. Si
+c'est le cas, adopter l'extension signifierait écrire le protocole à la main **contre** le sens du
+SDK, pour une spec en `draft` qui annonce elle-même pouvoir être abandonnée. Je m'attends aussi à ce
+que le point 3 du §6.3 soit déjà répondu : la capture au proxy du même jour
+([`A01`](A01-mcp-2026-07-28-stateless.md) §6.4 (5 bis)) montre les capacités réelles de Claude Code
+2.1.233.
+
+**Critères de refus (ce qui me ferait conclure « non bénéfique maintenant ») :**
+
+- **A05-R1 — personne en face.** Si aucun client réel ne déclare `io.modelcontextprotocol/tasks`
+  (ni `capabilities.tasks`, ni `extensions`), le serveur parlerait dans le vide et devrait garder
+  le code maison en parallèle : deux implémentations pour une capacité.
+- **A05-R2 — le SDK va dans l'autre sens.** Si `@modelcontextprotocol/server@2.0.0` — la cible de
+  #286 — a **retiré** le runtime Tasks, alors adopter, c'est ramer à contre-courant du SDK et
+  réécrire à la main ce que la v1 fournissait. → disqualifiant.
+- **A05-R3 — perte de sémantique.** Si le mapping `ThreadStatus` → statuts Tasks laisse **2
+  transitions métier ou plus** sans équivalent, le modèle aplatit un état riche.
+- **A05-R4 — régression de latence.** Si le push MQTT actuel bat nettement le plancher imposé par
+  `pollIntervalMs`, basculer dégrade ce qui marche.
+- **A05-R5 — cible mouvante.** Si la spec est toujours en `draft` sans release taguée et porte la
+  mention « may be discontinued », l'effort de plomberie protocolaire n'est pas amortissable.
+- **A05-R6 — la fiche s'effondre.** Si l'extension n'existe plus, ou si le dépôt `ext-tasks` est
+  archivé → `refuser` immédiat.
 
 ### 6.3 Protocole de vérification
 
-<Proposition de la veille — non exécutée.>
+*Amendé en session le 2026-08-15. Les cinq points de la veille sont conservés ; le point 3 est
+**déjà répondu** par une mesure du même jour et devient une vérification de cohérence. Un sixième
+point est ajouté : il porte le critère A05-R2, que la veille ne pouvait pas anticiper puisque `A02`
+n'était pas encore tranchée.*
 
-> ⚠️ Non exécutable ici : tout aller-retour réel `CreateTaskResult` → `tasks/update` → `inputResponses` avec un vrai client, aucun client MCP n'implémentant l'extension et le SDK vendored n'exposant ni `tasks/update` ni `resultType`. Les quatre autres points sont exécutables en local.
+> ⚠️ Reste non exécutable : l'aller-retour réel `CreateTaskResult` → `tasks/update` →
+> `inputResponses` avec un **client tiers**, faute de client implémentant l'extension. Écrire les
+> deux bouts moi-même prouverait que je sais coder, pas que l'extension est adoptable — la §0 a
+> raison sur ce point et je ne le contourne pas.
+
+- [ ] **(1)** Inspecter le SDK **1.30.0 installé** : `tasks/get`, `tasks/update`, `tasks/cancel`,
+      `CreateTaskResult`, `resultType`.
+- [ ] **(2)** Lancer le serveur en stdio et lire la **réponse d'initialisation réelle** de
+      `createMcpServer` : y a-t-il un `capabilities.extensions` exploitable ?
+- [ ] **(3)** *(déjà mesuré)* Confronter les `clientCapabilities` réellement envoyées par
+      Claude Code 2.1.233 à l'affirmation de la matrice officielle.
+- [ ] **(4)** Prototyper le mapping `ThreadStatus` → statuts Tasks et **compter** les transitions
+      métier sans équivalent (`poisoned`, `contest_resolution`).
+- [ ] **(5)** Mesurer la latence bout-en-bout d'une réponse de pair via MQTT, à comparer au plancher
+      `pollIntervalMs`.
+- [ ] **(6) NOUVEAU — l'état de Tasks dans `@modelcontextprotocol/server@2.0.0`**, la cible de
+      [#286](https://github.com/swoofer/mcp-coordinator/issues/286). C'est le point qui décide :
+      si le runtime a disparu de la ligne v2, l'extension est un cul-de-sac pour ce projet.
 
 - [ ] Vérifier dans `node_modules/@modelcontextprotocol/sdk` (v1.29.x) si `tasks/get`, `tasks/update`, `tasks/cancel`, `CreateTaskResult` ou `resultType` apparaissent dans les types générés — si non, le coût d'adoption inclut d'écrire le transport à la main.
 - [ ] Lancer le serveur en stdio et inspecter la réponse d'initialisation réelle envoyée par `createMcpServer` : y a-t-il un champ `capabilities.extensions` exploitable, ou faut-il patcher le SDK ?
@@ -134,17 +181,273 @@ Modéré, et pas immédiat. Si le push d'événements devient une primitive de p
 
 ### 6.4 Résultat observé
 
-<Ce qu'on a réellement mesuré/vu. Coller les sorties, pas les paraphraser.>
+*Session du 2026-08-15, Windows 11 / Node 22.21.0 / Claude Code 2.1.233. Frontière exécuté / lu
+au (6).*
+
+---
+
+#### (1) SDK 1.30.0 installé : la méthode centrale de l'extension n'existe pas
+
+```
+=== SDK v1.30.0 installe : vocabulaire Tasks ===
+tasks/get                : 6        tasks/list           : 6
+tasks/update             : 0   <--  tasks/result         : 7
+tasks/cancel             : 6        notifications/tasks  : 4
+CreateTaskResult         : 6        resultType           : 0
+TaskAugmentedRequest     : 13
+```
+
+La §0 avait raison : c'est la version **SEP-1686 du cœur**, pas l'extension. `tasks/list` et
+`tasks/result` — supprimés par SEP-2663 — sont là ; `tasks/update` et `resultType` n'y sont pas.
+
+**Trouvaille annexe, réelle :** la forme attendue par `ClientTasksCapabilitySchema` est
+`list?: object` / `cancel?: object`, **pas** des booléens. Un client qui envoie
+`capabilities.tasks: { list: true, cancel: true }` se fait rejeter par notre daemon :
+
+```
+{"jsonrpc":"2.0","id":1,"error":{"code":-32603,"message":"[{\"code\":\"custom\",
+ \"path\":[\"params\",\"capabilities\",\"tasks\",\"list\"],\"message\":\"Invalid input\"}, …]"}}
+```
+
+C'est un piège d'interopérabilité qui existe **aujourd'hui**, indépendamment de toute adoption.
+
+---
+
+#### (2) `capabilities.extensions` : le canal existe, mais nous ne déclarons rien
+
+`InitializeResult` **réel** de `createMcpServer`, lu en stdio sur le daemon du dépôt, en réponse à
+un client qui déclare pourtant `tasks` **et** `extensions: {"io.modelcontextprotocol/tasks": {}}` :
+
+```json
+{ "protocolVersion": "2025-11-25",
+  "capabilities": { "tools": { "listChanged": true } },
+  "serverInfo": { "name": "io.github.swoofer/mcp-coordinator", "version": "2.0.1" } }
+
+capabilities.extensions present ? -> false
+capabilities.tasks present ?      -> false
+cles de capabilities              -> tools
+```
+
+À noter, contre une intuition facile : le champ `extensions` **existe bien** dans les schémas de
+capacités des deux SDK (11 occurrences en 1.30.0, dont `InitializeRequestParams`). Le canal de
+négociation n'est donc pas le blocage — c'est qu'il n'y a rien à négocier avec personne.
+
+---
+
+#### (3) Personne en face — mesuré des deux côtés
+
+**Côté matrice officielle** (`modelcontextprotocol.io/extensions/client-matrix`, fetchée le
+2026-08-15) : trois extensions listées — `io.modelcontextprotocol/ui` (MCP Apps),
+`io.modelcontextprotocol/oauth-client-credentials`,
+`io.modelcontextprotocol/enterprise-managed-authorization`. **Tasks n'y figure pas du tout**, ni
+dans la liste des extensions, ni dans les colonnes des 11 clients recensés.
+
+**Côté client réel** : la capture au proxy du même jour
+([`A01`](A01-mcp-2026-07-28-stateless.md) §6.4 (5 bis)) montre ce que Claude Code 2.1.233 envoie :
+
+```
+"capabilities":{"roots":{"listChanged":true},"elicitation":{}}
+```
+
+Ni `tasks`, ni `extensions`. → **A05-R1 déclenché**, et pas sur la foi de la matrice : sur le fil.
+
+---
+
+#### (4) L'état de Tasks dans la cible de #286 — le point qui décide
+
+```
+=== SDK v2.0.0 : que reste-t-il de Tasks ? ===
+tasks/get       : 18     tasks/list          : 14     CreateTaskResult : 41
+tasks/update    :  0     tasks/result        : 14     taskStore        :  1
+tasks/cancel    : 14     notifications/tasks : 10
+io.modelcontextprotocol/tasks : 0
+
+--- mention portee par les types Task ---
+/** @deprecated 2025-11-25 wire vocabulary with no SDK runtime; kept importable for interoperability only. */
+```
+
+Trois faits, à ne pas confondre :
+
+1. Le vocabulaire **SEP-1686 du cœur** est conservé importable mais **sans runtime** — c'est la
+   version que le SDK 1.30.0 implémentait vraiment. La ligne v2, cible de
+   [#286](https://github.com/swoofer/mcp-coordinator/issues/286), l'a donc **désimplémentée**.
+2. `tasks/update`, la méthode centrale de l'**extension**, a **0 occurrence dans les deux SDK**.
+   Elle n'est implémentée nulle part.
+3. `io.modelcontextprotocol/tasks` — l'identifiant même de l'extension — a **0 occurrence** dans
+   toute la famille v2.
+
+→ **A05-R2 déclenché.** Adopter l'extension signifierait écrire le protocole entier à la main, sur
+une ligne SDK qui vient de retirer le peu qu'elle en avait.
+
+---
+
+#### (5) Ce que le modèle Tasks ferait perdre, compté
+
+`src/types.ts` :
+
+```ts
+// l.24-25 : "poisoned" = a work-stealing task that was unclaimed too many times without
+//           reaching DONE. Filtered out of the claim pool so it doesn't churn indefinitely.
+l.26  export type ThreadStatus = "open" | "resolving" | "resolved" | "cancelled" | "poisoned";
+l.27  export type ResolutionType =
+l.28    "consensus" | "auto_resolved" | "timeout" | "closed" | "max_rounds" | "agent_departure";
+```
+
+| Ce qu'on a | Équivalent Tasks |
+|---|---|
+| `ThreadStatus` × 5 | mapping plausible, sauf `poisoned` → `failed` (perd la sémantique work-stealing) |
+| **`ResolutionType` × 6** | **aucun** — les six s'écrasent sur `completed` |
+| `propose_resolution` / `approve_resolution` / `contest_resolution` | **aucun** — transitions métier à conserver comme outils |
+
+→ **A05-R3 déclenché**, et largement au-dessus du seuil de 2 : **6 types de résolution + 3
+transitions + 1 statut** sans destination.
+
+---
+
+#### (6) Latence : le push actuel est deux ordres de grandeur sous n'importe quel polling
+
+`scratchpad/probe-latency.mjs`, contre le daemon réel : 10 annonces, mesure du délai entre le
+`POST /api/announce` et l'arrivée de l'événement sur un `/api/events` déjà ouvert (ce que fait un
+pair qui attend).
+
+```
+echantillons recus : 9/10
+latence POST /api/announce -> evenement sur /api/events (ms) :
+  min 4.3 | median 5.1 | p90 8.0 | max 8.0
+  brut : 4.3, 4.3, 4.3, 4.4, 5.1, 5.4, 5.6, 7.1, 8.0
+```
+
+**Médiane 5,1 ms.** Un `pollIntervalMs` réaliste (≥ 500 ms) dégraderait d'un facteur ~100.
+→ **A05-R4 déclenché.**
+
+---
+
+#### (7) Statut de l'extension elle-même
+
+`github.com/modelcontextprotocol/ext-tasks`, fetché le 2026-08-15. Bannière verbatim :
+
+> ⚠️ **Experimental Extension** — This repository contains an experimental extension to the Model
+> Context Protocol (MCP). It is **not an official extension** and may change significantly or **be
+> discontinued**.
+
+Dépôt **non archivé**, 17 commits, **aucune release taguée**, spec servie sous
+`/specification/draft/`. → **A05-R5 déclenché**, et **A05-R6 non déclenché** : l'extension existe
+toujours, elle n'est simplement adoptée par personne.
+
+---
+
+#### (8) L'extension n'est pas morte — elle dort, et son schéma a des défauts ouverts
+
+*Section ajoutée après la passe adversariale, qui m'a repris sur deux points. Vérifié moi-même via
+`gh` le 2026-08-15.*
+
+```
+$ gh pr view 2663 --repo modelcontextprotocol/modelcontextprotocol
+{"title":"SEP-2663: Tasks Extension","state":"MERGED","mergedAt":"2026-05-15T19:46:44Z"}
+
+$ gh api repos/modelcontextprotocol/ext-tasks/commits
+2026-07-15  Bump hono in the npm_and_yarn group (#6)      <- dependabot
+2026-06-09  Set up Vitepress deployment (#7)              <- outillage
+2026-06-03  Bump qs in the npm_and_yarn group (#3)        <- dependabot
+2026-05-29  Port #2756 (#5)                               <- dernier commit de FOND
+2026-05-28  chore: port ResultType fix (#4)
+2026-05-22  Write updated docs and port SEP-2663 content (#2)
+
+$ gh issue list --repo modelcontextprotocol/ext-tasks --state open
+#14 2026-08-10  Generated schema leaves input unions unconstrained and omits required
+                resultType discriminators
+#12 2026-08-02  Should Readme still say experimental?
+#11 2026-08-01  Stalled tasks
+
+$ gh pr list --repo modelcontextprotocol/ext-tasks --state open
+#13 2026-08-02  Update Tasks extension docs to reflect official MCP status
+#10 2026-07-31  fix: correct MISSING_REQUIRED_CLIENT_CAPABILITY error code to -32021
+#9  2026-07-31  fix: restore auth binding requirement dropped during SEP-2663 port
+#8  2026-07-15  Bump the npm_and_yarn group
+```
+
+Ce que ça change, dans les deux sens :
+
+- **Contre `refuser` :** le SEP est **mergé** dans le dépôt de spec principal, le contenu est **figé
+  depuis le 2026-05-29**, et la bannière « experimental » est elle-même contestée en interne
+  (issue #12 sans réponse, PR #13 ouverte et intitulée « … to reflect official MCP status »).
+  Ce n'est pas un cadavre. *Nuance honnête :* ni #12 ni #13 ne sont autoritatives — la bannière que
+  je cite en (7) reste, aujourd'hui, le texte en vigueur.
+- **Contre `adopter` :** l'artefact n'est pas fini. **#14, ouverte il y a 5 jours**, dit que le
+  schéma généré « leaves input unions unconstrained and omits required `resultType` discriminators »
+  — un défaut sur le mécanisme même qu'on adopterait. Et **#9** répare une *« auth binding
+  requirement **dropped during SEP-2663 port** »* : le portage a perdu une exigence de sécurité.
+  → **A05-R5 : maintenu, mais reformulé** — le grief n'est pas « ça bouge tout le temps », c'est
+  « ça ne bouge plus et ça a des trous ouverts, dont un sur l'auth ».
+
+**Et je dois corriger mon propre critère A05-R2.** Je l'avais formulé « si le SDK v2 a retiré le
+runtime Tasks, adopter c'est ramer à contre-courant du SDK ». **C'est une erreur de catégorie**, et
+ma propre mesure (2) la contredisait déjà : le `@deprecated` du SDK v2 vise le vocabulaire
+**SEP-1686 du cœur** — précisément le design que l'extension **remplace** — tandis que
+`capabilities.extensions` est présent et **non déprécié** sur `ClientCapabilities` **et**
+`ServerCapabilities`, et que v2 exporte `SubscriptionsListenRequestSchema` et
+`DiscoverRequest/ResultSchema`. Une extension ne vit pas dans le SDK cœur, par construction : les
+« 0 occurrence de `io.modelcontextprotocol/tasks` » ne mesurent aucun retrait.
+
+**Ce qui survit de A05-R2, et qui compte :** `tasks/update` a **0 occurrence dans les deux SDK**.
+Adopter, c'est écrire la méthode centrale et son store à la main. C'est un **coût**, pas une
+contre-indication de direction. → **A05-R2 : retiré comme argument de direction, conservé comme
+chiffrage d'effort.**
+
+#### (9) Frontière exécuté / lu
+
+**Exécuté :** l'inspection des deux SDK, l'`InitializeResult` réel du daemon en stdio (y compris
+le rejet `-32603` sur la forme booléenne), la mesure de latence contre le daemon réel.
+
+**Fetché aujourd'hui :** la matrice de support client, le README `ext-tasks`.
+
+**Non exécuté, et assumé :** l'aller-retour `CreateTaskResult` → `tasks/update` → `inputResponses`
+avec un **client tiers**. La §0 le disait et elle a raison : aucun client n'implémente l'extension,
+et `tasks/update` n'existe dans aucun SDK. Écrire les deux bouts moi-même aurait prouvé que je sais
+coder, pas que l'extension est adoptable. **Aucun verdict ci-dessous ne repose sur cette partie** —
+les cinq critères déclenchés le sont tous par de l'exécuté ou de la doc officielle fetchée.
 
 ### 6.5 Contre-arguments
 
+*Repris le 2026-08-15 après l'expérience et une passe adversariale. Barré = tombé.*
+
+- **Le « lot de consolation » de §6.1 n'est pas gratuit — et il est déjà là.** La question propose,
+  en repli, « aligner le vocabulaire de `ThreadStatus` sur les statuts Tasks pour préparer une
+  bascule ultérieure **sans coût** ». Les trois apports supposés existent déjà ou sont dominés :
+  le **handle durable**, c'est `thread.id`, déjà retourné par `announce_work`
+  (`consultation-tools.ts:173-186`) ; le **TTL explicite**, c'est `timeout_seconds`
+  (`src/types.ts:43`, défaut 600, appliqué en `src/consultation.ts:448-449` et `462-463`) ; et
+  `pollIntervalMs` est **strictement inférieur** à `wait_for_message`
+  (`src/tools/mqtt-tools.ts:52-77`), un long-poll bloquant plafonné à 300 s — sans parler de la
+  **médiane à 5,1 ms** mesurée en (6). Reste le renommage de l'enum : il est dupliqué dans
+  `list_threads` (`consultation-tools.ts:403`) et en colonne SQLite, donc il coûte une **migration
+  de schéma** — pour zéro gain, et en perdant les 6 valeurs de `ResolutionType`. **« Sans coût » est
+  faux dans les deux sens : ça coûte, et ça ne rapporte rien.**
 - **Aucun client en face.** L'extension est opt-in des deux côtés et la matrice de support client officielle ne recense aucun client la supportant. Un serveur qui l'implémente parle dans le vide : le code maison (SQLite + polling) reste nécessaire en parallèle. On paierait deux implémentations pour une seule capacité.
 - **Statut expérimental assumé.** README `ext-tasks` : « may change significantly or be discontinued ». Spec en `/specification/draft/`, zéro release taguée. La feature a déjà été redessinée substantiellement une fois (retrait de `tasks/list` et de `tasks/result` bloquant) ; rien ne dit que c'est la dernière.
 - **Effort L sous-estimé.** Sans support SDK, il faut écrire le handling de méthodes hors-schéma, la négociation de capacités et le store de tasks à la main, puis suivre les breaking changes de la draft. C'est du travail de plomberie protocolaire, pas de la valeur produit.
 - **MQTT reste meilleur là où il compte.** Le push temps réel bat le polling en latence, et couvre le multi-machine et les clients non-MCP (le dashboard, `cli/channel.ts`). Tasks ne remplace pas ça ; au mieux il double la surface d'événements. « Supprimer MQTT grâce à Tasks » n'est pas sur la table à court terme.
 - **Perte de sémantique métier.** `propose_resolution` / `approve_resolution` / `contest_resolution` / `poisoned` n'ont pas d'équivalent dans le modèle Tasks. Forcer le thread dans `working | input_required | completed | failed | cancelled` aplatit un état riche, ou impose de maintenir les deux vues en cohérence.
 - **YAGNI immédiat.** Aucun utilisateur ne demande à piloter une consultation depuis un client MCP tiers. Le bénéfice « lisible par n'importe quel client conforme » est aujourd'hui hypothétique.
-- **Coût pour l'auto-hébergeur : nul dans les deux sens.** Tasks n'allège pas le déploiement tant que MQTT reste en place ; il ajoute juste un chemin de code de plus à comprendre en cas de panne.
+- **Coût pour l'auto-hébergeur : nul dans les deux sens.** Tasks n'allège pas le déploiement tant que MQTT reste en place ; il ajoute juste un chemin de code de plus à comprendre en cas de panne. → **tient**, et la mesure de latence le renforce.
+
+**Repris après vérification — deux contre-arguments à corriger, un à ajouter :**
+
+- ~~**Statut expérimental assumé** (« la feature a déjà été redessinée une fois ; rien ne dit que
+  c'est la dernière »).~~ **AFFAIBLI.** SEP-2663 est **mergé** dans le dépôt de spec principal
+  (2026-05-15) et le contenu d'`ext-tasks` est **figé depuis le 2026-05-29** — 2,5 mois sans commit
+  de fond. Ce n'est pas une cible mouvante. Le vrai grief est ailleurs, voir ci-dessous.
+- ~~**Effort L sous-estimé « sans support SDK »**, au sens « il faut aussi la négociation de
+  capacités ».~~ **PARTIELLEMENT TOMBÉ.** La négociation, elle, est fournie :
+  `capabilities.extensions` est présent et **non déprécié** dans les deux SDK, et v2 exporte
+  `SubscriptionsListenRequestSchema` et `DiscoverRequest/ResultSchema`. Ce qui reste à écrire à la
+  main est réel mais plus étroit : **`tasks/update` (0 occurrence dans les deux SDK)** et le store
+  de tasks.
+- **AJOUTÉ — l'artefact a des trous ouverts, dont un sur l'auth.** `ext-tasks` #14 (2026-08-10) :
+  le schéma généré « leaves input unions unconstrained and omits required `resultType`
+  discriminators ». `ext-tasks` #9 : *« restore auth binding requirement **dropped during SEP-2663
+  port** »*. Adopter aujourd'hui, ce serait implémenter à la main une spec dont les mainteneurs
+  réparent encore le portage — y compris une exigence de sécurité perdue en route.
 
 ---
 
@@ -152,11 +455,82 @@ Modéré, et pas immédiat. Si le push d'événements devient une primitive de p
 
 | | |
 |---|---|
-| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ⬜ refuser |
-| **Date** | |
-| **Justification** | |
-| **Issue / PR** | |
-| **Jalon visé** | |
+| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ✅ **reporter** · ⬜ refuser |
+| **Date** | 2026-08-15 |
+| **Justification** | **Zéro client, des deux côtés du fil.** La matrice officielle ne liste que trois extensions et Tasks n'y figure pas ; Claude Code 2.1.233 annonce `{roots, elicitation}` — mesuré. Et l'extension elle-même n'est pas prête : `tasks/update`, sa méthode centrale, a **0 occurrence dans les deux SDK**, et son dépôt porte des défauts ouverts sur le schéma (#14) et sur une exigence d'auth perdue au portage (#9). Mais elle n'est pas morte non plus — SEP-2663 est mergé, la spec est figée depuis mai, et le SDK v2 fournit déjà le canal de négociation. **Endormie, pas enterrée.** |
+| **Issue / PR** | — (aucune : rien à coder) |
+| **Jalon visé** | Réveil conditionnel, voir §7.2 |
+
+### 7.1 La réponse à la question de §6.1
+
+**Les deux termes sont mauvais, mais pas pour les mêmes raisons.**
+
+- *« La consultation devient une MCP Task »* → non, et pas d'abord à cause du statut expérimental :
+  parce que **personne n'écoute**. Un serveur qui implémente une extension opt-in que zéro client
+  déclare parle dans le vide, et devrait garder le chemin maison en parallèle — deux
+  implémentations pour une capacité. S'y ajoutent une perte de sémantique chiffrée (**6
+  `ResolutionType` + 3 transitions de résolution + `poisoned` sans destination**) et une régression
+  de latence d'environ deux ordres de grandeur (**5,1 ms mesurés** contre le plancher d'un polling).
+- *« Se limiter à aligner le vocabulaire de `ThreadStatus`, sans coût »* → non plus, et c'est le
+  résultat le moins attendu de ce challenge : **la prémisse « sans coût » est fausse dans les deux
+  sens.** Le handle durable (`thread.id`) et le TTL (`timeout_seconds`) **existent déjà** ;
+  `pollIntervalMs` est dominé par `wait_for_message` ; et le renommage de l'enum impose une
+  **migration SQLite** (l'enum est dupliqué en colonne et dans `list_threads`) tout en écrasant les
+  6 valeurs de `ResolutionType`. On paierait une migration pour perdre de l'information.
+
+**Ce qui reste vrai de la fiche :** le thread *est* conceptuellement une task, et le mapping des
+5 statuts tient. Ce n'est simplement pas une raison d'agir.
+
+### 7.2 Condition de réveil
+
+**Une seule, et elle est observable sans effort :**
+
+> **Un premier client déclare l'extension** — soit une ligne `Tasks` apparaît dans
+> `modelcontextprotocol.io/extensions/client-matrix`, soit Claude Code envoie
+> `extensions: {"io.modelcontextprotocol/tasks": {}}` dans ses `clientCapabilities`.
+> Ce second cas se re-mesure en 5 minutes avec le proxy d'écoute déjà écrit
+> (`scratchpad/wire-proxy.mjs`, cf. [`A01`](A01-mcp-2026-07-28-stateless.md) §6.4 (5 bis)).
+
+Deux signaux secondaires à surveiller au passage, parce qu'ils sont gratuits :
+`ext-tasks` **#14** (défaut de schéma sur les discriminants `resultType`) et **#9** (exigence
+d'auth perdue au portage de SEP-2663) — tant qu'ils sont ouverts, l'artefact n'est pas
+implémentable sérieusement, même si un client apparaissait.
+
+**Le jour du réveil, l'adoption coûtera moins cher que ne le dit cette fiche :**
+`capabilities.extensions` est déjà présent et non déprécié dans le SDK v2 vers lequel
+[#286](https://github.com/swoofer/mcp-coordinator/issues/286) fait migrer.
+
+### 7.3 Ce qui est écarté explicitement
+
+- **Déclarer `capabilities.extensions` « pour se préparer »** — écarté : déclarer une extension
+  qu'on n'implémente pas, c'est le patron du **garde-fou fantôme** que le challenge de
+  [`A04`](A04-subscriptions-listen.md) a déjà relevé sur `resources.subscribe` (déclarer sans
+  installer le handler → `-32601`). On ne refait pas la même erreur volontairement.
+- **Renommer `ThreadStatus`** — écarté, voir §7.1.
+- **Remplacer MQTT/SSE par `notifications/tasks`** — écarté : mesuré à 5,1 ms de médiane, le push
+  actuel n'a aucun concurrent crédible côté polling, et MQTT couvre en plus le multi-machine et les
+  clients non-MCP (dashboard, `cli/channel.ts`).
+
+### 7.4 Corrections apportées à la fiche par ce challenge
+
+1. **§6.1 affirme que l'alignement de vocabulaire serait « sans coût ». Faux** — migration SQLite,
+   et perte des 6 `ResolutionType`. C'est la correction la plus utile de ce challenge, parce que
+   c'était le repli présenté comme évident.
+2. **§4 « ce qui apparaît : un handle `taskId` durable, avec `ttlMs` explicite » est faux** : les
+   deux existent déjà (`thread.id` ; `timeout_seconds`, appliqué en `consultation.ts:448-463`).
+3. **§4 « `pollIntervalMs` remplace la cadence de polling devinée par le client » est une
+   régression, pas un gain** : `wait_for_message` est déjà un long-poll bloquant à 300 s, et le
+   push mesure 5,1 ms.
+4. **§2 et §5 sous-estiment ce qui est déjà fourni** : `capabilities.extensions` est présent et non
+   déprécié dans les **deux** SDK. Ce qui manque est plus étroit que « tout » : `tasks/update` et
+   le store.
+5. **Piège d'interopérabilité non documenté, trouvé en séance** : `ClientTasksCapabilitySchema`
+   attend `list?: object` / `cancel?: object`. Un client qui envoie `{ list: true }` reçoit un
+   `-32603` de notre daemon. Vrai aujourd'hui, sans rapport avec l'extension.
+6. **Une erreur commise pendant ce challenge, corrigée par la passe adversariale** : mon critère
+   A05-R2 traitait le `@deprecated` du SDK v2 comme une prise de position contre l'extension.
+   Erreur de catégorie — il vise le vocabulaire SEP-1686 du **cœur**, que l'extension remplace.
+   Détail en §6.4 (8).
 
 ## 8. Journal
 
@@ -164,3 +538,4 @@ Modéré, et pas immédiat. Si le push d'événements devient une primitive de p
 |---|---|
 | 2026-08-14 | Fiche créée par la veille plateforme. |
 | 2026-08-14 | Vérification des faits : SDK implémente Tasks (SEP-1686, pas l'extension) ; issues fermées ; 3 lignes corrigées. |
+| 2026-08-15 | Challenge. Mesuré : matrice officielle sans Tasks, Claude Code 2.1.233 sans `extensions`, `tasks/update` à 0 occurrence dans les deux SDK, `InitializeResult` réel du daemon sans `extensions`, latence du push actuel à **5,1 ms** de médiane, 6 `ResolutionType` sans équivalent. **Verdict : reporter** — endormie, pas enterrée (SEP-2663 mergé, spec figée depuis mai, défauts ouverts #9/#14). Passe adversariale : mon critère A05-R2 était une erreur de catégorie, retiré comme argument de direction ; le « lot de consolation sans coût » de §6.1 est faux. |

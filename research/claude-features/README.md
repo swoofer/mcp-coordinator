@@ -46,7 +46,7 @@ Le détail par fiche est dans sa **section 0**.
 | `A02` | [Migration @modelcontextprotocol/sdk ^1.29 vers le SDK TypeScript v2](A02-mcp-sdk-typescript-v2.md) | 🔴 T1 | GA | ~~remplace du code maison~~ réduit la surface de dépendances | ~~XL~~ M | 🟡 | ✅ | ✅ |
 | `A03` | [Multi Round-Trip Requests : forcer l'agent à répondre au conflit](A03-mrtr-input-required.md) | 🔴 T1 | GA | opportunité | L | 🟡 | ~~⚠️~~ ✅ | ✅ |
 | `A04` | [`subscriptions/listen` : le push standardisé face à `sse-emitter` et `mqtt-bridge`](A04-subscriptions-listen.md) | ~~🔴 T1~~ 🟡 T3 | GA | ~~remplace du code maison~~ opportunité | L | ✅ | ⚠️ | ✅ |
-| `A05` | [Extension MCP Tasks : la consultation inter-agents comme opération longue](A05-mcp-tasks-extension.md) | 🟠 T2 | experimental | remplace du code maison | L | 🟡 | ⚠️ | ⬜ |
+| `A05` | [Extension MCP Tasks : la consultation inter-agents comme opération longue](A05-mcp-tasks-extension.md) | ~~🟠 T2~~ 🟡 T3 | experimental | ~~remplace du code maison~~ opportunité | L | 🟡 | ⚠️ | ✅ |
 | `A06` | [Surface d'outils moderne : outputSchema, annotations, ttlMs, progress](A06-tool-metadata-modern-surface.md) | 🔴 T1 | GA | opportunité | M | 🟡 | ⚠️ | ⬜ |
 | `A07` | [Elicitation (modes `form` et `url`) : arbitrer un conflit sans passer par un thread](A07-elicitation.md) | 🔴 T1 | GA | opportunité | M | 🟡 | ⚠️ | ⬜ |
 | `A08` | [MCP Apps (`ui://`) : le dashboard rendu dans la conversation](A08-mcp-apps-ui.md) | 🟠 T2 | GA | remplace du code maison | L | ✅ | ⚠️ | ⬜ |
