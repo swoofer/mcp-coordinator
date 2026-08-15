@@ -25,9 +25,15 @@ Quick facts you will need below:
 
 **Symptom.** `server start` (or the daemon log) shows
 `Error: listen EADDRINUSE: address already in use 127.0.0.1:3100` (or
-`:1883`), and the process exits. In daemon mode the CLI still prints
-`Coordinator started in background` -- the crash is only visible in
-`~/.mcp-coordinator/logs/server.log`.
+`:1883`), and the process exits. Since issue #273 the daemon-mode CLI waits
+for the child to accept a connection before saying anything, so it reports
+`Coordinator failed to start` with the tail of the log and exits non-zero.
+Older releases printed `Coordinator started in background` and exited 0 --
+on those, the crash is only visible in `~/.mcp-coordinator/logs/server.log`.
+
+A bind can also be refused rather than busy: a command launched from an agent
+running under a sandboxed Bash may be denied the listen outright. It lands in
+the same place, with the daemon's own error at the end of `server.log`.
 
 **Likely cause.** Both listeners fail closed on bind: the HTTP server
 (`httpServer.listen(port, bindHost)`) and the embedded MQTT TCP broker
@@ -414,5 +420,13 @@ coordination history to make a schema check pass is not its call.
 - **Data-directory permissions.** The POSIX `chmod 0600` on the SQLite file is
   skipped silently on native Windows; secure `~/.mcp-coordinator/data` with
   NTFS ACLs instead. Or run via the Docker image (Node on Debian slim).
+- **`server start --daemon` exit code.** The CLI waits up to 15s for the child
+  to accept a connection before reporting success, so a busy port or a bind
+  refused by a sandbox now fails loudly with exit 1 instead of printing a green
+  message (see section 1). If the daemon is merely slow -- a first boot running
+  schema migrations against a large database -- you may see `did not accept
+  connections ... within 15s` while it is still coming up. The PID is recorded
+  either way, so `mcp-coordinator server status` will show it once it lands,
+  and `server stop` can always reach it.
 </content>
 </invoke>
