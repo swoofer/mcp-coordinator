@@ -79,7 +79,7 @@ Le détail par fiche est dans sa **section 0**.
 | `C10` | [Déploiement entreprise : managed-mcp.json, gateway, self-hosted runners](C10-enterprise-deployment.md) | 🟠 T2 | mixte | intégration | M | 🟡 | ⚠️ | ⬜ |
 | `C11` | [Observabilité : traceparent, OTel multi-agents, APIs Analytics](C11-otel-traceparent-analytics.md) | 🟠 T2 | mixte | remplace du code maison | M | 🟡 | ⚠️ | ⬜ |
 | `C12` | [Matrice de portabilité : ce que le natif ne couvre pas (Windows, Bedrock, conteneurs)](C12-portability-matrix.md) | 🔴 T1 | GA | opportunité | S | 🟡 | ⚠️ | ⬜ |
-| `C13` | [Réconcilier l'agent-registry avec le réel : roster.json, Remote Control, /rewind](C13-agent-roster-reconciliation.md) | 🟠 T2 | mixte | intégration | M | 🟡 | ⚠️ | ⬜ |
+| `C13` | [Réconcilier l'agent-registry avec le réel : roster.json, Remote Control, /rewind](C13-agent-roster-reconciliation.md) | ~~🟠 T2~~ 🟡 T3 | mixte | intégration | ~~M~~ L | ~~🟡~~ 🔴 | ⚠️ | ✅ |
 
 ## D. Menaces Claude Code
 

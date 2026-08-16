@@ -13,7 +13,7 @@
 | **Vérification** | CONFIRMED (sauf le volet Routines : PLAUSIBLE, corrigé par le vérificateur) |
 | **Vérifiée le** | 2026-08-14 |
 | **Testabilité** | ⚠️ partielle — Linux et les surfaces cloud (Routines, Slack) hors de portée |
-| **Statut du challenge** | ⬜ à faire |
+| **Statut du challenge** | ✅ **tranché** (2026-08-16) — `refuser` : pas de clé de jointure, et la source proposée a des fantômes de 77 jours |
 
 ---
 
@@ -181,7 +181,35 @@ Enfin, une note de sécurité transverse confirmée par le vérificateur : depui
 
 ### 6.2 Hypothèse
 
-<Ce qu'on pense avant de tester.>
+*Pré-enregistrée le 2026-08-16, **avant** toute exécution.*
+
+**Ce que je crois qu'il va se passer.**
+
+1. **§6.1 se tranche sur un fait de portée, pas sur un arbitrage.** Le roster est un fichier **local**.
+   Le coordinator est multi-machines par construction. Un fichier local ne peut donc pas faire
+   autorité sur « quels agents sont vivants » au-delà d'une machine — la question se répond d'elle-même
+   dès qu'on regarde la portée, pas la fraîcheur.
+2. Le vrai livrable est donc ailleurs : **mesurer le coût réel du problème** que la réconciliation
+   prétend résoudre (item 3 — combien de temps un agent mort reste `online`).
+3. Le roster n'existera probablement **que si le daemon Claude Code tourne**.
+
+**Verdict pressenti :** `refuser` la réconciliation par roster, `adopter partiellement` si et seulement
+si la mesure du TTL montre un coût réel.
+
+**Critères de mort.**
+
+| # | Si… | …alors |
+|---|---|---|
+| **K1** | `roster.json` n'existe pas, ou son schéma n'est pas stable/documenté | on ne bâtit rien dessus : `refuser` la branche roster. |
+| **K2** | le roster contient des informations que le registre MCP n'a pas **et** qui changent une décision | ma prémisse de portée est insuffisante, je dois la nuancer. |
+| **K3** | un agent tué sans LWT disparaît de `listOnline()` en **moins de 60 s** | le problème que la fiche veut résoudre est marginal → `refuser`. |
+| **K4** | il reste `online` **plus de 900 s** (le TTL annoncé) | le TTL ne fonctionne pas comme documenté, et c'est un bug à ouvrir, indépendamment de la fiche. |
+| **K5** | le chantier dépasse **8 fichiers** | l'effort n'est plus M. |
+| **K6** | aucun utilisateur n'a signalé d'agent fantôme | filtre YAGNI — **à peser** : l'issue #233 de `fosketer` portait sur l'exactitude du registre. |
+
+> 📌 **Notes de périmètre** (pas des critères, en application de la leçon `C10`/`C11`) : le volet Linux
+> et tout scénario Routines/Slack sont hors de portée ici, et §0 note que les items 4 et 5 sont déjà
+> tranchés par la doc.
 
 ### 6.3 Protocole de vérification
 
@@ -198,7 +226,118 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 
 ### 6.4 Résultat observé
 
-<Ce qu'on a réellement mesuré/vu. Coller les sorties, pas les paraphraser.>
+*Challenge du 2026-08-16. Claude Code **2.1.233**, Windows natif.*
+
+#### A. 🔴 Mon K1 était faux, et il se réfutait en une commande
+
+J'ai constaté que `~/.claude/daemon/roster.json` n'existait pas sur ma machine et j'en ai conclu que
+« l'artefact central de la fiche n'existe pas ». **C'est faux.** Le produit expose lui-même
+l'explication :
+
+```
+$ claude daemon status
+not running
+bg sessions:
+  bg workers:   0 in roster.json (control unreachable)
+  roster.json:  absent
+```
+
+Le fichier est **absent parce que le daemon n'a jamais tenu de worker d'arrière-plan vivant**, pas
+parce qu'il n'existe pas. Le chemin est en dur dans le binaire, avec un schéma d'entrées, une
+allowlist de 44 champs, un plafond de taille et une mise en quarantaine du fichier corrompu.
+
+**J'ai conclu d'une absence locale à une inexistence.** C'est la même faute qu'en `C11` — conclure
+« jamais » depuis « pas ici » — trois fiches après l'avoir notée.
+
+#### B. Ce qui alimente vraiment `claude agents --json` n'est pas le roster
+
+Mesuré : la commande agrège **deux** sources, et aucune n'est celle que la fiche nomme.
+
+- entrées `background` ← `~/.claude/jobs/<id>/state.json`
+- entrées `interactive` ← **`~/.claude/sessions/<pid>.json`** — 4 fichiers sur ma machine, un par PID,
+  **jamais cité par la fiche** :
+
+```json
+{"pid":31328,"sessionId":"b06ad8eb-…","cwd":"C:\\Users\\gagno\\projet\\mcp-coordinator-new",
+ "startedAt":1786895227273,"procStart":"134313688246695056","version":"2.1.229",
+ "peerProtocol":1,"kind":"interactive","entrypoint":"claude-desktop","name":"mcp-coordinator-new-b9"}
+```
+
+C'est **le vrai registre par session**, et il est meilleur que celui que la fiche réclame : il porte
+`procStart`, l'horodatage de démarrage du processus qui protège contre la réutilisation de PID.
+**`claude agents --json` le supprime.** L'interface que §4 propose d'utiliser est donc la pire des
+deux — un `pid` sans `procStart` n'est pas un test de vivacité sous Windows.
+
+#### C. 🔴 L'argument qui décide : **il n'existe aucune clé de jointure**
+
+C'est le vrai motif de refus, et il n'a rien à voir avec l'existence du roster.
+
+- Table `agents` : `(id, org_id, name, modules, status, registered_at, last_seen_at)` —
+  **aucun `pid`, aucun `cwd`, aucun `sessionId`**.
+- `register_agent` accepte `agent_id`, `name`, `modules`. Rien d'autre.
+
+Rien ne permet de rapprocher une ligne du registre d'une entrée de `claude agents --json`. La
+réconciliation exigerait donc que **chaque agent déclare lui-même son identité de session Claude
+Code** — ce qui **détruit le bénéfice-titre de §4** : « un inventaire d'agents lisible gratuitement,
+**sans coopération de l'agent** ». Elle en demanderait *plus* que le heartbeat qu'elle remplace, plus
+une migration de schéma.
+
+S'y ajoutent : les entrées `background` **n'ont pas de `pid`** du tout, et chaque appel coûte
+**~524 ms** (démarrage d'un binaire de 305 Mo).
+
+#### D. K3 et K4 : mesurés sur le vrai chemin de code, aucun ne se déclenche
+
+| `last_seen_at` | `listOnline` |
+|---|---|
+| now − 899 s | `["ghost-1"]` |
+| now − 900 s | `["ghost-1"]` |
+| **now − 901 s** | **`[]`** |
+| now − 86 400 s | `[]` |
+
+Coupure nette à 901 s, exactement comme documenté. **K4 ne se déclenche pas** — le TTL n'est pas
+cassé. **K3 non plus**, et il était **mal calibré** : il demandait « moins de 60 s » face à un TTL
+documenté à 900 s, il ne pouvait donc pas se déclencher. Deuxième critère mal conçu de ce corpus
+après le K7 de `C07`.
+
+#### E. 🔴 La source de vérité proposée traîne des fantômes **bien pires**
+
+Mesuré sur ma machine, maintenant :
+
+| Fantôme | Source | Âge |
+|---|---|---|
+| `1c5f6921`, rendu `state:"blocked"` par `claude agents --json` | `~/.claude/jobs/…/state.json` | **77 jours** |
+| `supervisorPid` d'un processus mort | `~/.claude/daemon.lock` | 33 jours |
+| `db026349.pid` → PID mort | `~/.claude/daemon/pty-pids/` | 43 jours |
+
+Aucun TTL, aucun balayage, aucune variable de réglage. **Adopter la réconciliation reviendrait à
+importer une fenêtre fantôme de 77 jours pour corriger une fenêtre de 15 minutes bornée et
+paramétrable.**
+
+Honnêteté : pour les sessions **interactives**, `agents --json` a correctement filtré 3 PID morts sur
+4. Sa détection interactive est bonne ; sa détection *background* est le problème.
+
+#### F. K6 se déclenche fort — et il n'y a jamais eu de fantôme
+
+- **Un seul signalement** : l'issue #233 de `fosketer`, fermée. Elle demandait un TTL configurable
+  (**livré**) et un paramètre `stale_after` côté appelant (**non livré**).
+- Le remède **existe et personne ne s'en sert** : `COORDINATOR_AGENT_ONLINE_TTL_SECONDS` n'apparaît
+  qu'en `.env.example` (commenté) et dans un exemple de dépannage. **Aucune valeur non-défaut n'est
+  committée.**
+- **Zéro agent n'a jamais été enregistré** dans la base : il n'y a jamais eu de fantôme dont se
+  plaindre.
+
+#### G. Deux erreurs de la fiche, et un trou trouvé en passant
+
+- 🔴 **§5 se trompe sur `src/conflict-detector.ts`.** Elle en fait « le consommateur final qui
+  transforme des revendications périmées en avertissements faux ». Vérifié : il est construit **sans**
+  `WorkingFilesTracker`, et `getIndex()` n'a qu'**un** consommateur, `src/impact-scorer.ts`. **Le
+  risque n°1 de §4 est donc mécaniquement impossible dans la chaîne qu'il décrit.**
+- **§6.3 item 2 (`/rewind`) n'a pas besoin de PoC** : la revendication expire par `claim_until`
+  (30 min par défaut), n'est visible que filtrée, et son seul effet passe par l'ImpactScorer, lui-même
+  déjà filtré par `listOnline`. En cas de mort, la borne réelle est ≈ **15 minutes**.
+- 🆕 **Trou réel, sans rapport avec cette fiche** : les threads `open`/`resolving` n'ont **aucune
+  borne de fraîcheur** dans `ConflictDetector`. Un thread annoncé jamais clos avertit indéfiniment —
+  c'est un problème plus grand que tout ce que `/rewind` provoque.
 
 ### 6.5 Contre-arguments
 
@@ -217,11 +356,59 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 
 | | |
 |---|---|
-| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ⬜ refuser |
-| **Date** | |
-| **Justification** | |
-| **Issue / PR** | |
-| **Jalon visé** | |
+| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ✅ **refuser** |
+| **Date** | 2026-08-16 |
+| **Justification** | **Il n'existe aucune clé de jointure.** La table `agents` n'a ni `pid`, ni `cwd`, ni `sessionId` : la réconciliation exigerait que chaque agent **déclare** son identité de session Claude Code, ce qui **détruit le bénéfice-titre de §4** (« sans coopération de l'agent ») et en demanderait plus que le heartbeat qu'elle remplace. S'y ajoutent K5 (24 fichiers, plancher réaliste 11, seuil 8), K6 (un seul signalement, un réglage existant que personne n'utilise, **zéro agent jamais enregistré**), et le fait décisif : **la source de vérité proposée traîne un fantôme de 77 jours non borné** là où le registre en traîne un de **901 s, borné et paramétrable**. |
+| **Issue / PR** | aucune pour la fiche — mais un trou trouvé en passant mérite la sienne, voir ci-dessous |
+| **Jalon visé** | aucun |
+
+### Ce qui est refusé
+
+La réconciliation de l'agent-registry sur l'inventaire d'agents de Claude Code, sous **toutes** ses
+formes — `roster.json`, `claude agents --json`, ou `~/.claude/sessions/<pid>.json`.
+
+### Ce qui n'est pas refusé, et que la fiche n'avait pas vu
+
+**Le paramètre `stale_after` côté appelant**, seconde demande de l'issue #233 de `fosketer`, **jamais
+livrée**. Le TTL configurable a été livré ; le paramètre par appel ne l'a pas été. C'est la seule
+demande utilisateur réelle de tout ce dossier, et elle ne dépend d'aucun artefact tiers.
+
+**Et un trou plus grand que celui que la fiche instruisait** : les threads `open` / `resolving` n'ont
+**aucune borne de fraîcheur** dans `ConflictDetector`. Un thread annoncé et jamais clos avertit
+indéfiniment — sans TTL, sans balayage. À ouvrir séparément.
+
+### Corrections à porter dans la fiche
+
+- **§5 se trompe sur `src/conflict-detector.ts`.** Il est construit **sans** `WorkingFilesTracker`,
+  et `getIndex()` n'a qu'un seul consommateur (`src/impact-scorer.ts`). **Le risque n°1 de §4 —
+  « `/rewind` produit des faux conflits persistants » — est mécaniquement impossible** dans la chaîne
+  décrite.
+- **§4 sur-vend trois fois** : « sans coopération de l'agent » (faux, §6.4-C), « gratuitement »
+  (~524 ms par appel), et « c'est un fichier JSON, pas un trousseau » (double chemin de lecture,
+  plafond de taille, quarantaine, champ `proto` versionné).
+- **§1/§2 ne citent pas `~/.claude/sessions/<pid>.json`**, qui est pourtant le vrai registre par
+  session — et qui porte `procStart`, le seul champ qui protège contre la réutilisation de PID.
+- **§6.5, « le modèle distribué s'y oppose frontalement » : à retirer.** Le serveur est mono-machine
+  par conception ; c'est le *client* qui est multi-machines. C'était mon argument principal et il est
+  faible.
+
+### Note de méthode — j'ai conclu d'une absence locale à une inexistence
+
+Mon critère K1 disait : « si `roster.json` n'existe pas → refuser la branche roster ». J'ai constaté
+son absence sur ma machine et j'ai écrit que l'artefact central de la fiche n'existait pas.
+
+**C'était faux, et ça se réfutait en une commande** : `claude daemon status` affiche lui-même
+`bg workers: 0 in roster.json` / `roster.json: absent`. Le fichier est absent parce que le daemon n'a
+jamais tenu de worker d'arrière-plan — pas parce qu'il n'existe pas.
+
+C'est exactement la faute de `C11`, trois fiches plus tard : conclure « jamais » depuis « pas ici ».
+Le verdict ne change pas, mais **sa justification est entièrement réécrite** — et c'est la seconde
+fois de ce corpus qu'un bon verdict reposait sur un mauvais motif.
+
+Second enseignement : **K3 était mal calibré**. Il demandait « moins de 60 s » face à un TTL
+documenté à 900 s — il ne pouvait pas se déclencher. Après le K7 de `C07` (qui mesurait l'emballage
+au lieu du modèle de déploiement), c'est le deuxième critère de mort de ce corpus conçu pour ne rien
+pouvoir dire.
 
 ## 8. Journal
 
@@ -229,3 +416,4 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 |---|---|
 | 2026-08-14 | Fiche créée par la veille plateforme. |
 | 2026-08-14 | Vérification des faits : 3 marqueurs tranchés, statut Slack et version draft-PR corrigés, lignes dashboard rectifiées. |
+| 2026-08-16 | **Challenge — verdict `refuser`.** Motif décisif : **il n'existe aucune clé de jointure** — la table `agents` n'a ni `pid`, ni `cwd`, ni `sessionId`, donc la réconciliation exigerait que chaque agent déclare son identité de session, ce qui détruit le bénéfice-titre de §4 (« sans coopération de l'agent »). K5 franchi (24 fichiers, plancher 11, seuil 8) ; K6 franchi (un seul signalement, `COORDINATOR_AGENT_ONLINE_TTL_SECONDS` jamais utilisé, **zéro agent jamais enregistré**). Et la source proposée traîne un fantôme de **77 jours non borné** contre **901 s bornés** pour le registre. **Mon K1 était faux** : `roster.json` existe bien, il était absent parce que le daemon n'a jamais tenu de worker — `claude daemon status` le dit lui-même. J'ai conclu d'une absence locale à une inexistence, comme en `C11`. K3 était par ailleurs **mal calibré** (seuil 60 s face à un TTL de 900 s). Mesuré : coupure nette de `listOnline` à 901 s. Découvert : `~/.claude/sessions/<pid>.json` est le vrai registre par session, avec un `procStart` que `claude agents --json` supprime. Corrections : §5 se trompe sur `conflict-detector` (construit **sans** `WorkingFilesTracker`, donc le risque n°1 de §4 est impossible) ; §6.5 « le modèle distribué s'y oppose » à retirer. Non refusé : le `stale_after` de l'issue #233, jamais livré ; et un trou plus grand — les threads `open`/`resolving` n'ont **aucune borne de fraîcheur**. |
