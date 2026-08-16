@@ -17,7 +17,7 @@
 | **Vérification** | CONFIRMED |
 | **Vérifiée le** | 2026-08-14 |
 | **Testabilité** | ⚠️ partielle — runners et gateway hors de portée, managed-mcp testable |
-| **Statut du challenge** | ⬜ à faire |
+| **Statut du challenge** | ✅ **tranché** (2026-08-16) — `adopter partiellement` : 5 fichiers de doc ; RFC 9728 refusé ; gateway + runners à scinder |
 
 ---
 
@@ -177,7 +177,33 @@ Précisions vérifiées : `user.groups` est une **chaîne séparée par des virg
 
 ### 6.2 Hypothèse
 
-<Ce qu'on pense avant de tester.>
+*Pré-enregistrée le 2026-08-16, **avant** toute exécution.*
+
+**Ce que je crois qu'il va se passer.**
+
+1. **Le point qui décide de §6.1 est le matching de `serverUrl`.** Si le motif n'accepte pas de
+   joker de port, alors le mode par défaut du projet — `http://localhost:<port aléatoire>/mcp`
+   écrit par `cli/init.ts` — est **incompatible** avec toute org qui pose `allowedMcpServers`, et
+   la question de §6.1 se tranche toute seule.
+2. Ce matching est **lisible dans le binaire livré**, comme les quatre fiches précédentes.
+3. Le volet self-hosted runners et le volet gateway resteront non exécutés — je le marquerai.
+4. La puce `headersHelper`/`ws` est déjà tranchée par `C05` : l'outil `Monitor` n'a pas de
+   `headers`, mais le **transport MCP `ws`**, lui, en a — ce sont deux surfaces distinctes que
+   plusieurs fiches confondent.
+
+**Verdict pressenti :** `reporter`, avec pour livrable la règle exacte de matching.
+
+**Critères de mort.**
+
+| # | Si… | …alors |
+|---|---|---|
+| **K1** | le matching de `serverUrl` n'est pas lisible dans le binaire **et** non testable ici | aucune preuve sur la question centrale → `reporter`, jamais `adopter`. |
+| **K2** | un port aléatoire **passe** le motif d'URL | le mode local-first survit en org, §6.1 perd son tranchant, et je dois l'écrire. |
+| **K3** | un port aléatoire est **bloqué** | le mode par défaut du projet est incompatible avec le profil org — c'est un fait de portabilité à documenter, indépendamment de toute adoption. |
+| **K4** | `serverName` s'avère être un contrôle de sécurité (contre la prémisse de §6.1) | la question de §6.1 est mal posée et je dois la reformuler. |
+| **K5** | le chantier dépasse **10 fichiers** | l'effort n'est plus M. |
+| **K6** | aucun utilisateur en org n'a demandé ce profil | filtre YAGNI — mais, comme en `C07`, la friction d'installation est un problème constaté : à peser, pas à appliquer mécaniquement. |
+| **K7** | le volet runners/gateway reste entièrement non exécuté | ces deux volets sortent du périmètre décidable : `reporter` nommément sur eux, quelle que soit la conclusion sur le reste. |
 
 ### 6.3 Protocole de vérification
 
@@ -194,7 +220,142 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 
 ### 6.4 Résultat observé
 
-<Ce qu'on a réellement mesuré/vu. Coller les sorties, pas les paraphraser.>
+*Challenge du 2026-08-16. Claude Code **2.1.233**.*
+
+> **Frontière exécuté / lu.** **Exécuté :** le matcher d'URL, extrait du binaire et **rejoué** sur
+> une batterie de cas. **Lu :** la logique d'aiguillage de l'allowlist et la portée du contrôle
+> exclusif. **Jamais exécuté :** tout le volet self-hosted runners et tout le volet gateway — voir
+> §6.4-E, K7.
+
+#### A. 🔴 §6.1 pose une question construite sur une prémisse fausse — **deux fois**
+
+§6.1 demande s'il faut « déclasser le mode local-first `http://localhost:<port>/mcp` » parce qu'un
+daemon sur port aléatoire ne matcherait pas une règle d'org. Les deux moitiés de cette prémisse sont
+fausses.
+
+**Première moitié : le port du projet n'est pas aléatoire.**
+
+```
+cli/config.ts:17        export const DEFAULT_HTTP_PORT = 3100;
+src/serve-http.ts:80    const PORT = parseInt(process.env.PORT || "3100");
+```
+
+Le défaut est **fixe**. L'URL écrite par `cli/init.ts` est donc stable et prévisible.
+
+**Seconde moitié : même un port aléatoire passerait.** Le matcher `mIn` a été extrait du binaire et
+**réexécuté**. Extrait du mécanisme décisif, vérifié mot pour mot :
+
+```js
+if (!o && i.port !== r.port) return !1;
+```
+
+`o` est le drapeau « port joker ». Quand le motif contient `:*`, `new URL()` échoue (port non
+numérique), le `catch` réécrit `:<token>` en `:0`, repasse, et **pose `o = true`** — après quoi
+l'égalité de port **n'est jamais testée**. Résultats du rejeu :
+
+```
+pattern="http://localhost:*/mcp"     url="http://localhost:54321/mcp"   => true
+pattern="http://localhost:*/mcp"     url="http://localhost:80/mcp"      => true
+pattern="http://localhost:*/mcp"     url="http://localhost:54321/other" => false
+pattern="http://localhost:8080/mcp"  url="http://localhost:54321/mcp"   => false
+pattern="http://localhost/*"         url="http://localhost:54321/mcp"   => false   ← piège
+pattern="http://127.0.0.1:*/mcp"     url="http://127.0.0.1:9999/mcp"    => true
+```
+
+**K2 se déclenche : le mode local-first survit en org.** La question de §6.1 n'a pas à être tranchée
+— elle ne se pose pas.
+
+> ⚠️ **Le seul piège réel, et il mérite d'être documenté :** un motif **sans port**
+> (`http://localhost/*`) ne matche **pas** une cible qui en porte un. Un admin doit écrire `:*`
+> explicitement. C'est le genre d'erreur qui produit un blocage incompréhensible.
+
+#### B. `serverName` n'est pas un contrôle de sécurité — la prémisse de §6.1 était juste sur ce point
+
+Le schéma impose **exactement un** des trois champs par entrée — vérifié :
+
+```
+Entry must have exactly one of "serverName", "serverCommand", or "serverUrl"
+```
+
+Et l'aiguillage est par **type de serveur**, avec priorité au champ correspondant : pour un serveur
+distant, **dès qu'au moins une entrée `serverUrl` existe dans l'allowlist**, les entrées `serverName`
+ne sont **jamais** consultées. Le nom ne « sauve » un serveur distant que si l'allowlist ne contient
+aucune règle d'URL. Sur ce point la fiche avait raison.
+
+Côté denylist, en revanche, le nom est OU-combiné **inconditionnellement** : nom exact, commande
+exacte ou URL correspondante — l'un suffit à bloquer. Et la denylist est **prioritaire** sur
+l'allowlist.
+
+#### C. `serverCommand` : égalité **exacte** du tableau complet, aucun joker
+
+```js
+function HKo(e){ … return [t.command, ...t.args ?? []] }
+function pQd(e,t){ if(e.length!==t.length)return!1; return e.every((r,n)=>r===t[n]) }
+```
+
+Description confirmée : « Command array `[command, ...args]` to match exactly ». Donc un profil org
+qui autorise le lancement **local** doit figer la commande **et tous ses arguments**. C'est
+beaucoup plus rigide que le profil URL — un argument de plus, et le serveur est refusé.
+
+#### D. 🔴 Le « contrôle exclusif » est bien plus large que ce que dit §2
+
+Le message que §2 cite (`Cannot add MCP server: enterprise MCP configuration is active and has
+exclusive control over MCP servers`) n'apparaît que sur `claude mcp add`. Mais le **même prédicat**
+gouverne tout le chargeur : quand une configuration MCP d'entreprise est présente, sont **ignorés**
+le `.mcp.json` de projet, les scopes user et local, **les serveurs fournis par les plugins**,
+`--mcp-config`, et les MCP déclarés en frontmatter d'agent. Seuls survivent les serveurs enterprise
+filtrés par l'allowlist.
+
+**Conséquence directe sur `C07` :** j'y ai conclu que le plugin est « nécessaire et suffisant » pour
+qu'une org lève le verrou des channels. C'est vrai pour l'allowlist de channels — mais **dans une org
+qui pose `managed-mcp.json`, les serveurs MCP fournis par les plugins sont ignorés**. Les deux
+mécanismes ne se composent donc pas librement, et `C07` doit porter cette réserve.
+
+Un second flag existe, absent de la fiche : `allowManagedMcpServersOnly`.
+
+#### D bis. 🔴 Le seul item de **code** de la fiche rouvrirait une régression fermée
+
+§4 point 2 propose d'ajouter `/.well-known/oauth-protected-resource` (RFC 9728) comme un simple
+câblage qui « rend le coordinateur auto-configurable ». **Le dépôt dit le contraire, explicitement.**
+
+`README.md` :
+
+> « **MCP authorization spec discovery** : `/mcp` does not implement the MCP authorization spec's
+> OAuth discovery flow — no `resource_metadata` (RFC 9728) … **This is a deliberate scope decision,
+> not an oversight** … The coordinator is a **relying party, not an authorization server**: it signs
+> users in to an IdP and has no authorization endpoint of its own, so **spec-compliant discovery is
+> not a wiring job**. »
+
+Et `src/discovery.ts` l. 25-33 le grave dans le code : `authorization_endpoint` **omis**,
+`response_types_supported: []`, avec renvoi à l'**issue #307** — vérifiée **CLOSED**, intitulée
+« Discovery : `authorization_endpoint` et `response_types_supported` annoncent un flux que
+`/auth/login` n'honore pas ».
+
+Autrement dit, le projet vient de **retirer** une annonce de flux OAuth parce qu'elle mentait. Un
+document RFC 9728 pointerait vers ce même document RFC 8414, qui n'annonce plus d'endpoint
+d'autorisation : un client conforme suivant la chaîne 9728 → 8414 aboutirait à un cul-de-sac.
+**L'unique item de code de cette fiche rouvrirait la régression que #307 a fermée.**
+
+#### D ter. Deux pièges de rédaction mesurés, que la fiche ne mentionne pas
+
+Outre le motif sans port (§A), le rejeu du matcher en révèle deux autres :
+
+```
+BLOCKED  http://localhost:3100/mcp/      <=  http://localhost:*/mcp    ← barre oblique finale
+BLOCKED  http://localhost:3100/mcp?x=1   <=  http://localhost:*/mcp    ← query string
+BLOCKED  http://127.0.0.1:57231/mcp      <=  http://localhost:*/mcp    ← pas de résolution
+```
+
+**`127.0.0.1` ne matche pas `localhost`** : l'hostname est comparé littéralement, jamais résolu. Une
+org qui écrit sa règle sur `localhost` bloque l'utilisateur qui a tapé `127.0.0.1`, et
+réciproquement. Ces trois pièges valent plus, en pratique, que la question que pose §6.1.
+
+#### E. K7 se déclenche : la moitié de la fiche n'est pas décidable ici
+
+Les volets **self-hosted runners** (beta Team/Enterprise, activation par un Owner, hôtes Linux/macOS)
+et **gateway** (`user.groups` / `identity.source`, exigent un gateway déployé avec IdP et credential
+amont) n'ont donné lieu à **aucune exécution**, comme §0 l'annonçait. Ils sortent du périmètre
+décidable de ce challenge, quelle que soit la conclusion sur le reste.
 
 ### 6.5 Contre-arguments
 
@@ -214,11 +375,74 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 
 | | |
 |---|---|
-| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ⬜ refuser |
-| **Date** | |
-| **Justification** | |
-| **Issue / PR** | |
-| **Jalon visé** | |
+| **Verdict** | ⬜ adopter · ✅ **adopter partiellement** · ⬜ reporter · ⬜ refuser |
+| **Date** | 2026-08-16 |
+| **Justification** | **§6.1 pose une question sur un fait qui n'existe pas** : le port du projet est **fixe** (`DEFAULT_HTTP_PORT = 3100`), et même aléatoire il passerait — le joker `:*` court-circuite le test d'égalité de port, mesuré par rejeu du matcher. Il n'y a donc **rien à reporter** : il y a **une page à écrire** et deux tiers de fiche à scinder. Le seul item de code proposé (RFC 9728) **rouvrirait la régression fermée par #307** et doit être retiré du périmètre. |
+| **Issue / PR** | aucune — le livrable est documentaire et tient en 5 fichiers |
+| **Jalon visé** | prochaine passe de documentation |
+
+### Ce qui est adopté — 5 fichiers, effort XS
+
+Documenter le **profil org** dans la doc existante (`docs/onboarding-self-host.md`, `README.md`,
+`docs/clients.md`, `docs/troubleshooting.md`, `CHANGELOG.md`) : un bloc `managed-mcp.json` d'exemple,
+l'entrée littérale `serverUrl: "http://localhost:3100/mcp"`, et **les trois pièges mesurés** —
+
+1. un motif **sans port** ne matche pas une cible qui en porte un : écrire `:*` explicitement ;
+2. **barre oblique finale et query string cassent le match** ;
+3. **`127.0.0.1` ne matche pas `localhost`** — l'hostname est comparé littéralement, jamais résolu.
+
+S'y ajoute le fait de §6.4-D, absent de toute la doc du projet : quand une configuration MCP
+d'entreprise est présente, le `.mcp.json` de projet, les scopes user et local, `--mcp-config` **et
+les serveurs fournis par les plugins** sont ignorés. Un utilisateur en org qui suit le quickstart
+actuel n'obtiendra rien, sans message exploitable.
+
+> ⚠️ **K6 s'est déclenché et je passe outre — explicitement, pas en silence.** Aucun utilisateur en
+> organisation n'existe : `enterprise`, `managed`, `gateway` → **0 issue chacun**. Je retiens quand
+> même ce livrable pour trois raisons : le contenu est **déjà mesuré** et serait perdu autrement ;
+> le coût est **XS** (5 fichiers, zéro ligne de code) ; et il documente un mode d'échec **silencieux**
+> — exactement la classe de défaut que #328 vient de nous coûter. Si ces trois conditions n'étaient
+> pas réunies, K6 imposerait `reporter`.
+
+### Ce qui est refusé
+
+**L'ajout de `/.well-known/oauth-protected-resource`** (§4 point 2), unique item de code de la fiche.
+`README.md` qualifie son absence de « deliberate scope decision, not an oversight », `src/discovery.ts`
+omet volontairement l'`authorization_endpoint`, et **#307 vient d'être fermée** pour avoir annoncé un
+flux que `/auth/login` n'honore pas. Ajouter un document RFC 9728 pointant vers un RFC 8414 sans
+endpoint d'autorisation enverrait un client conforme dans un cul-de-sac.
+
+### Ce qui est scindé et reporté
+
+**Les volets gateway et self-hosted runners.** K7 s'est déclenché — et il s'était déclenché **avant
+la session** : §0 pré-enregistrait leur non-testabilité. Ils représentent pourtant 31 % de §2, deux
+des cinq bénéfices de §4, un tiers de §5 et **six des neuf contre-arguments de §6.5**. Une seule
+puce de §6.3 sur cinq a été réellement exécutée.
+
+**Ces deux volets méritent leur propre fiche**, marquée `reporter`, avec pour condition de réveil la
+sortie de beta des runners et l'existence d'un premier utilisateur en org. Les avoir agrafés à
+`managed-mcp` « parce qu'ils se déploient ensemble » est une justification de rédacteur : ils ne se
+**challengent** pas ensemble.
+
+### Ce que le challenge invalide dans le reste du corpus
+
+- **§4 point 5 ne survit pas à `C04`.** Il vend le bus MQTT comme « alternative auditable » à une org
+  qui coupe la coordination native. Or **#330 est ouverte** : l'ACL du broker n'autorise que par
+  préfixe d'org, et un client anonyme peut mettre un agent hors ligne et effacer ses `working_files`.
+  Vendre « auditable » à un acheteur régulé pendant que #330 est ouverte est indéfendable.
+- **Réserve à porter sur `C07`.** J'y concluais que le plugin est « nécessaire et suffisant » pour
+  qu'une org lève le verrou des channels. C'est vrai de l'allowlist de channels, mais **dans une org
+  qui pose `managed-mcp.json`, les serveurs MCP fournis par les plugins sont ignorés** (§6.4-D). Les
+  deux mécanismes ne se composent pas librement.
+
+### Note de méthode
+
+Mon verdict projeté était `reporter`. Il était **trop généreux avec un chantier qui n'existe pas** :
+on ne reporte pas une décision dont la prémisse est fausse, on constate qu'elle ne se pose pas.
+
+Et mon critère **K7 était mal rangé** : §0 pré-enregistrait déjà la non-testabilité des deux tiers de
+la fiche, donc K7 ne *pouvait pas* ne pas se déclencher. Un critère de mort qui est vrai avant
+l'expérience n'est pas un critère : c'est une note de périmètre. La bonne réaction n'était pas de
+l'adjuger en fin de course, mais de **scinder la fiche avant de commencer**.
 
 ## 8. Journal
 
@@ -226,3 +450,4 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 |---|---|
 | 2026-08-14 | Fiche créée par la veille plateforme. |
 | 2026-08-14 | Vérification des faits : API confirmée, marqueur tranché, `auth.ts` 532→537, channels research preview, messaging absent sur Windows. |
+| 2026-08-16 | **Challenge — verdict `adopter partiellement`.** **§6.1 pose une question sur un fait qui n'existe pas** : le port est fixe (`DEFAULT_HTTP_PORT = 3100`), et le joker `:*` court-circuite de toute façon le test d'égalité de port (`if(!o&&i.port!==r.port)return!1`) — matcher extrait du binaire et **rejoué**. K2 déclenché. Trois pièges de rédaction mesurés, absents de la fiche : motif sans port, barre oblique finale / query string, et `127.0.0.1` ≠ `localhost` (hostname jamais résolu). Le « contrôle exclusif » est bien plus large que ne dit §2 : `.mcp.json` projet, scopes user/local, `--mcp-config`, frontmatter **et serveurs de plugins** sont ignorés. **Refusé : l'ajout de RFC 9728** (§4 point 2) — il rouvrirait la régression fermée par **#307**, `README.md` qualifiant son absence de « deliberate scope decision, not an oversight ». **K7 déclenché avant la session** (§0 pré-enregistrait la non-testabilité) : gateway + runners à scinder dans une fiche `reporter`. §4 point 5 ne survit pas à `C04` tant que **#330** est ouverte. Réserve à porter sur `C07` : dans une org à `managed-mcp.json`, les serveurs MCP des plugins sont ignorés. |
