@@ -59,7 +59,7 @@ Le détail par fiche est dans sa **section 0**.
 |---|---|---|---|---|---|---|---|---|
 | `B01` | [CIMD : la fin du Dynamic Client Registration](B01-cimd-dcr-deprecated.md) | ~~🔴 T1~~ 🟡 T3 | GA | intégration | ~~M~~ — | 🟡 | ⚠️ | ✅ |
 | `B02` | [Enterprise-Managed Authorization (ID-JAG) et OAuth Client Credentials](B02-enterprise-managed-auth-idjag.md) | ~~🟠 T2~~ 🟡 T3 | mixte | opportunité | L | 🟡 | ⚠️ | ✅ |
-| `B03` | [Durcissement auth 2026 : RFC 9207, application_type, SSRF sur la découverte](B03-auth-hardening-ssrf.md) | 🔴 T1 | GA | menace | S | 🟡 | ⚠️ | ⬜ |
+| `B03` | [Durcissement auth 2026 : RFC 9207, application_type, SSRF sur la découverte](B03-auth-hardening-ssrf.md) | 🔴 T1 | GA | menace | ~~S~~ XS | 🟡 | ⚠️ | ✅ |
 | `B04` | [Scope minimal, step-up 403 et lazy authentication par outil](B04-scope-step-up-lazy-auth.md) | 🔴 T1 | GA | opportunité | M | 🟡 | ⚠️ | ⬜ |
 | `B05` | [Token passthrough interdit, binding RFC 8707 et state handle hijacking](B05-token-passthrough-state-handles.md) | 🔴 T1 | GA | menace | M | ✅ | ⚠️ | ⬜ |
 
