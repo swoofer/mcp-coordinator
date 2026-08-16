@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { isIPv4, isIPv6 } from "node:net";
 import { assertSecretEntropy } from "./auth/entropy.js";
 import { deriveStateBindingKey } from "./auth/crypto-keys.js";
 import { buildJwtKeyRegistry } from "./auth/jwt-keys.js";
@@ -83,6 +84,82 @@ const DRAIN_TIMEOUT_MS = 5000;
  * Throws on validation failure — boot must NOT silently activate with
  * weak/missing secrets.
  */
+/**
+ * `COORDINATOR_OIDC_EXTRA_ORIGINS`: comma-separated origins the OIDC discovery
+ * document may name in addition to the issuer's own (issue #304). Empty and
+ * unset both mean the strict default: issuer origin only.
+ */
+export function parseExtraOrigins(raw: string | undefined): string[] {
+  if (!raw) return [];
+  const entries = raw
+    .split(",")
+    .map((o) => o.trim())
+    .filter((o) => o.length > 0);
+  // Validated HERE rather than at first /auth/login. A typo used to boot
+  // clean and then 500 every login; and an entry without a scheme parses to
+  // the opaque origin "null", which would have matched every data:/file:
+  // endpoint a poisoned discovery document could name.
+  for (const entry of entries) {
+    let origin: string;
+    try {
+      origin = new URL(entry).origin;
+    } catch {
+      throw new BootValidationError(
+        `COORDINATOR_OIDC_EXTRA_ORIGINS entry is not a valid URL: ${entry}. ` +
+          `Write a full origin including the scheme, e.g. https://oauth2.googleapis.com`,
+      );
+    }
+    if (origin === "null") {
+      throw new BootValidationError(
+        `COORDINATOR_OIDC_EXTRA_ORIGINS entry has no usable origin: ${entry}. ` +
+          `Write a full origin including the scheme, e.g. https://oauth2.googleapis.com`,
+      );
+    }
+  }
+  return entries;
+}
+/**
+ * Is this hostname a loopback address?
+ *
+ * Used to exempt local development from the https requirement of issue #304:
+ * nothing sits between the coordinator and an IdP on the same machine, so
+ * plain http carries no network exposure there.
+ *
+ * The first version of this tested `h.startsWith("127.")` on the raw hostname,
+ * which is a string prefix, not an address range. WHATWG only collapses a host
+ * to an IPv4 literal when the last label is numeric, so `127.evil.example.com`
+ * and `127.0.0.1.nip.io` stayed verbatim, matched the prefix, and were treated
+ * as loopback — handing the http exemption to any name an attacker can
+ * register. Caught in adversarial review of the fix itself.
+ *
+ * So: decide on the parsed address, not on the spelling.
+ */
+export function isLoopbackHostname(hostname: string): boolean {
+  const h = hostname.replace("[", "").replace("]", "").toLowerCase();
+  // A trailing dot is the explicit-root form of the same name.
+  const bare = h.endsWith(".") ? h.slice(0, -1) : h;
+  if (bare === "localhost") return true;
+
+  if (isIPv4(bare)) return bare.startsWith("127.");
+
+  if (isIPv6(bare)) {
+    if (bare === "::1") return true;
+    // IPv4-mapped forms: ::ffff:127.0.0.1 and the hex spelling
+    // ::ffff:7f00:1 that WHATWG normalises it to. Written without a regex on
+    // purpose — the tooling round-tripping this file has eaten backslashes
+    // twice already, and a silently broken pattern here fails OPEN.
+    const MAPPED = "::ffff:";
+    if (bare.startsWith(MAPPED)) {
+      const suffix = bare.slice(MAPPED.length);
+      if (isIPv4(suffix)) return suffix.startsWith("127.");
+      return suffix.startsWith("7f");
+    }
+    return false;
+  }
+
+  // A registrable name that merely looks numeric is not loopback.
+  return false;
+}
 export function bootPhase2(opts: Phase2BootOptions, deps?: BootPhase2Deps): Phase2Bootstrap | null {
   if (!opts.enabled) return null;
 
@@ -350,6 +427,19 @@ export function bootPhase2(opts: Phase2BootOptions, deps?: BootPhase2Deps): Phas
           `COORDINATOR_OIDC_ISSUER_URL must be http:// or https://, got ${parsed.protocol}`,
         );
       }
+      // issue #304: plain http to a non-loopback issuer is the one path that
+      // hands an attacker a capability they do not already have — the
+      // discovery document can be rewritten in flight by anyone on the network
+      // path or holding the DNS answer, with no need to compromise the IdP or
+      // be the operator. Loopback stays allowed: e2e fixtures and a local
+      // Keycloak have no network to sit on.
+      if (parsed.protocol === "http:" && !isLoopbackHostname(parsed.hostname)) {
+        throw new BootValidationError(
+          `COORDINATOR_OIDC_ISSUER_URL must use https:// for a non-loopback host, got ${oidcIssuerUrl}. ` +
+            `Over plain http the discovery document can be rewritten in transit, which redirects ` +
+            `the client_secret and the user's browser (issue #304).`,
+        );
+      }
     } catch (err) {
       if (err instanceof BootValidationError) throw err;
       throw new BootValidationError(
@@ -361,6 +451,11 @@ export function bootPhase2(opts: Phase2BootOptions, deps?: BootPhase2Deps): Phas
         clientId: oidcClientId,
         clientSecret: oidcClientSecret,
         issuerUrl: oidcIssuerUrl,
+        // issue #304: origins the discovery doc may name beyond the issuer's.
+        // Real IdPs split them — Google issues from accounts.google.com but
+        // serves tokens from oauth2.googleapis.com — so the guard needs a
+        // declarative way to say yes, in config rather than in the document.
+        extraAllowedOrigins: parseExtraOrigins(env.COORDINATOR_OIDC_EXTRA_ORIGINS),
         ...(oidcGroupsClaim ? { groupsClaim: oidcGroupsClaim } : {}),
       }),
     );

@@ -966,6 +966,33 @@ describe("bootPhase2 — generic OIDC wiring (v0.9.0 T48)", () => {
     expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(/must all be set together/);
   });
 
+  it("http issuer on a routable host: refused (issue #304)", () => {
+    // Plain http to a non-loopback issuer is the one path that hands an
+    // attacker a capability they do not already have: the discovery document
+    // can be rewritten in flight by anyone on the network path or holding the
+    // DNS answer, with no need to compromise the IdP or be the operator. That
+    // document decides where the client_secret is sent.
+    applyValidEnv();
+    process.env.COORDINATOR_OIDC_ISSUER_URL = "http://idp.example.test/realms/main";
+    process.env.COORDINATOR_OIDC_CLIENT_ID = "oidc-cid";
+    process.env.COORDINATOR_OIDC_CLIENT_SECRET = "oidc-secret";
+
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(BootValidationError);
+    expect(() => bootPhase2({ enabled: true, db, clock })).toThrow(/must use https/);
+  });
+
+  it("http issuer on loopback: still allowed, e2e fixtures need it", () => {
+    applyValidEnv();
+    process.env.COORDINATOR_OIDC_ISSUER_URL = "http://127.0.0.1:8080/realms/main";
+    process.env.COORDINATOR_OIDC_CLIENT_ID = "oidc-cid";
+    process.env.COORDINATOR_OIDC_CLIENT_SECRET = "oidc-secret";
+
+    const result = bootPhase2({ enabled: true, db, clock });
+    expect(result).not.toBeNull();
+    expect(result!.context.providers.names()).toContain("oidc");
+    void result!.shutdown();
+  });
+
   it("malformed issuer URL: throws BootValidationError", () => {
     applyValidEnv();
     process.env.COORDINATOR_OIDC_ISSUER_URL = "not-a-url";

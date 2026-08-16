@@ -40,6 +40,16 @@ export interface OIDCProviderConfig {
   issuerUrl: string;
   /** Optional explicit name for the provider. Defaults to "oidc". */
   name?: string;
+  /**
+   * Origins the discovery document may point its endpoints at, beyond the
+   * issuer's own (issue #304). Needed because real IdPs do split them:
+   * Google issues from `accounts.google.com` but serves its token endpoint
+   * from `oauth2.googleapis.com` and its JWKS from `www.googleapis.com`.
+   *
+   * Declaring the split is the operator's call and is visible in config —
+   * unlike today, where the remote document decides silently.
+   */
+  extraAllowedOrigins?: readonly string[];
   /** Optional discovery doc override for tests; otherwise auto-fetched. */
   discoveryUrl?: string;
   /** T58 (v0.10.4): dot-notation path into the id_token where group
@@ -92,6 +102,80 @@ const IdTokenClaimsSchema = z.object({
   preferred_username: z.string().optional(),
 });
 
+/**
+ * Endpoints a discovery document is allowed to name.
+ *
+ * issue #304: `getDiscovery` took `authorization_endpoint`, `token_endpoint`
+ * and `jwks_uri` verbatim from the remote document, cross-checking only its
+ * `issuer` field. That check is not a mitigation: whoever controls the
+ * document controls `issuer` too, so it passes for free. A poisoned document
+ * could therefore point `token_endpoint` at a collector and receive the
+ * `client_secret`, the authorization code and the PKCE verifier — and point
+ * `authorization_endpoint` at a phishing page that the user's own browser is
+ * redirected to. The discovery result is cached for the process lifetime, so
+ * one poisoned fetch persists until restart.
+ *
+ * The fix is the guard this repo already uses for GitHub pagination
+ * (`parseNextLink` in github-shared.ts, whose comment names the same threat):
+ * require the origin to be one we already trust. Not an IP-range denylist —
+ * the collector in the reproduction sits on a public IP, so ranges would not
+ * have stopped it.
+ */
+export function assertAllowedEndpointOrigin(
+  label: string,
+  endpoint: string,
+  issuerUrl: string,
+  extraAllowedOrigins: readonly string[] = [],
+): void {
+  let endpointOrigin: string;
+  try {
+    endpointOrigin = new URL(endpoint).origin;
+  } catch {
+    throw new Error(`OIDC discovery ${label} is not a valid URL: ${endpoint}`);
+  }
+  const allowed = new Set<string>();
+  try {
+    allowed.add(new URL(issuerUrl).origin);
+  } catch {
+    throw new Error(`OIDC issuer URL is not a valid URL: ${issuerUrl}`);
+  }
+  for (const extra of extraAllowedOrigins) {
+    let extraOrigin: string;
+    try {
+      extraOrigin = new URL(extra).origin;
+    } catch {
+      throw new Error(`COORDINATOR_OIDC_EXTRA_ORIGINS entry is not a valid URL: ${extra}`);
+    }
+    // A URL with no usable origin serialises to the literal string "null" —
+    // and so do data:, file: and every other non-special scheme. Letting one
+    // into the set would make it match ALL of them, turning a config typo
+    // (writing `host:443`, which is how people spell an origin) into a
+    // bypass. Found in adversarial review of this very guard.
+    if (extraOrigin === "null") {
+      throw new Error(
+        `COORDINATOR_OIDC_EXTRA_ORIGINS entry has no usable origin: ${extra}. ` +
+          `Write a full origin including the scheme, e.g. https://oauth2.googleapis.com`,
+      );
+    }
+    allowed.add(extraOrigin);
+  }
+  // data:, file: and friends all serialise to "null". Refuse them before
+  // any set membership question, so no allowlist entry can ever admit one.
+  if (endpointOrigin === "null") {
+    throw new Error(
+      `OIDC discovery ${label} has no usable origin: ${endpoint}. ` +
+        `Only http(s) endpoints are accepted.`,
+    );
+  }
+  if (!allowed.has(endpointOrigin)) {
+    throw new Error(
+      `OIDC discovery ${label} points at ${endpointOrigin}, which is not the issuer's origin ` +
+        `(${[...allowed].join(", ")}). Refusing: a discovery document that names a foreign ` +
+        `origin can redirect the client_secret or the user's browser. If this IdP legitimately ` +
+        `splits its endpoints, declare the origin in COORDINATOR_OIDC_EXTRA_ORIGINS.`,
+    );
+  }
+}
 export class OIDCProvider implements IdPProvider {
   readonly name: string;
   /** T56 + T58: defaults to "none" (generic OIDC denies-by-default).
@@ -169,9 +253,23 @@ export class OIDCProvider implements IdPProvider {
         },
         body: body.toString(),
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        // issue #304: the origin guard binds the URL the discovery document
+        // NAMES, not where the request ends up. fetch defaults to
+        // redirect: "follow", and a 307 or 308 re-issues the POST with method
+        // and body intact — so an allowlisted token endpoint that redirects
+        // hands this body, client_secret included, to the redirect target.
+        // Reproduced: 307/308 leak it, 302/303 downgrade to GET and drop it.
+        //
+        // This needs no attacker to bite. An IdP that 308s /token to a
+        // regional host would ship the secret to an origin the operator never
+        // declared, while the guard reported success. Fail closed instead: a
+        // token endpoint that redirects is a deployment to fix, not to follow.
+        redirect: "error",
       });
     } catch {
-      throw new IdPTransientError("OIDC token endpoint unreachable");
+      throw new IdPTransientError(
+        "OIDC token endpoint unreachable, or it answered with a redirect (refused: see issue #304)",
+      );
     }
 
     if (res.status === 401) throw new IdPTokenRevoked();
@@ -297,15 +395,30 @@ export class OIDCProvider implements IdPProvider {
     }
     const parsed = DiscoveryResponseSchema.parse(await res.json());
 
-    // Cross-check: the discovery doc's own `issuer` MUST equal the
-    // configured issuer (RFC OpenID Connect Discovery 1.0 §4.3). A
-    // mismatch indicates a misconfigured deployment OR a redirect
-    // attack against the discovery URL itself.
+    // Cross-check the discovery doc's own `issuer` against the configured one
+    // (RFC OpenID Connect Discovery 1.0 §4.3). This catches a misconfigured
+    // deployment or a redirect to a DIFFERENT issuer's document — and nothing
+    // more. It is NOT a defence against a poisoned document (issue #304):
+    // whoever controls the document controls this field too, so it passes for
+    // free. The endpoint origins below are what actually constrains it.
     if (parsed.issuer !== this.cfg.issuerUrl) {
       throw new Error(
         `OIDC discovery issuer mismatch: expected ${this.cfg.issuerUrl}, got ${parsed.issuer}`,
       );
     }
+
+    // issue #304: every endpoint the document names has to live on an origin
+    // we already trust. Checked BEFORE caching, so a poisoned document is
+    // never stored — the cache lives for the whole process.
+    const extra = this.cfg.extraAllowedOrigins ?? [];
+    assertAllowedEndpointOrigin(
+      "authorization_endpoint",
+      parsed.authorization_endpoint,
+      this.cfg.issuerUrl,
+      extra,
+    );
+    assertAllowedEndpointOrigin("token_endpoint", parsed.token_endpoint, this.cfg.issuerUrl, extra);
+    assertAllowedEndpointOrigin("jwks_uri", parsed.jwks_uri, this.cfg.issuerUrl, extra);
 
     this.cachedDiscovery = {
       authorizationEndpoint: parsed.authorization_endpoint,
