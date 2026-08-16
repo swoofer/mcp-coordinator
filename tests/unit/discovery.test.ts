@@ -23,7 +23,6 @@ describe("buildDiscoveryDoc", () => {
   it("returns all required RFC 8414 fields", () => {
     const doc = buildDiscoveryDoc(url);
     expect(doc).toHaveProperty("issuer");
-    expect(doc).toHaveProperty("authorization_endpoint");
     expect(doc).toHaveProperty("token_endpoint");
     expect(doc).toHaveProperty("device_authorization_endpoint");
     expect(doc).toHaveProperty("revocation_endpoint");
@@ -40,7 +39,16 @@ describe("buildDiscoveryDoc", () => {
   it("strips trailing slash from publicUrl", () => {
     const doc = buildDiscoveryDoc("https://coord.example.com/");
     expect(doc.issuer).toBe("https://coord.example.com");
-    expect(doc.authorization_endpoint).toBe("https://coord.example.com/auth/login");
+    expect(doc.token_endpoint).toBe("https://coord.example.com/api/auth/oauth/token");
+  });
+
+  // Issue #307: /auth/login discards the caller OAuth parameters and substitutes
+  // its own, so advertising it as an authorization_endpoint promised a flow no
+  // third-party client could ever complete. RFC 8414 section 2 permits the
+  // omission when no grant type uses this server authorization endpoint.
+  it("omits authorization_endpoint entirely — the coordinator has none", () => {
+    const doc = buildDiscoveryDoc(url);
+    expect(doc).not.toHaveProperty("authorization_endpoint");
   });
 
   it("token_endpoint_auth_methods_supported is exactly ['none'] (V4 FIX 12)", () => {
@@ -73,11 +81,19 @@ describe("buildDiscoveryDoc", () => {
     ]);
   });
 
-  it("response_types_supported is ['code'] (no implicit, no token)", () => {
+  // RFC 8414 section 2 makes this field unconditionally REQUIRED, so it stays —
+  // but with no authorization endpoint there is no response type to offer at it.
+  it("response_types_supported is present and empty", () => {
     const doc = buildDiscoveryDoc(url);
-    expect(doc.response_types_supported).toEqual(["code"]);
-    expect(doc.response_types_supported).not.toContain("token");
-    expect(doc.response_types_supported).not.toContain("id_token");
+    expect(doc).toHaveProperty("response_types_supported");
+    expect(doc.response_types_supported).toEqual([]);
+  });
+
+  // The grant itself is not a lie: it is dispatched at the token endpoint and
+  // completable by a CLI that drives the IdP and registers its own callback.
+  it("still advertises the authorization_code grant", () => {
+    const doc = buildDiscoveryDoc(url);
+    expect(doc.grant_types_supported).toContain("authorization_code");
   });
 
   it("id_token_signing_alg_values_supported is ['HS256'] (Phase 2 jose pinning)", () => {
