@@ -1,4 +1,4 @@
-import { SignJWT, jwtVerify, errors } from "jose";
+import { SignJWT, jwtVerify, decodeProtectedHeader, errors } from "jose";
 import { randomUUID } from "crypto";
 import type { IncomingMessage } from "http";
 import type Database from "better-sqlite3";
@@ -299,6 +299,23 @@ function applyRouteGuards(result: AuthResult, req: IncomingMessage): AuthResult 
 
 const SESSION_CLOCK_TOLERANCE_S = 30;
 
+/**
+ * True iff the JWT's protected header carries a `kid` — the marker that
+ * identifies a Phase 2 token (mintAccessJWT / mintRefreshJWT always set it;
+ * Phase 1 createToken never does). Header decoding is unauthenticated by
+ * design: it only picks the verifier, and that verifier re-checks the kid
+ * against the ACCEPTED_KIDS allowlist before resolving a key. A malformed
+ * token decodes to `false` and falls through to the Phase 1 verifier, which
+ * rejects it.
+ */
+function hasKidHeader(token: string): boolean {
+  try {
+    return typeof decodeProtectedHeader(token).kid === "string";
+  } catch {
+    return false;
+  }
+}
+
 interface Phase2AuthContext {
   db: Database.Database;
   signingKeys: JwtKeyRegistry;
@@ -555,22 +572,32 @@ export async function authenticateRequest(
 
   // Has a Bearer token — verify it
   const token = effectiveAuthHeader.slice(7);
+
+  // Phase 2 JWTs (browser sessions, SDK/CLI device-flow tokens, refreshed
+  // tokens, service tokens — everything minted by mintAccessJWT) are dispatched
+  // on the `kid` header, which jwt-mint.ts always sets and Phase 1 createToken
+  // never does. Do NOT use "Phase 1 verification threw" as the discriminator:
+  // in production BOTH phases derive their HS256 key from the same
+  // COORDINATOR_JWT_SECRET (serve-http.ts `initAuth(JWT_SECRET)` vs boot.ts
+  // `buildJwtKeyRegistry(Buffer.from(jwtSecret, "utf8"))` — byte-identical), so
+  // Phase 1 verification SUCCEEDS on a Phase 2 token, reports wasLegacy=true
+  // (Phase 2 tokens carry sub/active_org_id, never the v0.7 user_id/org pair)
+  // and 401s it as a v0.6 token. See auth-bearer-production-wiring.test.ts.
+  //
+  // The dispatch is fail-closed: once a token presents a kid, the Phase 2
+  // verdict is final. Falling back to Phase 1 here would let a caller downgrade
+  // to the weaker verifier — which skips the kid allowlist, the issuer check,
+  // the typ:"access" token-type check, the T03 token_epoch revocation check and
+  // the T25/V4 §5.5 service-account jti DB validation — by attaching a junk kid.
+  if (phase2Ctx && hasKidHeader(token)) {
+    return applyRouteGuards(await verifyPhase2SessionCookie(token, phase2Ctx), req);
+  }
+
   let claims: AuthClaims;
   let wasLegacy: boolean;
   try {
     ({ claims, wasLegacy } = await verifyTokenStrict(token));
   } catch (err) {
-    // T25: Phase 2 JWTs (incl. service tokens minted via mintAccessJWT) are
-    // signed with the Phase 2 signingKeys registry, NOT the Phase 1 HS256
-    // secret. When Phase 2 deps are wired and Bearer verify fails, try the
-    // Phase 2 cookie verifier — which also runs the service-account DB
-    // override per V4 §5.5.
-    if (phase2Ctx) {
-      const ph2 = await verifyPhase2SessionCookie(token, phase2Ctx);
-      if (ph2.ok) {
-        return applyRouteGuards(ph2, req);
-      }
-    }
     log.error({ err }, "JWT verification error");
     const isExpired = err instanceof errors.JWTExpired;
     return {
