@@ -193,6 +193,14 @@ describe("isLoopbackHostname — names that merely look numeric (#304)", () => {
     expect(isLoopbackHostname("::ffff:10.0.0.1")).toBe(false);
     expect(isLoopbackHostname("::ffff:a00:1")).toBe(false);
   });
+
+  it("does not accept an ordinary IPv6 address", () => {
+    // Not ::1 and not IPv4-mapped: a global-unicast or link-local address is
+    // as routable as any name, and must not inherit the http exemption.
+    expect(isLoopbackHostname("2001:db8::1")).toBe(false);
+    expect(isLoopbackHostname("[fe80::1]")).toBe(false);
+    expect(isLoopbackHostname("::")).toBe(false);
+  });
 });
 
 describe("parseExtraOrigins — fail at boot, not at first login (#304)", () => {
