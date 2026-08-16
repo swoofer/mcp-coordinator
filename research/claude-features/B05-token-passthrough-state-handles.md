@@ -306,6 +306,86 @@ agent_id -> 6       multi-user -> 3     tenant -> 9
 Aucune demande ne porte sur l'usurpation. Les `tenant` / `multi-user` relèvent du multi-org, pas de
 l'identité d'agent. **K6 se déclenche sur sa première moitié.**
 
+#### (C bis) K3 et K5, mesurés par la passe adversariale — les deux se déclenchent
+
+**K5 — ajouter `aud` casse 66 tests, six fois le seuil.** Branche jetable,
+`.setAudience(opts.issuer)` + `audience:` dans `jwtVerify`, suite complète :
+
+```
+BASELINE   18 failed | 3092 passed | 6 skipped   (3116)
+WITH AUD   66 failed | 3050 passed               (3116)
+```
+
+Les 18 d'origine étaient des flakes de port-binding et repassent au vert ; les deux ensembles sont
+quasi disjoints. Attribuables à `aud` : **66 tests sur 6 fichiers** (`device-approve` 20, `logout`
+19, `auth-scenario5` 11, `userinfo` 10, `d1-d10-matrix` 4, `token-type-confusion` 2). Seuil
+pré-enregistré : 10. **K5 se déclenche largement.**
+
+Nature : surtout des fixtures qui forgent leurs JWT à la main sans `setAudience` — réparable.
+**Mais le vrai danger n'est pas là où §6.5 le plaçait.** Ce n'est pas `refresh-rotation.ts` (il ne
+vérifie que des refresh tokens, sans `audience`, et le re-mint déterministe survit) : ce sont les
+**service tokens**. `verifyPhase2SessionCookie` est aussi le fallback Bearer, donc activer `aud`
+**401 tous les service tokens en circulation** jusqu'à re-mint manuel — des credentials CI de
+longue durée. Le blast radius n'est pas la fenêtre de 15 min des sessions navigateur.
+
+**K3 — le remède ne bloque pas l'attaque que j'ai démontrée.** C'est la mesure la plus utile de
+cette passe, et elle est pire que le critère que j'avais pré-enregistré. Mon PoC n'a **qu'un seul
+`user_id`** (`u-solo`) qui enregistre légitimement `alpha` **et** `beta`. Sous un liage
+`<user_id>:<agent_id>`, `u-solo` **possède les deux** — poster sous l'un puis sous l'autre
+**passerait toujours**. Le liage ne mord qu'avec 2+ `user_id` distincts dans l'org.
+
+Et il n'a aucune table sur laquelle s'appuyer : la table `agents` est
+`id, name, modules, status, registered_at, last_seen_at` (+ `org_id`) — **aucune colonne
+propriétaire** ; `user_orgs` lie users↔orgs, jamais users↔agents. Surface : **16 outils** prennent
+`agent_id` en argument, 26 sites `getSessionClaims`, 34 fichiers de test utilisant 2+ `agent_id`.
+Plus un contre-exemple **déjà livré** : `cli/channel.ts` utilise `CHANNEL_REPLY_AGENT_ID = "channel"`,
+un `agent_id` synthétique qui n'est **pas** un agent enregistré.
+
+**Le scénario reste confirmé sous `role: "member"`**, pas seulement `admin` — donc ma réserve
+sur le rôle tombe : `grep claims.role src/tools/` → **0**, et `ADMIN_ONLY_ROUTES` ne couvre pas
+`/mcp`.
+
+#### (C ter) Deux réfutations qui vont plus loin que ce que j'avais écrit
+
+**(1) L'audit est encore plus absent que je ne l'ai dit.** `withAuditContext` n'est appelé
+**nulle part** dans `src/` (uniquement dans `tests/`), alors que `handle-admin-users.ts:27`
+invoque « the outer withAuditContext established by the route dispatcher ». Sonde runtime, appel
+`audit()` à l'identique de la production :
+
+```json
+{ "action": "auth.login.success", "actor_user_id": null, "actor_org_id": null }
+```
+
+Et après tout le scénario d'usurpation : `audit_log` → **0 ligne**. La chaîne n'enregistre donc
+pas seulement *rien* pour les outils — quand elle enregistre, l'acteur est **NULL**. C'est un
+garde-fou fantôme de plus, et il appartient à un périmètre distinct.
+
+**(2) Mon volet `aud` est encore plus faible que je ne l'ai concédé.** `mintAccessJWT` reçoit
+`issuer: COORDINATOR_PUBLIC_URL`, et c'est **la même valeur** qui servirait d'`aud`. Donc
+`aud === iss`, et `iss` est **déjà validé**. Mon scénario « une seconde instance partageant le
+secret **et** l'URL » s'auto-annule : même URL ⇒ même `aud` ⇒ `aud` ne discrimine rien ; URL
+différente ⇒ `iss` rejette déjà. Le mode multi-instance livré (`COORDINATOR_REDIS_URL`) réplique le
+**même** service derrière la **même** URL. **Delta défensif nul dans cette architecture** — §6.5
+puce 6 le disait, et j'ai été trop indulgent en parlant de « défense en profondeur ».
+
+**(3) M4 est réfuté : la sortie de session n'est PAS prospective.** Le mode sessionless est une
+**option de constructeur**, orthogonale à `LATEST_PROTOCOL_VERSION`. Preuve runtime sur le
+`@modelcontextprotocol/node@2.0.0` **installé** :
+
+```
+tool ctx sous sessionIdGenerator: undefined ->
+[{ "sessionIdType": "undefined", "hasHttp": true, "httpKeys": ["req","closeSSE",…] }]
+```
+
+`ctx.sessionId` vaut **`undefined`**, donc `getSessionClaims(ctx.sessionId ?? "")` → `null` → **les
+26 outils lèvent**. Reproductible **aujourd'hui**, en changeant un mot. Trois aggravations :
+`BaseContext.sessionId` est typé **optionnel** ; `createMcpHandler` du SDK v2 sert le trafic 2025
+en `'stateless'` **par défaut** ; et le remplaçant est **déjà livré** — `BaseContext.http.authInfo`.
+Le contre-argument §6.5 (« migrer maintenant, c'est écrire deux fois le même code ») **s'inverse** :
+c'est *reporter* qui fait écrire le code deux fois. Enfin, c'est déjà cassé en pratique :
+`sessionClaims` est une `Map` in-process alors que le multi-instance Redis a shippé — une session
+ouverte sur l'instance A est un 404 sur l'instance B.
+
 #### (D) Ce qui n'a PAS été exécuté
 
 - **Le risque n°3 (sortie de session) reste prospectif**, et la migration SDK v2 **ne l'a pas
@@ -335,9 +415,9 @@ l'identité d'agent. **K6 se déclenche sur sa première moitié.**
 |---|---|---|
 | **K1** | ❌ non déclenché · ⚠️ **acquis d'avance** | L'usurpation réussit (A). Mais §4 l. 95 l'affirmait déjà le 2026-08-14. **Confirmation, pas découverte.** |
 | **K2** | ⚫ **prémisse vide** | La chaîne d'audit n'enregistre **rien** de ces appels. Le critère opposait deux issues dont aucune n'existe. |
-| **K3** | ⚠️ **non mesuré** | Je n'ai pas implémenté le liage : je ne peux pas dire quel usage légitime il casserait. |
+| **K3** | ✅ **déclenché** (mesuré par la passe) | Le liage **ne bloquerait pas l'attaque démontrée** : un seul `user_id` possède les deux agents. Et aucune table ne relie users↔agents. |
 | **K4** | ❌ non déclenché · ⚠️ **acquis d'avance** | Token `aud` étranger accepté (B). Mais §4 l. 101, §5 et la §0 du 2026-08-14 le disaient déjà. |
-| **K5** | ⚠️ **non mesuré** | Je n'ai pas ajouté `aud` : je ne sais pas combien de tests cassent. |
+| **K5** | ✅ **déclenché** (mesuré par la passe) | **66 tests** cassent, six fois le seuil de 10. Et `aud === iss` : delta défensif nul. |
 | **K6** | ◑ **moitié déclenchée, moitié falsifiée** | Zéro demande, oui. Mais « un seul `user_id` par org » est **faux** (B bis). |
 
 **Aucun critère n'a produit d'information neuve décisive.** K1 et K4 confirment par exécution ce
@@ -361,15 +441,19 @@ que la fiche affirmait déjà par lecture — ce qui a de la valeur, mais n'est 
 substituer.**
 
 *Terme 1 — « faire du couple `(user_id, agent_id)` la clé d'identité de tous les outils ».*
-**Pertinent — §6.5 avait tort de le déclarer sans objet** (B bis) — mais **non adoptable ici** :
-son coût n'est pas mesuré (K3), et sa seconde objection de §6.5 (un humain pilotant dix agents
-depuis un seul token) reste debout et non testée. **Reporté**, pas refusé.
+**Pertinent — §6.5 avait tort de le déclarer sans objet** (B bis) — mais **le remède ne bloque pas
+l'attaque que j'ai démontrée**, et c'est mesuré (C bis) : mon PoC n'a qu'**un seul `user_id`** qui
+possède légitimement `alpha` et `beta`, donc le liage le laisserait passer. Il ne mord qu'avec 2+
+utilisateurs distincts, et il n'a **aucune table** sur laquelle s'appuyer — `agents` n'a pas de
+colonne propriétaire. **Reporté**, et pour un bien meilleur motif que « trop cher ».
 
-*Terme 2 — « conserver le scope org et se contenter d'ajouter `aud` + RFC 9728 ».* Le fait est
-mesuré : un token `aud`-étranger est accepté en 200. Mais **`aud` seul ne corrige pas
-l'usurpation** — l'attaquant du scénario (A) présente un token parfaitement valide. Les deux
-volets ne se remplacent donc pas : `aud` ferme une porte de défense en profondeur, le liage ferme
-celle de l'usurpation. **Reporté** aussi, faute de K5.
+*Terme 2 — « conserver le scope org et se contenter d'ajouter `aud` + RFC 9728 ».* Deux faits
+mesurés le tuent. D'abord **`aud` ne corrige pas l'usurpation** : l'attaquant du scénario (A)
+présente un token parfaitement valide. Ensuite **`aud` ne corrige rien du tout ici** :
+`mintAccessJWT` reçoit `issuer: COORDINATOR_PUBLIC_URL`, et c'est la même valeur qui servirait
+d'`aud` — donc `aud === iss`, et `iss` est **déjà validé**. Pour **66 tests cassés** (K5 mesuré,
+six fois le seuil) et un risque de 401 sur tous les service tokens en circulation. **Reporté**,
+avec un delta défensif qualifié de **nul dans cette architecture**.
 
 *Le troisième terme que j'allais substituer — « corriger la chaîne d'audit » — est retiré :* il
 n'a pas d'objet (§6.4 A, correction 2).
@@ -398,11 +482,25 @@ C'est la seule branche du critère d'adoption qui soit trivialement satisfaite.
 
 | Volet | Pourquoi reporté | Condition de réveil |
 |---|---|---|
-| Liage `<user_id>:<agent_id>` | K3 non mesuré ; la 2ᵉ objection de §6.5 tient | Un déploiement équipe réel, **ou** la mesure de K3 (balayer le dépôt à la recherche d'un usage légitime cross-`agent_id` : lead clôturant pour un worker mort, reprise après crash) |
-| Événements d'audit sur les appels d'outils | Code neuf ; `audit-events.ts` n'a aucun événement `tool.*` | Une exigence de conformité qui demande l'attribution des actions de coordination |
-| `aud` sur les JWT émis | K5 non mesuré ; **mesurable en ~1 h** (`setAudience` + `pnpm test`) | À mesurer avant tout autre arbitrage de ce volet |
+| Liage `<user_id>:<agent_id>` | **K3 mesuré et déclenché, sous une forme pire que prévue** : le liage **ne bloquerait pas l'attaque démontrée** (un seul `user_id` possède les deux agents), et aucune table ne relie users↔agents | Un déploiement **multi-utilisateur réel** — c'est le seul cas où le liage mord — **et** la création d'une colonne propriétaire sur `agents` |
+| Événements d'audit sur les appels d'outils | Code neuf, et plus cher qu'annoncé : émission sur ~16 outils **plus** les handlers REST jumeaux, câblage de `withAuditContext` dans `serve-http.ts` (jamais appelé en prod), **et** enregistrement des noms d'action dans `TIER1_EVENTS`/`TIER2_EVENTS` — sinon le sweeper (`src/sweeper/index.ts`) ne les purge **jamais**, sur le chemin le plus chaud du produit | Une exigence de conformité qui demande l'attribution des actions de coordination |
+| `aud` sur les JWT émis | **K5 mesuré et déclenché : 66 tests**, six fois le seuil. Et le delta défensif est **nul** ici (`aud === iss`, et `iss` est déjà validé) | Une architecture où `aud ≠ iss` — c'est-à-dire un AS distinct du serveur de ressource. **Et un staging mint-first / verify-later**, sinon tous les service tokens en circulation prennent 401 |
 | PRM RFC 9728 servie | **MUST de la spec non tenu** — mais [`B04`](B04-scope-step-up-lazy-auth.md) §7.4 a établi que le SDK v2 l'exporte déjà (`buildOAuthProtectedResourceMetadata`), donc le coût a chuté | Livrer avec le gate de `B04` §7.2(2), **pas avant** — publier `scopes_supported` avant que le scope soit appliqué reproduirait le motif que `B03` §7.3 interdit |
 | `resource` RFC 8707 côté SDK | mcp-coordinator est son propre AS **et** sa propre ressource ; le paramètre protège d'un AS tiers, scénario inexistant | Le jour où un AS tiers émet des tokens pour nous (cf. `B02` §7.3) |
+
+> ⚠️ **Une ligne de ce tableau est à requalifier, et c'est la plus importante : la sortie de
+> session n'est pas reportable — sa condition de réveil est déjà remplie.**
+> §6.4 (C ter)(3) le mesure : le mode sessionless est une **option de constructeur** du SDK v2
+> **installé**, `ctx.sessionId` y vaut `undefined`, et les 26 outils lèvent. Ce n'est plus un
+> risque prospectif conditionné à une révision de protocole — c'est une panne **déclenchable
+> aujourd'hui**, déjà réelle en multi-instance (la `Map` in-process contre Redis). Et le
+> remplaçant (`BaseContext.http.authInfo`) est **déjà livré**.
+>
+> **Je ne le tranche pas ici** : c'est le chantier d'identité de tout le serveur, il appartient à
+> [`A01`](A01-mcp-2026-07-28-stateless.md) (verdict `reporter`) dont c'est le sujet, et le trancher
+> dans une fiche « menace » du bloc B serait un débordement. **Mais `A01` doit savoir que sa
+> prémisse a changé** : elle a été reportée en partie parce que « le repli fonctionne » et que rien
+> ne pressait. La panne est désormais à un mot de distance.
 
 **Renvoi explicite pour éviter une décision contradictoire :** le `403 insufficient_scope`, le
 `scope=` dans `WWW-Authenticate` et surtout **le point d'application du gate** appartiennent à
@@ -416,8 +514,16 @@ C'est la seule branche du critère d'adoption qui soit trivialement satisfaite.
 2. **J'ai lu ma propre sortie de travers** : `from_agent` n'existe pas dans le dépôt — c'était le
    repli de mon script. La vraie colonne est `thread_messages.agent_id`.
 3. **J'ai laissé K3 et K5 non mesurés** et j'allais conclure quand même sur un item dont c'est
-   précisément le coût. K5 est mesurable en une heure ; ne pas l'avoir fait est l'économie la
-   moins défendable de ce challenge.
+   précisément le coût. La passe les a mesurés à ma place, et **les deux se déclenchent** — K5 à
+   66 tests, K3 sous une forme que je n'avais pas anticipée : **le remède ne bloque pas l'attaque
+   que j'avais démontrée**. Ne pas les avoir mesurés est l'économie la moins défendable de ce
+   challenge ; ils changent les *motifs* du verdict, pas son dispositif.
+4. **J'ai qualifié le volet `aud` de « défense en profondeur ». C'est trop indulgent** :
+   `aud === iss` par construction, donc le contrôle ne rejetterait rien que `iss` ne rejette déjà.
+   Mon propre §6.5 puce 6 le disait, et je ne l'ai pas repris.
+5. **J'ai déclaré la sortie de session « prospective ». C'est faux** : le mode sessionless est une
+   option de constructeur du SDK **installé**, `ctx.sessionId` y vaut `undefined`, et les 26 outils
+   lèvent. La panne est à un mot de distance, et déjà réelle en multi-instance.
 4. **K1 et K4 étaient acquis d'avance.** Les exécuter avait de la valeur ; les présenter comme des
    découvertes, non.
 
