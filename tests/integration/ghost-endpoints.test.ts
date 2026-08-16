@@ -156,10 +156,12 @@ describe("ghost-endpoint routing (architecture-01, protocole-mcp-03)", () => {
       const res = await fetch(`http://127.0.0.1:${port}/.well-known/oauth-authorization-server`);
       expect(res.status).toBe(200);
       const doc = (await res.json()) as Record<string, unknown>;
-      // RFC 8414 minimum fields a real SDK/doctor client relies on
-      // (sdk/src/discovery.ts, cli/doctor.ts probeDiscovery).
+      // RFC 8414 fields a real SDK/doctor client actually reads
+      // (sdk/src/discovery.ts, cli/doctor.ts probeDiscoveryDoc). Neither reads
+      // authorization_endpoint, and issue #307 removed it: /auth/login was never
+      // an authorization endpoint, it just drives the upstream IdP.
       expect(doc.issuer).toBe(publicUrl);
-      expect(doc.authorization_endpoint).toBe(`${publicUrl}/auth/login`);
+      expect(doc).not.toHaveProperty("authorization_endpoint");
       expect(doc.token_endpoint).toBe(`${publicUrl}/api/auth/oauth/token`);
       expect(Array.isArray(doc.grant_types_supported)).toBe(true);
     });

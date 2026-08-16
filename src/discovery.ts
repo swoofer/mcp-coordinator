@@ -13,7 +13,6 @@ export function buildDiscoveryDoc(publicUrl: string): Record<string, unknown> {
   const base = publicUrl.replace(/\/$/, "");
   return {
     issuer: base,
-    authorization_endpoint: `${base}/auth/login`,
     token_endpoint: `${base}/api/auth/oauth/token`,
     device_authorization_endpoint: `${base}/api/auth/oauth/device_authorization`,
     revocation_endpoint: `${base}/api/auth/revoke`,
@@ -23,7 +22,15 @@ export function buildDiscoveryDoc(publicUrl: string): Record<string, unknown> {
       "refresh_token",
       "urn:ietf:params:oauth:grant-type:device_code",
     ],
-    response_types_supported: ["code"],
+    // RFC 8414 section 2 requires authorization_endpoint only "unless no grant
+    // types are supported that use the authorization endpoint", and requires
+    // response_types_supported unconditionally. This coordinator has no
+    // authorization endpoint of its own: /auth/login drives the upstream IdP
+    // and discards every OAuth parameter the caller sends (issue #307). So the
+    // endpoint is omitted and the response types it would have offered are empty.
+    // authorization_code stays advertised: it is a real, completable grant at the
+    // token endpoint for a client that drives the IdP itself.
+    response_types_supported: [],
     code_challenge_methods_supported: ["S256"],
     token_endpoint_auth_methods_supported: ["none"],
     revocation_endpoint_auth_methods_supported: ["none"],

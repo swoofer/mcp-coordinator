@@ -925,7 +925,6 @@ paths:
                 doc:
                   value:
                     issuer: https://coordinator.example.com
-                    authorization_endpoint: https://coordinator.example.com/auth/login
                     token_endpoint: https://coordinator.example.com/api/auth/oauth/token
                     device_authorization_endpoint: https://coordinator.example.com/api/auth/oauth/device_authorization
                     revocation_endpoint: https://coordinator.example.com/api/auth/revoke
@@ -934,7 +933,7 @@ paths:
                       - authorization_code
                       - refresh_token
                       - urn:ietf:params:oauth:grant-type:device_code
-                    response_types_supported: [code]
+                    response_types_supported: []
                     code_challenge_methods_supported: [S256]
                     token_endpoint_auth_methods_supported: [none]
                     revocation_endpoint_auth_methods_supported: [none]
@@ -1018,7 +1017,11 @@ components:
           format: uri
         code_verifier:
           type: string
-          description: PKCE verifier (REQUIRED when /auth/login was used, optional only for CLI-self-driven flows).
+          description: >-
+            PKCE verifier, for the CLI-self-driven authorization-code flow: the
+            client that generated the challenge sends the verifier here. A client
+            routed through /auth/login holds neither — that flow generates and
+            consumes its own pair server-side (issue #307).
 
     TokenRequestRefreshToken:
       type: object
@@ -1195,7 +1198,6 @@ components:
       description: RFC 8414 OAuth 2.0 Authorization Server Metadata.
       required:
         - issuer
-        - authorization_endpoint
         - token_endpoint
         - device_authorization_endpoint
         - revocation_endpoint
@@ -1205,9 +1207,6 @@ components:
         - code_challenge_methods_supported
       properties:
         issuer:
-          type: string
-          format: uri
-        authorization_endpoint:
           type: string
           format: uri
         token_endpoint:
@@ -1228,6 +1227,10 @@ components:
         response_types_supported:
           type: array
           items: { type: string }
+          description: >-
+            Always empty. RFC 8414 requires the field unconditionally, but this
+            server publishes no authorization_endpoint (issue #307), so there is
+            no response_type it can offer at one.
         code_challenge_methods_supported:
           type: array
           items: { type: string }
