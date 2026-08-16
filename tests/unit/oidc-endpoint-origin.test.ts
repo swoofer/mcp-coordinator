@@ -132,3 +132,82 @@ describe("isLoopbackHostname", () => {
     }
   });
 });
+
+/**
+ * Found in adversarial review of the fix above, all three reproduced before
+ * being fixed. A security guard whose own review finds nothing is a guard
+ * nobody attacked.
+ */
+describe("holes found reviewing the guard itself (#304)", () => {
+  it("refuses an endpoint with no usable origin, whatever the allowlist says", () => {
+    // data:, file: and every other non-special scheme serialise to the literal
+    // string "null". Membership questions must never be asked about them.
+    for (const bad of ["data:application/json,{}", "file:///etc/passwd"]) {
+      expect(() => assertAllowedEndpointOrigin("token_endpoint", bad, ISSUER)).toThrow(
+        /no usable origin/,
+      );
+    }
+  });
+
+  it("refuses an allowlist entry written without a scheme", () => {
+    // `oauth2.googleapis.com:443` is how people spell an origin, and it parses
+    // to "null" — which would then have matched every data:/file: endpoint a
+    // poisoned document could name. A typo must not widen the guard.
+    expect(() =>
+      assertAllowedEndpointOrigin("token_endpoint", `${ISSUER}/token`, ISSUER, [
+        "oauth2.googleapis.com:443",
+      ]),
+    ).toThrow(/no usable origin/);
+  });
+
+  it("a scheme typo in the allowlist is refused, not silently accepted", () => {
+    expect(() =>
+      assertAllowedEndpointOrigin("token_endpoint", `${ISSUER}/token`, ISSUER, [
+        "htps://oauth2.googleapis.com",
+      ]),
+    ).toThrow(/no usable origin/);
+  });
+});
+
+describe("isLoopbackHostname — names that merely look numeric (#304)", () => {
+  it("does not treat a registrable name starting with 127. as loopback", () => {
+    // The first version prefix-matched the string, so these public DNS names
+    // were handed the http exemption. `nip.io` resolves for anyone.
+    for (const h of ["127.evil.example.com", "127.0.0.1.nip.io", "127.example"]) {
+      expect(isLoopbackHostname(h)).toBe(false);
+    }
+  });
+
+  it("accepts the loopback spellings a real deployment uses", () => {
+    for (const h of ["localhost", "localhost.", "127.0.0.1", "127.0.0.53", "::1", "[::1]"]) {
+      expect(isLoopbackHostname(h)).toBe(true);
+    }
+  });
+
+  it("accepts IPv4-mapped loopback in both spellings", () => {
+    expect(isLoopbackHostname("[::ffff:127.0.0.1]")).toBe(true);
+    expect(isLoopbackHostname("::ffff:7f00:1")).toBe(true);
+  });
+
+  it("does not accept a mapped address outside 127/8", () => {
+    expect(isLoopbackHostname("::ffff:10.0.0.1")).toBe(false);
+    expect(isLoopbackHostname("::ffff:a00:1")).toBe(false);
+  });
+});
+
+describe("parseExtraOrigins — fail at boot, not at first login (#304)", () => {
+  it("rejects an entry with no scheme", () => {
+    expect(() => parseExtraOrigins("oauth2.googleapis.com")).toThrow(/not a valid URL/);
+  });
+
+  it("rejects an entry that parses to an opaque origin", () => {
+    expect(() => parseExtraOrigins("oauth2.googleapis.com:443")).toThrow(/no usable origin/);
+  });
+
+  it("still accepts a well-formed list", () => {
+    expect(parseExtraOrigins("https://oauth2.googleapis.com, https://www.googleapis.com")).toEqual([
+      "https://oauth2.googleapis.com",
+      "https://www.googleapis.com",
+    ]);
+  });
+});

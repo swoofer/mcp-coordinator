@@ -140,11 +140,32 @@ export function assertAllowedEndpointOrigin(
     throw new Error(`OIDC issuer URL is not a valid URL: ${issuerUrl}`);
   }
   for (const extra of extraAllowedOrigins) {
+    let extraOrigin: string;
     try {
-      allowed.add(new URL(extra).origin);
+      extraOrigin = new URL(extra).origin;
     } catch {
       throw new Error(`COORDINATOR_OIDC_EXTRA_ORIGINS entry is not a valid URL: ${extra}`);
     }
+    // A URL with no usable origin serialises to the literal string "null" —
+    // and so do data:, file: and every other non-special scheme. Letting one
+    // into the set would make it match ALL of them, turning a config typo
+    // (writing `host:443`, which is how people spell an origin) into a
+    // bypass. Found in adversarial review of this very guard.
+    if (extraOrigin === "null") {
+      throw new Error(
+        `COORDINATOR_OIDC_EXTRA_ORIGINS entry has no usable origin: ${extra}. ` +
+          `Write a full origin including the scheme, e.g. https://oauth2.googleapis.com`,
+      );
+    }
+    allowed.add(extraOrigin);
+  }
+  // data:, file: and friends all serialise to "null". Refuse them before
+  // any set membership question, so no allowlist entry can ever admit one.
+  if (endpointOrigin === "null") {
+    throw new Error(
+      `OIDC discovery ${label} has no usable origin: ${endpoint}. ` +
+        `Only http(s) endpoints are accepted.`,
+    );
   }
   if (!allowed.has(endpointOrigin)) {
     throw new Error(
@@ -232,9 +253,23 @@ export class OIDCProvider implements IdPProvider {
         },
         body: body.toString(),
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        // issue #304: the origin guard binds the URL the discovery document
+        // NAMES, not where the request ends up. fetch defaults to
+        // redirect: "follow", and a 307 or 308 re-issues the POST with method
+        // and body intact — so an allowlisted token endpoint that redirects
+        // hands this body, client_secret included, to the redirect target.
+        // Reproduced: 307/308 leak it, 302/303 downgrade to GET and drop it.
+        //
+        // This needs no attacker to bite. An IdP that 308s /token to a
+        // regional host would ship the secret to an origin the operator never
+        // declared, while the guard reported success. Fail closed instead: a
+        // token endpoint that redirects is a deployment to fix, not to follow.
+        redirect: "error",
       });
     } catch {
-      throw new IdPTransientError("OIDC token endpoint unreachable");
+      throw new IdPTransientError(
+        "OIDC token endpoint unreachable, or it answered with a redirect (refused: see issue #304)",
+      );
     }
 
     if (res.status === 401) throw new IdPTokenRevoked();

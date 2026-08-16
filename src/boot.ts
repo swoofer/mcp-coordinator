@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { isIPv4, isIPv6 } from "node:net";
 import { assertSecretEntropy } from "./auth/entropy.js";
 import { deriveStateBindingKey } from "./auth/crypto-keys.js";
 import { buildJwtKeyRegistry } from "./auth/jwt-keys.js";
@@ -90,21 +91,74 @@ const DRAIN_TIMEOUT_MS = 5000;
  */
 export function parseExtraOrigins(raw: string | undefined): string[] {
   if (!raw) return [];
-  return raw
+  const entries = raw
     .split(",")
     .map((o) => o.trim())
     .filter((o) => o.length > 0);
+  // Validated HERE rather than at first /auth/login. A typo used to boot
+  // clean and then 500 every login; and an entry without a scheme parses to
+  // the opaque origin "null", which would have matched every data:/file:
+  // endpoint a poisoned discovery document could name.
+  for (const entry of entries) {
+    let origin: string;
+    try {
+      origin = new URL(entry).origin;
+    } catch {
+      throw new BootValidationError(
+        `COORDINATOR_OIDC_EXTRA_ORIGINS entry is not a valid URL: ${entry}. ` +
+          `Write a full origin including the scheme, e.g. https://oauth2.googleapis.com`,
+      );
+    }
+    if (origin === "null") {
+      throw new BootValidationError(
+        `COORDINATOR_OIDC_EXTRA_ORIGINS entry has no usable origin: ${entry}. ` +
+          `Write a full origin including the scheme, e.g. https://oauth2.googleapis.com`,
+      );
+    }
+  }
+  return entries;
 }
 /**
- * Loopback hosts, where plain http carries no network exposure: nothing sits
- * between the coordinator and an IdP on the same machine. Keeps e2e fixtures
- * and a local Keycloak working under the https requirement of issue #304.
+ * Is this hostname a loopback address?
+ *
+ * Used to exempt local development from the https requirement of issue #304:
+ * nothing sits between the coordinator and an IdP on the same machine, so
+ * plain http carries no network exposure there.
+ *
+ * The first version of this tested `h.startsWith("127.")` on the raw hostname,
+ * which is a string prefix, not an address range. WHATWG only collapses a host
+ * to an IPv4 literal when the last label is numeric, so `127.evil.example.com`
+ * and `127.0.0.1.nip.io` stayed verbatim, matched the prefix, and were treated
+ * as loopback — handing the http exemption to any name an attacker can
+ * register. Caught in adversarial review of the fix itself.
+ *
+ * So: decide on the parsed address, not on the spelling.
  */
 export function isLoopbackHostname(hostname: string): boolean {
-  // Bracket-stripping without a regex on purpose: this file has already been
-  // mangled once by escaping, and an IPv6 literal only ever carries one pair.
   const h = hostname.replace("[", "").replace("]", "").toLowerCase();
-  return h === "localhost" || h === "127.0.0.1" || h === "::1" || h.startsWith("127.");
+  // A trailing dot is the explicit-root form of the same name.
+  const bare = h.endsWith(".") ? h.slice(0, -1) : h;
+  if (bare === "localhost") return true;
+
+  if (isIPv4(bare)) return bare.startsWith("127.");
+
+  if (isIPv6(bare)) {
+    if (bare === "::1") return true;
+    // IPv4-mapped forms: ::ffff:127.0.0.1 and the hex spelling
+    // ::ffff:7f00:1 that WHATWG normalises it to. Written without a regex on
+    // purpose — the tooling round-tripping this file has eaten backslashes
+    // twice already, and a silently broken pattern here fails OPEN.
+    const MAPPED = "::ffff:";
+    if (bare.startsWith(MAPPED)) {
+      const suffix = bare.slice(MAPPED.length);
+      if (isIPv4(suffix)) return suffix.startsWith("127.");
+      return suffix.startsWith("7f");
+    }
+    return false;
+  }
+
+  // A registrable name that merely looks numeric is not loopback.
+  return false;
 }
 export function bootPhase2(opts: Phase2BootOptions, deps?: BootPhase2Deps): Phase2Bootstrap | null {
   if (!opts.enabled) return null;
