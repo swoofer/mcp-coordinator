@@ -425,10 +425,13 @@ describe("handleOAuthCallback — CAS + row state disambiguation", () => {
   });
 });
 
-// -- Mix-up defense (1 case) ----------------------------------------------
+// -- Unregistered-provider defense (1 case) -------------------------------
 
-describe("handleOAuthCallback — mix-up defense", () => {
-  it("row.provider not in registry → 400 + PROVIDER_MISMATCH + Tier 1 audit auth.state.mixup", async () => {
+describe("handleOAuthCallback — unregistered-provider defense", () => {
+  // #305: the event was called auth.state.mixup until the rename. It never
+  // detected a mix-up — row.provider is ours, written at /auth/login from a
+  // provider that had already resolved in the registry.
+  it("row.provider not in registry → 400 + PROVIDER_MISMATCH + Tier 1 audit auth.state.provider_unregistered", async () => {
     const state = "s-mixup";
     insertState(state, { provider: "evil" });
     const res = mockResponse();
@@ -439,7 +442,7 @@ describe("handleOAuthCallback — mix-up defense", () => {
     );
     expect(res.statusCode).toBe(400);
     expect(JSON.parse(res.body!).code).toBe("PROVIDER_MISMATCH");
-    expectAuditRow("auth.state.mixup", {
+    expectAuditRow("auth.state.provider_unregistered", {
       metadata_json: JSON.stringify({
         observed_provider: "evil",
         registered_providers: ["github"],

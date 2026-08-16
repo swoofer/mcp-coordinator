@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { AuthHandlerContext } from "./context.js";
 import { oauthError } from "../http/response-contract.js";
 import { audit } from "../security/audit.js";
+import { auditUnknownProvider } from "./audit-helpers.js";
 import { refreshTokenGrant } from "./refresh-rotation.js";
 import {
   mintTokenPair,
@@ -118,6 +119,19 @@ async function handleAuthorizationCodeGrant(
   const providerName = body.provider;
   const provider = providerName ? ctx.providers.get(providerName) : ctx.providers.getDefault();
   if (!provider) {
+    // #305: this is the one path where a third party actually chooses the
+    // provider, so it is the one worth auditing. Only the client-supplied
+    // branch is a signal — falling through with no `providerName` means the
+    // operator registered no IdP at all, which is a misconfiguration, not a
+    // probe, and it is already visible in the 400 the caller receives.
+    if (providerName) {
+      auditUnknownProvider({
+        observedProvider: providerName,
+        registeredProviders: ctx.providers.names(),
+        phase: "auth_code_grant",
+        clientIp: req.socket?.remoteAddress ?? null,
+      });
+    }
     emitOAuthError(
       res,
       400,

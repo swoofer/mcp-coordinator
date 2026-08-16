@@ -182,7 +182,7 @@ authorisation code flow.
   hash-keyed token (`deriveStateBindingKey` in
   `src/auth/crypto-keys.ts`). `src/auth/oauth-callback.ts` requires
   atomic compare-and-swap of the state row before exchanging the code.
-  Mismatched states emit Tier 1 `auth.state.mixup`.
+  A state that fails that check emits Tier 1 `auth.state.replay`.
 
 ### Tampering
 
@@ -194,8 +194,14 @@ authorisation code flow.
 
 ### Repudiation
 
-- Tier 1 `auth.state.replay` and `auth.state.mixup` events
-  record every anomaly. See `src/security/audit-events.ts`.
+- Tier 1 `auth.state.replay` and `auth.state.provider_unregistered`
+  events record every anomaly. See `src/security/audit-events.ts`.
+  The second was called `auth.state.mixup` until #305; despite the
+  name it detects no mix-up, only a state whose provider is no longer
+  registered — which no third party can bring about.
+- Tier 2 `auth.provider.unknown` records the converse case, where the
+  provider name *is* caller-supplied: an unregistered name submitted
+  to the token endpoint.
 
 ### Information disclosure
 
