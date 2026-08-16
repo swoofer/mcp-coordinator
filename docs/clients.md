@@ -132,19 +132,34 @@ against it.
 Setting the header removes the question rather than answering it: when
 `Authorization` is already present, the client performs no discovery at all.
 
-### Which token — and one that looks right but is not
+### Which token
 
-Use a **Phase 1 agent token**: `COORDINATOR_AUTH_ENABLED=true`, issued by
-`POST /api/auth/register`. It expires per `COORDINATOR_JWT_EXPIRY` (24 h by
-default), so plan on rotating it.
+Two kinds work. Which one you want depends on how the daemon is configured.
 
-A Phase 2 **service token** looks like the obvious choice for a CI client, and it
-does not work here. Presented in `Authorization: Bearer` it is rejected with
-`v0.6 token rejected: upgrade required`: the Phase 1 verifier classifies a token
-as legacy when it carries no `user_id`/`org` claims, and no Phase 2 token carries
-them. See
-[#311](https://github.com/swoofer/mcp-coordinator/issues/311) — open. Service
-tokens authenticate the REST and admin surface, not `/mcp`.
+**A Phase 1 agent token** — `COORDINATOR_AUTH_ENABLED=true`, issued by
+`POST /api/auth/register`. The simplest option, and the only one if you have not
+turned OAuth on. It expires per `COORDINATOR_JWT_EXPIRY` (24 h by default), so
+plan on rotating it.
+
+**A Phase 2 service token** — `COORDINATOR_OAUTH_ENABLED=true`, issued with
+`mcp-coordinator service-token issue`. Built for non-interactive callers, and it
+lasts up to 90 days (`SERVICE_TOKEN_MAX_TTL_S`, a hard ceiling you cannot raise
+by configuration), which is what makes it the better fit for CI.
+
+One thing to know before you lean on it: the `--scope` you pass is validated when
+the token is minted and then **never enforced on a request**. A `--scope read`
+token can write. That is
+[#313](https://github.com/swoofer/mcp-coordinator/issues/313), open — until it
+closes, treat every service token as full access regardless of its scope.
+
+> **On older builds, no Phase 2 token authenticates over `Bearer` at all.**
+> Until [#322](https://github.com/swoofer/mcp-coordinator/pull/322) the Bearer
+> path only reached the Phase 2 verifier when Phase 1 verification *threw*, which
+> it never does in production — both phases derive their key from the same
+> `COORDINATOR_JWT_SECRET`. Every Phase 2 token was rejected
+> `v0.6 token rejected: upgrade required`, and only cookie-bearing browser
+> clients could authenticate. If you see that message, upgrade; no configuration
+> works around it.
 
 ### Routes that look promising and are not
 
@@ -208,7 +223,7 @@ client version you verified it on — is welcome.
 | Client shows no tools | Daemon not running, or wrong port. `mcp-coordinator server status`. |
 | Tools listed, every call fails | Reachable but unhealthy — `curl localhost:3100/readyz`. |
 | "does not support dynamic client registration" | The coordinator is a relying party, not an authorization server — there is nothing for the client to register against. Set a static `Authorization` header instead: [Connecting with authentication enabled](#connecting-with-authentication-enabled). |
-| "v0.6 token rejected: upgrade required" | A Phase 2 token (service token, OAuth access token) in a `Bearer` header. Use a Phase 1 agent token — [#311](https://github.com/swoofer/mcp-coordinator/issues/311). |
+| "v0.6 token rejected: upgrade required" | A Phase 2 token (service token, OAuth access token) in a `Bearer` header, on a build predating [#322](https://github.com/swoofer/mcp-coordinator/pull/322). Upgrade, or use a Phase 1 agent token. |
 | "not carrying auth claims" | The MCP session was closed or swept after idling past `COORDINATOR_MCP_SESSION_TTL_MS` (default 30 min). Reconnect the client. |
 | Agents do not see each other | Almost always two different `COORDINATOR_DATA_DIR` values. |
 
