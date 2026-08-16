@@ -13,7 +13,7 @@
 | **Vérification** | CONFIRMED |
 | **Vérifiée le** | 2026-08-14 |
 | **Testabilité** | ⚠️ partielle — exclusions backend invérifiables sans credentials Bedrock/GCAP/Foundry |
-| **Statut du challenge** | ⬜ à faire |
+| **Statut du challenge** | ✅ **tranché** (2026-08-16) — `refuser` les deux branches de §6.1 ; §1/§2 à réécrire |
 
 ---
 
@@ -138,7 +138,32 @@ Non concernés, vérifiés le 2026-08-14 : aucun fichier suivi de `src/`, `cli/`
 
 ### 6.2 Hypothèse
 
-<Ce qu'on pense avant de tester.>
+*Pré-enregistrée le 2026-08-16, **avant** toute exécution.*
+
+**Ce que je crois qu'il va se passer.**
+
+1. **§6.1 se tranche par le point 5 du protocole, pas par un arbitrage de goût.** Si la détection du
+   backend (`CLAUDE_CODE_USE_BEDROCK` / `CLAUDE_CODE_USE_VERTEX` ou équivalent) est fiable, l'option
+   « capacité produit » (une probe `doctor`) est nettement supérieure ; sinon elle tombe d'elle-même.
+2. Les quatre variables de coupure (`DISABLE_TELEMETRY`, `DO_NOT_TRACK`,
+   `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, `DISABLE_GROWTHBOOK`) agissent via des **feature
+   flags distants**, pas par un test en dur — c'est ce que `C03`, `C05` et `C11` ont établi
+   (`tengu_harbor`, `tengu_amber_sentinel`, provider de traces).
+3. **Quatre challenges de ce corpus ont déjà produit la matière de cette fiche** : la matrice n'est
+   plus à écrire depuis la doc d'Anthropic, elle est en partie **mesurée**.
+
+**Verdict pressenti :** `adopter partiellement` — la probe `doctor`, en refusant la carte `compare.card6`.
+
+**Critères de mort.**
+
+| # | Si… | …alors |
+|---|---|---|
+| **K1** | la détection du backend n'est **pas** fiable côté machine | l'option « capacité produit » tombe, et §6.1 se réduit à « publier ou non du contenu marketing ». |
+| **K2** | les variables de coupure n'ont **aucun** effet observable ici | je ne peux pas documenter ce que je n'ai pas vu → `reporter` sur ce volet. |
+| **K3** | le coût i18n de `compare.card6` dépasse **12 chaînes** | la branche « argument sur la landing » est disqualifiée par le coût, comme `C05`/`C07` l'ont montré pour `docs/index.html`. |
+| **K4** | la matrice se périme à chaque release Anthropic **et** rien ne la teste | publier une base de faits versionnée sur un produit tiers est une dette : refuser, sauf si une probe la dérive automatiquement. |
+| **K5** | le chantier dépasse **8 fichiers** | l'effort n'est plus S. |
+| **K6** | aucun utilisateur n'a été bloqué par une restriction de plateforme | filtre YAGNI — **mais à peser** : le mainteneur est lui-même sur Windows, donc concerné en première personne. |
 
 ### 6.3 Protocole de vérification
 
@@ -154,7 +179,114 @@ Proposition de veille — non exécutée.
 
 ### 6.4 Résultat observé
 
-<Ce qu'on a réellement mesuré/vu. Coller les sorties, pas les paraphraser.>
+*Challenge du 2026-08-16. Claude Code **2.1.233**, Windows natif, sessions réelles. Méthode : lire la
+liste `tools` de l'événement `init` en `--output-format stream-json`.*
+
+#### A. 🔴 J'ai lu ma propre mesure à l'envers
+
+J'ai d'abord vu `SendMessage` **présent** sur Windows et cru que la fiche se trompait. **C'est moi qui
+me trompais.** `SendMessage` est **un seul outil avec deux espaces d'adressage** : il sert les
+teammates en permanence, et gagne l'adressage cross-session (`uds:` / `bridge:`) seulement quand la
+porte est ouverte — son `validateInput` refuse ces schémas sinon. Il n'a pas d'`isEnabled`.
+
+Le vrai observable est **`ListAgents`**, dont l'`isEnabled` est exactement le prédicat de porte. Son
+absence en référence **confirme** la fiche au lieu de la réfuter.
+
+#### B. 🔴 Mais la fiche se trompe sur la **forme**, et c'est plus grave — la restriction se lève
+
+Mesuré, même binaire, même machine Windows :
+
+```
+reference          : n=35  ListAgents=absent
+HARBOR_KITE=1      : n=36  ListAgents=PRESENT  ajoutes=ListAgents
+```
+
+**Une variable d'environnement suffit.** Ce n'est donc pas un mur d'OS : c'est un **feature flag
+distant**, dont le défaut est `false` sur *toutes* les plateformes — Windows en portant simplement un
+second. macOS et Linux ne sont pas « ✓ » : ils sont soumis au même interrupteur.
+
+> **La phrase la plus load-bearing de §1 est fausse :** « *Aucune de ces restrictions ne se lève par
+> une décision d'admin d'org : ce sont des propriétés du canal de déploiement, pas des réglages.* »
+> Celle-ci se lève, et par un simple réglage d'environnement.
+
+#### C. 🔴 Une seule porte, pas quatre variables — et la matrice à colonnes est démentie
+
+Diff exact contre la référence (35 outils) :
+
+```
+DISABLE_TELEMETRY=1  -> n=30, retires = Artifact, Monitor, PowerShell, PushNotification, RemoteTrigger
+DO_NOT_TRACK=1       -> n=30, LES MEMES 5
+DISABLE_GROWTHBOOK=1 -> n=30, LES MEMES 5
+CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 -> n=29, les 5 + DesignSync
+```
+
+Les trois variables ferment **exactement la même porte** : celle de l'évaluation des feature flags.
+Tout `tengu_*` retombe alors sur son défaut, et les cinq outils qui disparaissent sont précisément
+les flag-gated.
+
+**Et le prédicat de porte est vrai dès que le backend n'est pas `firstParty`.** Bedrock, Vertex,
+Foundry, Claude Platform on AWS, Mantle et gateway ferment donc **la même** porte que la coupure de
+télémétrie. Il n'y a pas quatre colonnes avec des ✓/✗ par cellule : **il y a un prédicat unique.**
+
+> 🔴 **La « correction » de §0 est fausse par le code.** Elle affirme que Monitor n'est *pas* exclu
+> sur Claude Platform on AWS, au motif que la page de doc ne le cite pas. Or `anthropicAws` n'est pas
+> `firstParty` → la porte est fermée → `Monitor` absent. **La fiche a transformé une affirmation
+> vraie en affirmation fausse en faisant confiance au silence d'une page de documentation.** C'est le
+> mode de défaillance de toute §2.
+
+#### D. 🔴 La probe `doctor` de §6.1 est **structurellement aveugle** au cas gateway
+
+Le classificateur commence par `if (Ag() || Uds()) return "gateway";` — et ces deux-là ne lisent
+**aucune variable d'environnement** : ils interrogent des emplacements de credentials remplis depuis
+un **fichier de settings** (`enterpriseGateway`).
+
+Une probe qui ne lit que l'environnement classerait donc une org sur cloud gateway en `firstParty`,
+et lui annoncerait que les Channels sont disponibles. **Un faux diagnostic, servi avec l'autorité
+d'un diagnostic, à exactement le bénéficiaire que §4 revendique.** Deux autres angles morts :
+un backend posé par le bloc `env` de `.claude/settings.json` s'applique au process de Claude Code,
+pas à celui de `doctor` ; et `ANTHROPIC_BASE_URL` pointé sur un proxy ne change pas la classification.
+
+**K1 se déclenche donc — mais pas pour la raison pré-enregistrée.** La détection *par variables* est
+fiable ; c'est le **classificateur** qui ne se réduit pas à des variables. La seule version
+défendable serait **comportementale** : lancer Claude Code et lire la liste `tools` — ce que fait ce
+challenge. Elle ne dérive jamais, puisque c'est le binaire qui répond.
+
+#### E. K3 ne se déclenche **pas** — et je refuse de déplacer le poteau
+
+`compare.card5` compte 14 occurrences, mais décomposées en **2 emplacements de markup + 12 entrées de
+dictionnaire**. Mon K3 disait « dépasse **12 chaînes** ». **12 n'excède pas 12.** J'avais requalifié
+en « 14 éditions » pour le faire passer : c'est exactement l'ajustement post-hoc que §6.2 existe pour
+empêcher, et je l'annule.
+
+Si l'on veut refuser `compare.card6` par le coût, l'argument honnête est ailleurs : les mêmes clés
+vivent aussi dans `docs/superpowers/working/translations/{de,es,fr,ja,zh}.json`, soit **22 chaînes
+sur 6 fichiers** si cet arbre est maintenu. Mais ce n'est pas K3.
+
+#### F. K5 ne se déclenche pas · K6 se déclenche · K4 se déclenche **plus fort que prévu**
+
+- **K5 :** la probe tiendrait en **2 fichiers** (une insertion inline dans `cli/doctor.ts` + un test),
+  5 avec les surfaces de release. Seuil 8 non franchi. Ce n'est pas le coût qui la tue.
+- **K6 :** `bedrock`, `vertex`, `foundry`, `portability` → **0 issue** chacun. Les onze résultats
+  « windows » portent tous sur le comportement de mcp-coordinator lui-même. **Et être sur Windows ne
+  me qualifie pas** : j'ai 35 outils, et il m'a fallu une variable d'environnement pour obtenir le
+  36ᵉ. Je ne suis pas bloqué, je suis curieux — ce n'est pas la même chose.
+- **K4 :** la fiche craint qu'Anthropic « porte les Channels sur Bedrock du jour au lendemain ». Le
+  risque est pire : `tengu_harbor_kite_win` est un **flag distant**. Anthropic peut activer le
+  cross-session messaging sur Windows **sans livrer quoi que ce soit**. Une affirmation publiée en
+  six langues sur la page d'accueil peut devenir fausse **sans qu'aucune release ne sorte**.
+
+#### G. Le seul fait qui concerne nos utilisateurs
+
+Couper la télémétrie — ce que fait tout utilisateur soucieux de confidentialité, et ce que la doc du
+projet n'évoque nulle part — coûte **`Monitor`, `PowerShell`, `Artifact`, `PushNotification`,
+`RemoteTrigger`**, plus `DesignSync` avec la variante `NONESSENTIAL_TRAFFIC`. C'est mesuré,
+reproductible, et c'est la seule chose de ce dossier qui mérite d'être écrite dans notre
+documentation.
+
+#### H. §0 déclare six renvois « vérifiés exacts » qui sont tous faux
+
+§0 affirme avoir vérifié `cli/doctor.ts` l. 9/123/498/600/657/744. Les six symboles sont ailleurs.
+La même §0 qui « corrige » quatre renvois de ligne en déclare six faux comme vérifiés.
 
 ### 6.5 Contre-arguments
 
@@ -171,11 +303,60 @@ Proposition de veille — non exécutée.
 
 | | |
 |---|---|
-| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ⬜ refuser |
-| **Date** | |
-| **Justification** | |
-| **Issue / PR** | |
-| **Jalon visé** | |
+| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ✅ **refuser** |
+| **Date** | 2026-08-16 |
+| **Justification** | **Les deux branches de §6.1 tombent.** La carte `compare.card6` publierait, en six langues, des faits qu'**un tiers contrôle à distance** : la restriction Windows se lève par une variable d'environnement, et le flag qui la gouverne peut être basculé côté Anthropic **sans aucune release** (K4). La probe `doctor` est **structurellement aveugle au cas gateway** et servirait un faux diagnostic à l'admin d'entreprise que §4 revendique comme bénéficiaire (K1). K6 se déclenche : zéro utilisateur bloqué. Et §1/§2 doivent être réécrites avant toute publication — la matrice à quatre colonnes est démentie par un **prédicat unique**. |
+| **Issue / PR** | aucune |
+| **Jalon visé** | aucun |
+
+### Ce qui est conservé — trois puces, dans `docs/operating-modes.md`
+
+Le seul fait de ce dossier qui concerne **nos** utilisateurs, et il est mesuré :
+
+> Couper la télémétrie de Claude Code — `DISABLE_TELEMETRY`, `DO_NOT_TRACK` ou `DISABLE_GROWTHBOOK`,
+> indifféremment — retire cinq outils : **`Monitor`, `PowerShell`, `Artifact`, `PushNotification`,
+> `RemoteTrigger`**. La variante `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` en retire un sixième,
+> `DesignSync`. Les trois premières variables ferment **la même** porte, pas trois portes distinctes.
+
+C'est reproductible, ça ne dépend d'aucune page de doc tierce, et ça n'est écrit nulle part dans la
+documentation du projet.
+
+### Ce qui est refusé
+
+- **La carte `compare.card6` sur la landing.** Pas pour son coût — mon critère K3 **ne se déclenche
+  pas**, voir ci-dessous — mais parce qu'elle publierait en six langues une affirmation dont le
+  concurrent fixe la valeur de vérité en temps réel.
+- **La probe `doctor` classificatrice de backend.** Elle réimplémenterait le classificateur d'un
+  produit tiers, se tromperait précisément sur le cas gateway, et se périmerait à chaque build. Si la
+  capacité est un jour voulue, la seule forme défendable est **comportementale** — lancer Claude Code
+  et lire sa liste d'outils, comme ce challenge l'a fait — au prix d'une dépendance à un CLI tiers
+  dans `doctor`.
+
+### Corrections à porter avant toute réutilisation de cette fiche
+
+- **§1 : la phrase centrale est fausse.** « Aucune de ces restrictions ne se lève par une décision
+  d'admin » — celle du cross-session messaging se lève par une variable d'environnement, mesuré.
+- **§1/§2 : la matrice à quatre colonnes est démentie.** Il n'y a pas une grille backend × feature,
+  mais **un prédicat** : tout backend non-`firstParty` ferme la même porte que la coupure de
+  télémétrie.
+- **§0 : sa « correction » sur Monitor / Claude Platform on AWS est fausse par le code.** Elle a
+  conclu d'un **silence** de la documentation qu'il n'y avait pas d'exclusion.
+- **§0 : six renvois de `cli/doctor.ts` déclarés « vérifiés exacts » sont tous faux.**
+- **§2 : les backends sont mal mappés.** `CLAUDE_CODE_USE_VERTEX` désigne Vertex AI, pas Google
+  Cloud's Agent Platform — lequel a sa propre variable, absente de la fiche.
+
+### Note de méthode — deux fautes, dont une que j'annule
+
+**J'ai lu ma propre mesure à l'envers.** Voyant `SendMessage` présent sur Windows, j'ai cru tenir une
+réfutation de la fiche et je l'ai annoncé. C'était faux : `SendMessage` est un outil unique à deux
+espaces d'adressage, et le vrai observable est `ListAgents`, dont l'absence **confirmait** la fiche.
+J'ai construit une conclusion sur le mauvais témoin.
+
+**Et j'ai déplacé un poteau, ce que j'annule explicitement.** Mon K3 disait « dépasse 12 chaînes ».
+La mesure donne 12 entrées de dictionnaire plus 2 emplacements de markup ; j'ai requalifié en
+« 14 éditions » pour le faire se déclencher. **12 n'excède pas 12 : K3 ne se déclenche pas**, et le
+refus de `compare.card6` repose sur K4, pas sur le coût. C'est précisément l'ajustement post-hoc que
+le pré-enregistrement existe pour empêcher — le même que `C03` m'avait déjà reproché.
 
 ## 8. Journal
 
@@ -183,3 +364,4 @@ Proposition de veille — non exécutée.
 |---|---|
 | 2026-08-14 | Fiche créée par la veille plateforme. |
 | 2026-08-14 | Vérification des faits : 5e provider ajouté, variables de coupure réattribuées, 4 renvois de ligne corrigés. |
+| 2026-08-16 | **Challenge — verdict `refuser`.** Mesuré sur Windows natif : la restriction cross-session **se lève** avec `CLAUDE_CODE_HARBOR_KITE=1` (35 → 36 outils, `ListAgents` apparaît) — ce n'est donc pas un mur d'OS mais un **feature flag distant**, et la phrase centrale de §1 (« aucune de ces restrictions ne se lève ») est fausse. Les trois variables de coupure retirent **exactement les mêmes 5 outils** (`Artifact`, `Monitor`, `PowerShell`, `PushNotification`, `RemoteTrigger`) : **une seule porte**, pas quatre — et tout backend non-`firstParty` ferme la même. La matrice à quatre colonnes de §2 est démentie par un prédicat unique, et la « correction » de §0 sur Claude Platform on AWS est **fausse par le code** (elle a conclu d'un silence de la doc). Probe `doctor` **refusée** : aveugle au cas gateway, elle servirait un faux diagnostic à l'admin d'entreprise. Conservé : trois puces mesurées dans `docs/operating-modes.md`. **Deux fautes de ma part** : j'ai lu ma mesure à l'envers (`SendMessage` ne prouvait rien, `ListAgents` était le témoin), et j'ai déplacé le poteau de K3 — annulé, K3 ne se déclenche pas. |
