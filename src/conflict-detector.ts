@@ -5,6 +5,29 @@ import type { Consultation } from "./consultation.js";
 import type { DependencyMapper } from "./dependency-map.js";
 import type { FileTracker } from "./file-tracker.js";
 
+/**
+ * How far back a RESOLVED thread still counts as a conflict.
+ *
+ * issue #300: `detect()` claimed in a comment to include "open, resolving, and
+ * recently resolved (auto-quorum) threads" while actually calling
+ * `listThreads(org, {})` — an empty filter, i.e. `SELECT * FROM threads WHERE
+ * org_id = ?` with no recency bound at all. The window in the comment did not
+ * exist. Every `announce_work` loaded every non-cancelled thread the org had
+ * ever produced, so the cost of announcing grew with total history rather than
+ * with recent activity.
+ *
+ * `listThreads` has had the mechanism all along — `since_minutes`, added for
+ * exactly this reason (see its doc comment: "the impact scorer would scan
+ * all-time resolved threads on every announce_work call"). The conflict
+ * detector runs on that same call and was simply never wired to it.
+ *
+ * Deliberately its own constant rather than shared with the scorer's
+ * LAYER_0_WINDOW_MINUTES, which happens to hold the same value today: they
+ * answer different questions (how long a resolution keeps influencing a SCORE
+ * vs. how long it keeps raising a CONFLICT), and tying them together would
+ * make tuning one silently move the other.
+ */
+const RESOLVED_THREAD_CONFLICT_WINDOW_MINUTES = 30;
 export class ConflictDetector {
   private log: Logger;
 
@@ -24,9 +47,20 @@ export class ConflictDetector {
     target_files: string[];
   }): ConflictReport[] {
     const conflicts: ConflictReport[] = [];
-    // Include open, resolving, and recently resolved (auto-quorum) threads — exclude only cancelled
-    const allThreads = this.consultation.listThreads(params.org_id, {});
-    const activeThreads = allThreads.filter((t) => t.status !== "cancelled");
+    // Open, resolving, and recently resolved (auto-quorum) threads — which is
+    // every status except cancelled. Asking for the three explicitly, rather
+    // than fetching everything and filtering cancelled out in memory, is what
+    // lets the resolved leg carry a recency bound; the previous shape could
+    // not express one. Same three-query pattern the impact scorer uses on this
+    // very call (src/impact-scorer.ts).
+    const activeThreads = [
+      ...this.consultation.listThreads(params.org_id, { status: "open" }),
+      ...this.consultation.listThreads(params.org_id, { status: "resolving" }),
+      ...this.consultation.listThreads(params.org_id, {
+        status: "resolved",
+        since_minutes: RESOLVED_THREAD_CONFLICT_WINDOW_MINUTES,
+      }),
+    ];
 
     for (const thread of activeThreads) {
       if (thread.initiator_id === params.agent_id) continue;
