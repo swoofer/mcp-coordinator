@@ -412,6 +412,59 @@ exists), then restart. The coordinator never deletes them for you — losing
 coordination history to make a schema check pass is not its call.
 ---
 
+## 8f. `Cannot find module '@babel/runtime/...'` — a broken dependency tree
+
+**Symptom.** The daemon stops starting, with a stack trace naming a package
+you never installed:
+
+```
+Error: Cannot find module '@babel/runtime/helpers/defineProperty'
+Require stack:
+- node_modules/.pnpm/broker-factory@3.1.15/.../bundle.js
+- node_modules/.pnpm/worker-timers@8.0.33/.../bundle.js
+- node_modules/.pnpm/mqtt@5.15.2/node_modules/mqtt/build/lib/client.js
+```
+
+Since [#282](https://github.com/swoofer/mcp-coordinator/issues/282) the CLI
+recognises this and prints the fix instead of the stack. If you are on an
+older build, the stack above is what you get.
+
+**Fix.**
+
+```bash
+pnpm install --frozen-lockfile
+```
+
+It restores the missing links without touching `package.json` or
+`pnpm-lock.yaml` ("Lockfile is up to date, resolution step is skipped").
+`mcp-coordinator doctor` reports the same thing without waiting for a failed
+start — its dependency probe runs first and stays usable when the tree is
+broken.
+
+**Cause.** Not your code, and rarely this repo. Two mechanisms are known:
+
+- **Concurrent package-manager activity on a shared store.** pnpm's store is
+  global; several projects — or several agents running in parallel — hitting
+  it at once can leave a link transiently unresolvable. A `node` starting at
+  that moment fails.
+- **A worktree removal that followed a `node_modules` junction.** If a git
+  worktree gets its `node_modules` as an NTFS junction to the main checkout's,
+  `git worktree remove --force` deletes *through* the junction and empties the
+  target. Reproduced twice. Remove the junction first:
+
+```powershell
+Remove-Item "<worktree>
+ode_modules" -Force   # deletes the link, not the target
+```
+
+> **A test that proves nothing.** Running
+> `node -e "require.resolve('@babel/runtime/helpers/defineProperty')"` from the
+> repo root fails *even when everything works*: under pnpm's strict layout a
+> transitive package is not hoisted to the root. It costs twenty minutes to
+> chase. The only meaningful checks are `mcp-coordinator doctor`, an actual
+> start, or `node -e "import('./dist/src/serve-http.js')"`.
+---
+
 ## 9. Windows notes
 
 - **`EBUSY` during tests.** A handful of Windows file-handle teardown flakes
