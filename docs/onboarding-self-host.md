@@ -15,6 +15,8 @@ References:
 - `docs/security/threat-model.md` -- STRIDE-by-asset analysis
 - `docs/ops/key-rotation.md` -- JWT signing key rotation
 - `docs/ops/upgrade-phase1-to-phase2.md` -- v0.7.0 -> v0.8.0 migration
+- `docs/clients.md` -- connecting an MCP client, including against an
+  authenticated daemon
 - CHANGELOG v0.8.0 -- shipped surface area
 
 ## Outcome
@@ -218,6 +220,13 @@ plain HTTP. For local development with `http://localhost`, this is fine
 (loopback is treated as secure). For any other `http://` host, you must
 set `COORDINATOR_INSECURE_COOKIES=true` -- but the strong recommendation
 is to put a TLS-terminating reverse proxy in front instead.
+
+The same applies to tunnels. Publishing a local daemon through ngrok, a
+Cloudflare tunnel or a Tailscale funnel gives it a public URL, and Anthropic's
+own guidance is to keep authentication enabled on the server while tunneling.
+An authless daemon behind a tunnel exposes all 26 tools -- writes included -- to
+anyone who reaches the URL. See `docs/clients.md` for the client-side header
+setup.
 
 ## 4. First boot
 

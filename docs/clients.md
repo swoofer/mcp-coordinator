@@ -82,6 +82,87 @@ Two things to know before choosing stdio:
 
 Prefer HTTP unless your client cannot do it.
 
+## Connecting with authentication enabled
+
+The snippets above carry no credentials. That is right for a daemon on loopback
+and wrong for anything else. With `COORDINATOR_AUTH_ENABLED=true` the client has
+to present a token, and MCP clients do that with a **static header** — not with
+an OAuth handshake.
+
+Issue the token first: [usage.md](./usage.md#team-setup-with-jwt-internet-facing)
+covers generating the secrets and calling `POST /api/auth/register`. What follows
+is only the client half.
+
+**Claude Code** takes it in one command — no config file to edit, no flag to
+unlock:
+
+```bash
+claude mcp add --transport http coordinator https://coordinator.example.com/mcp \
+  --header "Authorization: Bearer <token>"
+```
+
+The hand-written equivalent is the `headers` key in
+[usage.md step 4](./usage.md#team-setup-with-jwt-internet-facing).
+
+**Claude.ai** accepts the same header under `static_headers` — `authorization` is
+on Anthropic's allowlist of forwardable headers — but that field is a **beta you
+have to request**, not something a standard workspace can switch on.
+
+**Keep authentication enabled if you tunnel.** Publishing a loopback daemon
+through ngrok, a Cloudflare tunnel or a Tailscale funnel puts the whole 26-tool
+surface on the public internet, writes included. The header is the only thing
+between it and anyone who guesses the URL.
+
+### Why a client says it cannot register
+
+```
+Status: ✘ Failed to connect
+Issue: Incompatible auth server: does not support dynamic client registration
+```
+
+That message is accurate, and it is not a daemon misconfiguration you can fix.
+A spec-compliant MCP client tries to discover an OAuth authorization server and
+register itself against it. **The coordinator is a relying party, not an
+authorization server.** It signs you in *to* an IdP — GitHub, Google, or your own
+OIDC provider — and has no authorization endpoint of its own to send a client to.
+`/auth/login` drives the IdP's endpoint and replaces the caller's OAuth
+parameters with its own, so no third-party client can complete a code flow
+against it.
+
+Setting the header removes the question rather than answering it: when
+`Authorization` is already present, the client performs no discovery at all.
+
+### Which token — and one that looks right but is not
+
+Use a **Phase 1 agent token**: `COORDINATOR_AUTH_ENABLED=true`, issued by
+`POST /api/auth/register`. It expires per `COORDINATOR_JWT_EXPIRY` (24 h by
+default), so plan on rotating it.
+
+A Phase 2 **service token** looks like the obvious choice for a CI client, and it
+does not work here. Presented in `Authorization: Bearer` it is rejected with
+`v0.6 token rejected: upgrade required`: the Phase 1 verifier classifies a token
+as legacy when it carries no `user_id`/`org` claims, and no Phase 2 token carries
+them. See
+[#311](https://github.com/swoofer/mcp-coordinator/issues/311) — open. Service
+tokens authenticate the REST and admin surface, not `/mcp`.
+
+### Routes that look promising and are not
+
+Recorded so they do not get reopened:
+
+- **Device flow (RFC 8628).** The coordinator implements one and advertises a
+  `device_authorization_endpoint`. No Claude client consumes it — RFC 8628 is
+  absent from the MCP authorization spec and from the connector documentation.
+  This is the most tempting dead end precisely because the code already exists.
+- **Pre-registering a client** (`--client-id` / `--callback-port`). Skips the
+  registration step, but redirect and code issuance are unchanged — and the
+  coordinator never issues a code.
+- **`client_credentials`.** Anthropic's connector documentation states that a
+  pure machine-to-machine grant is not supported; every connection requires user
+  consent.
+- **Running authless behind a tunnel.** It does connect. It also exposes all 26
+  tools, writes included, with no authentication whatsoever.
+
 ## Set `COORDINATOR_DATA_DIR`
 
 Without it the daemon falls back to `./data` relative to whatever directory the
@@ -109,7 +190,8 @@ mcp-coordinator doctor             # checks config, server, MCP, MQTT
 
 | Client | Transport | Notes |
 |---|---|---|
-| Claude Code | HTTP | `mcp-coordinator init` targets this directly; the snippet goes in the project's `.mcp.json`. |
+| Claude Code | HTTP | `mcp-coordinator init` targets this directly; the snippet goes in the project's `.mcp.json`. For an authenticated daemon, `claude mcp add --header` is ungated — see [above](#connecting-with-authentication-enabled). |
+| Claude.ai | HTTP | Remote connector: needs a publicly reachable URL, and `static_headers` for the token — that field is a beta you have to request. |
 | Cursor | HTTP | Uses the same `mcpServers` shape. Check its docs for the config path — it has changed across releases. |
 | Cline | HTTP | Same shape, configured through the extension's MCP settings UI rather than a hand-edited file. |
 | Aider | stdio | Confirm current MCP support against its docs before wiring anything; use the stdio block above, and read the stdio caveats first. |
@@ -125,6 +207,8 @@ client version you verified it on — is welcome.
 |---|---|
 | Client shows no tools | Daemon not running, or wrong port. `mcp-coordinator server status`. |
 | Tools listed, every call fails | Reachable but unhealthy — `curl localhost:3100/readyz`. |
+| "does not support dynamic client registration" | The coordinator is a relying party, not an authorization server — there is nothing for the client to register against. Set a static `Authorization` header instead: [Connecting with authentication enabled](#connecting-with-authentication-enabled). |
+| "v0.6 token rejected: upgrade required" | A Phase 2 token (service token, OAuth access token) in a `Bearer` header. Use a Phase 1 agent token — [#311](https://github.com/swoofer/mcp-coordinator/issues/311). |
 | "not carrying auth claims" | The MCP session was closed or swept after idling past `COORDINATOR_MCP_SESSION_TTL_MS` (default 30 min). Reconnect the client. |
 | Agents do not see each other | Almost always two different `COORDINATOR_DATA_DIR` values. |
 
