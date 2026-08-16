@@ -136,7 +136,8 @@ WITH tiers AS (
     ('auth.refresh.chain_revoked'),
     ('auth.refresh.suspicious_replay'),
     ('auth.state.replay'),
-    ('auth.state.mixup'),
+    ('auth.state.provider_unregistered'),
+    ('auth.state.mixup'),  -- deprecated alias, rows written before #305
     ('auth.login.denied.not_in_org'),
     ('auth.login.locked'),
     ('auth.token.revoked'),
@@ -152,7 +153,11 @@ WITH tiers AS (
     ('config.boot'),
     ('config.key_rotation'),
     ('system.shutdown.audit_loss'),
-    ('migration.audit_backfill')
+    ('migration.audit_backfill'),
+    ('admin.orgs.duplicate_names_accepted'),
+    ('admin.org.created'),
+    ('admin.org.updated'),
+    ('admin.user.role_changed')
   )
 )
 SELECT

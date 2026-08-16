@@ -16,6 +16,15 @@ export const TIER1_EVENTS = [
   "auth.refresh.chain_revoked",
   "auth.refresh.suspicious_replay",
   "auth.state.replay",
+  // #305: renamed from "auth.state.mixup". The branch fires when the state's
+  // provider is no longer registered — a value we wrote ourselves, which no
+  // third party can vary — so it never detected a mix-up.
+  "auth.state.provider_unregistered",
+  // Deprecated alias, emitted by nothing since #305. Kept because the sweeper
+  // deletes by literal `action IN (...)`: dropping the string would leave every
+  // row written before the rename matching neither tier list, and
+  // tests/unit/sweeper.test.ts pins that such rows are never swept — i.e. they
+  // would be retained forever rather than for the Tier 1 window.
   "auth.state.mixup",
   "auth.login.denied.not_in_org",
   "auth.login.locked",
@@ -64,6 +73,11 @@ export const TIER2_EVENTS = [
   "auth.legacy_token.accepted",
   "auth.service_token.used",
   "auth.csrf.failed",
+  // #305: an unregistered IdP name arrived from the client at the token
+  // endpoint (`body.provider`). Tier 2 because both the value and the rate are
+  // attacker-controlled on an unauthenticated path — see auditUnknownProvider
+  // in src/auth/audit-helpers.ts for why Tier 1 would be harmful here.
+  "auth.provider.unknown",
   "auth.idp.stale_served",
 ] as const;
 
