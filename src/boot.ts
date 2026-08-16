@@ -83,6 +83,29 @@ const DRAIN_TIMEOUT_MS = 5000;
  * Throws on validation failure — boot must NOT silently activate with
  * weak/missing secrets.
  */
+/**
+ * `COORDINATOR_OIDC_EXTRA_ORIGINS`: comma-separated origins the OIDC discovery
+ * document may name in addition to the issuer's own (issue #304). Empty and
+ * unset both mean the strict default: issuer origin only.
+ */
+export function parseExtraOrigins(raw: string | undefined): string[] {
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((o) => o.trim())
+    .filter((o) => o.length > 0);
+}
+/**
+ * Loopback hosts, where plain http carries no network exposure: nothing sits
+ * between the coordinator and an IdP on the same machine. Keeps e2e fixtures
+ * and a local Keycloak working under the https requirement of issue #304.
+ */
+export function isLoopbackHostname(hostname: string): boolean {
+  // Bracket-stripping without a regex on purpose: this file has already been
+  // mangled once by escaping, and an IPv6 literal only ever carries one pair.
+  const h = hostname.replace("[", "").replace("]", "").toLowerCase();
+  return h === "localhost" || h === "127.0.0.1" || h === "::1" || h.startsWith("127.");
+}
 export function bootPhase2(opts: Phase2BootOptions, deps?: BootPhase2Deps): Phase2Bootstrap | null {
   if (!opts.enabled) return null;
 
@@ -350,6 +373,19 @@ export function bootPhase2(opts: Phase2BootOptions, deps?: BootPhase2Deps): Phas
           `COORDINATOR_OIDC_ISSUER_URL must be http:// or https://, got ${parsed.protocol}`,
         );
       }
+      // issue #304: plain http to a non-loopback issuer is the one path that
+      // hands an attacker a capability they do not already have — the
+      // discovery document can be rewritten in flight by anyone on the network
+      // path or holding the DNS answer, with no need to compromise the IdP or
+      // be the operator. Loopback stays allowed: e2e fixtures and a local
+      // Keycloak have no network to sit on.
+      if (parsed.protocol === "http:" && !isLoopbackHostname(parsed.hostname)) {
+        throw new BootValidationError(
+          `COORDINATOR_OIDC_ISSUER_URL must use https:// for a non-loopback host, got ${oidcIssuerUrl}. ` +
+            `Over plain http the discovery document can be rewritten in transit, which redirects ` +
+            `the client_secret and the user's browser (issue #304).`,
+        );
+      }
     } catch (err) {
       if (err instanceof BootValidationError) throw err;
       throw new BootValidationError(
@@ -361,6 +397,11 @@ export function bootPhase2(opts: Phase2BootOptions, deps?: BootPhase2Deps): Phas
         clientId: oidcClientId,
         clientSecret: oidcClientSecret,
         issuerUrl: oidcIssuerUrl,
+        // issue #304: origins the discovery doc may name beyond the issuer's.
+        // Real IdPs split them — Google issues from accounts.google.com but
+        // serves tokens from oauth2.googleapis.com — so the guard needs a
+        // declarative way to say yes, in config rather than in the document.
+        extraAllowedOrigins: parseExtraOrigins(env.COORDINATOR_OIDC_EXTRA_ORIGINS),
         ...(oidcGroupsClaim ? { groupsClaim: oidcGroupsClaim } : {}),
       }),
     );
