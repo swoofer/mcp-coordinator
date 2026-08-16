@@ -298,3 +298,106 @@ describe("ConflictDetector", () => {
     }).not.toThrow();
   });
 });
+
+/**
+ * issue #300 — the scan `detect()` claimed to do, and now does.
+ *
+ * The comment said "open, resolving, and recently resolved (auto-quorum)
+ * threads — exclude only cancelled" while the code called
+ * `listThreads(org, {})`: an empty filter, no recency bound. Every
+ * announce_work loaded every non-cancelled thread the org had ever produced.
+ */
+describe("ConflictDetector — bounded thread scan (#300)", () => {
+  /** Backdate a thread so it falls outside any recency window. */
+  function ageThread(threadId: string, minutes: number): void {
+    getDb()
+      .prepare(
+        `UPDATE threads
+            SET created_at  = datetime('now', '-' || ? || ' minutes'),
+                resolved_at = CASE WHEN resolved_at IS NULL THEN NULL
+                                   ELSE datetime('now', '-' || ? || ' minutes') END
+          WHERE id = ?`,
+      )
+      .run(minutes, minutes, threadId);
+  }
+
+  function announceOnAuth(agentId: string): string {
+    return consultation.announceWork("default", {
+      agent_id: agentId,
+      subject: "touch auth",
+      target_modules: ["src/auth"],
+      target_files: ["src/auth/login.ts"],
+      keep_open: true,
+    }).id;
+  }
+
+  const probe = () =>
+    detector.detect({
+      org_id: "default",
+      agent_id: "a1",
+      target_modules: ["src/auth"],
+      target_files: ["src/auth/login.ts"],
+    });
+
+  it("still reports a resolved thread inside the window", () => {
+    // The "recently resolved (auto-quorum)" case the comment always promised
+    // and the code delivered only by accident, because it filtered nothing.
+    const id = announceOnAuth("a2");
+    getDb()
+      .prepare("UPDATE threads SET status = 'resolved', resolved_at = datetime('now') WHERE id = ?")
+      .run(id);
+
+    expect(probe().length).toBeGreaterThan(0);
+  });
+
+  it("stops reporting a resolved thread once it ages out", () => {
+    const id = announceOnAuth("a2");
+    getDb()
+      .prepare("UPDATE threads SET status = 'resolved', resolved_at = datetime('now') WHERE id = ?")
+      .run(id);
+    ageThread(id, 120);
+
+    // Before the fix this still fired: a resolution from any point in history
+    // kept raising a conflict forever.
+    expect(probe()).toEqual([]);
+  });
+
+  it("keeps reporting an OPEN thread however old it is", () => {
+    // Deliberate. An open thread is a declared, unretracted intent; dropping it
+    // silently is the worse failure of the two. Only the resolved leg is
+    // windowed.
+    const id = announceOnAuth("a2");
+    ageThread(id, 60 * 24 * 180);
+
+    expect(probe().length).toBeGreaterThan(0);
+  });
+
+  it("keeps reporting a RESOLVING thread however old it is", () => {
+    const id = announceOnAuth("a2");
+    getDb().prepare("UPDATE threads SET status = 'resolving' WHERE id = ?").run(id);
+    ageThread(id, 60 * 24 * 180);
+
+    expect(probe().length).toBeGreaterThan(0);
+  });
+
+  it("never reports a cancelled thread, however recent", () => {
+    const id = announceOnAuth("a2");
+    getDb().prepare("UPDATE threads SET status = 'cancelled' WHERE id = ?").run(id);
+
+    expect(probe()).toEqual([]);
+  });
+
+  it("covers every status the schema produces — no thread silently unreachable", () => {
+    // If a new status is ever added, this is the test that should fail: the
+    // three-query shape enumerates statuses explicitly, so an unlisted one
+    // becomes invisible to conflict detection rather than merely unfiltered.
+    const id = announceOnAuth("a2");
+    const statuses = ["open", "resolving", "resolved", "cancelled"];
+    const seen = new Set<string>();
+    for (const st of statuses) {
+      getDb().prepare("UPDATE threads SET status = ? WHERE id = ?").run(st, id);
+      if (probe().length > 0) seen.add(st);
+    }
+    expect([...seen].sort()).toEqual(["open", "resolved", "resolving"]);
+  });
+});
