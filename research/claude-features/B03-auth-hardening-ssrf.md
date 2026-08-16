@@ -129,7 +129,32 @@ Le bénéficiaire direct est l'auto-hébergeur qui branche un OIDC d'entreprise 
 
 ### 6.1 La question à trancher
 
-> Le durcissement doit-il passer par un unique client HTTP sortant gardé (`safeFetch` : schéma, refus des 8 plages privées, pinning DNS) imposé à tous les fetch OAuth/JWKS des 4 providers, ou rester des gardes locaux par provider sur le modèle de `parseNextLink` dans `github-shared.ts` — sachant que le binding `state → row.provider` rend déjà la validation d'`iss` RFC 9207 redondante côté callback ?
+> Le durcissement doit-il passer par un unique client HTTP sortant gardé (`safeFetch` : schéma, refus des 8 plages privées, pinning DNS) imposé à tous les fetch OAuth/JWKS des 4 providers, ou rester des gardes locaux par provider sur le modèle de `parseNextLink` dans `github-shared.ts` — ~~sachant que le binding `state → row.provider` rend déjà la validation d'`iss` RFC 9207 redondante côté callback~~ ?
+
+> ⚠️ **Prémisse réfutée le 2026-08-15 par le challenge de [`B02`](B02-enterprise-managed-auth-idjag.md) — à ne pas hériter.**
+> La clause finale ci-dessus est **fausse**. `B02` §6.4 (F bis)(1) a mesuré, sources primaires à
+> l'appui :
+>
+> - **RFC 9700 classe le binding `state → provider` parmi les *préconditions* de l'attaque
+>   mix-up, pas parmi les défenses** — verbatim : *« the client stores the authorization server
+>   chosen by the user in a session bound to the user's browser »* et *« uses the same redirection
+>   URI for each authorization server »*. Et : *« It is important to note that **just storing the
+>   authorization server URL is not sufficient** to identify mix-up attacks. »*
+> - `src/auth/oauth-login.ts:125` construit **un seul** `redirect_uri` pour les 4 providers — donc
+>   la seconde contre-mesure de la BCP (URI distinctes par AS) n'est pas là non plus.
+> - **Google, provider réellement câblé, annonce `authorization_response_iss_parameter_supported:
+>   true`** (vérifié), et `grep` sur `src/ sdk/src/ cli/` → **0 lecture d'un paramètre `iss`**.
+>
+> *Nuance à conserver* : l'exposition suppose ≥ 2 providers configurés dont un hostile, et nos 4
+> providers sont **statiquement configurés au boot** — un attaquant ne peut pas en déclarer un.
+> L'attaque-exemple de la RFC (l'attaquant déclare *son* AS) n'est donc pas transposable telle
+> quelle. Mais « redondant » est faux, et le volet `iss` doit être instruit **sur ses mérites**
+> par ce challenge, pas écarté d'avance.
+>
+> Point connexe à trancher ici : l'événement d'audit **`auth.state.mixup`**
+> (`src/auth/oauth-callback.ts`) nomme une défense mix-up alors qu'il compare une valeur que le
+> coordinateur a lui-même écrite en base. Candidat au motif « garde-fou fantôme » de l'audit
+> v0.13.0 — à requalifier ou renommer.
 
 ### 6.2 Hypothèse
 
