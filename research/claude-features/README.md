@@ -77,7 +77,7 @@ Le détail par fiche est dans sa **section 0**.
 | `C08` | [Status line : trois autres agents sur ce repo, un conflit, à zéro token](C08-statusline.md) | ~~🔴 T1~~ 🟡 T3 | GA | opportunité | S | ✅ | ✅ | ✅ |
 | `C09` | [Sandbox Bash et egress : l'échec d'onboarding silencieux à corriger](C09-bash-sandbox-egress.md) | 🔴 T1 | GA | menace | ~~S~~ M | 🟡 | ⚠️ | ✅ |
 | `C10` | [Déploiement entreprise : managed-mcp.json, gateway, self-hosted runners](C10-enterprise-deployment.md) | 🟠 T2 | mixte | intégration | M | 🟡 | ⚠️ | ⬜ |
-| `C11` | [Observabilité : traceparent, OTel multi-agents, APIs Analytics](C11-otel-traceparent-analytics.md) | 🟠 T2 | mixte | remplace du code maison | M | 🟡 | ⚠️ | ⬜ |
+| `C11` | [Observabilité : traceparent, OTel multi-agents, APIs Analytics](C11-otel-traceparent-analytics.md) | ~~🟠 T2~~ 🟡 T3 | mixte | ~~remplace du code maison~~ opportunité | M | 🟡 | ⚠️ | ✅ |
 | `C12` | [Matrice de portabilité : ce que le natif ne couvre pas (Windows, Bedrock, conteneurs)](C12-portability-matrix.md) | 🔴 T1 | GA | opportunité | S | 🟡 | ⚠️ | ⬜ |
 | `C13` | [Réconcilier l'agent-registry avec le réel : roster.json, Remote Control, /rewind](C13-agent-roster-reconciliation.md) | 🟠 T2 | mixte | intégration | M | 🟡 | ⚠️ | ⬜ |
 
