@@ -13,7 +13,7 @@
 | **Vérification** | CONFIRMED |
 | **Vérifiée le** | 2026-08-14 |
 | **Testabilité** | ⚠️ partielle — research preview sur formulaire, WIF requis pour la Tunnels API |
-| **Statut du challenge** | ✅ **tranché** (2026-08-16) — `refuser` sur le coût et l'absence de demande ; **argument « fausse coordination » RÉTRACTÉ** par  |
+| **Statut du challenge** | ✅ **tranché** (2026-08-16) — `refuser` sur le coût et l'absence de demande ; **argument « fausse coordination » RÉTRACTÉ** par le challenge `E03` |
 
 ---
 
