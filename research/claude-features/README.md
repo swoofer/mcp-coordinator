@@ -102,7 +102,7 @@ Le détail par fiche est dans sa **section 0**.
 | `E05` | [Memory stores : modèle pour la chaîne d'audit et la mémoire de repo partagée](E05-cma-memory-stores-audit.md) | 🟠 T2 | beta | remplace du code maison | L | 🟡 | ⚠️ | ⬜ |
 | `E06` | [Outcomes et rubriques : remplacer le score opaque de plan-quality](E06-cma-outcomes-rubrics.md) | 🟡 T3 | beta | remplace du code maison | M | ✅ | ⚠️ | ⬜ |
 | `E07` | [Webhooks sortants signés : pousser vers CI, Slack et dashboards tiers](E07-cma-webhooks.md) | 🟠 T2 | beta | opportunité | M | 🟡 | ✅ | ⬜ |
-| `E08` | [Push et outils conditionnels côté Messages API (system messages, tool_addition)](E08-mid-conversation-system-and-tools.md) | 🟠 T2 | mixte | opportunité | M | 🟡 | ⚠️ | ⬜ |
+| `E08` | [Push et outils conditionnels côté Messages API (system messages, tool_addition)](E08-mid-conversation-system-and-tools.md) | 🟠 T2 | mixte | opportunité | M | 🟡 | ⚠️ | ✅ |
 | `E09` | [MENACE : le MCP connector ne voit que les tool calls, tout le temps réel est invisible](E09-threat-mcp-connector-tools-only.md) | 🔴 T1 | beta | menace | M | ✅ | ⚠️ | ⬜ |
 | `E10` | [Memory tool : le daemon comme backend de mémoire partagée entre agents](E10-memory-tool-shared-repo-memory.md) | 🟠 T2 | GA | opportunité | L | ✅ | ⚠️ | ⬜ |
 | `E11` | [Discipline de contexte : exclude_tools, PTC, compaction, task budgets, cache](E11-context-discipline.md) | 🔴 T1 | mixte | intégration | M | 🟡 | ⚠️ | ⬜ |
