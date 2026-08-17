@@ -99,7 +99,7 @@ Le détail par fiche est dans sa **section 0**.
 | `E02` | [MCP tunnels : rendre le daemon privé joignable par les agents hébergés](E02-mcp-tunnels.md) | 🟠 T2 | research-preview | opportunité | M | 🟡 | ⚠️ | ⬜ |
 | `E03` | [Brancher mcp-coordinator sur CMA : mcp_toolset, custom tools, worker self-hosted](E03-cma-integration-paths.md) | 🟠 T2 | beta | intégration | S | 🟡 | ⚠️ | ⬜ |
 | `E04` | [Modèle d'API à copier : session threads et sémantique de reconnexion SSE](E04-cma-session-threads-sse.md) | 🟠 T2 | beta | opportunité | M | ✅ | ✅ | ⬜ |
-| `E05` | [Memory stores : modèle pour la chaîne d'audit et la mémoire de repo partagée](E05-cma-memory-stores-audit.md) | 🟠 T2 | beta | remplace du code maison | L | 🟡 | ⚠️ | ⬜ |
+| `E05` | [Memory stores : modèle pour la chaîne d'audit et la mémoire de repo partagée](E05-cma-memory-stores-audit.md) | 🟠 T2 | beta | remplace du code maison | L | 🟡 | ⚠️ | ✅ |
 | `E06` | [Outcomes et rubriques : remplacer le score opaque de plan-quality](E06-cma-outcomes-rubrics.md) | 🟡 T3 | beta | remplace du code maison | M | ✅ | ⚠️ | ⬜ |
 | `E07` | [Webhooks sortants signés : pousser vers CI, Slack et dashboards tiers](E07-cma-webhooks.md) | 🟠 T2 | beta | opportunité | M | 🟡 | ✅ | ⬜ |
 | `E08` | [Push et outils conditionnels côté Messages API (system messages, tool_addition)](E08-mid-conversation-system-and-tools.md) | 🟠 T2 | mixte | opportunité | M | 🟡 | ⚠️ | ⬜ |
