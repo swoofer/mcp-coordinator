@@ -13,7 +13,7 @@
 | **Vérification** | CONFIRMED |
 | **Vérifiée le** | 2026-08-14 |
 | **Testabilité** | ⚠️ partielle — research preview sur formulaire, WIF requis pour la Tunnels API |
-| **Statut du challenge** | ⬜ à faire |
+| **Statut du challenge** | ✅ **tranché** (2026-08-16) — `refuser` ; dominé par le worker self-hosted, et la doctrine tunnel est déjà écrite |
 
 ---
 
@@ -141,6 +141,34 @@ Deuxième bénéfice, plus stratégique : le tunnel **ne s'authentifie pas** aup
 
 ### 6.2 Hypothèse
 
+*Pré-enregistrée le 2026-08-16, **avant** toute exécution.*
+
+**Ce que `E01` a établi la veille et que je réutilise :** le tunnel est **l'une des trois pistes qui
+n'exposent pas le daemon** (avec les custom tools et le worker self-hosted), et
+`COORDINATOR_PUBLIC_URL` est **déjà requis au boot** — donc il n'y a pas de « posture localhost » à
+protéger. `E01` a aussi relevé que l'accès passe par un formulaire de research preview **et** un
+bearer obtenu par Workload Identity Federation, les clés API et Admin étant **refusées**.
+
+**Ce que je crois qu'il va se passer.**
+
+1. **La moitié « côté dépôt » marche déjà.** Le daemon accepte un `COORDINATOR_PUBLIC_URL` arbitraire
+   en HTTPS et un bind élargi ; rien à écrire. C'est vérifiable ici.
+2. **La moitié « tunnel » est inatteignable**, et pas pour une raison de quota : la porte est une
+   **fédération d'identité**, pas une clé. C'est une note de périmètre, pas un critère.
+3. La question de §6.1 se tranche donc sur le **coût de support**, pas sur la faisabilité.
+
+**Verdict pressenti :** `reporter` la surface de support ; documenter la recette sans la versionner.
+
+**Critères de mort.**
+
+| # | Si… | …alors |
+|---|---|---|
+| **K1** | le daemon **refuse** un `COORDINATOR_PUBLIC_URL` en `*.tunnel.anthropic.com` ou un bind élargi | il y a du code à écrire, et la branche « recette externe » devient plus chère qu'annoncé. |
+| **K2** | `doctor` ou la découverte OAuth **cassent** sur un host non-LAN | même conséquence, et c'est un défaut à corriger indépendamment du tunnel. |
+| **K3** | supporter le mode tunnel coûte plus de **6 fichiers** | la branche « chemin de déploiement supporté » est disqualifiée par le coût. |
+| **K4** | aucun utilisateur n'a demandé un accès distant sans exposition | filtre YAGNI. |
+| **K5** | la research preview reste inaccessible | **note de périmètre** (leçon `C10`/`C11`), pas un critère : je le marque comme tel. |
+
 <Ce qu'on pense avant de tester.>
 
 ### 6.3 Protocole de vérification
@@ -157,6 +185,95 @@ Proposition de protocole (non exécuté).
 - [ ] Mesurer la latence ajoutée par le tunnel sur un appel `status` par rapport au même appel en direct.
 
 ### 6.4 Résultat observé
+
+*Challenge du 2026-08-16.*
+
+#### A. Le côté dépôt marche déjà — K1 et K2 ne se déclenchent pas
+
+```
+$ COORDINATOR_PUBLIC_URL=https://coord-demo.tunnel.anthropic.com COORDINATOR_BIND=0.0.0.0 …
+{"port":3188,"host":"0.0.0.0","msg":"Coordinator v3 started"}
+```
+
+Rien à écrire pour accepter un host de tunnel. Et le `HTTP 404` de
+`/.well-known/oauth-authorization-server` n'est **pas** un défaut d'hôte : la route est gardée par
+`ctx.phase2Bootstrap`, avec un commentaire explicite — ne pas révéler son existence à un sondeur non
+authentifié. **K2 ne se déclenche pas.**
+
+#### B. 🔴 J'ai lu cette ligne de log sans la lire
+
+La **même** ligne imprime aussi `mqtt_ws`. J'ai mesuré que le daemon **démarre** ; je n'ai pas mesuré
+**ce que le démarrage expose**. Or le tunnel route **par hostname**, et transmet le path tel quel :
+`config.yaml` n'a **aucune allowlist de path**. Deviennent donc joignables `/dashboard`, `/api/*`,
+`/metrics`, `/api/events`… **et `/mqtt`**.
+
+**§5 ne parle que de `/mcp`.** C'est le trou le plus grave de la fiche, et il transforme deux défauts
+connus en défauts exposés :
+
+- **`/mqtt` est l'issue #330** (ouverte) : le handler d'upgrade **ne porte aucun contrôle d'origine**,
+  là où `/mcp` a `isAllowedOrigin`. Un client anonyme y efface les claims de fichiers d'un autre
+  agent. Derrière un tunnel, ce trou passe du LAN à Internet.
+- **Le fallback `?token=` sur GET** vit dans `authenticateRequest`, donc pour **tout** GET. En
+  loopback, la fuite est locale ; derrière un tunnel, le JWT part dans les logs de chaque saut.
+
+#### C. 🔴 « Phase 2 devient exactement la pièce manquante » est faux — vérifié
+
+§4 présente l'absence d'authentification du tunnel comme un bénéfice, notre Phase 2 comblant le trou.
+Mais `docs/clients.md` l. 149-153 le dit lui-même :
+
+> le `--scope` « is validated when the token is minted and then **never enforced on a request**.
+> A `--scope read` token can write. »
+
+C'est l'issue **#313**, ouverte, intitulée « **Garde-fou fantôme** ». Avec un plafond de 90 jours, un
+token fuité vit trois mois **avec accès total**. La posture lecture seule que Phase 2 semble offrir
+n'existe pas.
+
+#### D. 🔴 K3 se déclenche — mais par la branche que je croyais chère
+
+**La branche « recette externe » coûte 0 fichier neuf : la doctrine tunnel est déjà écrite.**
+
+> `docs/clients.md` l. 111-114 : « **Keep authentication enabled if you tunnel.** Publishing a
+> loopback daemon through ngrok, a Cloudflare tunnel or a Tailscale funnel puts the whole 26-tool
+> surface on the public internet, writes included. »
+
+Ajouter « les MCP tunnels d'Anthropic » = **un quatrième nom dans une phrase existante**, soit
+**2 éditions d'une ligne**. C'était le périmètre de #306, close.
+
+**La branche « chemin supporté » coûte ≥ 12 fichiers** — dont `docs/gdpr.md`, qui affirme aujourd'hui
+que « the coordinator does not communicate with any third party other than the configured IdP » et
+deviendrait **faux**. Seuil K3 = 6. **Franchi au double.**
+
+Et le check `doctor` de §5 est **redondant** : `probePublicUrl` et `probeDiscoveryDoc` font déjà le
+travail, assertion sur l'`issuer` comprise.
+
+#### E. 🔴 Le tunnel est **dominé** sur les trois axes — et fabrique de la fausse coordination
+
+| Axe | Tunnel | Custom tools | Worker self-hosted |
+|---|---|---|---|
+| Coût d'accès | formulaire **+ WIF** (clés API refusées) | clé API | clé API |
+| Posture réseau | 3 process, écoute hors loopback | **aucun endpoint** | polling sortant |
+| Proximité du cas d'usage | sandbox **cloud** | — | **même checkout git** |
+
+L'axe décisif est le troisième. Le tunnel sert le chemin « sandbox cloud », où l'agent travaille sur
+une **copie**. `check_file_conflict` y comparerait une claim sur `src/foo.ts` dans le cloud à une
+claim sur `src/foo.ts` en local.
+
+> **Le tunnel n'étend pas la coordination : il fabrique de la fausse coordination.** Un verdict faux
+> est plus nuisible qu'un verdict absent.
+
+Ce qui survivrait, c'est `register_agent` / `heartbeat` — de l'inventaire, pas le produit.
+
+#### F. K4 se déclenche · K5 est une note de périmètre
+
+**Zéro demande** : 80 issues, aucune ne réclame un accès distant. La seule voisine est **#306**, de
+documentation, **fermée** — et elle a mesuré que le montage **fonctionne déjà** par header statique.
+
+Et §4 est fausse aux trois quarts quand elle vante « sans reverse proxy maison, sans certificat
+public, sans port entrant » : `examples/docker-compose/` livre déjà Caddy en auto-TLS. **Seul « sans
+port entrant » survit** — une règle de pare-feu.
+
+**K5** (research preview inaccessible : formulaire + fédération d'identité) reste une **note de
+périmètre**, marquée comme telle dès §6.2.
 
 <Ce qu'on a réellement mesuré/vu. Coller les sorties, pas les paraphraser.>
 
@@ -176,11 +293,55 @@ Proposition de protocole (non exécuté).
 
 | | |
 |---|---|
-| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ⬜ refuser |
-| **Date** | |
-| **Justification** | |
-| **Issue / PR** | |
-| **Jalon visé** | |
+| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ✅ **refuser** le mode tunnel comme chemin supporté |
+| **Date** | 2026-08-16 |
+| **Justification** | **K3 et K4 se déclenchent.** La branche « chemin supporté » coûte **≥ 12 fichiers** pour un seuil de 6 — dont `docs/gdpr.md`, qui affirme que le coordinateur ne communique avec aucun tiers hors IdP et deviendrait **faux**. La branche « recette externe » coûte **0 fichier neuf** : la doctrine tunnel est **déjà écrite** (`docs/clients.md` l. 111-114). Et le tunnel est **dominé sur les trois axes** par le worker self-hosted — surtout le troisième : il sert la sandbox cloud, où l'agent travaille sur une **copie**, donc où `conflict-detector` rendrait des verdicts **faux** plutôt qu'absents. |
+| **Issue / PR** | aucune |
+| **Jalon visé** | aucun |
+
+### Ce qui est refusé, et pourquoi ce n'est pas « en attendant la preview »
+
+Le mode tunnel **comme chemin de déploiement supporté** — services dans `docker-compose.yml`, check
+`doctor`, exemple versionné.
+
+**Rien dans l'ouverture de la research preview ne change cette décision.** Ni K3 (12 fichiers contre
+0), ni K4 (zéro demande), ni la domination par le worker self-hosted. Écrire `reporter` laisserait
+croire qu'on attend un signal qui ne viendrait rien résoudre.
+
+**Condition de réouverture :** une demande CMA réelle, **et** #330 et #313 fermées — pas l'ouverture
+de la preview.
+
+### Le seul livrable : deux éditions d'une ligne
+
+Ajouter « les MCP tunnels d'Anthropic » à la phrase qui existe déjà dans `docs/clients.md` l. 112 et
+`docs/onboarding-self-host.md` l. 225. Le dépôt a **déjà** sa doctrine : *« Keep authentication
+enabled if you tunnel »*.
+
+### Corrections obligatoires
+
+- **§4 est fausse aux trois quarts** : « sans reverse proxy maison, sans certificat public, sans port
+  entrant ni allowlist d'IP » — `examples/docker-compose/` livre Caddy en auto-TLS. Seul « sans port
+  entrant » survit, soit une règle de pare-feu.
+- **§4 « le chaînon manquant » est faux** : #306 l'a documenté et fermé ; le montage fonctionne par
+  header statique.
+- **§4 « Phase 2 devient exactement la pièce manquante » est faux** : #313 (ouverte) montre que le
+  scope d'un service token est **validé au minting puis jeté** — un token `read` écrit, pendant
+  90 jours.
+- **§5 ne discute que `/mcp`** alors que le tunnel est **host-scopé** : `/dashboard`, `/api/*`,
+  `/metrics` et surtout **`/mqtt`** (issue #330, sans contrôle d'origine) deviendraient joignables.
+- **§5, le check `doctor` est redondant** : `probePublicUrl` et `probeDiscoveryDoc` le font déjà.
+
+### Note de méthode — j'ai lu une ligne de log sans la lire
+
+Ma mesure disait : « le daemon démarre avec l'URL de tunnel, donc rien à écrire ». **La même ligne de
+log imprimait `mqtt_ws`.** J'ai mesuré que le daemon démarre ; je n'ai pas mesuré **ce que le
+démarrage expose** — et c'est précisément là qu'est le risque, puisque le tunnel route par hostname
+sans allowlist de path.
+
+C'est une variante des fautes de `C11` et `D01` : l'instrument fonctionnait, je ne l'ai pas lu en
+entier. Et j'avais présenté « aucune trace de tunnel dans le dépôt » comme un fait ; c'était faux — le
+dépôt a une doctrine tunnel écrite, qui rendait ma branche « recette externe » gratuite au lieu de
+coûteuse.
 
 ## 8. Journal
 
@@ -188,3 +349,4 @@ Proposition de protocole (non exécuté).
 |---|---|
 | 2026-08-14 | Fiche créée par la veille plateforme. |
 | 2026-08-14 | Vérification des faits : API confirmée, body `POST /v1/tunnels` tranché, inférence « pas de multiagent » réfutée, 2 lignes corrigées. |
+| 2026-08-16 | **Challenge — verdict `refuser`** le mode tunnel comme chemin supporté. Mesuré : le daemon accepte `COORDINATOR_PUBLIC_URL=https://<sub>.tunnel.anthropic.com` et un bind élargi **sans rien écrire** (K1, K2 non déclenchés ; le 404 de la découverte est un gating d'auth, pas un défaut d'hôte). **K3 se déclenché par la branche que je croyais chère** : « recette externe » coûte **0 fichier neuf** — la doctrine tunnel est déjà écrite dans `docs/clients.md` l. 111-114 (« Keep authentication enabled if you tunnel ») — contre **≥ 12 fichiers** pour « chemin supporté », dont `docs/gdpr.md` qui deviendrait faux. K4 déclenché : zéro demande sur 80 issues ; la seule voisine, **#306**, est une issue de doc **fermée** qui mesure que le montage fonctionne déjà par header statique. **Le tunnel est dominé sur les trois axes** par le worker self-hosted — coût d'accès (formulaire + WIF, clés API refusées), posture (3 process contre zéro endpoint pour les custom tools), et surtout proximité : le tunnel sert la sandbox **cloud**, où l'agent travaille sur une **copie**, donc où `conflict-detector` rendrait des verdicts **faux** plutôt qu'absents. **J'ai lu une ligne de log sans la lire** : la même ligne imprimait `mqtt_ws` — j'ai mesuré que le daemon démarre, pas ce que le démarrage expose. Or le tunnel est **host-scopé** sans allowlist de path : `/dashboard`, `/api/*`, `/metrics` et surtout **`/mqtt`** (#330, sans contrôle d'origine) deviendraient joignables. Corrections : §4 est fausse aux 3/4 sur « sans reverse proxy maison » (Caddy est livré), « le chaînon manquant » est faux (#306), et « Phase 2 devient la pièce manquante » est faux (**#313** ouverte : le scope d'un service token est validé au minting puis jeté). Réouverture : une demande CMA réelle **et** #330 + #313 fermées — pas l'ouverture de la preview. |
