@@ -123,7 +123,7 @@ Le détail par fiche est dans sa **section 0**.
 
 | # | Dossier | Tier | Statut | Nature | Effort | Fiche | Testable | Challenge |
 |---|---|---|---|---|---|---|---|---|
-| `G01` | [MCP Agent Mail : le concurrent open source le plus proche](G01-threat-mcp-agent-mail.md) | 🔴 T1 | experimental | menace | S | ✅ | ✅ | ⬜ |
+| `G01` | [MCP Agent Mail : le concurrent open source le plus proche](G01-threat-mcp-agent-mail.md) | 🔴 T1 | experimental | menace | S | ✅ | ✅ | ✅ |
 | `G02` | [Orchestrateurs worktree-par-tâche (Conductor, Nimbalyst, Vibe Kanban, Claude Squad)](G02-worktree-orchestrators.md) | 🟠 T2 | mixte | menace | S | ✅ | ⚠️ | ⬜ |
 | `G03` | [MCP Interceptors WG (SEP-1763) : la détection de conflit comme primitive standard](G03-mcp-interceptors-wg.md) | 🔴 T1 | experimental | menace | L | 🟡 | ⚠️ | ⬜ |
 | `G04` | [MCP Triggers & Events WG : le pub/sub entre-t-il dans la spec ?](G04-mcp-triggers-events-wg.md) | 🔴 T1 | experimental | menace | S | 🟡 | ✅ | ⬜ |
