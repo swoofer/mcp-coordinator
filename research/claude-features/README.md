@@ -107,7 +107,7 @@ Le détail par fiche est dans sa **section 0**.
 | `E10` | [Memory tool : le daemon comme backend de mémoire partagée entre agents](E10-memory-tool-shared-repo-memory.md) | 🟠 T2 | GA | opportunité | L | ✅ | ⚠️ | ⬜ |
 | `E11` | [Discipline de contexte : exclude_tools, PTC, compaction, task budgets, cache](E11-context-discipline.md) | 🔴 T1 | mixte | intégration | M | 🟡 | ⚠️ | ⬜ |
 | `E12` | [Qualité des payloads : strict tools, structured outputs, blocs search_result](E12-structured-outputs-citations.md) | 🟠 T2 | GA | intégration | M | 🟡 | ⚠️ | ⬜ |
-| `E13` | [Publier une skill de coordination plutôt que d'alourdir les descriptions d'outils](E13-agent-skills-coordination.md) | 🟠 T2 | beta | opportunité | M | 🟡 | ⚠️ | ⬜ |
+| `E13` | [Publier une skill de coordination plutôt que d'alourdir les descriptions d'outils](E13-agent-skills-coordination.md) | 🟠 T2 | beta | opportunité | M | 🟡 | ⚠️ | ✅ |
 | `E14` | [Entreprise : inference hooks, Compliance API, annuaire de connecteurs](E14-enterprise-audit-directory.md) | 🟡 T3 | mixte | menace | M | 🟡 | ⚠️ | ⬜ |
 | `E15` | [Emprunts de design mineurs : budgets de session, advisor, dreams, deployments](E15-cma-design-borrowings.md) | 🟡 T3 | mixte | opportunité | M | 🟡 | ⚠️ | ⬜ |
 
