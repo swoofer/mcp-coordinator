@@ -13,7 +13,7 @@
 | **Vérification** | CONFIRMED |
 | **Vérifiée le** | 2026-08-14 |
 | **Testabilité** | ⚠️ partielle — pas de credentials CMA ni d'endpoint HTTPS public |
-| **Statut du challenge** | ⬜ à faire |
+| **Statut du challenge** | ✅ **tranché** (2026-08-16) — `reporter` ; **K1 déclenché : l'affirmation centrale est réfutée par la doc**, E01 et E02 à corriger |
 
 ---
 
@@ -171,6 +171,35 @@ Faible mais réel. mcp-coordinator reste un outil « Claude Code local uniquemen
 
 ### 6.2 Hypothèse
 
+*Pré-enregistrée le 2026-08-16, **avant** toute exécution.*
+
+> ⚠️ **Risque de circularité, signalé d'avance.** `E01` et `E02` ont toutes deux conclu en citant
+> **cette fiche** — « le chemin (c) est le seul où l'agent CMA partage le checkout git ». Trois fiches
+> qui se citent mutuellement peuvent fabriquer une certitude sans preuve. **Le premier travail de ce
+> challenge est donc de vérifier que cette affirmation repose sur la documentation d'Anthropic et non
+> sur un renvoi interne.** Si elle ne tient pas, `E01` et `E02` doivent être corrigées.
+
+**Ce que je crois qu'il va se passer.**
+
+1. L'affirmation « seul (c) partage le checkout » **tient**, parce qu'elle découle d'un fait simple :
+   une sandbox cloud travaille sur une copie. Mais je dois la sourcer, pas la déduire.
+2. Le plafond de 100 000 caractères sera **loin d'être atteint** — `C13` et `D05` ont mesuré que la
+   base est vide, donc `list_agents` rend une liste vide.
+3. Le chemin (a), MCP connector seul, coûte **zéro code** — `E01` l'a chiffré.
+
+**Verdict pressenti :** `adopter partiellement` — documenter la recette (a), **reporter** le paquet
+worker, et corriger §6.1 dont l'alternative est mal posée.
+
+**Critères de mort.**
+
+| # | Si… | …alors |
+|---|---|---|
+| **K1** | l'affirmation « seul (c) partage le checkout » n'est **pas sourçable** dans la doc d'Anthropic | c'est une circularité : `E01`, `E02` et cette fiche s'appuient sur du vide, et je dois les corriger toutes les trois. |
+| **K2** | le plafond de 100 000 caractères est **atteignable** en usage réaliste | c'est un défaut à corriger indépendamment de CMA. |
+| **K3** | livrer `@mcp-coordinator/cma-worker` coûte plus de **8 fichiers** | la branche worker est disqualifiée par le coût. |
+| **K4** | ajouter `@anthropic-ai/sdk` en beta crée une dépendance que le projet ne peut pas tenir | `refuser` la branche worker, quel que soit son intérêt. |
+| **K5** | aucun utilisateur n'a demandé une intégration CMA | filtre YAGNI — `E01` a déjà mesuré zéro demande. |
+
 <Ce qu'on pense avant de tester.>
 
 ### 6.3 Protocole de vérification
@@ -186,6 +215,106 @@ Faible mais réel. mcp-coordinator reste un outil « Claude Code local uniquemen
 - [ ] PoC `EnvironmentWorker` : enregistrer 2 outils du coordinateur, lancer `ant beta:worker run`, confirmer qu'un agent CMA modifie un fichier du checkout local et que `file-tracker.ts` le voit.
 
 ### 6.4 Résultat observé
+
+*Challenge du 2026-08-16.*
+
+#### A. 🔴🔴 K1 SE DÉCLENCHE — l'affirmation centrale est **réfutée par la documentation**
+
+§1(c), §4, §5 et §6.1 affirment que le chemin (c) est « **le seul montage où un agent CMA et les
+agents Claude Code locaux partagent réellement le même checkout git** ». C'est **faux**, et la doc
+d'Anthropic dit à peu près l'inverse. Récupérée et citée mot pour mot :
+
+> « **Anthropic doesn't mount files or GitHub repositories into self-hosted sandboxes.** To make
+> session-specific files available, pass file references (such as an S3 path or commit SHA) in the
+> session `metadata` field […] then **stages the files into the working directory** before tool
+> execution begins. »
+
+> « **Self-hosted sandboxes don't support `resources` entries**; a session that includes any resource
+> on a self-hosted environment **is rejected**. »
+
+Et le tableau comparatif de la même page : *« File and GitHub repo mounting | Managed by Anthropic |
+Managed by you »*.
+
+**Le seul montage où CMA fournit un checkout git est donc le cloud**, via
+`resources: [{ type: "github_repository", mount_path: … }]`. Le self-hosted n'en reçoit **aucun** —
+c'est à l'opérateur de mettre les fichiers en place.
+
+Ce qui survit de vrai, et qu'il faut écrire précisément : un opérateur qui lance le worker depuis son
+checkout fait travailler l'agent sur le vrai working tree, parce que `--workdir` vaut `.` par défaut.
+**C'est une capacité qu'il se donne en possédant l'hôte, pas une propriété de CMA** — et la doc
+recommande l'inverse (`--workdir /workspace`, volume neuf par session).
+
+#### B. 🔴 Et la prémisse était **hors sujet** de toute façon
+
+Personne — ni cette fiche, ni `E01`, ni `E02` — n'avait vérifié dans le dépôt. Mesuré :
+
+```
+$ grep -cE "node:fs|child_process|execSync|simple-git" \
+    src/conflict-detector.ts src/file-tracker.ts src/working-files-tracker.ts
+0   0   0
+```
+
+**Aucun des trois modules ne touche un filesystem.** `detect()` compare des **chaînes** :
+`params.target_files.filter((f) => threadFiles.includes(f))`. Et la clé de jointure est un **chemin
+repo-relatif**, normalisé à l'arrivée — c'est écrit dans le schéma de `announce_work` :
+
+> « Repo-relative file paths, forward-slash (e.g. 'src/foo.ts'). Normalized on arrival […] »
+
+**Conséquence :** un agent CMA en sandbox **cloud**, monté en `/workspace/repo`, qui annonce
+`src/foo.ts`, joint parfaitement l'annonce `src/foo.ts` d'un Claude Code local. Deux agents qui
+éditent le même fichier dans deux clones du même dépôt **sont** en conflit — c'est une collision de
+merge en préparation, c'est-à-dire le produit.
+
+Ce qui dégrade réellement sans checkout local, c'est la couche de co-change git — dégradation **déjà
+documentée** comme un mode de première classe (« team-mode, HTTP only »), pas une perte de sens.
+
+#### C. 🔴 Deux fiches déjà livrées reposent sur cette erreur
+
+- **`E01`** contenait le fait correct **et** l'a contredit dans le même fichier : elle liste
+  « `github_repository` non supporté en sandbox self-hosted » parmi ses faits vérifiés, puis cite
+  l'affirmation inverse de cette fiche comme un acquis.
+- **`E02`** en a tiré son **verdict `refuser`**, avec la formule « le tunnel fabrique de la fausse
+  coordination ». **Cette justification tombe.** Le verdict lui-même peut survivre sur K3 et K4 (coût
+  et absence de demande), mais son argument principal doit être retiré.
+
+#### D. K2 ne se déclenche pas — **sur la jambe mesurée**
+
+`list_agents` avec 20 agents peuplés : **4 525 caractères**, soit 4,5 % du plafond de 100 000. Et CMA
+plafonne à 20 agents par roster ; il en faudrait ~440.
+
+**Réserve honnête :** §6.3 demandait aussi de mesurer les outils de `consultation-tools.ts`, que §5
+désigne comme « candidat n°1 au dépassement » — un thread à N messages n'est pas borné par le plafond
+de roster. **Je ne l'ai pas mesuré.** Dire « K2 ne se déclenche pas » tout court dépasserait ma mesure.
+
+#### E. K3 se déclenche · K4 **ne se déclenche pas**, et §6.5 invente une doctrine
+
+- **K3 :** le gabarit `sdk/` compte **22 fichiers** suivis. Seuil 8, franchi à 2,75×. Et le coût caché
+  est pire : `sdk/` est `private`, absent de la chaîne de release, et le dépôt n'a **aucun**
+  workspace multi-paquets. Un worker non publié est inutile — sa raison d'être est que l'opérateur
+  l'installe. Ce n'est pas un fichier de plus, c'est un changement de topologie du dépôt.
+- **K4 :** vérifié, `@anthropic-ai/sdk` n'est **aucune** dépendance aujourd'hui. Mais §6.5 s'appuie sur
+  une doctrine « spec MCP uniquement » qui **n'existe nulle part** dans le dépôt — et le projet
+  **consomme déjà** une API propriétaire d'Anthropic avec un header beta daté (`oauth-2025-04-20`,
+  porté depuis ~16 mois). **L'argument de vendor lock-in de §6.5 est fabriqué.** Ce qui disqualifie la
+  branche worker, c'est K3, pas la tenabilité de la dépendance.
+
+#### F. §6.1 est mal posée **deux fois**, et §4 contredit §5
+
+- **Alternative binaire alors qu'il y a trois chemins** : (b), les custom tools, est absent — alors
+  que la fiche le documente en §1 et que `E01` l'a caractérisé « aucun endpoint, aucun tunnel ».
+- **La question embarque sa réponse** : la subordonnée « seul montage où l'agent CMA partage le
+  checkout » est la proposition fausse de §A, insérée comme un acquis. Une question qui contient sa
+  prémisse ne se tranche pas, elle se ratifie.
+- **§4 et §5 se contredisent** : §4 dit qu'un agent branché par (a) « est vu par `conflict-detector.ts`
+  exactement comme un Claude Code local » ; §5 dit que ces modules sont « vides de sens » en sandbox
+  cloud. **§4 a raison** (le code est déclaratif), §5 a tort.
+
+#### G. Le fallback `?token=` est plus large que la fiche ne le dit
+
+§0 le localise en `serve-http.ts` l. 328-330 — ce sont des **commentaires**. L'implémentation est dans
+`authenticateRequest` (`src/auth.ts`), donc **partagée par toute route GET authentifiée** — y compris
+**`GET /mcp`** sur session existante, c'est-à-dire la route exacte que la recette (a) demande
+d'exposer. Ce n'est pas « sans intérêt pour CMA » : c'est un jeton en URL sur la route publiée.
 
 <Ce qu'on a réellement mesuré/vu. Coller les sorties, pas les paraphraser.>
 
@@ -205,11 +334,65 @@ Faible mais réel. mcp-coordinator reste un outil « Claude Code local uniquemen
 
 | | |
 |---|---|
-| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ⬜ refuser |
-| **Date** | |
-| **Justification** | |
-| **Issue / PR** | |
-| **Jalon visé** | |
+| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ✅ **reporter** · ⬜ refuser |
+| **Date** | 2026-08-16 |
+| **Justification** | **K1 se déclenche : l'affirmation centrale de la fiche est réfutée par la documentation d'Anthropic** — « Anthropic doesn't mount files or GitHub repositories into self-hosted sandboxes », et `resources` y est **rejeté**. Le seul montage qui fournit un checkout est le **cloud**. K3 se déclenche aussi (22 fichiers de gabarit, plus une chaîne de publication multi-paquets inexistante). Et la recette (a) ne peut pas être documentée en l'état : elle demanderait d'exposer un daemon où un token `read` écrit (**#313**) et où un anonyme efface les `working_files` (**#330**). |
+| **Issue / PR** | aucune ; **corrections à porter sur `E01` et `E02`** |
+| **Jalon visé** | réveil sur fermeture de #313 et #330 |
+
+### 🔴 Ce challenge invalide deux fiches déjà livrées
+
+C'est le résultat le plus important, et il vaut plus que le verdict.
+
+- **`E02` doit être rouverte.** Son verdict `refuser` s'appuie sur « le tunnel sert la sandbox cloud,
+  où l'agent travaille sur une copie, donc où `conflict-detector` rendrait des verdicts **faux** ».
+  **Cet argument est faux** : le détecteur ne touche aucun filesystem, il compare des chemins
+  repo-relatifs. Deux clones du même dépôt qui éditent `src/foo.ts` **sont** en conflit. Le verdict
+  peut survivre sur le coût et l'absence de demande — **pas sur cet argument**.
+- **`E01` doit être annotée.** Elle contient le fait correct (`github_repository` non supporté en
+  self-hosted) **et** cite l'affirmation inverse comme un acquis, dans le même fichier.
+
+**La leçon dépasse ces trois fiches** : j'ai laissé une inférence non sourcée devenir un fait par
+citation croisée. `E01` l'a citée, `E02` en a tiré un verdict, et aucune des deux n'est allée lire la
+page. **Une fiche qui en cite une autre doit citer sa source, pas sa conclusion.**
+
+### Ce qui est reporté, et à quelle condition
+
+**Les trois chemins.** Condition de réveil : **#313 et #330 fermées**, plus une demande réelle.
+
+Documenter la recette (a) aujourd'hui reviendrait à demander à un auto-hébergeur d'exposer un daemon
+où le mode « lecture seule » n'a **aucun filet côté serveur** (#313 : le scope d'un service token est
+validé au minting puis jeté) et où un client anonyme peut effacer les claims de fichiers d'un autre
+agent (#330). « Zéro code » ne veut pas dire « zéro risque ».
+
+### Ce qui est abandonné
+
+**Le paquet `@mcp-coordinator/cma-worker`** (K3) — non pour la dépendance, qui est tenable, mais parce
+qu'un paquet non publié est inutile et que le dépôt n'a pas de chaîne multi-paquets.
+
+### Corrections obligatoires
+
+- **§1(c), §4, §5, §6.1** : retirer « seul montage où l'agent CMA partage le checkout ». Le remplacer
+  par le fait sourcé : *le cloud monte un dépôt via `resources` ; le self-hosted ne reçoit rien et
+  c'est à l'opérateur de mettre les fichiers en place.*
+- **§5 est faux** quand il dit que `conflict-detector` est « vide de sens » en sandbox cloud — **§4 a
+  raison**, le code est déclaratif.
+- **§6.5** : l'argument « le projet a tenu la ligne spec MCP uniquement » est **fabriqué** — le projet
+  consomme déjà une API propriétaire Anthropic avec un header beta daté depuis 16 mois.
+- **§6.1** : réécrire sans la prémisse fausse et **avec** le troisième chemin.
+- **§0** : le fallback `?token=` n'est pas en `serve-http.ts` l. 328-330 (commentaires) mais dans
+  `authenticateRequest`, et il couvre **`GET /mcp`**.
+
+### Note de méthode — la faute la plus coûteuse de ce corpus
+
+Les quatorze fiches précédentes m'ont repris sur des mesures incomplètes. Celle-ci est différente :
+**j'ai propagé une affirmation non vérifiée à travers trois dossiers**, et elle a produit un verdict.
+
+Le signal était pourtant visible : en §1(c), la phrase attribue explicitement à la doc le pattern
+« wrap an MCP server as custom tools », **puis enchaîne le « seul montage » sans attribution**. Cette
+rupture d'attribution dans une même phrase est exactement ce qu'il fallait voir — et je ne l'ai vue
+qu'en pré-enregistrant le risque de circularité, c'est-à-dire par précaution de méthode, pas par
+lecture attentive.
 
 ## 8. Journal
 
@@ -217,3 +400,4 @@ Faible mais réel. mcp-coordinator reste un outil « Claude Code local uniquemen
 |---|---|
 | 2026-08-14 | Fiche créée par la veille plateforme. |
 | 2026-08-14 | Vérification des faits : rate limits corrigés, forme de `configs` tranchée, ligne CORS corrigée, §5 vérifié fichier par fichier. |
+| 2026-08-16 | **Challenge — verdict `reporter`, et invalidation de deux fiches déjà livrées.** **K1 déclenché** : l'affirmation « le chemin (c) est le seul montage où l'agent CMA partage le checkout git » est **réfutée par la doc d'Anthropic**, récupérée et citée — « Anthropic doesn't mount files or GitHub repositories into self-hosted sandboxes » et « Self-hosted sandboxes don't support `resources` entries; a session that includes any resource on a self-hosted environment is rejected ». **Le seul montage qui fournit un checkout est le cloud.** Et la prémisse était **hors sujet** : `conflict-detector.ts`, `file-tracker.ts` et `working-files-tracker.ts` ne contiennent **aucun** appel filesystem (mesuré : 0/0/0) — `detect()` compare des chaînes de chemins **repo-relatifs** normalisés à l'arrivée. Un agent cloud monté en `/workspace/repo` qui annonce `src/foo.ts` joint donc parfaitement un agent local. **Conséquence : `E02` doit être rouverte** — son verdict `refuser` reposait sur « le tunnel fabrique de la fausse coordination », argument faux ; **`E01` doit être annotée** — elle contient le fait correct et cite l'affirmation inverse dans le même fichier. K2 non déclenché **sur la jambe mesurée** (`list_agents` à 20 agents = 4 525 caractères, 4,5 % du plafond ; la jambe `consultation-tools` n'a pas été mesurée). K3 déclenché : gabarit `sdk/` = 22 fichiers, et aucune chaîne de publication multi-paquets. **K4 non déclenché** : la doctrine « spec MCP uniquement » de §6.5 est **fabriquée** — le projet consomme déjà une API propriétaire Anthropic avec un header beta daté depuis ~16 mois. §6.1 est mal posée deux fois (alternative binaire alors qu'il y a trois chemins ; prémisse fausse insérée dans l'énoncé), et §4 contredit §5 — §4 a raison. Réveil sur fermeture de **#313** et **#330**. |
