@@ -16,7 +16,7 @@
 | **Vérification** | CONFIRMED |
 | **Vérifiée le** | 2026-08-14 |
 | **Testabilité** | ⚠️ partielle — spec lisible, aucun SDK TS ni impl. Go publiée |
-| **Statut du challenge** | ⬜ à faire |
+| **Statut du challenge** | ✅ **tranché** (2026-08-17) — contre-mesure technique : trancher ce qui vaut un refus chez nous, le SEP ne porte pas l'identité d'agent |
 
 ---
 
@@ -247,7 +247,32 @@ est actionnable maintenant est une décision de **posture** (observer / particip
 
 ### 6.2 Hypothèse
 
-<Ce qu'on pense avant de tester.>
+**Terrain vérifié avant de commencer.** Branches listées en entier ; aucune fiche `G` n'a de branche hors `G01`/`G02`. Trois fiches tranchées mordent sur celle-ci, et elles convergent toutes vers **le même préalable** :
+
+- **`C01`** (2026-08-15, `main`) §7.3 : *« D'où vient l'`agent_id` ? C'est la question que `C01` n'a jamais posée et sans laquelle aucune des deux branches de §6.1 n'est constructible. »*
+- **`F02`** (branche non fusionnée) l'a confirmé en mesurant `AuthClaims` : neuf champs, **aucun `agent_id`**.
+- **`F03`** (branche non fusionnée) a mesuré que le contexte d'un handler MCP ne porte que `sessionId`, `mcpReq{…}` et `http?{authInfo?}`.
+
+Autrement dit : le dépôt sait détecter, et ne sait pas **à qui** il parle. Tout garde-fou y bute.
+
+**Ce que je pense avant de mesurer.** Que le §6.1 pose une fausse dichotomie. Il oppose « intercepteur avec état inter-appels » à « décision par appel », comme si l'état devait vivre dans le protocole. Or le §2 relève déjà que le contexte d'invocation porte `sessionId` **et** `principal { type, id, claims }`, et que les modes de déploiement incluent **sidecar** et **service distant** — c'est-à-dire un processus qui détient son propre état. `mcp-coordinator` **est** ce processus, avec sa base SQLite. Un validator sans état *dans le protocole* peut parfaitement consulter un état qu'il détient lui-même.
+
+Si c'est exact, la vraie question n'est pas « le SEP peut-il porter notre état » mais « le SEP nous donne-t-il enfin l'identité qui nous manque » — car `principal.id` est précisément ce que `C01`, `F02` et `F03` cherchent en vain. Ce serait un renversement complet du cadrage : la spec cesse d'être une menace de banalisation pour devenir la réponse à notre blocage.
+
+Fiche **menace** : verdict sur la **réponse** — *contre-mesure technique*, *recadrage*, ou *acceptation assumée*. Testabilité ⚠️ **partielle** : **jamais `adopter`** sur la moitié non exécutable.
+
+### 6.2b Critères de mort — pré-enregistrés avant toute mesure
+
+| # | Critère de mort | Seuil chiffré |
+|---|---|---|
+| **K1** | **La dichotomie « avec état / sans état » de §6.1 est fausse.** | si le contexte d'invocation porte un identifiant de session **et** que le SEP prévoit un déploiement sidecar/distant, l'état vit chez l'intercepteur ⇒ la question de §6.1 est mal posée |
+| **K2** | **Le SEP ne résout pas notre préalable d'identité.** C'est le seul apport qui vaudrait un investissement. | si `principal.id` n'est pas mappable à un agent enregistré, le SEP hérite du blocage de `C01`/`F02`/`F03` |
+| **K3** | **Rien n'est consommable.** | SDK TypeScript toujours `Planned` **au 2026-08-17**, pas seulement au 2026-08-14 |
+| **K4** | **La menace de banalisation est déjà réalisée sans le SEP.** §6.5 le dit : rien n'empêche aujourd'hui d'écrire un serveur MCP de détection de conflit. | si c'est vrai, « banalisation du cœur » ne décrit pas un risque **nouveau** |
+| **K5** | **Le coût de participation est réel et non amorti.** | sessions bimensuelles de 60 min sur un projet à mainteneur unique, contre 13 findings `high` d'audit ouverts |
+| **K6** | **Ce qui reste défendable est-il non vide ?** | s'il ne reste rien au-dessus de la détection brute, la fiche annonce une défaite |
+
+**Ce que je m'interdis**, leçons accumulées : publier un chiffre non produit par moi (`G01`) ; déclarer « inmesurable » ce qui est seulement « non exécutable » alors que le **source ou la spec répondent** (`G02` — j'ai commis exactement ça la passe précédente) ; comparer deux objets de natures différentes (`D02`, `G01`) ; et citer une fiche voisine sans préciser si son verdict vit sur `main` ou sur une branche non fusionnée (`G02`).
 
 ### 6.3 Protocole de vérification
 
@@ -264,7 +289,127 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 
 ### 6.4 Résultat observé
 
-<Ce qu'on a réellement mesuré/vu. Coller les sorties, pas les paraphraser.>
+**Frontière.** Exécuté : la lecture intégrale des deux SEP par l'API GitHub, la vérification du dépôt d'expérimentation, et la confrontation au code du dépôt. **Non exécutable, comme la §0 l'annonçait** : aucun PoC bout-en-bout (aucun code d'intercepteur en TypeScript ni en Go) et la participation à une session du WG. Je n'en tire rien.
+
+*Note de méthode : la page GitHub de l'issue ne rend pas son corps à la récupération HTTP. Passer par `gh api … --jq '.body'` donne le texte intégral. La passe précédente m'a appris à ne pas confondre « non exécutable » et « inconnaissable ».*
+
+#### Ma première mesure était fausse, et de la pire manière
+
+**J'ai interrogé `repos/…/issues/2624` pour un objet qui est une `pulls/2624`.** L'API renvoie alors la **description de la pull request** — 2 800 caractères — et non le document. J'en avais conclu que « la spec vivante est vide », puis que le §2 de la fiche avait **extrapolé** `failOpen` et `InterceptorOverrides`. J'allais inscrire une accusation de fabrication contre le travail de la veille, tirée d'un fichier que je n'avais pas ouvert.
+
+La spec vivante est le **diff** :
+
+```
+pulls/2624 : state=open, draft=false, 5 fichiers, +3844, head=Degiorgio:SEP-1763
+  1908+  seps/2624-interceptors-for-model-context-protocol.md
+  1927+  docs/seps/2624-interceptors-for-model-context-protocol.mdx
+```
+
+Récupérée et recomptée par moi sur le bon document — **66 833 octets, 1 908 lignes**, soit **plus gros que SEP-1763** :
+
+```
+                     SEP-1763   desc. de la PR   SPEC VIVANTE
+  sessionId               2            0               2
+  principal               9            0               8
+  failOpen                0            0              21
+  InterceptorOverrides    0            0               2
+  priorityHint           22            0              29
+  observability          18            0               3
+  executeChain            3            0               0
+```
+
+**Le §2 de la fiche est bien sourcé. Je retire intégralement l'accusation.** L'auteur a simplement changé de format de publication entre 1763 (spec collée dans le corps de l'issue) et 2624 (spec dans un diff) — c'est ce qui m'a piégé, et la §0 avait lu le bon document.
+
+**Ce que la mesure corrigée apporte quand même**, et qui est le vrai résultat de cette section :
+
+1. **`interceptor/executeChain` a disparu.** 3 occurrences dans le document clos, **0** dans la spec vivante. Le §2 signalait cette incertitude comme « à reconfirmer à la lecture intégrale » : elle est tranchée, la méthode n'existe plus.
+2. **Le troisième type d'intercepteur a été retiré, avec un motif écrit.** La spec vivante, l. 1661 : *« Instead of a separate observability type, both validators and mutators support audit mode »*. `observability` tombe de 18 occurrences à 3. **La « correction » du §0 — « il y a trois types, pas deux » — est donc périmée**, et c'est le §1 (« deux types ») qui a raison aujourd'hui.
+
+*Leçon de méthode, la cinquième du corpus sur le même axe : `gh api issues/N` sur une PR ne se plaint pas, il renvoie autre chose. Vérifier la nature de l'objet avant d'en tirer une absence.*
+
+#### K1 — la dichotomie de §6.1 est fausse, mais pas comme je le pensais (se déclenche partiellement)
+
+*Section réécrite sur la spec vivante. Ma première version citait SEP-1763 et y voyait une contradiction : c'était une erreur de lecture — les deux passages sont sous `### Future Enhancements`, l'un annonçant le champ réservé, l'autre décrivant ce qu'il serait. Il n'y a pas de contradiction, il y a une section prospective que je lisais comme normative.*
+
+Verbatim de la spec vivante, le contexte d'invocation :
+
+```ts
+    // Session information
+    sessionId?: string;
+
+    // FUTURE: Interceptor state propagation
+    // Allows interceptor to share state through the chain
+    // This field is reserved for future enhancement
+    interceptorState?: Record<string, unknown>;
+```
+
+et plus loin, la même clé décrite autrement :
+
+```ts
+  // Mutable interceptor state (enriched by interceptor during chain execution)
+  // Each interceptor can read and write to this shared state
+  interceptorState?: Record<string, unknown>;
+```
+
+Deux observations, la troisième retirée. L'état décrit est **intra-chaîne**, pas inter-appels — « through the chain », « during chain execution » — et il vit sous `### Future Enhancements`, donc réservé. Et `sessionId` est **optionnel**.
+
+**K1 se déclenche sur le fond de mon hypothèse** : le protocole n'a pas à porter l'état, un sidecar le détient — et `mcp-coordinator` est déjà ce sidecar, avec sa base. Mais ma formulation était trop confiante : l'identifiant qui servirait de clé est facultatif, donc un intercepteur ne peut pas *compter* dessus. La question de §6.1 n'est pas « le SEP porte-t-il notre état » (non, et il n'a pas à le faire) mais « le SEP garantit-il une clé de corrélation » — et la réponse est non.
+
+**Et le §6.3 posait une question dont la spec porte la réponse, que je n'avais pas cherchée.** Son quatrième item demande si un intercepteur peut **émettre** une elicitation. `ValidationResult` (l. 323-345) rend `valid`, `severity`, `messages[]`, `suggestions[]`, `signature?` — un verdict, rien d'autre. `elicitation/create` figure bien dans les événements **interceptés**, mais rien ne permet d'en **émettre** une. **Le protocole de consultation n'est donc pas représentable en intercepteur.** C'est la moitié de la réponse au §6.1, et elle était lisible sans exécuter quoi que ce soit.
+
+#### K2 — le SEP ne résout pas notre préalable d'identité (se déclenche)
+
+C'était le seul apport qui aurait justifié un investissement. Verbatim de la spec vivante (l. 704-708) :
+
+```ts
+    principal?: {
+      type: "user" | "service" | "anonymous";
+      id?: string;
+      claims?: Record<string, unknown>;
+    };
+```
+
+**Enum fermée à trois valeurs, et « agent » n'en fait pas partie** — 0 occurrence de `"agent"` comme valeur d'énumération dans les 1 908 lignes. Le `principal` modélise *qui est l'humain ou le service derrière cet appel* : le modèle d'identité de la conformité d'entreprise. Il ne modélise pas *quel pair du essaim parle*. Et tout y est optionnel.
+
+**Nuance que je dois à la passe adversariale** : `claims?: Record<string, unknown>` est une trappe non typée où un `agent_id` tiendrait. La formulation juste n'est donc pas « le SEP ne résout pas l'identité » mais **« le SEP ne standardise pas d'identité d'agent pair ; il laisse un emplacement libre »**. La différence compte : un emplacement libre ne fait pas un contrat interopérable — c'est exactement le problème M × N que le SEP prétend résoudre, reconduit d'un cran.
+
+**K2 se déclenche, et il renverse mon hypothèse de §6.2.** J'espérais que `principal.id` nous donnerait enfin l'identité d'agent qui bloque `C01` (§7.3), `F02` et `F03`. Il ne la donne pas. Le §6.5 avait raison sur le profil des leads — Bloomberg, Saxo Bank, Nordstrom — et cette intuition se lit maintenant dans le type lui-même, pas dans une inférence sociologique.
+
+#### K3 — rien n'est consommable (se déclenche)
+
+Le dépôt d'expérimentation, aujourd'hui :
+
+```
+| C#         | csharp/sdk/     | ModelContextProtocol.Interceptors        | In Progress |
+| Go         | go/sdk/         | .../ext-interceptors/go/sdk              | Planned     |
+| Python     | python/sdk/     | mcp-ext-interceptors                     | Planned     |
+| TypeScript | typescript/sdk/ | @ext-modelcontextprotocol/interceptors   | Planned     |
+
+pushed_at : 2026-08-13   ·   stars : 23   ·   archived : false
+```
+
+**K3 se déclenche** : TypeScript toujours `Planned` au 2026-08-17, trois jours après la vérification du §0. Le dépôt est vivant mais minuscule — 23 étoiles.
+
+#### K4 — la banalisation est déjà possible, sans le SEP (se déclenche)
+
+`src/tools/files-tools.ts` enregistre **3** outils, dont `check_file_conflict`. Rien n'a jamais empêché quiconque d'écrire un serveur MCP de détection de conflit : ce dépôt en est la démonstration vivante. **K4 se déclenche** — « banalisation du cœur » ne décrit pas un risque que le SEP créerait ; il décrit l'état du monde depuis que MCP existe.
+
+Ce que le SEP changerait est plus étroit et plus intéressant : non pas *qu'on puisse* écrire un validator, mais que le verdict cesse d'être **facultatif**. Or notre détecteur n'émet aujourd'hui aucun verdict bloquant :
+
+```
+severity: "warning"  x3
+severity: "info"     x2
+```
+
+Passer en validator exigerait de décider ce qui vaut un `fail` — décision que le dépôt n'a jamais prise, et qui ne dépend pas du SEP.
+
+#### K5 — le coût de participation (se déclenche)
+
+Sessions bimensuelles de 60 minutes, plus la lecture des SEP et des revues, sur un projet à mainteneur unique qui porte 14 rapports d'audit ouverts. **K5 se déclenche.** Et la mesure ci-dessus en réduit encore le rendement attendu : le document sur lequel on argumenterait est **clos**, et son successeur n'a pas encore de surface à discuter.
+
+#### K6 — ce qui reste défendable (ne se déclenche pas)
+
+Non vide, et le §4 le nommait déjà correctement : le scoring d'impact multi-couches, le protocole de consultation avec quorum, le co-change git, le bus MQTT. Aucun n'a d'équivalent dans le SEP, y compris dans sa version longue. **K6 ne se déclenche pas.**
 
 ### 6.5 Contre-arguments
 
@@ -280,13 +425,55 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 
 ## 7. Décision
 
+Fiche menace : le verdict porte sur la **réponse** (`_CHALLENGE-PROMPT.md:126-127`).
+
 | | |
 |---|---|
-| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ⬜ refuser |
-| **Date** | |
-| **Justification** | |
-| **Issue / PR** | |
-| **Jalon visé** | |
+| **Verdict** | **Réponse : contre-mesure technique — la nôtre, découplée du SEP.** ✅ **contre-mesure technique** · ⬜ recadrage · ⬜ acceptation assumée |
+| **Date** | 2026-08-17 |
+| **Justification** | Le SEP ne standardise **aucune identité d'agent pair** (`principal.type` = `user \| service \| anonymous`, 0 occurrence d'`"agent"`) et un intercepteur **ne peut pas émettre d'elicitation** — donc le protocole de consultation n'y est pas représentable. Mais le blocage qui nous empêche d'être un validator est chez nous, pas dans la spec : notre détecteur n'émet que `warning` et `info`, **aucun verdict opposable**. C'est ce mapping qu'il faut trancher, et il ne dépend d'aucun tiers. |
+| **Issue / PR** | à ouvrir sur la sévérité opposable ; un commentaire de revue sur la PR #2624 |
+| **Jalon visé** | prochain jalon ; conditions de réveil en §7.3 |
+
+### 7.1 Ce qui est retenu — trancher ce qui vaut un refus
+
+```
+src/conflict-detector.ts :  severity: "warning" x3  ·  severity: "info" x2
+```
+
+Aucun verdict opposable. Le §4 dit que `detect()` est « sémantiquement déjà un validator » : c'est vrai de sa **forme**, faux de sa **portée** — il n'a jamais eu à décider ce qui justifie un refus, parce que rien n'a jamais pu refuser.
+
+Ce mapping est le chantier, et il a trois propriétés qui le rendent supérieur à toute participation :
+
+1. **Zéro couplage au SEP.** Il sert `gate_file_write` que `C01` §7.3 a désigné comme successeur, il sert `canUseTool` de `F02`, il sert n'importe quelle porte future — et il reste valable si le SEP est abandonné.
+2. **Il est déjà réclamé par trois fiches tranchées.** `C01`, `D02` et `D04` convergent toutes sur *contraindre plutôt que détecter*.
+3. **Il ne demande aucune identité.** Décider qu'un chevauchement de fichiers déclarés vaut `error` et qu'un chevauchement de modules vaut `warn` est une décision de produit, pas d'authentification.
+
+### 7.2 Ce qui est écarté
+
+**Adhérer au groupe de travail — refusé.** Sessions bimensuelles de 60 minutes sur un projet à mainteneur unique portant 14 rapports d'audit : **K5 se déclenche** et rien dans la mesure ne le renverse.
+
+**Se positionner comme intercepteur standardisé — écarté, pour l'instant.** Rien n'est consommable en TypeScript (`Planned`), le SEP n'apporte pas l'identité qui nous manque, et le protocole de consultation n'y rentre pas.
+
+**Mais un commentaire de revue, une fois, est retenu** — et je distinguais mal deux choses. Le §6.5 chiffre le coût d'une « participation » en sessions bimensuelles ; poster un cas d'usage sur une PR ouverte coûte une heure, sans engagement récurrent. Le fil montre que ce format fonctionne : trois relecteurs y ont porté des remarques, dont une venue d'un serveur mémoire MCP pour agents de code dont l'argument central est que *« the risky sequence is often cross-call »* — c'est-à-dire notre §6.1, porté par un tiers. Deux points mesurés, et seulement ceux-là : `principal.type` n'a pas de valeur pour un pair d'un essaim, et un travail annoncé sur plusieurs appels n'a pas de corrélateur garanti (`sessionId?` est optionnel).
+
+### 7.3 Conditions de réveil — observables, une commande chacune
+
+| Signal | Ce qu'il changerait |
+|---|---|
+| PR **#2624** passe en `merged` | la spec cesse d'être un brouillon ; §6.1 se re-tranche |
+| `experimental-ext-interceptors` **#33** (« chain-free consolidation ») fusionnée | le modèle de chaîne change sur l'axe exact de §6.1 |
+| **#13** ou **#31** fusionnée (SDK TypeScript, suite de conformité) | il existe enfin du TS exécutable ; K3 tombe |
+| `principal.type` gagne une valeur au-delà des trois | K2 tombe, et le SEP devient la réponse à notre préalable d'identité |
+
+### 7.4 Corrections obligatoires avant réutilisation de la fiche
+
+1. **§0 : « il y a trois types, pas deux » est périmé.** La spec vivante porte `"validation" \| "mutation"` et **justifie le retrait** du troisième (l. 1661). C'est le §1 qui a raison, pas le §2.
+2. **§2 : `interceptor/executeChain` n'existe plus** — 0 occurrence. L'incertitude que le §2 signalait honnêtement est tranchée.
+3. **§2, §5, §6.5 s'appuient sur `@modelcontextprotocol/sdk ^1.29.0`, dépendance morte** depuis la migration vers `@modelcontextprotocol/{core,server,node,client}@2.0.0`.
+4. **§0 sous-estime le Go disponible** : il le donne « sans objet », alors que le dépôt d'expérimentation en contient du code réel avec tests d'intégration. L'item « lire l'implémentation de référence Go » de §6.3 a bien un objet.
+5. **§6.1 et §6.3 interrogent toujours SEP-1763**, document clos, alors que le §0 désigne 2624 comme la spec vivante.
+6. **§4 cite `files-tools.ts:49`** là où le §0 avait corrigé en 50 ; la correction n'a jamais atteint le §4, et les deux ont dérivé depuis.
 
 ## 8. Journal
 
@@ -294,3 +481,4 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 |---|---|
 | 2026-08-14 | Fiche créée par la veille plateforme. |
 | 2026-08-14 | Vérification des faits : SEP-1763 clos, remplacé par SEP-2624 ; wire format relevé ; TS/Go « Planned » ; ligne 50. |
+| 2026-08-17 | Challenge. **Réponse : contre-mesure technique.** **Ma première mesure était fausse et j'allais publier une accusation de fabrication** : j'ai interrogé `issues/2624` pour un objet qui est une `pulls/2624`, l'API m'a rendu la description de la PR (2 800 caractères), et j'en ai conclu que la spec vivante était vide et que le §2 avait extrapolé `failOpen` et `InterceptorOverrides`. Le vrai document est le diff — **1 908 lignes, 66 833 octets**, `failOpen` **21 fois**, `InterceptorOverrides` avec son interface complète. Accusation retirée : le §2 est bien sourcé. Ce qui survit, mesuré sur le bon document : `principal.type` = `user \| service \| anonymous`, **0 occurrence d'`"agent"`** — le SEP ne standardise aucune identité de pair, il laisse un `claims` non typé ; `ValidationResult` ne peut **pas** émettre d'elicitation, donc le protocole de consultation n'y est pas représentable ; `interceptor/executeChain` a **disparu** (incertitude du §2 tranchée) ; le troisième type `observability` a été **retiré avec un motif écrit** (l. 1661), ce qui périme la correction du §0. SDK TypeScript toujours `Planned`. Le blocage réel est chez nous : le détecteur n'émet que `warning` et `info`, aucun verdict opposable. |
