@@ -304,7 +304,16 @@ d'exposer le daemon sur Internet. **Trois chemins ne touchent pas à la posture 
    Cloudflare ne détient pas la clé.
 2. **Les custom tools** (`E03` §1b) : *« Pas de tunnel, pas d'endpoint public »*. Mapping MCP →
    custom **1:1**. Nos 26 outils sont directement mappables. Posture réseau **inchangée**.
-3. **Le worker self-hosted** (`E03` §1c) : polling sortant — et c'est *« le seul montage où un agent
+> 🔴 **Corrigé le 2026-08-16 par le challenge `E03`.** La citation ci-dessous est **fausse**, et
+> j'aurais dû le voir : cette fiche liste elle-même, parmi ses faits vérifiés,
+> « `github_repository` **non supporté** en sandbox self-hosted ». J'ai donc affirmé une chose et son
+> contraire dans le même fichier. La doc d'Anthropic tranche : *« Anthropic doesn't mount files or
+> GitHub repositories into self-hosted sandboxes »*, et `resources` y est **rejeté**. **C'est le cloud
+> qui monte un dépôt.** Ce qui reste vrai : un opérateur qui lance le worker depuis son checkout fait
+> travailler l'agent sur le vrai working tree, parce que `--workdir` vaut `.` — une capacité qu'il se
+> donne en possédant l'hôte, pas une propriété de CMA.
+
+3. **Le worker self-hosted** (`E03` §1c) : polling sortant — et c'est ~~*« le seul montage où un agent
    CMA et les agents Claude Code locaux partagent réellement le même checkout git »*, c'est-à-dire
    **exactement notre cas d'usage central**. Je refusais la branche la moins coûteuse en posture et
    la plus proche du produit.
@@ -404,8 +413,12 @@ Ce challenge ne produit pas de code. Il produit **la posture manquante**, à éc
 
 **La branche « devenir serveur MCP déclarable dans un roster CMA ».** Mon verdict projeté la refusait
 sur K3 ; K3 est faux. Le coût réel est de **0 fichier source**, et trois chemins n'exposent rien —
-dont le **worker self-hosted**, qui est selon `E03` le seul montage où un agent CMA et les agents
-Claude Code locaux partagent le même checkout git, c'est-à-dire notre cas d'usage central.
+dont le **worker self-hosted**. ~~Qui serait selon `E03` le seul montage où un agent CMA et les agents
+Claude Code locaux partagent le même checkout git, c'est-à-dire notre cas d'usage central.~~
+
+> 🔴 **Rétracté le 2026-08-16** — voir l'encadré plus haut. La doc dit l'inverse, et la question ne se
+> pose de toute façon pas : le détecteur de conflit ne touche aucun filesystem, il compare des chemins
+> repo-relatifs. Un agent en sandbox **cloud** joint donc parfaitement un agent local.
 
 **Condition de réveil :** la première demande d'un utilisateur, ou l'ouverture de la research preview
 des tunnels. Rien à construire d'ici là.
@@ -440,3 +453,4 @@ adversariale traque d'habitude.
 | 2026-08-14 | Fiche créée par la veille plateforme. |
 | 2026-08-14 | Vérification des faits : 4 corrections (origine des outils de délégation, budget, environment_id, lignes files-tools). Statut beta confirmé. |
 | 2026-08-16 | **Challenge — réponse : frontière assumée, justifiée par K5 seul.** **Ma mesure a testé le mauvais harnais** : j'ai monté deux serveurs MCP exposant `list_agents` et obtenu des noms préfixés (`mcp__coordinator__list_agents`), mais §4 vise la collision entre **notre outil** et **l'outil de délégation CMA**, dans un contexte CMA — or `E03` §0 établit que CMA présente des **noms nus**. **K1 est donc non adjugé**, pas éteint, et le corpus penche pour la collision. §6.3 est lui-même mal spécifié (il demande un *client* avec un built-in homonyme, non montable dans Claude Code). **K3 est empiriquement faux** : trois chemins n'exposent rien (tunnel sortant, custom tools sans endpoint, worker self-hosted — ce dernier étant selon `E03` le seul montage partageant le même checkout git que nos agents locaux), et surtout `COORDINATOR_PUBLIC_URL` est **requis au boot** — il n'y a pas de « posture localhost » à protéger, contrairement à ce qu'affirme §6.5. **K4 ne discrimine rien** : le chemin d'intégration coûte **0 fichier source** (route `/mcp`, transport, service tokens et URL publique existent déjà) ; renommer coûterait 7 fichiers, documenter 4. **K5 seul se déclenche** : zéro demande, et **aucune posture publiée** — pas une ligne sur CMA dans README, HANDOFF ou docs. Corrections : §4 contredit son propre §0 sur l'origine de `list_agents` et le mot « immédiate » est faux (trois conditions, aucune réunie) ; « ça casse la portabilité » est un homme de paille. **J'ai aussi imputé #330 à CMA** alors que c'est un bug du broker dont le risque est déjà pris par notre recette LAN. Menace de positionnement nommée au fichier près : `README.md:26` (« bring your own spawn strategy ») est mangée, `README.md:27` (« self-hosting for a regulated org ») se renforce — CMA n'étant éligible ni ZDR ni HIPAA BAA. |
+| 2026-08-16 | 🔴 **Annotation portée par le challenge `E03`.** J'avais cité comme un acquis l'affirmation « le worker self-hosted est le seul montage où un agent CMA partage le checkout git ». Elle est **fausse** — et cette fiche contenait déjà le fait correct, listé parmi ses propres vérifications : « `github_repository` non supporté en sandbox self-hosted ». J'ai donc affirmé une chose et son contraire dans le même fichier. La doc d'Anthropic tranche : « Anthropic doesn't mount files or GitHub repositories into self-hosted sandboxes », et `resources` y est **rejeté** — **c'est le cloud qui monte un dépôt**. Le verdict de la fiche (frontière assumée, justifiée par K5) **ne change pas** : il ne reposait pas sur cette affirmation. Seules les deux citations en §6.4-B sont rétractées. |
