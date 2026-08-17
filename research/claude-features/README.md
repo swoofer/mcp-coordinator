@@ -109,7 +109,7 @@ Le détail par fiche est dans sa **section 0**.
 | `E12` | [Qualité des payloads : strict tools, structured outputs, blocs search_result](E12-structured-outputs-citations.md) | 🟠 T2 | GA | intégration | M | 🟡 | ⚠️ | ⬜ |
 | `E13` | [Publier une skill de coordination plutôt que d'alourdir les descriptions d'outils](E13-agent-skills-coordination.md) | 🟠 T2 | beta | opportunité | M | 🟡 | ⚠️ | ⬜ |
 | `E14` | [Entreprise : inference hooks, Compliance API, annuaire de connecteurs](E14-enterprise-audit-directory.md) | 🟡 T3 | mixte | menace | M | 🟡 | ⚠️ | ⬜ |
-| `E15` | [Emprunts de design mineurs : budgets de session, advisor, dreams, deployments](E15-cma-design-borrowings.md) | 🟡 T3 | mixte | opportunité | M | 🟡 | ⚠️ | ⬜ |
+| `E15` | [Emprunts de design mineurs : budgets de session, advisor, dreams, deployments](E15-cma-design-borrowings.md) | 🟡 T3 | mixte | opportunité | M | 🟡 | ⚠️ | ✅ |
 
 ## F. Claude Agent SDK
 
