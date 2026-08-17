@@ -13,7 +13,7 @@
 | **Vérification** | CONFIRMED |
 | **Vérifiée le** | 2026-08-14 |
 | **Testabilité** | ✅ testable — PoC local suffit, aucun accès fermé requis |
-| **Statut du challenge** | ⬜ à faire |
+| **Statut du challenge** | ✅ **tranché** (2026-08-17) — refuser ; la porte existe deja et essaim l'utilise ; le levier restant est C06/#271 |
 
 ---
 
@@ -135,7 +135,29 @@ Import du paquet : `@anthropic-ai/claude-agent-sdk` (TypeScript), `claude_agent_
 
 ### 6.2 Hypothèse
 
-<Ce qu'on pense avant de tester.>
+**Premier réflexe appliqué — grepper la doc du dépôt avant de parler de manque** (leçon d'`E09`). Et il y a une trouvaille : `README.md:354` porte déjà une section **« In-process from your own Node app »**, et `docs/usage.md:263` note qu'`essaim` « uses Strategy A (**in-process**) and starts its own ephemeral coordinator per `essaim run` ».
+
+**La nuance est décisive et je ne veux pas la rater.** Ce qui existe est `startServer({ port, dataDir })` : cela embarque le **daemon HTTP** dans le process de l'appelant, avec un port. Ce n'est **pas** un serveur MCP in-process au sens du Agent SDK. Ce que F01 ajouterait, c'est de supprimer aussi le **saut de transport**. Donc §4 n'est pas faux — mais le delta réel est bien plus étroit que « ouvrir une quatrième porte » : c'est « retirer un aller-retour loopback à une porte qui existe déjà et qu'un consommateur utilise déjà ».
+
+**Ce que je pense avant de mesurer.** Les deux branches de §6.1 se referment l'une sur l'autre :
+
+- Le mode **embarqué** ne coordonne rien. `docs/ARCHITECTURE.md:221` pose « mono-instance-per-process, DB as a process singleton », et `docs/ops/single-instance-constraints.md` (mesuré en `E15`) dit **« Run exactly one coordinator process per data directory »** — partager le répertoire est donc *interdit par contrat*, et ne pas le partager veut dire que chaque orchestrateur ne se coordonne qu'avec lui-même. Le fait qu'`essaim` prenne « an isolated dir by default » le confirme depuis l'usage.
+- Le mode **proxy mince** n'économise aucun spawn : la configuration `type: "http"` n'en fait déjà aucun. Il n'économise que le saut loopback, et **c'est mesurable**.
+
+Donc mon hypothèse est que le verdict ne se joue pas sur §6.1 mais sur ce que le saut loopback coûte réellement. Si c'est sous le bruit, il ne reste qu'un argument d'ergonomie de packaging — pour un public dont §6.5 note qu'il n'est pas démontré.
+
+### 6.2b Critères de mort — pré-enregistrés avant toute mesure
+
+| # | Critère de mort | Seuil chiffré |
+|---|---|---|
+| **K1** | **Le mode embarqué ne coordonne rien.** Deux orchestrateurs SDK embarquant chacun `createServices()` ne se voient pas, et partager un `dataDir` est interdit par contrat. | `list_agents` de l'un ne voit **pas** l'agent de l'autre, **démontré par exécution** |
+| **K2** | **Le gain de latence est sous le bruit.** L'argument « zéro latence » est le seul avantage technique du proxy mince. | écart HTTP local vs appel direct < **1 ms** en médiane sur 100 itérations |
+| **K3** | **Le mode in-process existe déjà en partie.** Si `startServer()` est documenté et déjà utilisé, le delta de F01 se réduit au saut de transport. | `README.md` documente un chemin in-process **et** un consommateur l'utilise |
+| **K4** | **Nouvelle dépendance fournisseur, non installée.** Le serveur ne dépend d'aucun paquet Anthropic aujourd'hui. | `@anthropic-ai/claude-agent-sdk` absent de `node_modules` **et** des dépendances déclarées |
+| **K5** | **Deux chemins de registration pour 26 outils.** La signature de `tool()` du Agent SDK diffère de `server.tool()`. | positions d'arguments **différentes**, donc adaptateur ou seconde passe obligatoires |
+| **K6** | **YAGNI et coût de packaging.** | **0** demande, et `sdk/` est `private: true` sans jamais avoir été publié |
+
+**Règle que je m'impose :** §0 classe la fiche ✅ **testable** — aucune excuse pour conclure sur du raisonnement sur K1 et K2, qui doivent être **exécutés**. Et j'applique le reste des leçons : ne pas mesurer la mauvaise branche (`E11`, `E14`), vérifier une absence plutôt que la supposer (`E08`, `E10`, `E12`), distinguer une dérive de dépendance d'un défaut de vérification (`E13`, `E14`), et **réduire le périmètre plutôt que d'argumenter un seuil atteint** (`E15`).
 
 ### 6.3 Protocole de vérification
 
@@ -149,7 +171,99 @@ Proposition — à amender pendant le challenge. Le principe maison : on teste l
 
 ### 6.4 Résultat observé
 
-<Ce qu'on a réellement mesuré/vu. Coller les sorties, pas les paraphraser.>
+> **Note de méthode.** La passe adversariale par sous-agent a échoué **deux fois** sur une erreur serveur 529. Je l'ai donc conduite moi-même, en attaquant explicitement mes quatre points les plus faibles. Elle a servi : elle a trouvé une **sur-affirmation de ma part sur K1** et un **bénéfice que je m'apprêtais à ignorer**. Les deux sont ci-dessous.
+
+#### A. La porte in-process existe déjà, et son consommateur est nommé
+
+`README.md:354` porte une section **« In-process from your own Node app »** — `startServer({ port, dataDir })`. Ce n'est pas un serveur MCP-SDK : cela embarque le **daemon HTTP avec un port**. Le delta de F01 se réduit donc au **saut de transport**.
+
+Et le public que §4 décrit comme « le seul que le projet ne peut pas atteindre aujourd'hui » **existe, il est nommé, et il est externe** :
+
+> `docs/usage.md:159` — « **An orchestrator with its own agent loop**, e.g. [essaim](https://github.com/swoofer/essaim), which **subscribes to the MQTT broker itself** and injects events into the turn flow. »
+> `docs/usage.md:263` — « `essaim`, which uses **Strategy A (in-process)** and starts its own ephemeral coordinator per `essaim run` ».
+
+**Donc §4 se trompe deux fois** : ce public n'est pas inatteignable, et il a déjà résolu le problème — par `startServer()` plus un abonnement MQTT direct, sans avoir besoin de `createSdkMcpServer()`. **K6 est affaibli** (le public existe) mais **K3 est renforcé** (il est déjà servi).
+
+#### B. K1 — j'avais écrit trop fort, et je me suis corrigé par exécution
+
+**Ce que j'avais mesuré d'abord**, deux coordinateurs à `dataDir` distincts :
+
+```
+orchestrateur A (dataDir=data-test-f01-a) : list_agents -> [agent-A]
+orchestrateur B (dataDir=data-test-f01-b) : list_agents -> [agent-B]
+  B voit-il agent-A ? false
+  A voit-il agent-B ? false
+```
+
+J'allais en conclure « le mode embarqué ne coordonne **rien** ». **Contre-épreuve, deux vrais process séparés partageant un `dataDir` :**
+
+```
+process 1 : enregistre agent-A -> [agent-A]
+process 2 (node dist) : list_agents -> ["agent-A","agent-B"]
+  le process 2 voit-il agent-A ? true
+retour process 1 : list_agents -> [agent-A, agent-B]
+  le process 1 voit-il agent-B ? true
+```
+
+**Le registre coordonne bel et bien.** Le contrat mono-instance n'est donc **pas** une impossibilité technique — c'est une interdiction motivée par d'**autres** dangers, que `docs/ops/single-instance-constraints.md` énumère : doublement des garanties de rate-limit et de lockout, course sur la lecture d'epoch de jeton, course de migration, contention du circuit-breaker du sweeper.
+
+**K1 se déclenche, reformulé** : avec des répertoires isolés — le défaut d'`essaim` — le mode embarqué ne coordonne rien entre orchestrateurs ; avec un répertoire partagé il coordonne le registre mais **hérite de tous ces dangers**. « Ça marche, mais toutes les garanties de sécurité doublent » n'est pas une histoire de produit tenable. Ce qui reste vrai, mais pour une raison plus honnête que celle que j'allais écrire.
+
+#### C. K2 — le saut de transport coûte 0,415 ms
+
+Travail utile **identique des deux côtés** (`registry.listOnline()` sur 20 agents), serveur HTTP minimal pour isoler le coût du transport et non celui de la requête :
+
+```
+appel direct      : median 0.088 ms | p95 0.114 ms
+via HTTP loopback : median 0.504 ms | p95 0.839 ms
+ecart median (= le cout du transport) : 0.415 ms
+=> 2 409 sauts loopback pour egaler UNE seconde
+```
+
+**K2 se déclenche.** Réserve honnête, que je m'impose parce que j'ai mesuré un serveur **minimal écrit pour l'occasion** : c'est un **plancher** du coût de transport, le vrai `POST /mcp` ajoutant la session, le handshake JSON-RPC et l'éventuelle auth. Mais la direction n'est pas ambiguë — on compare du sous-milliseconde à un tour de modèle qui se compte en secondes, et l'argument « pas de délai sur le premier tour » de §1 vise de toute façon le coût de **spawn**, que `type: "http"` évite déjà.
+
+#### D. Le bénéfice que j'allais ignorer — et il joue contre F01
+
+Je m'apprêtais à ne retenir que « latence » et « ergonomie de packaging ». Or le Agent SDK apporte aussi `alwaysLoad` et `searchHint`, qui exemptent un outil du *tool-search deferral* — et sous tool search, `C06` a mesuré que seuls les **noms** d'outils entrent en contexte au premier tour. Ce serait un levier réel.
+
+**Sauf qu'il n'est pas propre au Agent SDK.** `C06:118` documente :
+
+> `"anthropic/alwaysLoad": true` — dans le `_meta` d'un outil : **le SERVEUR marque lui-même un** outil comme toujours chargé.
+
+Et `C06:38` précise qu'`alwaysLoad` est disponible sur **tous** les types de serveurs. **Le coordinateur peut donc déjà marquer ses propres outils, depuis le côté MCP, avec zéro dépendance fournisseur.** Vérifié : le dépôt n'utilise **jamais** `_meta` à cette fin — les seules occurrences sont la table `git_cochange_meta`, sans rapport.
+
+Donc le seul bénéfice technique que F01 pouvait revendiquer au-delà de la latence est **déjà atteignable sans elle** — et il a un propriétaire : `C06` est tranchée depuis le 2026-08-15, périmètre versé dans **#271**. **Cela renforce le refus** au lieu de l'affaiblir.
+
+#### E. K4, K5, K6
+
+- **K4 se déclenche.** `@anthropic-ai/claude-agent-sdk` est absent de `node_modules` **et** des dépendances déclarées. Le serveur ne dépend aujourd'hui d'aucun paquet Anthropic.
+- **K5 se déclenche, aggravé par la dérive.** Aujourd'hui : `server.registerTool(` × **26**, `server.tool(` × **0**. La forme est `registerTool(name, { description, inputSchema, annotations }, handler)` — un objet à 3 arguments — contre le `tool(name, description, schema, handler, extras)` du Agent SDK, positionnel à 5. Deux formes totalement différentes : un adaptateur ou une seconde passe de registration est **obligatoire**, pour 26 outils.
+- **K6 se déclenche, mais affaibli sur un point.** 0 issue correspondante, et `sdk/` est toujours `@mcp-coordinator/sdk-js@0.8.1`, `private: true`, jamais publié. Mais le public n'est **pas** inexistant : `essaim` est nommé, externe, et écrit son propre orchestrateur. Ce qui manque n'est pas le public — c'est le besoin, puisqu'il est déjà servi.
+
+#### F. §0 était exacte à sa date — troisième fiche propre d'affilée
+
+J'ai relevé trois écarts. Vérifiés à `605c082`, dernier commit du **2026-08-14** :
+
+| §5 dit | HEAD | À `605c082` |
+|---|---|---|
+| `createServices()` l. 53 | **54** | **53** ✓ |
+| `buildChannelServer()` l. 277 | **280** | **277** ✓ |
+| « `@modelcontextprotocol/sdk ^1.29.0` déjà une dépendance » | **ABSENT** | **présent** ✓ |
+
+Les trois sont de la **dérive de dépendance**, causée par la migration `@modelcontextprotocol/*@2` du 2026-08-15. `src/index.ts:7-8`, `exports` (`.` et `./types`) et `zod ^4.4.3` sont exacts aujourd'hui encore. **Aucun défaut de vérification** — après `E14` et `E15`, c'est la **troisième** fiche propre consécutive, et le motif « §0 dérivée » de la série `E08`–`E13` semble clos.
+
+#### G. Adjudication des six critères
+
+| # | Seuil | Mesure | Verdict |
+|---|---|---|---|
+| **K1** | isolation démontrée par exécution | isolée avec des répertoires distincts (**prouvé**) ; **mais deux vrais process partageant un répertoire se voient** (prouvé) — l'interdiction vient des autres dangers de `single-instance-constraints.md` | **SE DÉCLENCHE, reformulé** — ma première formulation était trop forte |
+| **K2** | écart < 1 ms | **0,415 ms** médian ; 2 409 sauts par seconde de tour de modèle | **SE DÉCLENCHE** (plancher : serveur minimal, pas le vrai `/mcp`) |
+| **K3** | chemin in-process documenté + un consommateur | `README.md:354` + `essaim` (Strategy A), qui prend ses événements par **MQTT** | **SE DÉCLENCHE** |
+| **K4** | SDK absent des deps | absent de `node_modules` et de `package.json` | **SE DÉCLENCHE** |
+| **K5** | positions d'arguments différentes | `registerTool(name, {objet}, handler)` × 26 contre `tool(name, desc, schema, handler, extras)` | **SE DÉCLENCHE** |
+| **K6** | 0 demande, `sdk/` jamais publié | 0 issue ; `private: true` — **mais le public existe et est nommé** (`essaim`), il est simplement déjà servi | **SE DÉCLENCHE, affaibli** |
+
+**Six sur six**, dont deux avec une réserve explicite (K1 reformulé, K6 affaibli).
 
 ### 6.5 Contre-arguments
 
@@ -167,11 +281,11 @@ Proposition — à amender pendant le challenge. Le principe maison : on teste l
 
 | | |
 |---|---|
-| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ⬜ refuser |
-| **Date** | |
-| **Justification** | |
-| **Issue / PR** | |
-| **Jalon visé** | |
+| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ✅ **refuser** |
+| **Date** | 2026-08-17 |
+| **Justification** | **Six critères sur six se déclenchent, et les deux branches de §6.1 se referment l'une sur l'autre.** ⭑ **La porte in-process existe déjà, et son consommateur est nommé.** `README.md:354` documente « In-process from your own Node app » (`startServer({port, dataDir})`), et `docs/usage.md:159`/`:263` nomment **`essaim`** — un orchestrateur externe avec sa propre boucle d'agent, qui utilise « Strategy A (in-process) » et **prend ses événements directement sur le broker MQTT**. Donc §4 se trompe deux fois : ce public n'est pas « le seul que le projet ne peut pas atteindre », et il a **déjà résolu le problème autrement**. Le delta réel de F01 se réduit au **saut de transport**. ⭑ **Et ce saut coûte 0,415 ms** — mesuré, travail utile identique des deux côtés : **2 409 sauts pour égaler une seconde**, c'est-à-dire un tour de modèle. L'argument « pas de délai sur le premier tour » de §1 vise de toute façon le coût de **spawn**, que `type: "http"` évite déjà. ⭑ **Le seul bénéfice technique restant n'est pas propre au Agent SDK.** `alwaysLoad` serait un vrai levier sous tool search — mais `C06:118` documente `"anthropic/alwaysLoad": true` **dans le `_meta` d'un outil, posé par le serveur lui-même**, disponible sur tous les types de serveurs. Le coordinateur peut donc déjà le faire **depuis le côté MCP, avec zéro dépendance fournisseur** — et vérifié, il ne l'a **jamais** fait. Ce levier a un propriétaire : `C06`, tranchée le 2026-08-15, périmètre dans **#271**. **Cela renforce le refus** au lieu de l'affaiblir. ⭑ **K4/K5/K6** : le SDK est absent des dépendances (le serveur ne dépend d'aucun paquet Anthropic) ; la forme de registration a divergé au point de rendre un adaptateur **obligatoire** pour 26 outils (`registerTool(name, {objet}, handler)` × 26 contre `tool(name, desc, schema, handler, extras)`) ; et `sdk/` est `private: true` depuis 0.8.1 sans avoir jamais été publié. **Corrections de méthode.** **Ma formulation de K1 était trop forte, et je l'ai corrigée par exécution** : j'allais écrire que le mode embarqué « ne coordonne rien », mais deux **vrais process** partageant un `dataDir` **se voient** (`["agent-A","agent-B"]` de part et d'autre). Le contrat mono-instance n'est donc pas une impossibilité technique mais une interdiction motivée par d'**autres** dangers — doublement du rate-limit et du lockout, courses sur l'epoch et la migration, contention du circuit-breaker. La conclusion tient, sur un motif plus honnête : « ça marche mais toutes les garanties de sécurité doublent » n'est pas une histoire de produit. **Réserve sur K2** : j'ai mesuré un serveur HTTP minimal, donc **0,415 ms est un plancher** — le vrai `POST /mcp` ajoute session et handshake JSON-RPC. La direction reste sans ambiguïté. **Et la passe adversariale par sous-agent a échoué deux fois sur une erreur 529** : je l'ai conduite moi-même, et elle a servi — elle a trouvé la sur-affirmation sur K1 **et** le bénéfice `alwaysLoad`/`_meta` que j'allais ignorer. ⭑ **§0 était exacte à sa date** : les trois écarts relevés (`createServices` 53→54, `buildChannelServer` 277→280, `@modelcontextprotocol/sdk` présent→absent) sont de la **dérive de dépendance** due à la migration du 2026-08-15, vérifiée à `605c082`. **Troisième fiche propre d'affilée** après `E14` et `E15` — le motif « §0 dérivée » de la série `E08`–`E13` semble clos. |
+| **Issue / PR** | Aucune issue neuve. Le seul levier exploitable trouvé — marquer les outils de coordination `alwaysLoad` via le `_meta` MCP, **sans** le Agent SDK — appartient à **`C06` / #271**, déjà tranchée et dotée d'un propriétaire. À signaler là-bas plutôt qu'à dupliquer ici. |
+| **Jalon visé** | Aucun. Reconsidérer **uniquement** si un intégrateur nommé demande un serveur MCP in-process que `startServer()` plus un abonnement MQTT ne satisfait pas — c'est précisément la combinaison qu'`essaim` utilise déjà. Corrections de la fiche à porter : `@modelcontextprotocol/sdk` n'est plus une dépendance, et la forme de registration n'est plus `server.tool()`. |
 
 ## 8. Journal
 
@@ -179,3 +293,4 @@ Proposition — à amender pendant le challenge. Le principe maison : on teste l
 |---|---|
 | 2026-08-14 | Fiche créée par la veille plateforme. |
 | 2026-08-14 | Vérification des faits : contradiction `@alpha` infirmée, paquet et `alwaysLoad` tranchés, §2 complété, l. 195 corrigée. |
+| 2026-08-17 | **Challenge — verdict `refuser` ; les deux branches de §6.1 se referment l'une sur l'autre.** **La porte in-process existe déjà** (`README.md:354`, « In-process from your own Node app » via `startServer({port, dataDir})`) **et son consommateur est nommé** : `docs/usage.md:159`/`:263` désignent **`essaim`**, orchestrateur externe avec sa propre boucle d'agent, qui utilise « Strategy A (in-process) » et **prend ses événements directement sur MQTT**. §4 se trompe donc deux fois — ce public n'est pas inatteignable, et il a **déjà résolu le problème autrement**. Le delta de F01 se réduit au **saut de transport**, mesuré à **0,415 ms** (appel direct 0,088 ms, HTTP loopback 0,504 ms, travail utile identique des deux côtés) : **2 409 sauts pour égaler une seconde**. **Et le seul bénéfice technique restant n'est pas propre au Agent SDK** : `C06:118` documente `"anthropic/alwaysLoad": true` **dans le `_meta` d'un outil, posé par le serveur**, disponible sur tous les types de serveurs — le coordinateur peut donc le faire depuis MCP, **sans dépendance fournisseur**, et vérifié il ne l'a jamais fait. Ce levier appartient à `C06`/#271, déjà tranchée. Cela **renforce** le refus. **K4/K5/K6** : SDK absent des dépendances ; forme de registration divergée au point de rendre un adaptateur **obligatoire** (`registerTool(name, {objet}, handler)` × 26 contre `tool(name, desc, schema, handler, extras)`) ; `sdk/` `private: true` depuis 0.8.1, jamais publié — mais le public **existe et est nommé**, il est simplement déjà servi. **Corrections de méthode. Ma formulation de K1 était trop forte et je l'ai corrigée par exécution** : j'allais écrire que le mode embarqué « ne coordonne rien », or deux **vrais process** partageant un `dataDir` **se voient** (`["agent-A","agent-B"]` de part et d'autre) — le contrat mono-instance est une interdiction motivée par d'**autres** dangers (doublement du rate-limit et du lockout, courses sur l'epoch et la migration, contention du circuit-breaker), pas une impossibilité technique. La conclusion tient sur un motif plus honnête. **Réserve sur K2** : serveur HTTP minimal, donc **0,415 ms est un plancher** — le vrai `POST /mcp` ajoute session et handshake. **Et la passe adversariale par sous-agent a échoué deux fois sur une erreur 529** : conduite moi-même, elle a servi — elle a trouvé la sur-affirmation sur K1 **et** le bénéfice `alwaysLoad`/`_meta` que j'allais ignorer. **§0 était exacte à sa date** : les trois écarts (`createServices` 53→54, `buildChannelServer` 277→280, `@modelcontextprotocol/sdk` présent→**absent**) sont de la **dérive de dépendance** due à la migration du 2026-08-15, vérifiée à `605c082`. **Troisième fiche propre d'affilée** après `E14` et `E15`. |

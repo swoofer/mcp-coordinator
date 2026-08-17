@@ -115,7 +115,7 @@ Le détail par fiche est dans sa **section 0**.
 
 | # | Dossier | Tier | Statut | Nature | Effort | Fiche | Testable | Challenge |
 |---|---|---|---|---|---|---|---|---|
-| `F01` | [Serveur MCP in-process : le paquet @mcp-coordinator/agent-sdk](F01-sdk-in-process-mcp-server.md) | 🔴 T1 | GA | intégration | M | 🟡 | ✅ | ⬜ |
+| `F01` | [Serveur MCP in-process : le paquet @mcp-coordinator/agent-sdk](F01-sdk-in-process-mcp-server.md) | 🔴 T1 | GA | intégration | M | 🟡 | ✅ | ✅ |
 | `F02` | [`canUseTool` et `requestId` : la primitive exacte du verrou distribué](F02-canusetool-distributed-lock.md) | 🔴 T1 | GA | opportunité | M | 🟡 | ✅ | ⬜ |
 | `F03` | [Subagents programmatiques et SessionStore : voir les transcripts, pas que les annonces](F03-sdk-subagents-sessionstore.md) | 🟠 T2 | GA | opportunité | M | 🟡 | ✅ | ⬜ |
 
