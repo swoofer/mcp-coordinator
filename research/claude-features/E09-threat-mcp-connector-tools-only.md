@@ -13,7 +13,7 @@
 | **Vérification** | CONFIRMED |
 | **Vérifiée le** | 2026-08-14 |
 | **Testabilité** | ⚠️ partielle — exposition publique HTTPS + clé API beta manquantes |
-| **Statut du challenge** | ⬜ à faire |
+| **Statut du challenge** | ✅ **tranché** (2026-08-17) — refuser le tool runner ; le vrai prealable est #325 ; livrable #357 |
 
 ---
 
@@ -154,7 +154,30 @@ Surtout, le pont push→pull existe déjà : `wait_for_message` (`src/tools/mqtt
 
 ### 6.2 Hypothèse
 
-<Ce qu'on pense avant de tester.>
+**Cadrage.** Fiche de **menace** (`Nature: threat`) : je ne cherche rien à adopter. Le livrable est une **frontière factuelle** — ce que le connector voit, ce qu'il ne voit pas, ce qui reste défendable — et le verdict porte sur la **réponse**, pas sur l'adoption.
+
+**Ce que je pense avant de mesurer.** La menace est réelle mais la fiche se trompe de gravité, dans les deux sens.
+
+*Moins grave qu'annoncé* : la surface MCP du projet est déjà 100 % tools-only (§0 l'a vérifié), donc rien à porter. Et le public visé n'existe pas — `E08` vient de mesurer qu'aucun intégrateur ne pilote la boucle Messages API ; l'orchestrateur attesté par le produit (`cli/init.ts:86`, `docs/usage.md:159`) orchestre des **sessions Claude Code par hooks**, jamais `messages[]`.
+
+*Plus grave qu'annoncé* : la fiche traite les claims du README comme un détail de §5 (« ces claims doivent être qualifiés »). Or ce sont des affirmations **publiées** qui sont fausses pour une classe entière de clients, dans un fichier lu avant toute autre chose. C'est le même motif que #333 (la page produit affichait quinze fois une version inexistante) et que la famille des « garde-fous fantômes » : **le dépôt promet plus qu'il ne tient.**
+
+**Et la question que la fiche ne pose pas.** §4 fait de `wait_for_message` le pont push→pull et déclare : « la question n'est donc pas *comment porter le push*, mais *ce long-poll survit-il au timeout HTTP du connector* ». C'est présupposer que le long-poll fonctionne. Je ne peux pas mesurer le timeout du connector, mais je peux mesurer ce que la fiche saute : **`wait_for_message` tient-il réellement sa promesse en local ?** Vu ce que ce corpus a produit jusqu'ici — `get_thread_updates` qui perd tous les messages hors UTC (#346), le sweeper qui casse sa propre chaîne (#348), les refus SSE invisibles (#353) — vérifier le pont avant de discuter de son timeout est le seul ordre honnête.
+
+### 6.2b Critères de mort — pré-enregistrés avant toute mesure
+
+Ici, « adopter » signifie **coder le chemin de première classe** (tool runner client-side + injecteur d'événements). Un seul critère qui se déclenche le tue.
+
+| # | Critère de mort | Seuil chiffré |
+|---|---|---|
+| **K1** | **Aucune audience.** Coder un second client MCP pour une population vide. | **0** issue, discussion ou exemple attestant un agent Messages API branché sur le coordinateur |
+| **K2** | **Le doublon est réel.** Si l'injecteur d'événements réimplémente ce que `cli/channel.ts` fait déjà, c'est un second runtime à maintenir pour la même fonction. | ≥ **50 %** de la logique de `cli/channel.ts` à réécrire |
+| **K3** | **Le pont existant est cassé.** Si `wait_for_message` ne tient pas sa promesse en local, discuter de son comportement derrière le connector est prématuré — et le livrable change de nature. | comportement observé ≠ contrat annoncé, **démontré par exécution** |
+| **K4** | **Le prérequis d'exposition publique contredit le produit.** | `cli/init.ts` vend un daemon localhost **et** le connector exige HTTPS public — les deux vérifiés dans le dépôt |
+| **K5** | **Le régime connector n'est documenté nulle part**, alors que le README affirme le contraire. | ≥ **2** claims du `README.md` faux pour un agent Messages API, **cités verbatim** |
+| **K6** | **La beta bouge.** Un header déjà remplacé une fois. | `mcp-client-2025-04-04` déprécié, confirmé sur la doc du jour |
+
+**Règle que je m'impose :** §0 classe la fiche ⚠️ **partielle** — les trois mesures côté connector (seuil de coupure, invisibilité empirique des notifications, coût du `toolRunner()`) exigent une exposition HTTPS publique et une clé API beta. Elles ne peuvent donc **jamais** recevoir `adopter`, et la frontière entre exécuté et non exécuté doit être explicite en §6.4.
 
 ### 6.3 Protocole de vérification
 
@@ -171,7 +194,116 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 
 ### 6.4 Résultat observé
 
-<Ce qu'on a réellement mesuré/vu. Coller les sorties, pas les paraphraser.>
+#### A. Ma mesure principale reproduisait le contrat publié — je la retire comme découverte
+
+J'ai simulé une boucle Messages API tour par tour contre le vrai `MqttBridge` (harnais `FakeMqttClient` du dépôt) :
+
+```
+avant tout appel : 2 messages publies, listeners=0
+TOUR 1 -> null (timeout)
+  les 2 d'avant sont PERDUS ; listeners=1
+entre les tours : 5 messages publies (3..7)
+TOUR 2 -> {"n":3}
+TOUR 3 -> {"n":4}
+  reste apres 2 tours : 3 -> 5,6,7
+offline : listeners 1 -> 0
+  file au retour : 0 => backlog DETRUIT
+```
+
+**Trois de ces quatre faits sont écrits verbatim dans le README que j'accusais de mentir**, aux lignes 295-313, sous le titre *« MQTT here is best-effort push, not the record of truth »* :
+
+> - « Nothing is buffered for an agent with no live listener — a message that arrives before `wait_for_message`/`get_queued_messages` registers **is gone**. »
+> - « `get_queued_messages` **drains**: the messages are removed as you read them, so a second call returns nothing and a crash mid-processing loses them. »
+> - « Listener queues are capped and **drop oldest-first** under load. »
+>
+> et la conclusion : « For delivery you can rely on, use the thread APIs — `post_to_thread` + `get_thread_updates` are backed by SQLite and survive restarts. »
+
+Le quatrième — la destruction du backlog au passage offline — n'est pas au README mais est **délibéré et testé** : commentaire `performance-05` à `src/mqtt-bridge.ts:183-188`, et test nommé *« drops the departed agent's backlog (no residual growth across reconnects) »* (`tests/unit/mqtt-bridge-bounded.test.ts:129-140`).
+
+**K3 ne se déclenche donc pas** : son seuil était « comportement observé ≠ contrat annoncé ». Les quatre observations **égalent** le contrat annoncé. J'ai mesuré la liste de mises en garde du projet et je l'ai prise pour une découverte.
+
+#### B. Et un de mes quatre faits était simplement faux
+
+J'allais écrire que `wait_for_message` rend un message par tour, donc N tours pour N messages. **Faux, et je l'ai vérifié :**
+
+```
+file remplie : 5 messages (3..7)
+APPEL 1  wait_for_message    -> {"n":3}
+APPEL 2  get_queued_messages -> [4,5,6,7]
+reste : 0
+=> 5 messages recuperes en 2 appels, pas en 5 tours.
+```
+
+`waitForMessage` fait un `shift()` (`src/mqtt-bridge.ts:430`) et **laisse le reste en file** ; `getQueuedMessages` (`:445-451`) le draine. Le motif correct pour un agent connector est donc `wait_for_message` → `get_queued_messages` : **deux appels quelle que soit la taille du lot**, et il est déjà disponible.
+
+Corollaire qui atténue la destructivité : dans une boucle `/v1/messages`, le `mcp_tool_result` est persisté dans `messages[]` **par l'appelant**. Le régime connector est le seul où le drain destructif est le moins grave.
+
+#### C. Le seul défaut réel, et il est petit — mais il coûte un appel API par message
+
+`src/tools/mqtt-tools.ts:75-80` :
+
+```ts
+const msg = await mqttBridge.waitForMessage(claims.org, agent_id, timeoutMs);
+if (msg) {
+  return { content: [{ type: "text", text: JSON.stringify(msg) }] };
+}
+return { content: [{ type: "text", text: JSON.stringify({ timeout: true }) }] };
+```
+
+**Rien n'indique au modèle qu'il reste 4 messages en file.** Un agent qui reçoit un message nu ne peut pas savoir que `get_queued_messages` en récupérerait quatre autres d'un coup : il rebouclera sur `wait_for_message`, un tour par message — c'est-à-dire qu'il produira **exactement le comportement N-tours que j'ai cru mesurer**. Dans le régime connector, où chaque tour est un appel `/v1/messages` facturé, c'est le seul endroit où la menace de cette fiche a une conséquence chiffrable.
+
+Deux champs suffisent : `queued_remaining` sur le retour de succès, et un indice d'enregistrement sur le `{ timeout: true }`. **Non couvert par #236**, qui demande une persistance SQLite, `clean:false` et une consommation à ack avec `batch_id` — un design bien plus lourd.
+
+#### D. La menace est réelle, et la surface est bien compatible — mais pas pour la raison que dit §4
+
+Vérifié : **aucun `registerResource` ni `registerPrompt`** dans `src/` ni `cli/` (les seules occurrences du dépôt sont dans `research/` et `audit/`). Et `src/http/origin.ts:15` laisse bien passer une requête sans en-tête `Origin` (« client non-navigateur (curl, SDK MCP) »), donc le connector se connecterait.
+
+**Mais §4 appelle cette surface tools-only « la bonne nouvelle, rien à porter » — et c'est le point aveugle de la fiche.** L'issue **#325** (ouverte) établit qu'en mode *sessionless*, `ctx.sessionId` est `undefined` et **les 26 outils lèvent** : panne totale, pas dégradation. Le client MCP hébergé par Anthropic ouvre une session par requête, et le SDK v2 sert le trafic 2025 en `'stateless'` par défaut. Si le connector n'honore pas le round-trip `mcp-session-id`, la menace n'est pas « pas de push » mais **aucun outil appelable**. Ce risque domine tout le reste de la fiche et n'y figure ni en §4, ni en §5, ni dans mes propres critères.
+
+#### E. Le problème de documentation est réel mais quatre fois plus petit que je l'écrivais
+
+Adjudication ligne par ligne des quatre claims que je comptais citer :
+
+| Ligne | Section | Verdict honnête |
+|---|---|---|
+| `README.md:44` « agents see each other's actions in **real-time** » | pitch, `## The Problem` | **Surpromesse réelle** — mais **pas** connector-spécifique (voir ci-dessous) |
+| `README.md:162` « receive every coordination event in real-time — no polling » | `### MQTT layer` | **Hors sujet** : conditionné à « Agents *subscribe* once ». Un agent connector ne souscrit pas à MQTT ; la phrase décrit le contrat de la couche pour ses abonnés (`examples/python-mqtt`, `go-mqtt`, `node-mqtt`) |
+| `README.md:436` « All events arrive via SSE on `/api/events`. No polling. » | `## Dashboard` | **Hors sujet et vrai** : c'est le client navigateur du dashboard |
+| `README.md:532` « **Any MCP client** — connect to `http://localhost:3100/mcp` » | `## Integration patterns` | Pas un claim temps réel. Ce qui est faux, c'est `http://localhost` (le connector exige `https://` public) et surtout « The server speaks **MCP 2024-11-05** », périmé — famille **#333** |
+
+**Un claim sur quatre, pas quatre. K5 ne se déclenche donc pas à son seuil de ≥ 2.**
+
+Et `README.md:76` **contredit** ma thèse plutôt que de la nuancer. Verbatim : *« agents can either poll the daemon's MCP tools (**default**, works since v0.6) or accept push events through the Channels sidecar (v0.12+, **research preview**) »* — le push est un research preview derrière `--dangerously-load-development-channels` (`README.md:119`). Donc **`README.md:44` est déjà faux pour une session Claude Code stock**, pas seulement via le connector. La phrase de §5 de cette fiche — « vrais pour les clients MCP complets, faux via le MCP connector » — est **fausse dans ses deux moitiés**.
+
+De même, « le régime connector n'est documenté nulle part » est faux : `docs/clients.md:209` dit « Remote connector: needs a **publicly reachable URL**, and `static_headers` for the token — that field is a **beta you have to request** », et `:111-114` avertit que tunneler met « the whole 26-tool surface on the public internet, writes included ». Ce qui reste réellement absent est plus étroit : le chemin `/v1/messages` + `mcp_servers` en tant que tel, l'énoncé explicite « aucun push n'atteint un agent connector », et la **non-éligibilité ZDR**.
+
+Note enfin que `docs/operating-modes.md:3` est **explicitement scopé à Claude Code** (« your **Claude Code session** can consume coordination state in one of two ways ») : il n'est pas faux, il est silencieux. Et son mode « Polling » désigne `coordinator_status` / `list_threads`, **jamais `wait_for_message`**.
+
+#### F. Adjudication des six critères pré-enregistrés
+
+| # | Seuil | Mesure | Verdict |
+|---|---|---|---|
+| **K1** | 0 agent Messages API / connector attesté | **0** issue mentionne le connector ou `/v1/messages`. *Réserve honnête :* #236 atteste un consommateur programmatique **non-Claude-Code** réel (org Mekova, 2026-07-23, workers k8s pollant les outils MCP toutes les 30 s) — donc « audience nulle » vaut pour le **connector**, pas pour le chemin polling | **SE DÉCLENCHE** (pour le connector) |
+| **K2** | ≥ 50 % de la logique de `cli/channel.ts` à réécrire | `buildChannelNotification` fait **78 lignes sur 570** (14 %) | **NE SE DÉCLENCHE PAS à son seuil.** Ce qui serait dupliqué est un **second runtime de client MCP**, pas une fonction de traduction — mon critère mesurait la mauvaise chose |
+| **K3** | comportement ≠ contrat annoncé | les 4 observations **égalent** le contrat, 3 verbatim au `README.md:295-313`, la 4ᵉ délibérée et testée | **NE SE DÉCLENCHE PAS** |
+| **K4** | localhost par défaut **et** HTTPS public exigé | `cli/init.ts:140` par défaut sur `http://localhost:3100` ; le connector exige `https://` public. *Mais* `cli/init.ts:637` propose `https://coord.acme.example` et `docs/clients.md:50` documente `--url https://…` | **SE DÉCLENCHE au sens littéral** — « contredit le produit » est trop fort : localhost n'est qu'un **défaut**, pas une contrainte |
+| **K5** | ≥ 2 claims faux, verbatim | **1** sur 4 (`README.md:44`), et il est faux pour le **mode par défaut**, pas seulement pour le connector | **NE SE DÉCLENCHE PAS à son seuil** |
+| **K6** | header déjà remplacé une fois | `mcp-client-2025-04-04` déprécié, `mcp-client-2025-11-20` courant | **SE DÉCLENCHE** |
+
+**Deux critères se déclenchent proprement (K1, K6), un au sens littéral avec une réserve (K4), trois ne se déclenchent pas (K2, K3, K5).** Trois de mes six seuils étaient mal posés : K2 mesurait une fonction là où le coût est un runtime, K3 et K5 accusaient le dépôt d'un silence qu'il ne garde pas.
+
+#### G. Dérive des références de la fiche
+
+§0 affirme « **toutes les lignes citées sont exactes** ». Au HEAD, non :
+
+| Fiche | Réel |
+|---|---|
+| `src/tools/mqtt-tools.ts` l. 22 / 53 / 80 / 96 | **24** / **55** / **85** / **109** |
+| `src/server-setup.ts` l. 237-247 (les 6 `register*Tools`) | **252-257** (237-247 est le bloc `instructions` de #271) |
+| `README.md` l. 415 / 511 | **436** / **532** (415 = `## Token Observability`) |
+| `grep -c "server.tool(" src/tools/*.ts` → 26 | **0** partout — le code utilise `registerTool` depuis la migration SDK v2 (#286). Le total de 26 est juste, la **commande** citée ne l'est pas |
+
+`src/http/origin.ts:15` est la seule référence exacte.
 
 ### 6.5 Contre-arguments
 
@@ -190,11 +322,11 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 
 | | |
 |---|---|
-| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ⬜ refuser |
-| **Date** | |
-| **Justification** | |
-| **Issue / PR** | |
-| **Jalon visé** | |
+| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ✅ **refuser** |
+| **Date** | 2026-08-17 |
+| **Justification** | Fiche de **menace** : le verdict porte sur la **réponse**, pas sur l'adoption. ⭑ **Refusé — le chemin de première classe** (tool runner client-side + injecteur d'événements). K1 : **zéro** issue mentionne le connector ou `/v1/messages`, et le seul consommateur programmatique attesté (#236, org Mekova, workers k8s toutes les 30 s) **polle déjà très bien** les outils MCP sans tool runner. K6 : la beta a déjà changé de header une fois. ⭑ **La frontière factuelle, qui est le livrable de cette fiche.** Le connector se connecterait sans changement — surface **100 % tools-only** vérifiée (aucun `registerResource`/`registerPrompt` dans `src/` ni `cli/`) et `src/http/origin.ts:15` laisse passer une requête sans `Origin`. Et le chemin de réception existe déjà, en **deux appels quelle que soit la taille du lot** : `wait_for_message` (qui `shift()` un message) puis `get_queued_messages` (qui draine le reste) — mesuré. ⭑ **Le point aveugle de la fiche domine tout le reste** : §4 appelle la surface tools-only « la bonne nouvelle, rien à porter », mais **#325** établit qu'en mode *sessionless* `ctx.sessionId` est `undefined` et **les 26 outils lèvent**. Si le connector n'honore pas le round-trip `mcp-session-id`, la menace n'est pas « pas de push » mais **aucun outil appelable**. Cela n'apparaît ni en §4, ni en §5. ⭑ **Corrections de méthode — trois de mes six seuils étaient mal posés.** **K3 ne se déclenche pas** : mes quatre « découvertes » (premier tour vide, file plafonnée drop-oldest, drain destructif, backlog détruit à l'offline) sont **trois puces verbatim du `README.md:295-313`** — *« MQTT here is best-effort push, not the record of truth »* — plus un comportement délibéré et testé (`performance-05`). **J'ai mesuré la liste de mises en garde du projet et je l'ai prise pour une découverte.** **Un de mes faits était simplement faux** : `wait_for_message` ne coûte pas N tours pour N messages, mais 2 appels. **K5 ne se déclenche pas** : **un** claim faux sur quatre (`README.md:44`), pas deux ; et il est faux pour le **mode par défaut** — le push est un *research preview* derrière un flag (`README.md:76`, `:119`) — donc la phrase de §5 « vrais pour les clients MCP complets, faux via le connector » est fausse dans ses **deux** moitiés. « Documenté nulle part » est faux aussi : `docs/clients.md:209` et `:111-114` documentent l'URL publique, le `static_headers` en beta sur demande, et le risque des 26 outils exposés. **K2 ne se déclenche pas à son seuil** (78 lignes sur 570, soit 14 %) : mon critère mesurait une fonction de traduction là où le coût réel est un second runtime de client MCP. **K4 se déclenche au sens littéral** mais « contredit le produit » est trop fort — localhost n'est qu'un défaut (`cli/init.ts:637` propose déjà une URL publique). |
+| **Issue / PR** | **#357** — `wait_for_message` ne renvoie pas la profondeur de file, donc un agent facturé au tour rebouclera un tour par message au lieu d'appeler `get_queued_messages` une fois. Non couvert par #236. Reste non traité, à ne pas oublier : le régime `/v1/messages` + `mcp_servers`, l'énoncé explicite « aucun push n'atteint un agent connector », la **non-éligibilité ZDR**, et `README.md:44` qui surpromet du temps réel que le mode par défaut ne rend pas (famille #333 pour le `MCP 2024-11-05` périmé de `README.md:532`). |
+| **Jalon visé** | Aucun pour le tool runner. #357 est petit et sans urgence. **Le vrai préalable est #325** : tant qu'on ne sait pas si le connector honore `mcp-session-id`, la compatibilité tools-only que §4 présente comme acquise n'est pas établie. Corriger les références dérivées de §0/§5 de cette fiche au passage. |
 
 ## 8. Journal
 
@@ -202,3 +334,4 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 |---|---|
 | 2026-08-14 | Fiche créée par la veille plateforme. |
 | 2026-08-14 | Vérification des faits : doc et lignes de code exactes ; date du header corrigée ; §2 complété. |
+| 2026-08-17 | **Challenge — verdict `refuser` le chemin de première classe ; la frontière factuelle est le livrable.** K1 : **zéro** issue mentionne le connector ou `/v1/messages`, et le seul consommateur programmatique attesté (#236, org Mekova, workers k8s toutes les 30 s) polle déjà les outils MCP sans tool runner. Frontière établie : le connector se connecterait sans changement — surface **100 % tools-only** (aucun `registerResource`/`registerPrompt`) et `src/http/origin.ts:15` passe sans `Origin` — et la réception existe en **deux appels quelle que soit la taille du lot** : `wait_for_message` (`shift()`) puis `get_queued_messages` (drain), mesuré. **Point aveugle de la fiche, qui domine tout le reste** : §4 appelle la surface tools-only « la bonne nouvelle, rien à porter », mais **#325** établit qu'en mode *sessionless* `ctx.sessionId` est `undefined` et **les 26 outils lèvent** — si le connector n'honore pas `mcp-session-id`, la menace n'est pas « pas de push » mais « aucun outil appelable ». **Trois de mes six seuils étaient mal posés, et je les retire.** **K3 ne se déclenche pas** : mes quatre « découvertes » sont **trois puces verbatim du `README.md:295-313`** (« MQTT here is best-effort push, not the record of truth ») plus un comportement délibéré et testé (`performance-05`, `mqtt-bridge-bounded.test.ts:129-140`) — j'ai mesuré la liste de mises en garde du projet et je l'ai prise pour une découverte. **Et un de mes faits était faux** : `wait_for_message` ne coûte pas N tours pour N messages mais **2 appels**. **K5 ne se déclenche pas** : **un** claim faux sur quatre (`README.md:44`), et il l'est pour le **mode par défaut** — le push est un research preview derrière un flag (`:76`, `:119`) — donc la phrase de §5 « vrais pour les clients MCP complets, faux via le connector » est fausse dans ses deux moitiés ; et `docs/clients.md:209` / `:111-114` documentent déjà l'URL publique et le `static_headers` en beta. **K2 ne se déclenche pas à son seuil** (78 lignes sur 570 = 14 %) : mon critère mesurait une fonction là où le coût est un second runtime. **K4** se déclenche littéralement mais « contredit le produit » est trop fort (localhost n'est qu'un défaut, `cli/init.ts:637`). **Dérive des références corrigée** : `mqtt-tools.ts` 22/53/80/96 → **24/55/85/109** ; `server-setup.ts` 237-247 → **252-257** ; `README.md` 415/511 → **436/532** ; et `grep -c "server.tool("` rend **0** partout depuis la migration SDK v2 (#286) — le total de 26 est juste, la commande citée par §0 ne l'est pas. Livrable : **#357**. Restent non traités : le régime `/v1/messages` + `mcp_servers`, l'énoncé « aucun push n'atteint un agent connector », la non-éligibilité **ZDR**, et le `MCP 2024-11-05` périmé de `README.md:532` (famille #333). |
