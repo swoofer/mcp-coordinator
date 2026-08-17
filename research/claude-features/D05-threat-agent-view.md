@@ -13,7 +13,7 @@
 | **Vérification** | CONFIRMED |
 | **Vérifiée le** | 2026-08-14 |
 | **Testabilité** | ✅ testable — Claude Code 2.1.219 installé, daemon présent, tout est local |
-| **Statut du challenge** | ⬜ à faire |
+| **Statut du challenge** | ✅ **tranché** (2026-08-16) — délimitation + amputation ; mon décompte était malhonnête |
 
 ---
 
@@ -149,6 +149,36 @@ Le dashboard devient un doublon dégradé d'un écran natif déjà installé che
 
 ### 6.2 Hypothèse
 
+*Pré-enregistrée le 2026-08-16, **avant** toute exécution.*
+
+**Ce que `C13` a déjà mesuré et que je réutilise :** le schéma de `claude agents --json`
+(`cwd, id, kind, name, pid, sessionId, startedAt, state`), l'existence de
+`~/.claude/sessions/<pid>.json` avec un `procStart` que la CLI supprime, et surtout la présence de
+**fantômes de 77 jours** dans cette source — un job terminé le 4 juillet toujours rendu
+`state: "blocked"`, sans TTL ni balayage.
+
+**Ce que je crois qu'il va se passer.**
+
+1. Agent view couvre la **vue process** (qui tourne, dans quel état) et **rien** de la vue repo
+   (fichiers chauds, conflits, threads). Le recouvrement est donc partiel par construction.
+2. Une session `--bg` n'apparaîtra **pas** dans `coordinator_status` : ce sont deux registres sans
+   clé de jointure, comme `C13` l'a établi.
+3. `CLAUDE_CODE_DISABLE_AGENT_VIEW` fonctionnera — `C12` a montré que ce genre d'interrupteur
+   retire réellement des outils.
+
+**Verdict pressenti :** réponse = **recentrage** — abandonner la vue process, garder la vue repo.
+
+**Critères de mort.**
+
+| # | Si… | …alors |
+|---|---|---|
+| **K1** | agent view affiche des **fichiers en cours d'édition** ou des conflits | le recouvrement n'est plus partiel mais frontal — **pire cas**, à écrire sans l'adoucir. |
+| **K2** | une session `--bg` apparaît dans `coordinator_status` | ma prémisse de disjonction est fausse. |
+| **K3** | agent view n'est **pas** désactivable | l'utilisateur qui préfère notre vue la subit : argument à faire valoir. |
+| **K4** | ingérer `claude agents --json` coûte plus de **6 fichiers** | la branche « alimenter la vue process » est disqualifiée par le coût. |
+| **K5** | la source ingérée est **fiable** (pas de fantômes) | mon argument de `C13` tombe et l'ingestion redevient défendable. |
+| **K6** | aucun utilisateur n'a demandé une vue process | filtre YAGNI — et mon usage personnel ne compte pas (leçon `C12`). |
+
 <Ce qu'on pense avant de tester.>
 
 ### 6.3 Protocole de vérification
@@ -163,7 +193,126 @@ Le dashboard devient un doublon dégradé d'un écran natif déjà installé che
 
 ### 6.4 Résultat observé
 
-<Ce qu'on a réellement mesuré/vu. Coller les sorties, pas les paraphraser.>
+*Challenge du 2026-08-16. Claude Code **2.1.233**, Windows.*
+
+#### A. Le schéma d'agent view, et l'interrupteur
+
+```
+$ claude agents --json --all
+entrees: 4
+cles: cwd, id, kind, name, pid, sessionId, startedAt, state
+etats: ["blocked","failed",null]
+CHAMPS FICHIERS/CONFLITS ? AUCUN
+```
+
+```
+$ CLAUDE_CODE_DISABLE_AGENT_VIEW=1 claude agents --json
+'claude agents --json' is disabled by CLAUDE_CODE_DISABLE_AGENT_VIEW.
+```
+
+**K3 ne se déclenche pas** : l'interrupteur existe et répond proprement.
+
+#### B. 🔴 K1 se déclenche **partiellement** — la ligne de partage de §4 est fausse
+
+`--json` n'expose aucun champ fichier. **Mais la TUI affiche davantage**, et une partie est de la vue
+dépôt : des **lignes filles de PR** avec `diffStat: {additions, deletions}` rendues `+120 −45` et un
+lien vers la liste des fichiers, des **badges de checks CI**, un **compteur de tokens par session**,
+un `detail` en langage naturel, et un `fan[]` de sous-tâches — 31 sur l'un des jobs observés.
+
+> **La frontière défendable n'est donc pas « fichiers vs process ».** C'est **« travail publié sur
+> GitHub » contre « travail en cours non commité »**. Agent view voit le premier ; il est aveugle au
+> second — c'est-à-dire exactement ce que mesurent `file-tracker` et `conflict-detector`.
+>
+> Écrite comme dans §4, la frontière serait démentie par la première capture d'écran.
+
+Nuance qui limite la menace, et qui vient de ma propre mesure A : les **deux entrées interactives ont
+un `state` vide**. Toute la richesse d'agent view (tokens, `detail`, `fan[]`, PR) est réservée aux
+jobs `--bg`. Pour le workload que vise mcp-coordinator — des sessions interactives dans plusieurs
+terminaux — **agent view est une liste de processus sans état**.
+
+#### C. 🔴 Mon décompte « un bloc sur dix » était malhonnête
+
+Sur 28 `id=`, il n'y a que **9 panneaux porteurs de données**. Et sur ma plateforme, seuls **6**
+peuvent afficher quelque chose :
+
+| Panneau | Producteur | État |
+|---|---|---|
+| `token-total` / `token-agents` | **aucun** | mort par construction |
+| `run-config` | **aucun** | mort par construction |
+| `quota-widget` | **macOS uniquement** | indisponible ici |
+| `agents-list`, `events`/`timeline`, `hot-files`, `threads-list`, `metrics`, `conflict-signals` | oui | **0 ligne** |
+
+`agents-list` est donc **1 sur 6**, pas 1 sur 10.
+
+Vérifié : `src/quota/credential-reader.ts` lève `NotImplementedError` hors macOS — donc le quota est
+mort sur Windows **et sur tout déploiement Linux**, c'est-à-dire la cible Phase 2.
+
+#### D. 🔴 `agents-list` **contient déjà de la vue dépôt** — le supprimer serait une erreur
+
+```js
+dashboard.js:640  const fileInfo = a.current_file ? `<div class="agent-activity">📄 ${a.current_file}</div>` : '';
+dashboard.js:265-266  … .current_file = p.current_file;  … .current_thread = p.current_thread;
+```
+
+Notre carte d'agent affiche **le fichier courant et le thread courant**. C'est le **seul endroit du
+dashboard qui relie un agent à un fichier et à un thread**. Ma proposition d'« abandonner la vue
+process » aurait supprimé précisément ça.
+
+#### E. 🔴 K5 se retourne contre nous — leur source balaie, la nôtre non
+
+Mon argument était : ne pas ingérer, la source charrie des fantômes de 78 jours. **Il ne tient pas.**
+
+- `~/.claude/sessions/` contient **5** enregistrements ; **3 PID sont morts**, et `--json` n'en
+  rapporte que **2**. **La CLI balaie les sessions mortes.**
+- Le « fantôme de 78 jours » porte `needs: "Que veux-tu faire sur MonPikto ?"` : ce n'est pas un état
+  non balayé, c'est un job **garé en attente d'une réponse humaine**, horodaté.
+- Pendant ce temps, notre registre a une issue **externe** — **#233**, `fosketer` : *« agents never
+  expire … still returned with status: online »*. Et le correctif ne couvre que `listOnline()`, **pas**
+  le flux SSE qui alimente le dashboard.
+
+**La seule preuve de fantômes observés en production, dans ce dossier, concerne notre source.**
+L'argument de fiabilité doit être **retiré**. Le motif valable pour refuser l'ingestion est la
+**portabilité** — et il est déjà démontré chez nous par le quota macOS-only.
+
+#### F. 🔴 Le résultat le plus dur : la base est vide après 26 h d'uptime
+
+```
+orgs            1
+agents          0
+events          0
+threads         0
+file_activity   0
+working_files   0
+layer_firings   0
+```
+
+Le serveur tourne depuis plus de 26 heures et n'a produit **aucun** événement. Et ce n'est pas
+l'effet d'un reset : `handleReset` ne supprime **ni** `layer_firings` **ni** `working_files` — ces
+tables n'ont **jamais** été écrites. Le panneau `conflict-signals` n'a donc jamais affiché autre
+chose que des tirets.
+
+**La vue dépôt que je proposais de défendre pèse 30 lignes sur 1 009, et n'a jamais rendu une seule
+donnée.** Le code sans producteur ou mort par plateforme en pèse 244 — **six fois plus** que la vue
+process que je proposais d'abandonner.
+
+#### G. K6 se déclenche brutalement
+
+79 issues, **76 du mainteneur**. Zéro commentaire d'un tiers. Zéro discussion. **Aucune capture
+d'écran dans tout le dépôt**, alors que `docs/index.html` dit « dashboard » plus de cent fois. Le
+dashboard représente **7 commits sur 564**, et sa dernière évolution fonctionnelle date du 19 mai.
+
+#### H. L'hypothèse inverse tient — et elle envoie une facture
+
+Agent view **valide** notre thèse : Anthropic a construit la vue process mono-machine, ce qui prouve
+que le besoin « voir mes agents » est réel. Et il laisse intact tout ce qui est difficile — rien
+d'inter-session partagé, rien d'inter-humain, rien d'inter-vendeur, aucune notion de fichier en vol,
+de conflit, de consultation, ni d'organisation. **`FleetView` est un gestionnaire de tâches
+personnel ; ce n'est pas un coordinateur.**
+
+Mais cette validation s'accompagne d'un constat : **notre partie difficile n'a jamais été exercée**.
+Base vide après 26 h, `layer_firings` jamais écrit une seule fois, aucun utilisateur externe n'ayant
+touché l'interface web en trois mois — pendant que le seul contributeur externe de l'histoire du
+dépôt attaquait la surface d'outils MCP, jamais le web.
 
 ### 6.5 Contre-arguments
 
@@ -180,11 +329,62 @@ Le dashboard devient un doublon dégradé d'un écran natif déjà installé che
 
 | | |
 |---|---|
-| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ⬜ refuser |
-| **Date** | |
-| **Justification** | |
-| **Issue / PR** | |
-| **Jalon visé** | |
+| **Verdict** | **Réponse : délimitation + amputation** — écrire la frontière, garder `agents-list`, supprimer le code sans producteur. ⬜ contre-mesure · ✅ **délimitation** · ⬜ recouvrement assumé |
+| **Date** | 2026-08-16 |
+| **Justification** | **Mon verdict projeté cédait le mauvais panneau pour le mauvais motif.** `agents-list` porte déjà `current_file` et `current_thread` — c'est le **seul** endroit du dashboard qui relie un agent à un fichier et à un thread. Et la « vue dépôt » que je voulais défendre pèse **30 lignes sur 1 009** et **n'a jamais rendu une seule donnée** : base vide après 26 h d'uptime, `layer_firings` jamais écrit. Le motif de refus de l'ingestion n'est pas la fiabilité (**K5 se retourne** : leur source balaie les sessions mortes, la nôtre non — issue externe #233) mais la **portabilité**, déjà démontrée chez nous par un quota macOS-only. |
+| **Issue / PR** | [#341](https://github.com/swoofer/mcp-coordinator/issues/341) — suppression du code de dashboard sans producteur |
+| **Jalon visé** | prochaine passe de nettoyage |
+
+### La frontière factuelle — corrigée
+
+**Ce que le natif fait** : vue process **mono-machine, mono-vendeur**, riche **uniquement pour les
+jobs `--bg`** — état groupé, statut en langage naturel, compteur de tokens, fan-out de sous-tâches,
+et **diffstat de PR avec lien vers les fichiers**.
+
+**Ce que le natif ne fait pas** : il est aveugle à **l'édition non commitée en vol**, au conflit, au
+thread de consultation, au multi-poste, au multi-humain, au multi-vendeur, à l'organisation. Et pour
+des **sessions interactives** — le workload que nous visons — c'est une liste de processus **sans
+état** (`state` vide, mesuré).
+
+> **La ligne de partage n'est pas « fichiers vs process ».** C'est **« travail publié sur GitHub »
+> contre **« travail en cours non commité »**. Écrite autrement, elle serait démentie par la première
+> capture d'écran.
+
+### Ce qui est décidé
+
+1. **Garder `agents-list`.** Il porte déjà la jonction agent ↔ fichier ↔ thread. Mon « recentrage »
+   l'aurait supprimé par erreur.
+2. **Refuser l'ingestion de `claude agents --json`** — pour **portabilité** (source locale, mono-vendeur,
+   schéma non contractuel en research preview), **pas** pour fiabilité.
+3. **Amputer le code sans producteur** : `token-total` / `token-agents` / `run-config`, soit ~164
+   lignes qui ne peuvent structurellement rien afficher — `C11` avait déjà mesuré que
+   `POST /api/token-usage` n'a aucun appelant. C'est **six fois** le poids de la vue process que je
+   proposais d'abandonner.
+4. **Corriger §5**, qui présente `token-total` comme un « différenciant à mettre en avant » : ce
+   panneau ne peut rien afficher.
+
+### 🔴 Ce que ce challenge établit contre le projet
+
+La base est vide après **26 heures** d'uptime, et `layer_firings` n'a **jamais** été écrit — ce n'est
+pas l'effet d'un reset, `handleReset` n'y touche pas. Aucun utilisateur externe n'a touché
+l'interface web en trois mois ; il n'existe **aucune capture d'écran** dans le dépôt.
+
+Agent view **valide** notre thèse — le besoin de voir ses agents est réel, Anthropic l'a construit —
+tout en laissant intacte la partie difficile. Mais la même mesure montre que **cette partie difficile
+n'a jamais été exercée**. La menace n'est pas qu'agent view nous prenne un panneau : c'est qu'il rende
+visible que le dashboard affiche des données que personne n'a jamais produites.
+
+### Note de méthode
+
+**Mon décompte était malhonnête dans les deux sens.** J'annonçais « un bloc sur dix » : il y a
+9 panneaux porteurs de données, dont 6 seulement peuvent afficher quelque chose sur cette plateforme.
+`agents-list` est **1 sur 6**. J'avais gonflé le dénominateur avec des boutons et une poignée de
+redimensionnement, et je n'avais pas vérifié lesquels étaient alimentés.
+
+**Et mon argument K5 se retourne.** Je refusais d'ingérer leur source pour cause de fantômes ; la
+mesure montre que **leur** CLI balaie les sessions mortes et que **la nôtre** ne le fait pas — avec
+une issue externe à l'appui. Reprocher à un tiers un défaut qu'on porte soi-même, en pire, est le
+mode d'échec le plus coûteux d'une fiche « menace ».
 
 ## 8. Journal
 
@@ -192,3 +392,4 @@ Le dashboard devient un doublon dégradé d'un écran natif déjà installé che
 |---|---|
 | 2026-08-14 | Fiche créée par la veille plateforme. |
 | 2026-08-14 | Vérification des faits : schéma `--json` documenté, groupes d'état corrigés, §5 revérifié, fiche testable localement. |
+| 2026-08-16 | **Challenge — réponse : délimitation + amputation.** Mesuré : `claude agents --json --all` n'expose **aucun champ fichier**, mais la **TUI** affiche un **diffstat de PR** (`+120 −45`), un compteur de tokens, un `detail` en langage naturel et un `fan[]` de sous-tâches — donc **K1 se déclenche partiellement** et la ligne de partage de §4 est fausse : ce n'est pas « fichiers vs process » mais **« travail publié sur GitHub » contre « travail en cours non commité »**. `CLAUDE_CODE_DISABLE_AGENT_VIEW` fonctionne proprement (K3 non déclenché). **Mon décompte « un bloc sur dix » était malhonnête** : 9 panneaux porteurs de données, dont **6** seulement peuvent afficher quelque chose ici — `agents-list` est 1 sur 6. **Et il ne fallait surtout pas le supprimer** : il porte `current_file` et `current_thread`, seule jonction agent ↔ fichier ↔ thread du dashboard. **K5 se retourne contre nous** : leur CLI balaie les sessions mortes (5 enregistrements, 3 PID morts, 2 rapportés), la nôtre non — issue externe **#233**. Le motif de refus de l'ingestion est donc la **portabilité**, pas la fiabilité. **Résultat le plus dur** : base vide après **26 h d'uptime** (`orgs 1`, tout le reste à 0), `layer_firings` jamais écrit — et `handleReset` n'y touche pas, donc ce n'est pas un reset. La vue dépôt défendue pèse 30 lignes sur 1 009 et n'a jamais rendu une donnée, contre 244 lignes sans producteur ou mortes par plateforme → issue **#341**. K6 déclenché : 76 issues sur 79 du mainteneur, aucune capture d'écran dans le dépôt. Hypothèse inverse retenue : agent view **valide** la thèse tout en laissant la partie difficile — mais la même mesure montre que cette partie n'a jamais été exercée. |
