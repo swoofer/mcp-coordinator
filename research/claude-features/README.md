@@ -85,8 +85,8 @@ Le détail par fiche est dans sa **section 0**.
 
 | # | Dossier | Tier | Statut | Nature | Effort | Fiche | Testable | Challenge |
 |---|---|---|---|---|---|---|---|---|
-| `D01` | [MENACE : cross-session messaging natif (SendMessage / ListAgents)](D01-threat-cross-session-messaging.md) | 🔴 T1 | GA | menace | M | 🟡 | ⚠️ | ⬜ |
-| `D02` | [MENACE : Agent Teams (task list partagée, mailbox, file locking)](D02-threat-agent-teams.md) | 🔴 T1 | experimental | menace | L | 🟡 | ⚠️ | ⬜ |
+| `D01` | [MENACE : cross-session messaging natif (SendMessage / ListAgents)](D01-threat-cross-session-messaging.md) | 🔴 T1 | GA | menace | M | 🟡 | ⚠️ | ✅ |
+| `D02` | [MENACE : Agent Teams (task list partagée, mailbox, file locking)](D02-threat-agent-teams.md) | 🔴 T1 | experimental | menace | L | 🟡 | ⚠️ | ✅ |
 | `D03` | [MENACE : worktrees natifs, le conflit d'écriture disparaît-il ?](D03-threat-native-worktrees.md) | 🔴 T1 | GA | menace | M | 🟡 | ✅ | ✅ |
 | `D04` | [Dynamic workflows, `ultracode` et `/batch` : l'orchestration parallèle native](D04-threat-dynamic-workflows.md) | 🔴 T1 | GA | menace | M | ✅ | ✅ | ⬜ |
 | `D05` | [MENACE : agent view, le dashboard natif dans le terminal](D05-threat-agent-view.md) | 🟠 T2 | research-preview | menace | M | 🟡 | ✅ | ⬜ |

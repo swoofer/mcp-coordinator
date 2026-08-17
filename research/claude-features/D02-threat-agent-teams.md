@@ -13,7 +13,7 @@
 | **Vérification** | CONFIRMED |
 | **Vérifiée le** | 2026-08-14 |
 | **Testabilité** | ⚠️ partielle — split-pane impossible sous Windows Terminal, session interactive obligatoire |
-| **Statut du challenge** | ⬜ à faire |
+| **Statut du challenge** | ✅ **tranché** (2026-08-16) — frontière assumée ; Agent Teams n'a AUCUN verrou de fichier |
 
 ---
 
@@ -195,7 +195,33 @@ Aucune trace de hook Claude Code dans le code : un grep sur `src/` et `cli/` ne 
 
 ### 6.2 Hypothèse
 
-<Ce qu'on pense avant de tester.>
+*Pré-enregistrée le 2026-08-16, **avant** toute exécution. Challenge groupé avec `D01`, verdict par fiche.*
+
+**Ce que `C02` a déjà établi et que je réutilise :** `TaskCreated` et `TaskCompleted` tirent **sans**
+le flag Agent Teams — mesuré. Le gating de la task list passe par l'activation des outils de tâche,
+pas par le flag d'équipe. Les hooks d'équipe existent donc partiellement en dehors d'Agent Teams.
+
+**Ce que je crois qu'il va se passer.**
+
+1. La task list native est **par session ou par équipe locale**, sans notion d'org ni de multi-machine.
+2. Le « file locking » d'Agent Teams sera **coopératif** — un verrou que les membres respectent — et
+   non contraignant, donc de même nature que notre `working_files` : consultatif.
+3. Entretenir deux task lists est le vrai risque, et il est **de produit**, pas de technique.
+
+**Verdict pressenti :** réponse = **frontière assumée** — garder le claim maison, et documenter
+précisément ce que le natif ne couvre pas, plutôt que de brancher des hooks sur une surface
+`experimental`.
+
+**Critères de mort.**
+
+| # | Si… | …alors |
+|---|---|---|
+| **K1** | Agent Teams n'est pas observable ici | pas de frontière mesurée → le dire, et s'en tenir à la doc. |
+| **K2** | le verrou natif est **contraignant** (il empêche réellement l'écriture) | notre `working_files` consultatif devient inférieur : à écrire sans détour, c'est le pire cas. |
+| **K3** | la task list native traverse les machines ou porte une notion d'org | notre différenciation principale tombe. |
+| **K4** | brancher des hooks sur la task list coûte plus de **10 fichiers** | la branche « couche anti-collision » est disqualifiée par le coût. |
+| **K5** | Agent Teams reste `experimental` derrière un flag | on ne branche rien dessus : la surface peut disparaître sans préavis — trois fiches de ce corpus l'ont déjà montré (`tengu_harbor`, `tengu_harbor_permissions`, `tengu_amber_sentinel`). |
+| **K6** | aucun utilisateur n'a demandé d'intégration Agent Teams | filtre YAGNI. |
 
 ### 6.3 Protocole de vérification
 
@@ -212,6 +238,58 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 - [ ] Vérifier si `~/.claude/teams/{team-name}/config.json` est bien supprimé en fin de session (la doc l'affirme) : si oui, toute approche par lecture de fichiers d'état est définitivement écartée et seul le chemin hook subsiste.
 
 ### 6.4 Résultat observé
+
+*Challenge du 2026-08-16, groupé avec `D01`. Claude Code **2.1.233**.*
+
+#### A. 🔴 Le « file locking » d'Agent Teams **n'existe pas** — mon hypothèse était fausse par catégorie
+
+§6.2 pariait que le verrou natif serait « coopératif, de même nature que notre `working_files` ».
+**Ce n'est pas le même objet : il n'y a aucun verrou de fichier.**
+
+Recherche exhaustive du client livré :
+
+```
+ownedFiles      0
+fileOwnership   0
+claimFile       0
+```
+
+**Aucune notion de propriété de fichier source.** Ce qui existe est un lockfile de la famille
+`proper-lockfile` posé sur `~/.claude/tasks/<team>/<id>.json`, qui sérialise la mutation du champ
+`owner` **du registre de tâches** — et rien d'autre. Deux teammates qui écrivent le même fichier
+source s'écrasent exactement comme aujourd'hui.
+
+> **K2 ne se déclenche pas, et l'inverse est vrai : `working_files` n'a pas de concurrent.** La phrase
+> à écrire dans la fiche est « le file locking d'Agent Teams verrouille le **registre de tâches**, pas
+> les fichiers de travail ; Anthropic n'a aucune notion de propriété de fichier ».
+
+#### B. K5 se déclenche : opt-in local **plus** interrupteur distant
+
+Le gate réel, lu dans le client :
+
+```js
+if (!CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS && !process.argv.includes("--agent-teams")) return false;
+if (!rt("tengu_amber_flint", true)) return false;
+return true;
+```
+
+Deux choses que la fiche ignore : un second chemin d'activation **`--agent-teams`**, non documenté par
+elle ; et un **kill switch distant** `tengu_amber_flint`. Sa polarité est l'inverse de celle de `D01` —
+défaut `true`, donc **Anthropic peut éteindre la feature sans livrer de release**.
+
+C'est le quatrième flag distant rencontré dans ce corpus, après `tengu_harbor`,
+`tengu_harbor_permissions` et `tengu_amber_sentinel`.
+
+#### C. Cohérent avec l'acquis de `C02`
+
+`C02` avait mesuré que `TaskCreated` et `TaskCompleted` tirent **sans** le flag Agent Teams. Le gate
+ci-dessus l'explique : il ne conditionne que le spawn de teammates et le mode équipe — **les outils de
+tâche sont généraux**. Les deux mesures concordent.
+
+#### D. K6 se déclenche
+
+Recherche des issues sur `teams`, `orchestration`, `coordination` : **aucune demande**. Les deux
+résultats sur `teams` sont sans rapport (Discord, Postgres).
 
 <Ce qu'on a réellement mesuré/vu. Coller les sorties, pas les paraphraser.>
 
@@ -232,11 +310,41 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 
 | | |
 |---|---|
-| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ⬜ refuser |
-| **Date** | |
-| **Justification** | |
-| **Issue / PR** | |
-| **Jalon visé** | |
+| **Verdict** | **Réponse : frontière assumée** — garder le claim maison, ne brancher aucun hook. ⬜ contre-mesure technique · ⬜ recadrage · ✅ **recouvrement inexistant, frontière confirmée** |
+| **Date** | 2026-08-16 |
+| **Justification** | **Le recouvrement que la fiche redoutait n'existe pas.** Agent Teams n'a **aucune** notion de propriété de fichier (`ownedFiles`, `fileOwnership`, `claimFile` → 0 occurrence) : son lockfile ne protège que le JSON du registre de tâches. Notre `working_files` n'a donc **pas de concurrent**. S'y ajoutent K5 (opt-in local **et** kill switch distant `tengu_amber_flint`, défaut `true` — Anthropic peut éteindre sans release) et K6 (zéro demande). |
+| **Issue / PR** | aucune |
+| **Jalon visé** | aucun |
+
+### La frontière factuelle
+
+**Ce que le natif fait** : une task list partagée par équipe, avec un `owner` par tâche sérialisé par
+un lockfile, et une mailbox entre teammates.
+
+**Ce que le natif ne fait pas** : **il ne verrouille aucun fichier source.** Deux teammates qui
+écrivent le même fichier s'écrasent. Il n'a ni org, ni multi-machine, ni chaîne d'audit.
+
+**Ce qui reste défendable** : tout ce que la fiche craignait de perdre. Le claim maison
+(`/api/claim-task`, `assigned_to`) et surtout `working_files` **n'ont pas d'équivalent natif**.
+
+### Ce qui est refusé
+
+**La branche « couche anti-collision branchée en hooks sur la task list d'Agent Teams »** de §6.1.
+Elle brancherait notre mécanisme sur une surface `experimental`, doublement gatée, dont l'interrupteur
+distant est chez Anthropic — pour remplacer un verrou qui n'existe pas.
+
+### Ce qui est confirmé et devient décisif
+
+Le contre-argument de §6.5 sur la **redondance avec `C02`** : puisqu'il n'existe **aucun** verrou de
+fichier natif, un hook `PreToolUse` générique est la seule protection possible — équipe ou pas. C'est
+le bon chemin s'il en faut un, et il est indépendant d'Agent Teams.
+
+### Correction obligatoire
+
+**§6.2, mon hypothèse n°2 est fausse par catégorie** et doit être corrigée avant toute réutilisation :
+je pariais sur un verrou « de même nature que `working_files` ». Ce n'est pas le même objet — l'un
+verrouille un enregistrement de tâche, l'autre revendique un chemin de fichier. Comparer les deux
+était une erreur de catégorie, pas une erreur de degré.
 
 ## 8. Journal
 
@@ -244,3 +352,4 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 |---|---|
 | 2026-08-14 | Fiche créée par la veille plateforme. |
 | 2026-08-14 | Vérification des faits : flags `cli/init.ts` corrigés, payloads de hooks ajoutés, reste confirmé doc et repo. |
+| 2026-08-16 | **Challenge (groupé avec `D01`) — réponse : frontière assumée.** **Le recouvrement redouté n'existe pas** : Agent Teams n'a **aucune** notion de propriété de fichier (`ownedFiles` / `fileOwnership` / `claimFile` → 0 occurrence dans le client livré). Son lockfile ne sérialise que le champ `owner` du JSON de registre de tâches ; deux teammates qui écrivent le même fichier source s'écrasent. **`working_files` n'a donc pas de concurrent.** **Mon hypothèse §6.2-2 était fausse par catégorie** — je pariais sur un verrou « de même nature », ce n'est pas le même objet. K5 déclenché : opt-in local (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` **ou `--agent-teams`**, non documenté par la fiche) **plus** kill switch distant `tengu_amber_flint` (défaut `true`) — quatrième flag distant du corpus. K6 déclenché : zéro demande. Cohérent avec `C02` : le gate ne conditionne que le spawn de teammates, les outils de tâche sont généraux. Refusé : brancher des hooks sur la task list. Confirmé et devenu décisif : un `PreToolUse` générique est la seule protection possible, équipe ou pas. |

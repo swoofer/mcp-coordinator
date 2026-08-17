@@ -13,7 +13,7 @@
 | **Vérification** | CONFIRMED |
 | **Vérifiée le** | 2026-08-14 |
 | **Testabilité** | ⚠️ partielle — WSL 2 présent, Claude Code non installé ; feature flag distant |
-| **Statut du challenge** | ⬜ à faire |
+| **Statut du challenge** | ✅ **tranché** (2026-08-16) — recadrage documentaire ; K3 déclenché, la frontière « portée » est morte |
 
 ---
 
@@ -139,7 +139,38 @@ Il reste une opportunité d'intégration, mais plus étroite que ce que les fich
 
 ### 6.2 Hypothèse
 
-<Ce qu'on pense avant de tester.>
+*Pré-enregistrée le 2026-08-16, **avant** toute exécution. Challenge groupé avec `D02`, verdict par fiche.*
+
+**Ce que les challenges précédents ont déjà établi et que je réutilise :**
+
+- `C12` : `ListAgents` n'apparaît qu'avec `CLAUDE_CODE_HARBOR_KITE=1` — mesuré, 35 → 36 outils sur
+  Windows natif. **La porte s'ouvre donc, et je peux reproduire le natif pour de vrai** au lieu de
+  comparer sur catalogue.
+- `C13` : `SendMessage` est **un seul outil à deux espaces d'adressage** ; son `validateInput` rejette
+  les schémas `uds:` / `bridge:` quand la porte est fermée, avec le message
+  « Cross-session messaging is not available in this session. »
+
+**Ce que je crois qu'il va se passer.**
+
+1. Le natif est **par machine et par utilisateur** : sockets locales, aucune notion d'org, aucune
+   authentification d'expéditeur. La frontière factuelle sera donc une frontière de **portée et de
+   preuve**, pas de fonctionnalité.
+2. `CLAUDE_CODE_MESSAGING_SOCKET` existera et sera un chemin local.
+3. Le natif n'a **aucune trace persistante** : pas d'audit, pas d'historique interrogeable.
+
+**Verdict pressenti :** réponse = **recadrage documentaire**, pas contre-mesure technique. Ni
+absorption (le hook ajoute une dépendance à une surface derrière un flag distant), ni déni.
+
+**Critères de mort.**
+
+| # | Si… | …alors |
+|---|---|---|
+| **K1** | je n'arrive pas à ouvrir la porte et à observer le natif | pas de frontière factuelle → je le dis, et la fiche reste sur de la doc. |
+| **K2** | le natif porte une **identité d'expéditeur vérifiable** | notre argument « audit » s'effondre en grande partie : à écrire noir sur blanc. |
+| **K3** | le natif franchit la machine (socket réseau, pas locale) | la frontière de portée tombe, et c'est le pire cas pour le projet. |
+| **K4** | le natif persiste les messages de façon interrogeable | l'argument « historique + chaîne d'audit » tombe. |
+| **K5** | absorber le natif par hook coûte plus de **8 fichiers** | la branche « transport à absorber » est disqualifiée par le coût. |
+| **K6** | aucun utilisateur n'a demandé de coordination inter-sessions locale | filtre YAGNI sur la branche absorption. |
 
 ### 6.3 Protocole de vérification
 
@@ -156,6 +187,124 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 - [ ] Lancer une session avec `mcp-coordinator` monté et observer, sur un prompt du type « qui travaille sur quoi ? », si le modèle appelle `ListAgents` (built-in) ou `list_agents` (le nôtre).
 
 ### 6.4 Résultat observé
+
+*Challenge du 2026-08-16, groupé avec `D02`. Claude Code **2.1.233**, Windows 11 natif.*
+
+> **Frontière exécuté / lu.** **Exécuté :** l'ouverture de la porte, la découverte de pairs entre deux
+> sessions concurrentes, une tentative d'envoi. **Lu (client livré) :** le mécanisme de découverte,
+> le schéma de provenance, les transports. **Une limite de débit** a interrompu la première tentative
+> d'expérience ; elle a été reprise et menée à terme.
+
+#### A. 🔴 §1 est fausse sur Windows : la feature n'est pas absente, elle est derrière un flag
+
+§1 affirme « **pas de Windows natif** (macOS et Linux, WSL 2 inclus) ». Mesuré sur Windows 11 natif,
+Claude Code 2.1.233 :
+
+```
+$ CLAUDE_CODE_HARBOR_KITE=1 claude -p "Appelle ListAgents…" --allowedTools ListAgents
+```
+```
+No reachable agents.
+```
+
+**`ListAgents` s'exécute et répond normalement** — « aucun pair joignable » est une réponse
+fonctionnelle, pas une erreur d'indisponibilité. Combiné à la mesure de `C12` (35 → 36 outils dès que
+`CLAUDE_CODE_HARBOR_KITE=1` est posé), le fait est établi :
+
+> **Le cross-session messaging n'est pas absent de Windows natif : il y est désactivé par défaut,
+> derrière un feature flag distant, et une variable d'environnement l'active.**
+
+C'est la même correction que `C12` a portée sur sa propre matrice — et elle a la même conséquence
+stratégique : **une frontière produit fondée sur « le natif ne marche pas sur Windows » repose sur un
+interrupteur qu'Anthropic peut basculer sans livrer de release.**
+
+Précision apportée par la lecture du client : Windows natif a son **propre** flag,
+`tengu_harbor_kite_win`, distinct de `tengu_harbor_kite`. Ce ne sont donc pas « macOS/Linux ✓ ·
+Windows ✗ » mais **deux interrupteurs**, tous deux à `false` par défaut.
+
+#### B. Ce que `ListAgents` montre — et ne montre pas
+
+Deux sessions concurrentes, porte ouverte :
+
+```
+Peer sessions (1):
+  d01-9e [4b510d]  ·  interactive  ·  started 25s ago
+```
+
+Nom dérivé du répertoire, identifiant court, type, âge. **Aucune org, aucune identité de compte,
+aucune information d'authentification.** Le record sous-jacent porte davantage (`sessionId`, `pid`,
+`entrypoint`), mais rien qui relève de l'organisation.
+
+#### C. 🔴 RETIRÉ — ce que j'ai pris pour un défaut du natif était un artefact de mon protocole
+
+J'avais mesuré qu'une session de listage voyait un pair, et qu'une session émettrice lancée 18 s plus
+tard n'en voyait aucun. J'allais l'écrire comme une « découverte incohérente ». **C'est faux.**
+
+La découverte n'est pas la lecture d'un registre : c'est un `connect()` **réel** sur la socket de
+chaque pair, réévalué à chaque appel, avec un timeout de 250 ms ; une fiche dont le process est prouvé
+mort est supprimée. Mes deux `claude -p` **ne coexistaient pas** — le premier avait fini son tour et
+fermé sa socket. Le natif a fait exactement ce qu'il devait faire.
+
+**Le seul protocole valide serait deux sessions interactives concurrentes maintenues vivantes.**
+Publier ce point comme un défaut aurait été réfutable en une capture d'écran.
+
+#### D. K2 — l'identité existe, mais elle n'est **pas** opposable, et Anthropic l'écrit
+
+Mon critère K2 demandait s'il existe une identité d'expéditeur vérifiable. Réponse nuancée, et elle
+oblige à **reformuler entièrement l'argument « audit »** de §4 :
+
+- `from` et `name` sont **auto-déclarés**. Le schéma du client le dit littéralement : *« sender-authored
+  and kept only for reply routing, so it is **forgeable by any same-user process** »*.
+- Il existe **une** identité noyau, `verifiedPeerPid`, lue via `SO_PEERCRED` / `LOCAL_PEERPID` — jamais
+  depuis la charge utile. Mais elle est **absente sur Windows**, elle identifie le **process
+  connecteur** (donc le relais, pas l'auteur, en trafic relayé), et Anthropic la qualifie elle-même de
+  *« provenance, not an authentication token »*.
+- Le token de session prouve *« un process capable de lire `~/.claude` »* — c'est-à-dire **le même
+  utilisateur OS**, pas quelle session.
+
+**K2 ne se déclenche pas**, mais la formulation de la fiche (« le natif n'a aucune identité ») est
+fausse et se ferait démonter. La formulation juste, et citable : **l'identité affichée est
+auto-déclarée et forgeable par tout process du même utilisateur ; la seule identité noyau est un
+identifiant de process de connexion, absent sur Windows, qu'Anthropic présente comme de la provenance
+et non de l'authentification.**
+
+#### E. 🔴 K3 SE DÉCLENCHE — le natif **franchit la machine**, et c'est le pire cas
+
+Mon critère K3 disait : « si le natif franchit la machine, la frontière de portée tombe, et c'est le
+pire cas pour le projet ». Il se déclenche.
+
+`listAllPeers` agrège **quatre** transports, vérifiés : `uds`, `cloud`, `bridge`, `did`. Et un réglage
+existe **précisément** pour restreindre ce que je croyais impossible :
+
+> `isolatePeerMachines` — « Require explicit approval before SendMessage can reach a peer session **on
+> another machine** via Remote Control »
+
+Un réglage n'existe que pour restreindre un comportement qui existe. S'y ajoutent
+`remoteControlAtStartup` et `autoUploadSessions`.
+
+**La frontière « portée / multi-machine » est morte.** Et le second volet est plus dur encore : notre
+produit **n'exerce pas** la frontière qu'il prétend défendre — `docs/mqtt-topics.md` l. 23 dit que
+« the coordinator publishes EVERYTHING under a hardcoded org `default` », et `C13` a mesuré que zéro
+agent n'a jamais été enregistré. Je défendais une frontière théorique que le natif vient de franchir,
+avec un produit qui ne s'en sert pas.
+
+#### F. Ce qui reste réellement défendable
+
+Après mesure, deux frontières seulement tiennent debout :
+
+1. **Cross-vendor.** Cursor, Cline, Aider. Anthropic ne peut structurellement pas les couvrir.
+2. **Cross-humain.** Deux comptes Anthropic distincts. Le natif est scopé à **un** compte.
+
+Et une troisième, de nature différente : **la durabilité**. Le natif est derrière des flags distants —
+`tengu_harbor_kite` et `tengu_harbor_kite_win` en opt-in (défaut `false`), ce qui signifie qu'Anthropic
+peut l'**allumer** partout sans livrer de release.
+
+#### G. K6 — zéro demande, et le seul signal va dans l'autre sens
+
+Recherche des issues sur `messaging`, `peer`, `orchestration`, `multi-machine`, `cross-session` :
+**une seule** — **#279**, qui se plaint du **scoping trop large** de la couche pairs existante et
+demande de le **réduire**. Le seul retour utilisateur sur ce terrain demande moins de portée, pas
+plus.
 
 <Ce qu'on a réellement mesuré/vu. Coller les sorties, pas les paraphraser.>
 
@@ -177,11 +326,51 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 
 | | |
 |---|---|
-| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ⬜ refuser |
-| **Date** | |
-| **Justification** | |
-| **Issue / PR** | |
-| **Jalon visé** | |
+| **Verdict** | **Réponse : recadrage documentaire** — ni absorption du natif, ni déni. ⬜ contre-mesure technique · ✅ **recadrage** · ⬜ recouvrement assumé |
+| **Date** | 2026-08-16 |
+| **Justification** | **K3 s'est déclenché** : le natif **franchit la machine** (quatre transports — `uds`, `cloud`, `bridge`, `did` — et un réglage `isolatePeerMachines` qui existe précisément pour restreindre l'accès à « a peer session on another machine »). Ma frontière principale — la portée — est donc **morte**, et notre produit ne l'exerçait même pas (org codée en dur à `default`). K6 s'est déclenché aussi, et le seul retour utilisateur, #279, demande de **réduire** la portée de la couche pairs. Il ne reste que deux frontières mesurées : **cross-vendor** et **cross-humain**. |
+| **Issue / PR** | aucune |
+| **Jalon visé** | réécriture de §1 et §4 avant toute réutilisation |
+
+### La frontière factuelle — c'est le livrable de cette fiche
+
+**Ce que le natif fait**, mesuré : découverte de pairs par sonde de connexion réelle (timeout 250 ms,
+réévaluée à chaque appel), messagerie texte entre sessions, **y compris sur Windows natif** et
+**y compris entre machines** via Remote Control.
+
+**Ce que le natif ne fait pas** : aucune identité d'expéditeur opposable (`from` est auto-déclaré et
+« forgeable by any same-user process » — leur schéma) ; aucune notion d'organisation ; aucune API
+d'historique interrogeable ; un seul compte Anthropic.
+
+**Ce qui reste défendable** — et rien d'autre : **cross-vendor** (Cursor, Cline, Aider, que le natif
+ne peut structurellement pas couvrir), **cross-humain** (deux comptes distincts), et **la chaîne
+d'audit**, à condition de la formuler correctement (§6.4-D).
+
+### Ce qui est refusé
+
+**La branche « transport à absorber »** de §6.1 — un hook qui capterait `CLAUDE_CODE_MESSAGING_SOCKET`
+pour y pousser nos alertes. Elle ajouterait une dépendance à une surface gouvernée par **deux flags
+distants** que nous ne contrôlons pas, pour un besoin que personne n'a exprimé (K6).
+
+### Corrections obligatoires avant réutilisation
+
+- **§1 est fausse deux fois** : « pas de Windows natif » (c'est un flag dédié, `tengu_harbor_kite_win`,
+  pas une absence) et l'implicite « mono-machine » (le natif franchit la machine).
+- **§4 doit reformuler l'argument d'audit.** « Le natif n'a aucune identité » est faux et se ferait
+  démonter ; la formulation juste est celle de §6.4-D, et elle a l'avantage d'être une citation de
+  leur propre schéma.
+- **Retirer la frontière « portée »** de tout argumentaire produit.
+
+### Note de méthode — j'ai failli publier un artefact de mon protocole comme un défaut du natif
+
+J'avais mesuré qu'une session émettrice ne voyait aucun pair 18 s après qu'une autre en ait vu un, et
+j'allais l'écrire comme une « découverte incohérente ». La découverte est en réalité une **sonde de
+connexion live** : mes deux `claude -p` ne coexistaient pas, le premier avait fermé sa socket. **Le
+natif s'est comporté correctement ; c'est mon protocole qui était faux.**
+
+C'est la troisième fois de ce corpus que je conclus trop vite depuis un montage incomplet — après le
+collecteur OTLP manquant de `C11` et l'absence locale de `roster.json` en `C13`. Le point commun :
+**je n'avais pas vérifié que mon instrument mesurait ce que je croyais.**
 
 ## 8. Journal
 
@@ -189,3 +378,4 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 |---|---|
 | 2026-08-14 | Fiche créée par la veille plateforme (fusion de 4 fiches brutes, verdicts CONFIRMED). |
 | 2026-08-14 | Vérification des faits : API et statut confirmés, faq 13→12 questions, 2 points non vérifiables, testabilité partielle. |
+| 2026-08-16 | **Challenge (groupé avec `D02`) — réponse : recadrage documentaire.** **K3 déclenché, c'est le pire cas** : le natif **franchit la machine** — quatre transports (`uds`, `cloud`, `bridge`, `did`) et un réglage `isolatePeerMachines` qui existe précisément pour restreindre « a peer session on another machine via Remote Control ». La frontière « portée » est **morte**, et notre produit ne l'exerçait pas (org codée en dur à `default`). **§1 est fausse deux fois** : Windows natif est couvert derrière son propre flag `tengu_harbor_kite_win` (mesuré : `ListAgents` voit un pair avec `CLAUDE_CODE_HARBOR_KITE=1`), et le natif n'est pas mono-machine. **K2 non déclenché mais l'argument audit est à reformuler** : `from` est auto-déclaré et « forgeable by any same-user process » (leur schéma), la seule identité noyau `verifiedPeerPid` est absente sur Windows et qualifiée par Anthropic de « provenance, not an authentication token ». **J'ai retiré un résultat** : ma « découverte incohérente » était un artefact de protocole — la découverte est une sonde de connexion live à 250 ms, et mes deux `claude -p` ne coexistaient pas. Frontières survivantes, mesurées : **cross-vendor** et **cross-humain**. K6 déclenché ; le seul retour utilisateur (#279) demande de **réduire** la portée. |
