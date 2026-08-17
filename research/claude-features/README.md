@@ -127,7 +127,7 @@ Le détail par fiche est dans sa **section 0**.
 | `G02` | [Orchestrateurs worktree-par-tâche (Conductor, Nimbalyst, Vibe Kanban, Claude Squad)](G02-worktree-orchestrators.md) | 🟠 T2 | mixte | menace | S | ✅ | ⚠️ | ⬜ |
 | `G03` | [MCP Interceptors WG (SEP-1763) : la détection de conflit comme primitive standard](G03-mcp-interceptors-wg.md) | 🔴 T1 | experimental | menace | L | 🟡 | ⚠️ | ⬜ |
 | `G04` | [MCP Triggers & Events WG : le pub/sub entre-t-il dans la spec ?](G04-mcp-triggers-events-wg.md) | 🔴 T1 | experimental | menace | S | 🟡 | ✅ | ⬜ |
-| `G05` | [Signaux faibles : A2A/AGNTCY et Claude Cowork](G05-weak-signals.md) | 🟡 T3 | GA | opportunité | XL | 🟡 | ⚠️ | ⬜ |
+| `G05` | [Signaux faibles : A2A/AGNTCY et Claude Cowork](G05-weak-signals.md) | 🟡 T3 | GA | opportunité | XL | 🟡 | ⚠️ | ✅ |
 
 ---
 
