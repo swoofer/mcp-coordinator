@@ -13,7 +13,7 @@
 | **Vérification** | CONFIRMED |
 | **Vérifiée le** | 2026-08-14 |
 | **Testabilité** | ⚠️ partielle — research preview sur formulaire, WIF requis pour la Tunnels API |
-| **Statut du challenge** | ✅ **tranché** (2026-08-16) — `refuser` ; dominé par le worker self-hosted, et la doctrine tunnel est déjà écrite |
+| **Statut du challenge** | ✅ **tranché** (2026-08-16) — `refuser` sur le coût et l'absence de demande ; **argument « fausse coordination » RÉTRACTÉ** par  |
 
 ---
 
@@ -258,7 +258,24 @@ L'axe décisif est le troisième. Le tunnel sert le chemin « sandbox cloud », 
 une **copie**. `check_file_conflict` y comparerait une claim sur `src/foo.ts` dans le cloud à une
 claim sur `src/foo.ts` en local.
 
-> **Le tunnel n'étend pas la coordination : il fabrique de la fausse coordination.** Un verdict faux
+> 🔴 **RÉTRACTÉ le 2026-08-16 par le challenge `E03`.** Ce paragraphe est **faux**, et c'était
+> l'argument principal du verdict. Deux raisons, l'une sourcée, l'autre mesurée :
+>
+> 1. **La doc d'Anthropic dit l'inverse** de ce que `E03` affirmait et que j'ai repris sans vérifier :
+>    *« Anthropic doesn't mount files or GitHub repositories into self-hosted sandboxes »*, et
+>    `resources` y est **rejeté**. **C'est le cloud qui monte un dépôt**, pas le self-hosted.
+> 2. **Et la question ne se pose pas** : `conflict-detector.ts`, `file-tracker.ts` et
+>    `working-files-tracker.ts` ne contiennent **aucun** appel filesystem (mesuré : 0). `detect()`
+>    compare des **chaînes** de chemins repo-relatifs. Un agent en sandbox cloud monté en
+>    `/workspace/repo` qui annonce `src/foo.ts` joint donc parfaitement un agent local — deux clones
+>    du même dépôt qui éditent le même fichier **sont** en conflit. C'est le cas d'usage nominal, pas
+>    une fausse coordination.
+>
+> **Le verdict `refuser` survit**, mais sur ses deux autres jambes seulement : le coût (≥ 12 fichiers
+> contre 2 éditions d'une ligne) et l'absence de demande. Le troisième axe de comparaison ci-dessous
+> est **retiré**.
+>
+> ~~Le tunnel n'étend pas la coordination : il fabrique de la fausse coordination.~~ Un verdict faux
 > est plus nuisible qu'un verdict absent.
 
 Ce qui survivrait, c'est `register_agent` / `heartbeat` — de l'inventaire, pas le produit.
@@ -350,3 +367,4 @@ coûteuse.
 | 2026-08-14 | Fiche créée par la veille plateforme. |
 | 2026-08-14 | Vérification des faits : API confirmée, body `POST /v1/tunnels` tranché, inférence « pas de multiagent » réfutée, 2 lignes corrigées. |
 | 2026-08-16 | **Challenge — verdict `refuser`** le mode tunnel comme chemin supporté. Mesuré : le daemon accepte `COORDINATOR_PUBLIC_URL=https://<sub>.tunnel.anthropic.com` et un bind élargi **sans rien écrire** (K1, K2 non déclenchés ; le 404 de la découverte est un gating d'auth, pas un défaut d'hôte). **K3 se déclenché par la branche que je croyais chère** : « recette externe » coûte **0 fichier neuf** — la doctrine tunnel est déjà écrite dans `docs/clients.md` l. 111-114 (« Keep authentication enabled if you tunnel ») — contre **≥ 12 fichiers** pour « chemin supporté », dont `docs/gdpr.md` qui deviendrait faux. K4 déclenché : zéro demande sur 80 issues ; la seule voisine, **#306**, est une issue de doc **fermée** qui mesure que le montage fonctionne déjà par header statique. **Le tunnel est dominé sur les trois axes** par le worker self-hosted — coût d'accès (formulaire + WIF, clés API refusées), posture (3 process contre zéro endpoint pour les custom tools), et surtout proximité : le tunnel sert la sandbox **cloud**, où l'agent travaille sur une **copie**, donc où `conflict-detector` rendrait des verdicts **faux** plutôt qu'absents. **J'ai lu une ligne de log sans la lire** : la même ligne imprimait `mqtt_ws` — j'ai mesuré que le daemon démarre, pas ce que le démarrage expose. Or le tunnel est **host-scopé** sans allowlist de path : `/dashboard`, `/api/*`, `/metrics` et surtout **`/mqtt`** (#330, sans contrôle d'origine) deviendraient joignables. Corrections : §4 est fausse aux 3/4 sur « sans reverse proxy maison » (Caddy est livré), « le chaînon manquant » est faux (#306), et « Phase 2 devient la pièce manquante » est faux (**#313** ouverte : le scope d'un service token est validé au minting puis jeté). Réouverture : une demande CMA réelle **et** #330 + #313 fermées — pas l'ouverture de la preview. |
+| 2026-08-16 | 🔴 **Rétractation partielle, portée par le challenge `E03`.** Mon troisième axe de comparaison — « le tunnel sert la sandbox cloud, où l'agent travaille sur une copie, donc où `conflict-detector` rendrait des verdicts faux » — est **faux**. La doc d'Anthropic dit l'inverse (« Anthropic doesn't mount files or GitHub repositories into self-hosted sandboxes » ; `resources` y est **rejeté** — c'est le **cloud** qui monte un dépôt), et la question ne se pose de toute façon pas : les trois modules de détection ne contiennent **aucun** appel filesystem et comparent des chemins repo-relatifs. **Le verdict `refuser` survit sur ses deux autres jambes** — coût (≥ 12 fichiers contre 2 éditions d'une ligne) et absence de demande (0 sur 80 issues) — mais l'axe « proximité du cas d'usage » est retiré. J'avais repris l'affirmation de `E03` sans lire sa source. |
