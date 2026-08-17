@@ -13,7 +13,7 @@
 | **Vérification** | CONFIRMED |
 | **Vérifiée le** | 2026-08-14 |
 | **Testabilité** | ⚠️ partielle — pas d'org Claude Enterprise ni de Compliance Access Key |
-| **Statut du challenge** | ⬜ à faire |
+| **Statut du challenge** | ✅ **tranché** (2026-08-17) — adopter partiellement ; le livrable est #366, une latence de 1,5 s sur announce_work |
 
 ---
 
@@ -188,7 +188,32 @@ Ce que le repo ne contient pas et qui serait entièrement à écrire : client `x
 
 ### 6.2 Hypothèse
 
-<Ce qu'on pense avant de tester.>
+**Périmètre confirmé avant de commencer** (leçon d'`E13`, où la question était déjà tranchée ailleurs) : `G05` mentionne la Compliance API et un annuaire, mais son sujet est A2A/AGNTCY et elle est encore ⬜ — aucun recouvrement de décision. E14 est bien propriétaire de la question. Et `#363`, ouverte hier sur `cli/channel.ts`, porte sur le **schéma d'entrée** (`minLength`), **0 mention d'annotations** : l'écart de §4 est distinct.
+
+**Ce que je pense avant de mesurer.** La fiche mélange trois volets d'ampleur très différente, et §6.1 n'en oppose que deux. Mon hypothèse est que le verdict se joue sur un **quatrième** point que §6.1 ne pose pas : le volet annuaire est **le seul** à bénéfice immédiat, il ne dépend d'aucune surface Anthropic, et il corrige une **déviation d'une règle que le projet a lui-même écrite**.
+
+`docs/ARCHITECTURE.md:296` prescrit, étape 3 de la procédure d'ajout d'un outil MCP :
+
+> « Set MCP tool annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `title`) to match the operation's actual semantics — clients use these as hints. »
+
+Or `cli/channel.ts:343-351` renvoie `post_to_thread` avec `{name, description, inputSchema}` — **sans `annotations`**. Ce n'est donc pas « un critère externe d'Anthropic à adopter » mais **notre propre convention documentée, non respectée dans un fichier**. C'est le cadrage juste, et il rend le volet annuaire trivial plutôt qu'ambitieux.
+
+Sur les inference hooks, mon hypothèse est que le `deny` est **structurellement** infaisable, pas seulement risqué : `ConflictDetector.detect()` exige `{org_id, agent_id, target_modules, target_files}` et le hook ne fournit ni l'`org_id` interne ni l'`agent_id` — il fournit un `tenant_id` Anthropic et un transcript. Le mappage n'existe pas, et rien dans le dépôt ne le construit.
+
+### 6.2b Critères de mort — pré-enregistrés avant toute mesure
+
+Ici, « adopter » se scinde : (A) devenir endpoint d'inference hook, (B) consommer la Compliance API, (C) appliquer la checklist de l'annuaire. Je les adjuge **séparément** — leçon d'`E11`, où un seul seuil décidait de trois changements.
+
+| # | Volet | Critère de mort | Seuil chiffré |
+|---|---|---|---|
+| **K1** | (A) | **Le budget de 5 s est trop serré.** Si `detect()` plus l'écriture d'audit approche la seconde sur une base réaliste, être dans le chemin critique est intenable. | `detect()` + audit > **500 ms** sur 100 agents / 500 fichiers |
+| **K2** | (A) | **Le `deny` est structurellement infaisable.** Si le corps du hook ne fournit pas ce que `detect()` exige, aucun verdict de conflit n'est calculable. | `detect()` exige ≥ **1** champ que le hook ne fournit pas, et rien dans le dépôt ne le dérive |
+| **K3** | (A) | **SPOF d'entreprise.** En `failure handling: block`, un redémarrage du coordinateur bloque toutes les inférences de l'org — claude.ai et Cowork inclus. | le mode `block` est documenté et bloque au-delà de Claude Code |
+| **K4** | (A) | **Le corps porte le transcript complet.** Archiver ça fait basculer le produit de « journal d'intentions » à « stockage de transcripts », terrain où la Compliance API est déjà meilleure. | le corps contient `messages[]` non tronqué, jusqu'à 10 Mo |
+| **K5** | (A)(B) | **Aucune demande, et un segment que le projet ne sert pas.** Enterprise + `organization:manage`, indisponible sur Bedrock et Vertex. | **0** issue ; indisponibilité hors claude.ai confirmée |
+| **K6** | (C) | **Le volet annuaire est déjà fait, sauf un écart.** S'il ne reste qu'un outil non conforme, ce n'est pas un chantier mais un correctif. | ≤ **1** outil violant la checklist |
+
+**Règle que je m'impose :** §0 classe la fiche ⚠️ **partielle** — recevoir un vrai POST Anthropic et appeler la Compliance API sont hors de portée. Les volets (A) et (B) ne peuvent donc **jamais** recevoir `adopter`. Et j'applique les leçons accumulées : vérifier une absence plutôt que la supposer, grepper la doc du dépôt avant de crier à la découverte, et distinguer une **dérive de dépendance** d'un **défaut de vérification** quand une référence de §0 ne tombe plus juste.
 
 ### 6.3 Protocole de vérification
 
@@ -204,7 +229,92 @@ Ce que le repo ne contient pas et qui serait entièrement à écrire : client `x
 
 ### 6.4 Résultat observé
 
-<Ce qu'on a réellement mesuré/vu. Coller les sorties, pas les paraphraser.>
+#### A. Ma mesure de latence était sur la mauvaise branche — et le résultat s'inverse
+
+**Première mesure, à retirer.** Base de 100 agents / 500 fichiers / 30 annonces : `detect()` à **1,42 ms de médiane, 1,91 ms au p95**, soit 0,038 % du budget de 5 s. J'allais en conclure « K1 ne se déclenche pas, la latence n'est pas l'obstacle — contrairement à ce que §6.1 suggère ».
+
+**C'était faux, et sur le mode de faute le plus fréquent de ce corpus : l'instrument n'était pas branché au bon endroit.** Ma base avait un `dependency_map` **vide**. Or `conflict-detector.ts:110` porte un `continue` qui court-circuite tout ce qui suit :
+
+```
+src/conflict-detector.ts:65    for (const thread of activeThreads) {
+src/conflict-detector.ts:108     for (const targetModule of params.target_modules) {
+src/conflict-detector.ts:109       const info = this.depMap.getModuleInfo(...);
+src/conflict-detector.ts:110       if (!info) continue;          <- la porte
+src/conflict-detector.ts:124       const radius = this.depMap.getBlastRadius(...);
+```
+
+Sans carte, `getModuleInfo` renvoie `null` et **`getBlastRadius` n'est jamais appelé**. Remesuré avec une carte peuplée de 200 modules (3 dépendances chacun) :
+
+```
+base : 100 agents, 500 fichiers, 30 annonces, carte de 200 modules (3 deps chacun)
+  1 module cible   : median  299,5 ms | p95   304,2 ms |  6,08 % du budget de 5 s
+  5 modules cibles : median 1498,5 ms | p95  1532,8 ms | 30,66 % du budget de 5 s
+```
+
+**K1 se déclenche.** Et §6.1 avait raison de mettre le budget de 5 s en avant — la phrase que j'allais écrire disait exactement l'inverse de la mesure.
+
+**C'est aussi le livrable réel de cette fiche, et il n'a rien à voir avec l'entreprise.** `getBlastRadius` appelle `getMap()` (scan de table complet) à **chaque** appel, sans cache (`dependency-map.ts:176`, `:87-89`), avec un BFS qui re-itère `Object.entries(map)` entier à chaque dequeue — O(V²) (`:189-198`). Le tout dans une boucle **imbriquée** threads × modules. Plus un N+1 sur `checkFileConflict` (`conflict-detector.ts:149-155`) que `file-tracker.ts:83-92` documente et a déjà corrigé pour l'impact scorer via `getFileToAgentsIndex`, sans que `detect()` y soit migré.
+
+Et le coût est **invisible tant que personne n'appelle `set_dependency_map`** — il apparaît d'un coup chez l'utilisateur qui suit la recommandation du `README.md`. → **#366**
+
+#### B. K2 : le `deny` reste infaisable, mais mon motif était faux sur deux points
+
+J'allais écrire « 4 champs sur 4 absents ». La réalité est plus nuancée, et deux de mes affirmations ne tiennent pas :
+
+- **`org_id` est *dérivable*.** La table `users` existe avec `email` et `primary_org_id`, indexée (`src/database.ts:273-285`, colonne renommée `:837`). Aucun code ne fait ce lookup (`grep "WHERE email = ?" src/` → **zéro**), mais « non câblé » n'est pas « structurellement impossible ». **Ce qui tient, c'est que la dérivation serait *infondée* :** l'`UNIQUE` porte sur `(idp_provider, idp_user_id)`, **pas sur `email`** ; et l'email du coordinateur vient de son IdP interne quand `actor.email_address` vient de claude.ai — rien ne garantit la même personne.
+- **`target_files` n'est pas « à extraire d'un texte libre ».** §2 liste `tool_use | tool_result` comme blocs **structurés** : un `tool_use` d'`Edit` porte un `input.file_path` exploitable. Mon motif était réfutable. **Le bon argument est l'ordonnancement** : le hook tire *avant* l'inférence N, donc `messages[]` ne peut contenir que des `tool_use` déjà émis **et déjà résolus** aux tours 1..N−1. L'écriture que le modèle est sur le point de demander **n'existe pas encore**. Les chemins extractibles sont donc des fichiers **déjà écrits** — l'inverse d'une détection pré-écriture.
+- **`agent_id` : imprenable.** La table `agents` (`src/database.ts:92-99`) n'a ni `email`, ni `user_id`, ni `owner_id` (`grep "owner_id" src/` → zéro), ni lien vers une session.
+
+**K2 se déclenche donc, reformulé : 3 champs sur 4 sans dérivation possible, 1 dérivable mais infondé.**
+
+#### C. K6 ne se déclenche pas — « 26/26 conformes » est faux, et il y a deux écarts, pas un
+
+Ma première mesure opérationnalisait le critère en « la **clé** est-elle présente ? » → 0 échec. Mais §2 l'énonce en « `title` + (`readOnlyHint: true` **|** `destructiveHint: true`) », c'est-à-dire sur la **valeur**. Recompté par appariement d'accolades :
+
+```
+outils avec readOnlyHint:true OU destructiveHint:true : 16/26
+outils avec NI l'un NI l'autre : 10
+  register_agent, heartbeat, announce_work, post_to_thread, propose_resolution,
+  approve_resolution, contest_resolution, log_action_summary, wait_for_message, mqtt_publish
+```
+
+**Je n'avais pas dit laquelle des deux lectures j'appliquais** — faute de méthode. Sous la lecture stricte, **10 outils sur 26** échouent, et le seuil de K6 (« ≤ 1 outil violant ») ne se déclenche pas.
+
+**Et le second écart concret n'est pas celui que la fiche nomme.** `wait_for_message` (`src/tools/mqtt-tools.ts:68`) porte `{ readOnlyHint: false, idempotentHint: false, title }` — **ni `readOnlyHint: true`, ni `destructiveHint`** — alors qu'il **consomme** ce qu'il retourne (`src/mqtt-bridge.ts:430`, `listener.queue.shift()`). Son voisin `get_queued_messages` est correctement annoté `destructiveHint: true`.
+
+Incohérence relevée au passage : `approve_resolution` et `contest_resolution` sont `destructiveHint: false` alors qu'ils font la même transition `status='resolved'` qui rend `close_thread` `destructiveHint: true`.
+
+Sur « ne pas mélanger lecture et écriture » : `announce_work` écrit bel et bien (`UPDATE threads SET conflicts`, `INSERT INTO layer_firings`, heartbeat, publish MQTT) tout en renvoyant thread + conflicts + context + impact. **Mais le contre-exemple de l'annuaire est un `api_request` polymorphe** à paramètre `method` — un outil dont la *nature* dépend de l'argument. Aucun outil ici n'est dans ce cas, donc le critère strict n'est probablement pas violé. Je le dis explicitement plutôt que d'affirmer une conformité en bloc.
+
+**Chevauchement à vérifier avant tout correctif :** **#236** (ouverte) traite `get_queued_messages` drain-without-ack et propose une consommation à ack avec un `peek` **non destructif**. Si elle atterrit, la sémantique destructive des deux outils MQTT change — donc leurs annotations aussi.
+
+#### D. Une erreur factuelle de §4, et une bonne nouvelle sur §0
+
+**§4 ligne 149 est fausse.** Elle dit que la Compliance API permettrait « de corréler les événements de `src/security/audit.ts` à des identités réelles, **ce que le projet ne sait pas faire aujourd'hui** ». Le projet **sait** le faire : `withAuditContext` existe (`src/auth/audit-context.ts:29-35`) et `audit()` dérive déjà les quatre colonnes d'acteur (`src/security/audit.ts:105-112`). Ce qui manque, c'est l'**invocation** — `src/serve-http.ts:530` n'enveloppe que `withRequestId`. C'est exactement l'issue **#319**. Donc la Compliance API n'est pas un remède mais un détour : l'identité qu'elle renvoie est une identité **claude.ai**, pas un `users.id` du coordinateur. **Argument de plus pour refuser (B), pas contre.**
+
+**Et pour la première fois de la série `E08`–`E14`, §0 et §5 sont exempts de défaut de vérification.** Les trois écarts apparents sont de la **dérive de dépendance**, imputable à deux commits du 2026-08-15, un jour après la vérification :
+
+| §5 dit | HEAD | Cause |
+|---|---|---|
+| `detect()` « ligne 20 » | **43** | `7e76cfe` (#300/#302) a préfixé un commentaire de 23 lignes. À `7d0224d`, `detect(params` est bien en **20** |
+| `cli/channel.ts` « lignes 340-348 » | **343-351** | `4f62056` (#291, migration `@modelcontextprotocol/*@2`) a remplacé `ListToolsRequestSchema` par la chaîne `"tools/list"`. À `7d0224d`, le bloc est bien en **340-348** |
+| `consultation-tools.ts:105` | **exact** | — |
+| « 26 `readOnlyHint` (4/11/3/3/3/2) » | **exact** | recompté par fichier |
+
+C'est la rupture de la série, et elle mérite d'être écrite : confondre une dérive de dépendance avec un défaut de vérification serait refaire la sur-affirmation d'`E12`.
+
+#### E. Adjudication des six critères
+
+| # | Volet | Seuil | Mesure | Verdict |
+|---|---|---|---|---|
+| **K1** | (A) | `detect()` + audit > 500 ms | **1 533 ms au p95** à 5 modules cibles sur une carte de 200 modules (et 304 ms à 1 module) | **SE DÉCLENCHE** — ma première mesure (1,9 ms) était sur la branche courte, `dependency_map` vide |
+| **K2** | (A) | ≥ 1 champ non fourni | **3 sur 4 sans dérivation** (`agent_id`, `target_modules`, `target_files` en pré-écriture) ; `org_id` dérivable mais **infondé** | **SE DÉCLENCHE**, reformulé |
+| **K3** | (A) | mode `block` documenté | confirmé — **mais §2 documente un circuit breaker** : le SPOF réel est la fenêtre avant son déclenchement, pas un blocage indéfini | **SE DÉCLENCHE, atténué** |
+| **K4** | (A) | corps = `messages[]` non tronqué, 10 Mo | confirmé — **mais c'est un critère faible** : c'est une propriété de l'entrée d'Anthropic, il se déclenche quel que soit notre design, et rien n'oblige à persister le transcript (un hash + métadonnées suffirait). Il ne discrimine rien | **SE DÉCLENCHE sans rien trancher** |
+| **K5** | (A)(B) | 0 issue ; indisponible hors claude.ai | `gh issue list --search "inference hook"` → **vide** ; `"compliance"` → **vide** ; Bedrock et Vertex exclus | **SE DÉCLENCHE** |
+| **K6** | (C) | ≤ 1 outil violant | **10 sur 26** sous la lecture stricte du critère (« valeur = true »), et **2** écarts concrets (`cli/channel.ts`, `mqtt-tools.ts:68`) | **NE SE DÉCLENCHE PAS** |
+
+**Cinq critères sur six se déclenchent, dont deux avec une réserve explicite (K3 atténué, K4 non discriminant), et K6 tombe.**
 
 ### 6.5 Contre-arguments
 
@@ -222,11 +332,11 @@ Ce que le repo ne contient pas et qui serait entièrement à écrire : client `x
 
 | | |
 |---|---|
-| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ⬜ refuser |
-| **Date** | |
-| **Justification** | |
-| **Issue / PR** | |
-| **Jalon visé** | |
+| **Verdict** | ⬜ adopter · ✅ **adopter partiellement** · ⬜ reporter · ⬜ refuser |
+| **Date** | 2026-08-17 |
+| **Justification** | Trois volets, adjugés séparément — leçon d'`E11`, où un seul seuil décidait de plusieurs changements. ⭑ **Refusé — (A) devenir endpoint d'inference hook.** **K1 se déclenche** : `detect()` prend **1 533 ms au p95** à cinq modules cibles sur une carte de 200 modules, soit 31 % du budget de 5 s. **K2 se déclenche** : sur les quatre champs que `detect()` exige, **trois n'ont aucune dérivation** (`agent_id` — la table `agents` n'a ni email ni `user_id` ni `owner_id` ; `target_modules` ; `target_files`, dont les seuls chemins extractibles sont ceux **déjà écrits**, puisque le hook tire *avant* l'inférence), et le quatrième (`org_id`) est dérivable via `users.email` mais **infondé** — l'`UNIQUE` porte sur `(idp_provider, idp_user_id)`, pas sur l'email, et l'identité vient d'un IdP différent de celui de claude.ai. Plus **K5** : Enterprise seulement, indisponible sur Bedrock et Vertex, zéro issue. ⭑ **Refusé — (B) consommer la Compliance API.** Non exécutable ici, zéro demande, et surtout : **§4 ligne 149 est factuellement fausse**. Elle dit que corréler l'audit à des identités réelles est « ce que le projet ne sait pas faire aujourd'hui » ; il **sait** le faire — `withAuditContext` existe et `audit()` dérive déjà les quatre colonnes d'acteur. Ce qui manque est l'**invocation** (`serve-http.ts:530` n'enveloppe que `withRequestId`), c'est-à-dire **#319**. La Compliance API n'est donc pas un remède mais un détour : elle renvoie une identité claude.ai, pas un `users.id` du coordinateur. ⭑ **Adopté — (C) la checklist de l'annuaire**, mais **pas comme la fiche la présente**. Ce n'est pas un critère externe à importer : `docs/ARCHITECTURE.md:296` prescrit déjà « Set MCP tool annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `title`) to match the operation's actual semantics ». Les écarts sont donc des déviations d'une **règle que le projet a lui-même écrite**. **Corrections de méthode.** **Ma mesure de latence était sur la mauvaise branche** : `dependency_map` vide → `getModuleInfo` renvoie `null` → le `continue` de `conflict-detector.ts:110` saute `getBlastRadius`, et `detect()` mesure 1,9 ms au lieu de 1 533 ms. J'allais publier « la latence n'est pas l'obstacle » — l'inverse exact de la mesure, et la cinquième occurrence dans ce corpus de la faute « l'instrument n'était pas branché au bon endroit ». **K6 ne se déclenche pas** : j'avais opérationnalisé le critère en « la **clé** est-elle présente ? » (0 échec) alors que §2 l'énonce sur la **valeur** — **10 outils sur 26** échouent, et il y a **deux** écarts concrets, pas un : `cli/channel.ts:343-351` et `wait_for_message` (`mqtt-tools.ts:68`), qui n'a ni `readOnlyHint: true` ni `destructiveHint` alors qu'il **consomme** ce qu'il retourne. **Deux de mes motifs sur K2 étaient réfutables** (l'`org_id` est dérivable, et `target_files` vient de blocs `tool_use` **structurés**, pas d'un texte libre) : remplacés par l'argument d'ordonnancement. **K3 est atténué** (§2 documente un circuit breaker) et **K4 ne discrimine rien** (c'est une propriété de l'entrée d'Anthropic, et rien n'oblige à persister le transcript). ⭑ **Et une bonne nouvelle à écrire noir sur blanc** : pour la première fois de la série `E08`–`E14`, **§0 et §5 sont exempts de défaut de vérification**. Les trois écarts de lignes sont de la **dérive de dépendance**, imputable à `7e76cfe` et `4f62056`, tous deux du 2026-08-15 — un jour après la vérification. |
+| **Issue / PR** | **#366** — `ConflictDetector.detect()` prend **1,5 s** sur le chemin chaud d'`announce_work` : `getBlastRadius` rescanne toute la table à chaque appel sans cache, avec un BFS O(V²), dans une boucle imbriquée threads × modules ; plus un N+1 sur `checkFileConflict` que `file-tracker.ts:83-92` a déjà corrigé pour l'impact scorer. **Le coût est invisible tant que `set_dependency_map` n'est pas appelé.** Volet (C) : deux écarts d'annotation à corriger — mais **vérifier #236 d'abord**, qui propose un `peek` non destructif et changerait la sémantique des deux outils MQTT. |
+| **Jalon visé** | **#366 avant la prochaine mineure** — c'est le chemin le plus chaud du serveur, et le défaut se révèle précisément chez l'utilisateur qui suit la recommandation du `README.md` de renseigner la carte de dépendances. Les annotations sont de l'hygiène, derrière #236. Aucun jalon pour (A) ni (B) : le premier est infaisable, le second est un détour autour de **#319**. |
 
 ## 8. Journal
 
@@ -234,3 +344,4 @@ Ce que le repo ne contient pas et qui serait entièrement à écrire : client `x
 |---|---|
 | 2026-08-14 | Fiche créée par la veille plateforme. |
 | 2026-08-14 | Vérification des faits : schéma webhook tranché, verdict et Activity corrigés, §5 confirmé, testabilité partielle. |
+| 2026-08-17 | **Challenge — verdict `adopter partiellement` ; le livrable est une mesure de latence sans rapport avec l'entreprise.** **Ma mesure de K1 était sur la mauvaise branche.** Base à `dependency_map` **vide** → `getModuleInfo` renvoie `null` → le `continue` de `conflict-detector.ts:110` saute `getBlastRadius`, et `detect()` mesure **1,42 ms**. J'allais publier « K1 ne se déclenche pas, la latence n'est pas l'obstacle ». Remesuré avec une carte de **200 modules** : **304 ms au p95 à 1 module cible, 1 533 ms à 5** — soit **31 % du budget de 5 s**. **K1 se déclenche**, et §6.1 avait raison de mettre le budget en avant : la phrase que j'allais écrire disait l'inverse exact de la mesure. Cinquième occurrence dans ce corpus de la faute « l'instrument n'était pas branché au bon endroit ». **Et c'est le livrable réel** : `getBlastRadius` rescanne toute la table à chaque appel sans cache (`dependency-map.ts:176`, `:87-89`), avec un BFS O(V²) (`:189-198`), dans une boucle **imbriquée** threads × modules — plus un N+1 sur `checkFileConflict` que `file-tracker.ts:83-92` documente et a déjà corrigé pour l'impact scorer. **Le coût est invisible tant que `set_dependency_map` n'est pas appelé** → **#366**. **Refusé (A)** : K2 se déclenche, reformulé — **3 champs sur 4 sans dérivation** (`agent_id` : la table `agents` n'a ni email ni `user_id` ni `owner_id` ; `target_modules` ; `target_files`, dont les seuls chemins extractibles sont ceux **déjà écrits**, le hook tirant *avant* l'inférence), le 4ᵉ (`org_id`) dérivable via `users.email` mais **infondé** (`UNIQUE` sur `(idp_provider, idp_user_id)`, pas sur l'email ; IdP distinct de claude.ai). **Deux de mes motifs étaient réfutables** et je les remplace : l'`org_id` n'est pas « absent » mais dérivable-sans-fondement, et `target_files` ne vient pas d'un « texte libre » mais de blocs `tool_use` **structurés** — le bon argument est l'ordonnancement. **Refusé (B)** : et **§4 ligne 149 est fausse** — corréler l'audit à des identités réelles n'est pas « ce que le projet ne sait pas faire », il **sait** le faire (`withAuditContext` existe, `audit()` dérive les quatre colonnes) ; ce qui manque est l'**invocation**, c'est-à-dire **#319**. La Compliance API est donc un détour, pas un remède : elle rend une identité claude.ai, pas un `users.id`. **Adopté (C)** mais recadré : ce n'est pas un critère externe, `docs/ARCHITECTURE.md:296` prescrit déjà les annotations — les écarts sont des déviations de **notre** règle. **K6 ne se déclenche pas** : j'avais lu le critère sur la **clé** (0 échec) au lieu de la **valeur** — **10 outils sur 26** échouent, et il y a **deux** écarts concrets, pas un : `cli/channel.ts:343-351` et `wait_for_message` (`mqtt-tools.ts:68`), sans `readOnlyHint: true` ni `destructiveHint` alors qu'il **consomme** ce qu'il rend (`mqtt-bridge.ts:430`). Chevauchement à traiter d'abord : **#236** propose un `peek` non destructif. **K3 atténué** (§2 documente un circuit breaker), **K4 ne discrimine rien** (propriété de l'entrée d'Anthropic ; rien n'oblige à persister le transcript). **Et pour la première fois de la série `E08`–`E14`, §0 et §5 sont exempts de défaut de vérification** : les trois écarts de lignes sont de la **dérive de dépendance** (`7e76cfe` et `4f62056`, tous deux du 2026-08-15, un jour après). |
