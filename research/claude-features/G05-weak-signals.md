@@ -16,7 +16,7 @@
 | **Vérification** | CONFIRMED |
 | **Vérifiée le** | 2026-08-14 |
 | **Testabilité** | ⚠️ partielle — Cowork exige compte payant + connecteur org |
-| **Statut du challenge** | ⬜ à faire |
+| **Statut du challenge** | ✅ **tranché** (2026-08-17) — refuser la migration d'identité, reporter la carte du daemon et Cowork |
 
 ---
 
@@ -260,7 +260,32 @@ Chemins vérifiés par lecture directe.
 
 ### 6.2 Hypothèse
 
-<Ce qu'on pense avant de tester.>
+**Un conflit de cadrage à trancher d'abord.** Le protocole de challenge attribue le cadrage « menace » d'après le préfixe, et `G05` est dans le bloc `G`. Mais la fiche déclare elle-même `Nature: opportunity`, et sa §6.1 pose une question d'**adoption** (« l'identité d'agent doit-elle migrer vers une Agent Card A2A ? »), pas une question de réponse à une menace. Je retiens le cadrage de la fiche et le vocabulaire standard — `adopter` / `adopter partiellement` / `reporter` / `refuser` —, en le disant plutôt qu'en le subissant. La règle du préfixe est une heuristique de bloc ; ici elle se trompe, et `G05` est de toute façon un fourre-tout de fin de corpus.
+
+**Terrain vérifié avant de commencer.** Aucune branche `G05`. Et la §6.1 de cette fiche pose, sans le savoir, **la question que tout le corpus tourne autour depuis dix passes** :
+
+- `C01` §7.3 (tranchée, `main`) : *« D'où vient l'`agent_id` ? […] Elle doit être tranchée avant d'écrire une ligne de gate. »*
+- `F02` (branche non fusionnée) a mesuré `AuthClaims` : neuf champs, **aucun `agent_id`**.
+- `F03` (branche non fusionnée) : le contexte d'un handler MCP ne porte que `sessionId`.
+- `G03` (branche non fusionnée) : le SEP Interceptors ne standardise **aucune** identité d'agent pair — `principal.type` vaut `user | service | anonymous`.
+
+Quatre fiches ont buté sur l'absence d'identité d'agent. A2A, lui, **est** un standard d'identité d'agent : une carte adressable, signée, avec des capacités typées. C'est la première fois du corpus qu'une réponse au préalable arrive de l'extérieur.
+
+**Ce que je pense avant de mesurer.** Que la fiche a raison sur le fond et se trompe d'échelle. Servir une Agent Card ne coûte pas cher — `src/discovery.ts` fait déjà exactement ça pour la RFC 8414. Mais une Agent Card décrit **le daemon**, pas les agents qu'il coordonne, et c'est le second cas qui intéresse le projet. Je m'attends à ce que la mesure fasse apparaître que les champs obligatoires d'`AgentCard` sont précisément ceux que `src/types.ts` ne porte pas — donc que le blocage n'est pas A2A mais, encore une fois, notre modèle d'identité.
+
+### 6.2b Critères de mort — pré-enregistrés avant toute mesure
+
+| # | Critère de mort | Seuil chiffré |
+|---|---|---|
+| **K1** | **On ne peut pas remplir une Agent Card avec ce qu'on a.** | ≥ 1 champ **obligatoire** d'`AgentCard` non dérivable de `src/types.ts` + `src/tools/*.ts` |
+| **K2** | **Aucun consommateur.** | Claude Code, Cursor, Cline, Aider parlent MCP ; **0** parle A2A |
+| **K3** | **YAGNI.** | **0** issue mentionnant A2A, AGNTCY ou Cowork |
+| **K4** | **Le recouvrement push est un doublon, pas un remplacement.** | si A2A n'a pas d'équivalent aux 16 `EventType`, ce n'est pas un remplacement |
+| **K5** | **Cowork est hors de portée empirique.** | compte payant + Owner d'org + HTTPS public avec allowlist IP ⇒ **inmesurable**, aucun verdict ne s'y appuie |
+| **K6** | **L'unité de conflit ne se transpose pas.** | `file-tracker`, `conflict-detector`, `dependency-map` supposent tous un chemin repo-relatif |
+| **K7** | **Ce qui reste en propre est-il non vide ?** | ni A2A ni Cowork ne détectent un conflit d'intention sur fichiers |
+
+**Ce que je m'interdis**, et c'est la liste complète de dix passes : vérifier la **nature** d'un objet avant d'en conclure une absence (`G03`) ; **grepper les docs et l'audit** avant de crier à la découverte — trois récidives, la dernière en `G04` où j'allais annuler une décision instruite ; ne pas publier un chiffre que je n'ai pas produit (`G01`) ; ne pas comparer deux objets de natures différentes (`D02`, `G01`, `G04`) ; ne pas déclarer « inmesurable » ce qui est seulement « non exécutable » (`G02`) ; et préciser si une fiche citée vit sur `main` ou sur une branche non fusionnée.
 
 ### 6.3 Protocole de vérification
 
@@ -279,7 +304,113 @@ Chemins vérifiés par lecture directe.
 
 ### 6.4 Résultat observé
 
-<Ce qu'on a réellement mesuré/vu. Coller les sorties, pas les paraphraser.>
+**Frontière.** Exécuté : la lecture de la spec A2A **à sa source canonique**, la confrontation champ par champ à `src/types.ts`, et l'adjudication de tout ce qui est local. **Non exécuté et déclaré tel** : le volet Cowork empirique — compte payant, ajout de connecteur par un Owner d'org, daemon en HTTPS public avec allowlist d'IP Anthropic. Aucun verdict ne s'y appuie.
+
+**Où est la source, et pourquoi ça compte.** La page de spec HTML se tronque avant la définition d'`AgentCard`. Le dépôt publie bien un `specification/json/a2a.json` — mais son propre README dit :
+
+> *« `a2a.json` is a **non-normative build artifact** derived from the canonical proto definition at `specification/a2a.proto`. It is generated during builds and intentionally **not** committed to source control. »*
+
+La source normative est donc le `.proto` (35 942 octets, 812 lignes), et c'est lui que je lis. *(Leçon de `G03` appliquée dans le bon sens cette fois : quand un document est absent, chercher où le projet dit qu'il se trouve, plutôt que conclure de l'absence.)*
+
+Le dépôt est par ailleurs très vivant : **25 379 étoiles**, dernier push **le jour du challenge**. Le §6.5 doutait de l'installation du standard sur des chiffres de communiqués contradictoires ; l'activité, elle, ne fait pas de doute.
+
+#### K1 — on ne peut pas remplir une Agent Card avec ce qu'on a (se déclenche, et pas pour la raison attendue)
+
+Champs **REQUIRED** d'`AgentCard`, verbatim du proto canonique :
+
+```proto
+string name                                = 1  [REQUIRED]
+string description                         = 2  [REQUIRED]
+repeated AgentInterface supported_interfaces = 3 [REQUIRED]
+string version                             = 5  [REQUIRED]
+AgentCapabilities capabilities             = 7  [REQUIRED]
+repeated string default_input_modes        = 10 [REQUIRED]
+repeated string default_output_modes       = 11 [REQUIRED]
+repeated AgentSkill skills                 = 12 [REQUIRED]
+```
+
+Et les deux objets imbriqués :
+
+```proto
+message AgentInterface {   string url [REQUIRED]; string protocol_binding [REQUIRED];
+                           string protocol_version [REQUIRED]; }
+message AgentSkill     {   string id [REQUIRED]; string name [REQUIRED];
+                           string description [REQUIRED]; repeated string tags [REQUIRED]; }
+```
+
+Contre notre modèle (`src/types.ts:5-13`) :
+
+```ts
+export interface Agent {
+  id: string; org_id: string; name: string;
+  modules: string;                 // JSON array
+  status: AgentConnectionStatus; registered_at: string; last_seen_at: string;
+}
+```
+
+**8 champs obligatoires, 1 dérivable.** Seul `name` se remplit. `description`, `version`, `capabilities`, `default_input_modes`, `default_output_modes` n'existent nulle part. `modules` est un tableau de chemins de modules : il donne au mieux un `name` d'`AgentSkill`, alors que celui-ci exige aussi `id`, `description` et `tags`.
+
+**J'avais écrit ici un « argument décisif » qui est faux, et c'est la correction la plus importante de cette fiche.** J'affirmais que `AgentInterface.url` étant REQUIRED, un agent A2A est forcément un serveur, alors que nos agents sont des clients — « pas une colonne à ajouter, une direction inversée ». Le proto dit l'inverse, au champ 3 de la structure que je citais :
+
+```proto
+  // Optional. An opaque string used for routing requests to a specific agent
+  // or tenant when multiple agents are served behind a single A2A endpoint.
+  // When set, clients MUST include this value in the `tenant` field of all
+  // request messages sent to this interface.
+  string tenant = 3;
+```
+
+Et les gabarits de chemin du binding HTTP sont **tous** tenant-scopés — **34 occurrences** de `{tenant}` dans le proto :
+
+```
+post: "/{tenant}/message:send"     post: "/{tenant}/message:stream"
+post: "/{tenant}/tasks/{id=*}:cancel"   …
+```
+
+**Plusieurs agents derrière un seul endpoint est un motif de premier ordre du protocole, câblé dans chaque route.** `url` REQUIRED ne dit pas « chaque agent s'auto-héberge », il dit « la carte nomme une adresse joignable ». J'ai confondu *adressable* et *auto-hébergé*. Et le substrat de routage existe déjà chez nous : `mqtt-tools.ts` appelle `mqttBridge.waitForMessage(claims.org, agent_id, …)` — le daemon tient déjà une file **par couple (org, agent_id)**, c'est-à-dire le modèle tenant.
+
+**Le mur est réel, mais ce n'est pas celui que j'avais nommé.** `agent_id` est un `z.string()` **fourni par l'appelant**, absent d'`AuthClaims` (9 champs, mesurés par `F02`). Un `tenant` bâti là-dessus serait une clé de routage **non authentifiée** : c'est un trou d'autorisation, pas une impossibilité topologique. Le corpus bute donc bien pour la cinquième fois sur le même obstacle — `C01` §7.3, `F02`, `F03`, `G03` — et il s'appelle **identité d'agent authentifiée**, pas adressabilité.
+
+**Second correctif : mon « 1 sur 8 » mesurait la mauvaise source.** Mon propre K1 disait « non dérivable de `src/types.ts` **+ `src/tools/*.ts`** » et je n'ai lu que le premier. Sur le second : **26 outils, 26 `description`, 26 `annotations.title`** — de quoi remplir `AgentSkill[]` mécaniquement (`id` = nom d'outil, `name` = titre, `description` = description, `tags` = groupement). Et pour une carte **du daemon**, le reste se remplit aussi :
+
+| Champ REQUIRED | Source |
+|---|---|
+| `name`, `description`, `version` | `package.json` |
+| `supported_interfaces.url` | `COORDINATOR_PUBLIC_URL`, **obligatoire et validée au boot** (`src/boot.ts`) |
+| `capabilities` | **0 champ REQUIRED** dans `AgentCapabilities` — `{}` est valide |
+| `default_input_modes` / `default_output_modes` | constantes |
+| `skills` | les 26 outils |
+
+**8 sur 8 pour une carte du daemon.** K1 se déclenche à son seuil (`≥ 1`) pour une carte **par agent** — `description` et `version` n'ont pas de source par agent — mais le chiffre que j'allais publier était faux sous le périmètre que K1 s'était lui-même donné. C'est `feedback_adjudicate_all_criteria`, à nouveau.
+
+#### K2 — aucun consommateur (se déclenche)
+
+Les quatre clients que le README revendique — Claude Code, Cursor, Cline, Aider — parlent MCP. Aucun ne parle A2A. Une Agent Card servie aujourd'hui n'aurait aucun consommateur, et ajouterait une surface HTTP publique. **K2 se déclenche.**
+
+#### K3 — YAGNI (se déclenche)
+
+```
+"A2A"        -> 0 issue        "AGNTCY" -> 0 issue
+"cowork"     -> 0 issue        "agent card" -> 1 (faux positif sur les mots)
+```
+
+**K3 se déclenche.**
+
+#### K4 — le recouvrement push est un doublon, pas un remplacement (se déclenche)
+
+`src/types.ts` porte **16** valeurs d'`EventType` — `agent_online`, `task_claimed`, `quota_update`… A2A raisonne en **états de cycle de vie d'une `Task`**, pas en vocabulaire d'événements de coordination. Le §4 écrit que `*TaskPushNotificationConfig` « recouvre exactement » ce que font `sse-emitter` et `mqtt-bridge` : c'est vrai du **mécanisme de livraison**, faux du **vocabulaire**. **K4 se déclenche** — adopter A2A ne supprimerait pas notre modèle d'événements, il ajouterait un transport de plus.
+
+#### K5 — Cowork est hors de portée empirique (inmesurable, comme annoncé)
+
+La question fermée du §6.3 est déjà tranchée par la doc et le §0 : oui, un plugin Cowork peut déclarer un serveur MCP distant. La vérification empirique exige un compte payant, un Owner d'org et un daemon en HTTPS public avec allowlist. **Déclaré inmesurable**, et **aucun verdict ne s'y appuie**.
+
+#### K6 — l'unité de conflit ne se transpose pas (se déclenche)
+
+`file-tracker`, `conflict-detector` et `dependency-map` supposent tous un chemin repo-relatif — le challenge de `G02` vient d'ailleurs de mesurer que même un worktree hors dépôt est **refusé** (`path-normalize.ts:33`). Coordonner des sessions Cowork demanderait une seconde notion d'unité de conflit. **K6 se déclenche.**
+
+#### K7 — ce qui reste en propre (ne se déclenche pas)
+
+Ni A2A ni Cowork ne détectent un conflit d'intention sur des fichiers. **K7 ne se déclenche pas** — avec la réserve, déjà posée par `G01` et `D03`, que notre détection est celle d'un agrégateur de déclarations.
 
 ### 6.5 Contre-arguments
 
@@ -312,13 +443,50 @@ Chemins vérifiés par lecture directe.
 
 ## 7. Décision
 
+**Sur le vocabulaire employé.** La fiche déclare `Nature: opportunity` en en-tête **et** dans `README.md`, l'index du corpus — seule du bloc `G`. C'est une source externe à la fiche, donc non circulaire. Je note aussi que `_CHALLENGE-PROMPT.md:155` écrit « Fiche « menace » (**blocs D et G**) », énumération explicite et non heuristique de préfixe : j'avais caricaturé le texte que j'écartais. La jurisprudence tranche pourtant dans mon sens — `E09`, `Nature: threat` hors blocs D/G, a coché `refuser` — donc le vocabulaire suit `Nature`, pas le bloc. Trois verdicts distincts, un par objet.
+
 | | |
 |---|---|
-| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ⬜ refuser |
-| **Date** | |
-| **Justification** | |
-| **Issue / PR** | |
-| **Jalon visé** | |
+| **Verdict** | **A2A, migration de l'identité d'agent : ✅ refuser** · **A2A, carte du daemon : ✅ reporter** · **Cowork : ✅ reporter** |
+| **Date** | 2026-08-17 |
+| **Justification** | La §6.1 demande si l'identité d'agent doit migrer vers une Agent Card. **Non** — non pour une raison de topologie (le protocole gère explicitement plusieurs agents derrière un endpoint), mais parce que `agent_id` est une chaîne fournie par l'appelant, absente d'`AuthClaims` : un `tenant` bâti dessus serait une clé de routage **non authentifiée**. Cinquième récidive du préalable d'identité. En revanche la carte du **daemon** est dérivable à 8/8 aujourd'hui : ce n'est pas infaisable, c'est sans usage. |
+| **Issue / PR** | aucune ; le dossier découvrabilité est renvoyé à `A10` |
+| **Jalon visé** | aucun ; conditions de réveil en §7.4 |
+
+### 7.1 Ce qui est refusé — la migration de l'identité d'agent vers A2A
+
+Refusé, et le motif compte plus que le verdict. **Ce n'est pas « impossible » : c'est bloqué par le même mur que quatre fiches avant celle-ci.** `C01` §7.3 (sur `main`), `F02`, `F03` et `G03` (branches non fusionnées) ont chacune conclu qu'il n'existe pas d'identité d'agent exploitable côté serveur. A2A ne la fournit pas — il fournit un mécanisme de **routage** (`tenant`) qui suppose une clé de confiance que nous n'avons pas.
+
+Tant que `agent_id` reste un `z.string()` du corps de la requête, toute carte par agent, tout `tenant`, tout gate et tout validator héritent du même défaut. **C'est le résultat le plus robuste de tout le bloc `G`**, et il ne vient d'aucune spec externe : il vient de notre modèle d'auth.
+
+### 7.2 Ce qui est reporté, et pourquoi pas refusé — la carte du daemon
+
+J'allais jeter ceci avec le reste, sur la foi de mon argument faux. Les huit champs obligatoires sont dérivables **aujourd'hui**, sans nouvelle colonne : `package.json` donne trois champs, `COORDINATOR_PUBLIC_URL` est déjà obligatoire et validée au boot, `AgentCapabilities` n'exige rien, et les 26 outils avec leurs titres et descriptions remplissent `skills`. Le modèle d'implémentation existe : `src/discovery.ts` sert déjà un document de découverte bien connu pour la RFC 8414, et `src/serve-http.ts` route déjà `/.well-known/…`.
+
+Ce qui manque n'est donc pas la faisabilité mais **l'usage** : `K2` (aucun des quatre clients revendiqués ne parle A2A) et `K3` (**0** issue). Le protocole réserve exactement ce cas à `reporter` — « au premier utilisateur qui le demande ». Refuser fermerait une porte à ~25 lignes de coût ; ce serait déclarer mort ce qui est seulement inutile.
+
+### 7.3 Cowork — reporter
+
+`K5` est **inmesurable** ici et je n'en tire rien. `K6` tient, avec une correction : `file-tracker` et `conflict-detector` sont bien liés au chemin repo-relatif, mais `dependency-map` clé sur un `module_id` opaque — c'est le seul des trois qui se transposerait à un domaine hors dépôt. Deux sur trois, pas trois sur trois.
+
+### 7.4 Conditions de réveil
+
+| Signal | Objet |
+|---|---|
+| Un client de la population servie parle A2A, ou un déploiement le demande | la carte du daemon |
+| `AuthClaims` gagne un `agent_id` authentifié | la migration d'identité, et avec elle tout le dossier des gates |
+| Cowork devient testable sans compte payant ni Owner d'org | le volet Cowork |
+
+### 7.5 Le dossier découvrabilité appartient à `A10`
+
+Le §4 s'inquiète de devenir invisible si AGNTCY Directory devient le point d'entrée. Ne rien en dire serait une esquive — mais le traiter ici serait un doublon : **`A10`** (non tranchée) porte déjà le registre officiel, et son §2 a déjà jugé la famille voisine (`experimental-ext-server-card`, `/.well-known/ai-catalog.json`) en concluant *« le bénéfice est nul aujourd'hui […] à classer en veille, pas en action »*. Le fait vérifiable est là : `package.json` déclare `mcpName: io.github.swoofer/mcp-coordinator`, une promesse de publication **orpheline**. Ce constat va à `A10`, pas à `G05`.
+
+### 7.6 Corrections obligatoires avant réutilisation
+
+1. **§4 : « `*TaskPushNotificationConfig` recouvre exactement » sse-emitter et mqtt-bridge** — vrai du mécanisme de livraison, faux du vocabulaire. Nos **16** `EventType` (`agent_online`, `file_edited`, `quota_update`, `token_usage`…) n'ont aucune représentation dans un modèle qui ne connaît que des états de cycle de vie de `Task` et deux types d'événement de flux.
+2. **En-tête : `v1.0.1` est sortie le 2026-05-28**, trois mois avant la vérification du §0 qui annonce v1.0.0 comme dernière version stable.
+3. **§4, la thèse « migration d'identité »** est à reformuler : le protocole n'interdit rien topologiquement (`tenant` + 34 chemins tenant-scopés), c'est notre auth qui bloque.
+4. **§6.1** demande de trancher une migration alors que la question utile est la carte du daemon — deux objets, deux verdicts.
 
 ## 8. Journal
 
@@ -326,3 +494,4 @@ Chemins vérifiés par lecture directe.
 |---|---|
 | 2026-08-14 | Fiche créée par la veille plateforme. Fusion de 2 fiches brutes (A2A/AGNTCY, Claude Cowork). |
 | 2026-08-14 | Vérification des faits : méthodes JSON-RPC A2A renommées en v1.0, Cowork est beta, question plugin/MCP distant tranchée (oui). |
+| 2026-08-17 | Challenge, dernière fiche du corpus. **Trois verdicts** : `refuser` la migration de l'identité d'agent vers A2A, `reporter` la carte du daemon, `reporter` Cowork. Spec lue à sa **source canonique** — le site officiel rend `Error: Message AgentCard not found`, et `specification/json/a2a.json` est un artefact de build **non normatif et non commité** ; la source est `specification/a2a.proto`. `AgentCard` y porte **8** champs REQUIRED. **Mon argument décisif était faux** : j'allais publier que `AgentInterface.url` impose que chaque agent soit un serveur — « une direction inversée ». Le champ 3 de la même structure dit l'inverse (`tenant`, *« when multiple agents are served behind a single A2A endpoint »*), et **34** gabarits de chemin HTTP sont tenant-scopés. Second correctif : mon « 1 champ sur 8 dérivable » ne lisait que `src/types.ts` alors que K1 disait « + `src/tools/*.ts` » — les 26 outils remplissent `skills`, et une carte **du daemon** est dérivable **8/8** aujourd'hui. Le vrai mur est le même que pour `C01` §7.3, `F02`, `F03` et `G03` : `agent_id` est une chaîne fournie par l'appelant, absente d'`AuthClaims` — **cinquième récidive du préalable d'identité**. Le dossier découvrabilité (AGNTCY Directory, `mcpName` orphelin) est renvoyé à `A10`. |
