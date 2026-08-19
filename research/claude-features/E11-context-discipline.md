@@ -16,7 +16,7 @@
 | **Vérification** | CONFIRMED |
 | **Vérifiée le** | 2026-08-14 |
 | **Testabilité** | ⚠️ partielle — mesures locales oui, appels API beta non |
-| **Statut du challenge** | ⬜ à faire |
+| **Statut du challenge** | ✅ **tranché** (2026-08-17) — adopter partiellement : borner le contexte auto-livre (#361) |
 
 ---
 
@@ -202,7 +202,28 @@ Deux risques distincts. Le premier est fonctionnel et documenté ci-dessus : la 
 
 ### 6.2 Hypothèse
 
-<Ce qu'on pense avant de tester.>
+**Ce que je pense avant de mesurer.** §6.5 porte son propre argument le plus lourd : *« Le serveur ne contrôle pas la requête API. »* C'est vrai des quatre champs cités — `context_management`, `output_config.task_budget`, `allowed_callers`, `cache_control` vivent tous dans la requête de l'appelant vers l'API Claude. Mais `E08` m'a appris à ne **pas** conclure de là que le serveur est impuissant : j'y avais écrit « ce n'est pas notre couche » et le SDK MCP exposait `disable()` / `sendToolListChanged`. Je dois donc **vérifier** s'il existe un levier serveur, et non le déduire.
+
+Ce qui reste, et qui est entièrement de notre côté, est le point 2 de §4 : **la verbosité de nos propres réponses**. Et c'est là que la fiche avance un chiffre qu'elle n'a pas mesuré — « avec dix agents en ligne dont un seul concerné, on renvoie neuf entrées `pass` que personne ne lira ». C'est la première chose à mesurer, parce que tout le reste en dépend : si `impact.pass` est marginal, §6.1 se réduit à un paragraphe de doc.
+
+Hypothèse principale : `announce_work` domine bien, mais **la part de `pass` sera plus petite que la fiche ne le suggère**, et le vrai poids sera ailleurs — dans `context` (les `action_summaries` non tronqués, que `E10` a mesurés comme le seul canal auto-livré) ou dans `thread`. Si c'est le cas, la recommandation change de cible.
+
+Hypothèse secondaire : le risque nommé en §4 — un ensemble d'outils qui varierait selon la config et invaliderait tout le cache — est un invariant **réel mais non testé**, et c'est le livrable le moins cher de la fiche.
+
+### 6.2b Critères de mort — pré-enregistrés avant toute mesure
+
+Ici, « adopter » signifie **rendre les sorties structurellement compactes** (retirer `impact.pass`, borner les listes, ajouter un outil de réhydratation). Un seul critère qui se déclenche le tue.
+
+| # | Critère de mort | Seuil chiffré |
+|---|---|---|
+| **K1** | **La verbosité dénoncée n'est pas là où la fiche la place.** Si `impact.pass` est marginal dans le payload d'`announce_work`, le changement de contrat de réponse se fait pour rien. | `impact.pass` < **30 %** des octets d'`announce_work` à 10 agents en ligne |
+| **K2** | **Aucun levier serveur.** Si rien de ce que le serveur contrôle n'influence la discipline de contexte, la fiche se réduit à de la documentation. | **0** levier côté serveur, **vérifié** et non déduit |
+| **K3** | **PTC est hors de portée.** Un `$ref` dans un `input_schema` émis suffit à disqualifier le profil PTC. | ≥ **1** `$ref` dans le JSON Schema effectivement émis pour les 26 outils |
+| **K4** | **Le changement de contrat casse un consommateur.** `announce-workflow.ts` dit explicitement que les formes MCP et REST divergent volontairement. | ≥ **1** consommateur (dashboard, SDK, tests, REST) lit `impact.pass` |
+| **K5** | **L'invariant d'ensemble d'outils stable est déjà cassé.** | `tools/list` ne rend **pas** les mêmes 26 noms sous deux configs différentes |
+| **K6** | **Aucune métrique pour étayer un chiffre.** Toute affirmation publiée serait une estimation maison. | **0** histogramme de taille de réponse par outil dans `src/metrics.ts` |
+
+**Règle que je m'impose :** §0 classe la fiche ⚠️ **partielle** — les étapes 3 et 5 exigent une clé API et un endpoint joignable. Elles ne peuvent **jamais** recevoir `adopter`, et le point `(non vérifiable)` de §2 sur le nommage dans `exclude_tools` doit rester marqué comme tel. Et j'applique la leçon de `E09` : **grepper la doc du dépôt avant de publier une mesure comme découverte.**
 
 ### 6.3 Protocole de vérification
 
@@ -218,7 +239,113 @@ Deux risques distincts. Le premier est fonctionnel et documenté ci-dessus : la 
 
 ### 6.4 Résultat observé
 
-<Ce qu'on a réellement mesuré/vu. Coller les sorties, pas les paraphraser.>
+#### A. Ma première mesure était un plancher, et l'argument que j'en tirais est faux d'un facteur 20
+
+J'avais mesuré l'anatomie du payload d'`announce_work` avec 3 résumés d'action par pair, obtenu **2,7 ko à 10 agents (~700 tokens)**, et j'allais en conclure qu'un appel représente **0,7 %** du `trigger` par défaut de 100 000 tokens — donc qu'il faudrait ~140 appels pour l'atteindre, donc que la verbosité est négligeable en magnitude.
+
+**C'était un artefact de mon banc.** `getActionSummaries` (`src/consultation.ts:630-640`) n'a **aucun `LIMIT`**, et son unique appelant (`src/context-provider.ts:42`) ne passe **pas** de `since`. Avec une rétention de 30 jours, la seule variable qui compte est le nombre de résumés accumulés par le pair concerné. Remesuré en ne faisant varier que ça :
+
+```
+resumes/pair | total  | ~tokens | ctx% | impact% | pass% | K1(<30%)
+           0 |   1886 |     472 |   5% |  59%    |  49%  | ne se declenche pas
+           3 |   2730 |     683 |  34% |  41%    |  34%  | ne se declenche pas
+           8 |   4140 |    1035 |  57% |  27%    |  22%  | SE DECLENCHE
+          40 |  13254 |    3314 |  86% |   8%    |   7%  | SE DECLENCHE
+         200 |  59154 |   14789 |  97% |   2%    |   2%  | SE DECLENCHE
+```
+
+**À 200 résumés — un mois de rétention sur un seul pair — une réponse `announce_work` fait 59 ko, soit ~14 800 tokens : 15 % du seuil de 100 000.** Sept appels suffisent, pas 140. **Je retire le « 0,7 % » et le « ~140 appels ».**
+
+Et la verbosité n'est **pas** là où §4 la place : à 200 résumés, `context` pèse **97 %** et `impact.pass` **2 %**. Le coupable est le canal auto-livré non borné, pas la liste `pass`.
+
+C'est d'autant plus mordant que le mécanisme s'auto-alimente : la verbosité non bornée du chemin de coordination **accélère le déclenchement du context editing**, qui efface justement les annonces des pairs. → **#361**
+
+#### B. K1 était mal calibré, et je le déclare tel
+
+Mon seuil faisait décider par **une** mesure sur `impact.pass` le sort de **trois** changements indépendants — retirer `pass`, borner les listes, ajouter un outil de réhydratation. Or la mesure bascule à **8 résumés** (22 % < 30 %) et vaut 34 % à 3 : la réponse dépend entièrement de l'historique du pair, pas d'une propriété du produit. Pire, **la mesure qui déclenche K1 est simultanément la meilleure preuve en faveur du deuxième volet** (borner).
+
+Je l'adjuge donc **mal calibré** et je tranche les trois volets séparément, plutôt que de publier un refus global adossé à un critère qui prouve le contraire de l'un d'eux.
+
+Structurellement, `pass` est d'ailleurs minimal par construction : chaque `reasons.push` de `src/impact-scorer.ts` est apparié à un score ≥ 30, donc `score < 30 ⟹ reasons: []`, soit ~92 octets fixes par entrée.
+
+#### C. Mon livrable « invalidation de cache » était surdéclaré — portée corrigée
+
+Ce qui tient, verbatim de la doc du jour : *« The `tools` array sits even earlier in the hashed request prefix than the top-level `system` field, so editing it invalidates the prompt cache for the entire conversation »*, et la raison d'être de la beta `tool_removal` : *« The `tools` array itself never changes, so the cached prefix stays intact. »* Donc **la tension avec `E08` est réelle** : j'y ai écrit que `disable()` + `sendToolListChanged` était « la même capacité, en mieux » que `tool_removal` — sur l'axe précis que `tool_removal` a été construit pour protéger.
+
+Ce qui ne tient pas, c'est ma portée. Mesuré : `createMcpServer` est **une instance par session** (`src/server-setup.ts:193-208`), les objets outil ne sont pas partagés entre instances, et `src/serve-http.ts:513` ne retient que `sessions: Map<string, NodeStreamableHTTPServerTransport>` — **aucune instance `McpServer` n'est conservée**. Un `disable()` à l'échelle de la flotte est donc **inatteignable** sans plomberie nouvelle. Portée réelle : **un agent, son propre préfixe.**
+
+Et un chaînon reste **non documenté** : MCP dit que le serveur *« SHOULD send a notification »* et place le `tools/list` du client dans un bloc **`opt`** — rien n'oblige un client à reconstruire son `tools[]`. La forme honnête est donc conditionnelle : *si* le client reconstruit `tools[]`, tout le préfixe part.
+
+Enfin, `grep -rn "\.disable(\|sendToolListChanged" src/ cli/ sdk/src/` rend **0** : c'est prospectif. Le bon format n'est pas une issue mais un **caveat croisé sur `A02` / `E08`** — quand on fera l'inventaire par agent via `disable()`, chaque transition d'état de verrou coûtera une invalidation complète du préfixe **de cet agent**, et c'est exactement le prix que `tool_removal` évite.
+
+#### D. PTC : bon refus, mauvais argument
+
+Le profil séquentiel est confirmé par le produit lui-même : `src/mcp-instructions.ts:29` (« Register once … **then**, BEFORE you edit … call `announce_work` »), `cli/init.ts:39-57` (workflow numéroté, « Read the response carefully. If `thread_id` is present … DO NOT proceed »), `cli/init.ts:65-68` (« **one extra call** »), `docs/usage.md:180-191` (pire tour documenté : **4 appels, tous chaînés**). Et les tableaux d'`announce_work` sont l'**anti**-fan-out : N fichiers en un appel.
+
+**Mais mon argument était mal ciblé.** Le contre-exemple τ²-bench porte sur l'amortissement d'un **fan-out** ; le cas PTC que §4.4 défend est du **fan-in** (un appel, résultat volumineux) — et mes mesures le *renforcent* plutôt que de le réfuter.
+
+Le vrai tueur est ailleurs et il est plus propre : **PTC garde les résultats intermédiaires hors de la conversation.** Pour `announce_work`, c'est le mode de défaillance du produit, pas son optimisation — tout l'intérêt est que le modèle **voie** le conflit. Et `allowed_callers` est un champ de l'appelant : le serveur ne peut pas le poser.
+
+**K3 ne se déclenche pas** : 26 outils, **0 `$ref`, 0 `$defs`** dans les schémas effectivement émis. Mais c'est une condition nécessaire sur laquelle le serveur n'a aucune prise.
+
+#### E. `exclude_tools` : la doc est écrivable, mais son audience est vide
+
+Le point `(non vérifiable)` de §2 est plus étroit qu'annoncé. `io.github.swoofer/mcp-coordinator` (`src/server-setup.ts:235`) n'est **pas** ce qui apparaît côté client : la veille l'a déjà mesuré en session réelle (`C06:312`) —
+
+```
+[init] mcp tools: ["mcp__coordinator__agent_activity","mcp__coordinator__announce_work", … ]
+[init] mcp_servers: [{"name":"coordinator","status":"connected"}]
+```
+
+Le préfixe est `mcp__<clé .mcp.json>__<outil>`, donc une chaîne que **l'utilisateur** choisit. Seule la forme sous `mcp_toolset` (expansion côté API) reste inconnue. La doc est donc écrivable : nommer les outils de coordination, dire que le préfixe appartient au client, et rappeler qu'`exclude_tools` prend une **liste** — on peut y mettre les deux formes sans coût.
+
+**Mais l'attaque que je ne m'étais pas faite est décisive** : `context_management` est un champ de la Messages API. `E08` a mesuré, et j'ai écrit moi-même, qu'**aucun intégrateur ne pilote la boucle Messages API**. Et §2 documente que task budgets n'existe ni sur Claude Code ni sur Cowork. **La population qui peut appliquer `exclude_tools` est exactement la population vide qui a servi à tuer la recette d'`E08`** — tandis que la population qui subit le mode de défaillance (Claude Code, qui compacte de lui-même) ne peut pas appliquer le remède.
+
+Cela **inverse ma partition** : le volet qui sert la population attestée est le **point 3 (réhydratation)**, que j'allais refuser. Et le trou est réel, vérifié : `coordinator_status` (`status-tools.ts:34-75`) ne renvoie que des **compteurs** ; `get_session_files` exige un `session_id` que l'agent compacté a perdu ; et **aucun outil ne prend un `agent_id` pour rendre les fichiers que cet agent tient**.
+
+#### F. Le test que j'allais adopter renverse un choix commenté
+
+« Rien ne teste l'invariant » est exagéré. `tests/integration/mcp-stdio-smoke.test.ts:34` et `mcp-http-smoke.test.ts:30` assertent `>= 20` plus un sous-ensemble nommé, sur les **deux** transports. Ce qui n'est pas testé : exactement 26, l'ordre, et l'invariance aux variables d'environnement.
+
+Et la borne lâche est **volontaire**, commentée à `mcp-stdio-smoke.test.ts:32-33` :
+
+> `// 26 tools per README — allow drift (>= 20) so add/remove of one tool`
+> `// doesn't cascade into red CI from a smoke test.`
+
+Donc « mêmes 26 noms, même ordre » n'est pas un test manquant, c'est le **renversement d'un choix explicite** — et `E08` a déjà chiffré la collatérale (2 fichiers smoke cassent avec `disable()`). **K5 ne se déclenche pas** : mesuré, les 26 mêmes noms dans le même ordre sous 3 configs.
+
+#### G. Adjudication des six critères
+
+| # | Seuil | Mesure | Verdict |
+|---|---|---|---|
+| **K1** | `pass` < 30 % à 10 agents | **34 %** à 3 résumés, **22 %** à 8, **2 %** à 200 — la réponse dépend de l'historique du pair, pas du produit | **MAL CALIBRÉ** — un seuil sur `pass` décidait trois changements indépendants, et la mesure qui le déclenche prouve le contraire de l'un d'eux |
+| **K2** | 0 levier serveur, vérifié | `disable`, `enable`, `update`, `sendToolListChanged` sont tous des `function` | **NE SE DÉCLENCHE PAS** — mais la portée est **un agent**, pas la flotte |
+| **K3** | ≥ 1 `$ref` | **0** `$ref`, **0** `$defs` sur les 26 schémas émis | **NE SE DÉCLENCHE PAS** |
+| **K4** | ≥ 1 consommateur lit `impact.pass` | uniquement `announce-workflow.ts:120` (usage interne) et 2 tests unitaires ; **aucun** consommateur externe | **NE SE DÉCLENCHE PAS** |
+| **K5** | `tools/list` diffère entre configs | **26 mêmes noms, même ordre**, sous 3 configs | **NE SE DÉCLENCHE PAS** |
+| **K6** | 0 histogramme de taille par outil | **0** (`grep "Histogram\|buckets"` sur `src/metrics.ts` → aucun) | **SE DÉCLENCHE** |
+
+**Un seul critère se déclenche proprement (K6), quatre ne se déclenchent pas, et un était mal calibré.** Ce qui a tranché cette fiche n'est donc pas un critère de mort mais une **remesure** — celle que mon premier banc avait manquée.
+
+#### H. Dérive des références de §5 : exactes le 14, périmées depuis le 15
+
+§0 affirme les avoir « vérifiés un à un ». C'était vrai le 2026-08-14 ; les commits du **2026-08-15** ont déplacé la plupart :
+
+| §5 dit | réel aujourd'hui |
+|---|---|
+| `createMcpServer` 207-250 | **208-260** |
+| six `register*Tools` 242-247 | **252-257** |
+| `announce_work` 36-187 | **39-222** |
+| `hot_files` 19-32 | **22-40** |
+| `get_session_files` 34-47 | **42-57** |
+| `list_agents` 49-65 | **58-76** |
+| `get_blast_radius` 73-88 | **77-94** |
+| `get_module_info` 90-103 | **96-111** |
+| `wait_for_message` 52-77 | **54-82** |
+| `get_queued_messages` 79-93 | **84-106** |
+| `coordinator_status` 32-71 | **34-75** |
+
+Restent exacts : `runCommonAnnounceFlow` 60-184, `CategorizedImpact` 16-20, `ImpactScore` 8-14, `getRelevantContext` 18-53, `Metrics` 38-258. **Quatrième fiche d'affilée** (`E08`, `E09`, `E10`, `E11`) dont la §0 se déclare vérifiée sur des références qui ont bougé — et le challenge d'`E08` avait utilisé 252-257 sans signaler la dérive.
 
 ### 6.5 Contre-arguments
 
@@ -236,11 +363,11 @@ Deux risques distincts. Le premier est fonctionnel et documenté ci-dessus : la 
 
 | | |
 |---|---|
-| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ⬜ refuser |
-| **Date** | |
-| **Justification** | |
-| **Issue / PR** | |
-| **Jalon visé** | |
+| **Verdict** | ⬜ adopter · ✅ **adopter partiellement** · ⬜ reporter · ⬜ refuser |
+| **Date** | 2026-08-17 |
+| **Justification** | ⭑ **Adopté — borner le contexte auto-livré.** C'est le seul volet avec une justification **mesurée**, il est côté serveur et neutre vis-à-vis du client. `getActionSummaries` (`consultation.ts:630-640`) n'a **aucun `LIMIT`** et son unique appelant ne passe **pas** de `since` ; avec 30 jours de rétention, une réponse `announce_work` atteint **59 ko ≈ 14 800 tokens (15 % du seuil de 100 000)** dont **97 % en `context`**. Sept appels suffisent à déclencher le context editing — qui efface alors les annonces des pairs. **La verbosité non bornée du chemin de coordination accélère la perte de la coordination.** → **#361** ⭑ **Refusé — retirer `impact.pass`.** Dès qu'un pair a ~8 résumés, `pass` tombe sous 30 % (22 %, puis 2 % à 200) : structurellement minimal (~92 octets fixes par entrée, car `score < 30 ⟹ reasons: []`). Aucun consommateur externe ne le lit. Le changement de contrat achèterait très peu. ⭑ **Refusé — PTC**, mais pas pour la raison que la fiche avance : le contre-exemple τ²-bench porte sur du **fan-out**, or le cas défendu ici est du **fan-in**. Le vrai motif est que **PTC garde les résultats intermédiaires hors de la conversation** — pour `announce_work` c'est le mode de défaillance du produit, pas son optimisation : tout l'intérêt est que le modèle **voie** le conflit. ⭑ **Rouvert — la réhydratation** (point 3 de §4), que j'allais refuser. Vérifié : `coordinator_status` ne rend que des **compteurs**, `get_session_files` exige un `session_id` que l'agent compacté a perdu, et **aucun outil ne prend un `agent_id` pour rendre les fichiers que cet agent tient**. C'est le seul volet qui serve la population **attestée** — Claude Code, qui compacte de lui-même. ⭑ **Documenter `exclude_tools` : oui, mais en caveat, pas en tête.** La doc est écrivable (`C06:312` a mesuré le préfixe réel `mcp__<clé .mcp.json>__<outil>`, choisi par l'utilisateur ; seule la forme sous `mcp_toolset` reste inconnue). Mais `context_management` est un champ de la Messages API, et `E08` a mesuré qu'**aucun intégrateur ne pilote cette boucle** : la population qui peut appliquer le remède est vide, celle qui subit le défaut ne peut pas l'appliquer. **Corrections de méthode.** **Mon argument porteur était faux d'un facteur 20** : j'avais mesuré 2,7 ko avec 3 résumés par pair et conclu « 0,7 % du seuil, ~140 appels » — un artefact de banc, retiré. **K1 était mal calibré** : un seuil sur `pass` décidait trois changements indépendants, et la mesure qui le déclenche prouve le contraire de l'un d'eux. Et mon livrable « invalidation de cache » était **surdéclaré** : la portée est **un agent, son propre préfixe** (une instance `McpServer` par session, aucune retenue), et le chaînon client est **non documenté** (MCP dit *« SHOULD send a notification »*, le `tools/list` du client est un bloc `opt`). Requalifié en **caveat croisé sur `A02`/`E08`** : la tension est réelle — j'ai écrit en `E08` que `disable()` était « la même capacité, en mieux » que `tool_removal`, sur l'axe précis que `tool_removal` protège. Enfin, le test d'invariant que j'allais adopter **renverse un choix commenté** (`mcp-stdio-smoke.test.ts:32-33`, borne lâche volontaire) : à ne faire qu'en le disant. |
+| **Issue / PR** | **#361** — `announce_work` peut renvoyer 59 ko en une réponse : `getActionSummaries` sans `LIMIT` ni `since`, rétention 30 j, `context` à 97 % ; plus les six champs non bornés du même trajet et l'observation que le remède (réhydratation) n'a aucun outil. |
+| **Jalon visé** | #361 avant la prochaine mineure — c'est le chemin le plus chaud du serveur et le défaut s'auto-aggrave. La réhydratation est un candidat autonome, à instruire après #361. Aucun jalon pour PTC ni pour le retrait de `impact.pass`. Le caveat cache appartient à **`A02`**. §5 de cette fiche : **onze** plages de lignes à recaler (périmées depuis le 2026-08-15). |
 
 ## 8. Journal
 
@@ -248,3 +375,4 @@ Deux risques distincts. Le premier est fonctionnel et documenté ci-dessus : la 
 |---|---|
 | 2026-08-14 | Fiche créée par la veille plateforme. |
 | 2026-08-14 | Vérification des faits : chiffres PTC, modèles task budgets, seuils de cache et 2 lignes du §5 corrigés. |
+| 2026-08-17 | **Challenge — verdict `adopter partiellement` ; mon argument porteur était faux d'un facteur 20.** J'avais mesuré le payload d'`announce_work` avec 3 résumés par pair (**2,7 ko**) et j'allais conclure « 0,7 % du seuil de 100 000 tokens, ~140 appels pour l'atteindre ». **Artefact de banc, retiré.** `getActionSummaries` (`consultation.ts:630-640`) n'a **aucun `LIMIT`** et son unique appelant (`context-provider.ts:42`) ne passe **pas** de `since` ; la seule variable qui compte est l'historique du pair, retenu **30 jours**. Remesuré : 0/3/8/40/200 résumés → **1 886 / 2 730 / 4 140 / 13 254 / 59 154 octets**, avec `context` passant de 5 % à **97 %**. **Une réponse à 59 ko = ~14 800 tokens = 15 % du seuil ; sept appels suffisent.** Et le défaut s'auto-aggrave : la verbosité non bornée du chemin de coordination **accélère** le context editing, qui efface justement les annonces des pairs. → **#361**. **K1 était mal calibré** : un seuil sur `impact.pass` faisait décider trois changements indépendants, et la mesure qui le déclenche (à 8 résumés, `pass` tombe à 22 %) est la **meilleure preuve en faveur** du bornage. Adjugé mal calibré, les trois volets tranchés séparément. **Refusé** : retirer `impact.pass` (structurellement minimal, ~92 o fixes car `score < 30 ⟹ reasons: []`, et aucun consommateur externe) ; et **PTC**, mais pas par τ²-bench — celui-ci porte sur du **fan-out** alors que le cas défendu est du **fan-in**. Le vrai motif : PTC garde les résultats intermédiaires **hors** de la conversation, or pour `announce_work` c'est le mode de défaillance du produit, pas son optimisation. **Rouvert** : la réhydratation, que j'allais refuser — vérifié, `coordinator_status` ne rend que des compteurs, `get_session_files` exige un `session_id` perdu à la compaction, et **aucun outil ne prend un `agent_id` pour rendre ses fichiers**. C'est le seul volet servant la population **attestée**. **`exclude_tools` en caveat, pas en tête** : la doc est écrivable (`C06:312` a mesuré le préfixe réel `mcp__<clé .mcp.json>__<outil>`), mais la population qui peut l'appliquer est celle-là même — vide — qui a servi à tuer la recette d'`E08`. **Livrable cache surdéclaré, corrigé** : portée = **un agent, son propre préfixe** (une instance `McpServer` par session, `serve-http.ts:513` ne retient que les transports), et le chaînon client est **non documenté** (MCP : *« SHOULD send a notification »*, `tools/list` en bloc `opt`). Requalifié en caveat croisé sur `A02`/`E08` — la tension est réelle, j'y avais écrit que `disable()` était « la même capacité, en mieux » que `tool_removal`, sur l'axe précis que `tool_removal` protège. **K2/K3/K4/K5 ne se déclenchent pas** (levier serveur existant mais de portée agent ; **0** `$ref` sur 26 schémas ; aucun consommateur externe de `pass` ; 26 mêmes noms même ordre sous 3 configs). **Un seul critère se déclenche (K6, aucun histogramme de taille).** Le test d'invariant que j'allais adopter **renverse un choix commenté** (`mcp-stdio-smoke.test.ts:32-33`). Et §5 a **onze** plages de lignes périmées depuis le 2026-08-15 — quatrième fiche d'affilée dans ce cas après `E08`, `E09`, `E10`. |
