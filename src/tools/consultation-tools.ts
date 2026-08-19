@@ -438,7 +438,7 @@ export function registerConsultationTools(
           .string()
           .optional()
           .describe(
-            "ISO timestamp; only messages after this time are returned. Omit to get all updates for this agent.",
+            "Timestamp cursor. Messages at or after this time are returned -- the comparison is inclusive, so the message on the boundary comes back again. Pass back the created_at of the last message you saw: that value is already in the accepted shape. ISO-8601 with an offset or a trailing Z is also accepted. Omit to get all updates for this agent.",
           ),
       }),
       annotations: { readOnlyHint: true, title: "Get thread updates" },
