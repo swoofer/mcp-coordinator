@@ -13,7 +13,7 @@
 | **Vérification** | CONFIRMED |
 | **Vérifiée le** | 2026-08-14 |
 | **Testabilité** | ⚠️ partielle — handler + garde testables, boucle multi-agents exige une clé API |
-| **Statut du challenge** | ⬜ à faire |
+| **Statut du challenge** | ✅ **tranché** (2026-08-17) — refuser ; le benefice reel coute ~15 lignes ; branche lecture seule renvoyee a #281 |
 
 ---
 
@@ -121,7 +121,28 @@ C'est une **capacité nouvelle, pas un remplacement** : aucun code existant ne d
 
 ### 6.2 Hypothèse
 
-<Ce qu'on pense avant de tester.>
+**Contexte d'arrivée.** Le challenge de `E05` (2026-08-17) a explicitement **renvoyé ici** son angle (b) — la mémoire de repo partagée — en notant que `E10` pose la même question « en mieux et sans dépendance beta ». Cette fiche en est donc le propriétaire ; c'est ici que la question se tranche ou se ferme.
+
+**Ce que je pense avant de mesurer.** §6.3 pose sa propre condition de fermeture, et elle est exécutable : *« Relire `src/consultation.ts` et `src/announce-workflow.ts` pour lister ce qu'une mémoire partagée ferait qui n'est pas déjà faisable — si la liste est vide, la fiche se referme ici. »* Je m'attends à ce que la liste **ne soit pas vide** — les threads sont orientés question/réponse synchrone et `action_summaries` est purgé à 30 jours — mais à ce que chaque élément soit **plus petit que ce que §4 laisse croire**.
+
+Et je m'attends à ce que le verdict se joue ailleurs que sur le recouvrement fonctionnel : sur la **couche**. Le memory tool est une notion de la Messages API ; un serveur MCP ne voit jamais le `tools[]` d'une requête. `E08` vient de mesurer la même chose sur `defer_loading` et j'y avais tiré une conclusion fausse — je dois donc vérifier, et non déduire, s'il existe un levier côté MCP.
+
+Hypothèse secondaire : la vraie objection n'est ni le coût de contexte ni l'effort, mais l'**injection agent-à-agent**. `E08` a produit l'issue **#355** parce que `cli/channel.ts` recopie déjà du texte d'agent non borné dans le contexte d'un autre agent. Une mémoire partagée serait la même chose en **persistant** et en **auto-lue par prompt système** — c'est-à-dire pire, à un endroit où le projet a déjà un défaut ouvert.
+
+### 6.2b Critères de mort — pré-enregistrés avant toute mesure
+
+Ici, « adopter » signifie **écrire une mémoire partagée en langage libre** (`/memories/shared/`) avec le daemon comme backend. Un seul critère qui se déclenche le tue.
+
+| # | Critère de mort | Seuil chiffré |
+|---|---|---|
+| **K1** | **La condition de fermeture de la fiche elle-même.** Si tout ce qu'une mémoire partagée apporterait est déjà faisable avec les threads, `announce` et `action_summaries`, la fiche se referme. | liste des apports non couverts **= 0** |
+| **K2** | **YAGNI.** `E05` a mesuré 0 demande sur 81 issues ; le bundle n'a **qu'une** source (`n_sources: 1`, confiance `medium`). | **0** issue, discussion ou document du dépôt réclamant une mémoire partagée persistante |
+| **K3** | **Mauvaise couche.** Si aucun levier MCP n'existe et que l'adaptateur doit vivre hors du dépôt, l'« adoption » se réduit à de la documentation pour un tiers. | **0** point d'accroche côté MCP, **vérifié** et non déduit |
+| **K4** | **Le coût de contexte tue la mise à l'échelle.** L'API force un `view /memories` par tour ; une mémoire partagée entre N agents grossit N fois plus vite. | listing `view /memories` > **2 000** caractères à 100 entrées |
+| **K5** | **Injection agent-à-agent aggravée.** Écriture libre, persistée, auto-lue par prompt système. | le dépôt a **déjà** un défaut ouvert de recopie de texte d'agent (#355) et **aucune** allowlist d'émetteur |
+| **K6** | **Effort L confirmé.** Table + migration `_new` + quota + sweep + audit, dans un `database.ts` de 66 Ko. | ≥ **5** sous-systèmes à toucher pour une écriture mémoire |
+
+**Règle que je m'impose :** §0 classe la fiche ⚠️ **partielle** — les étapes 1, 2 et 5 exigent une clé API facturable. Elles ne peuvent donc **jamais** recevoir `adopter`. Et j'applique la leçon de `E09` : **avant de publier une mesure comme découverte, grepper la doc du dépôt** pour vérifier qu'elle n'y est pas déjà.
 
 ### 6.3 Protocole de vérification
 
@@ -137,7 +158,99 @@ Proposition d'étapes — à valider et amender pendant le challenge.
 
 ### 6.4 Résultat observé
 
-<Ce qu'on a réellement mesuré/vu. Coller les sorties, pas les paraphraser.>
+#### A. La condition de fermeture de la fiche : ma liste tombe de 4 apports à 1
+
+J'avais dressé quatre apports non couverts. **Trois sont faux**, et la passe adversariale les a démolis un par un.
+
+**Apport 1 — « survivre à 30 jours » : FAUX, deux fois.** D'abord la rétention est configurable (`getOrgSetting` → `COORDINATOR_*_RETENTION_DAYS`). Mais surtout, mesuré :
+
+```
+$ grep 'DELETE FROM' src/sweeper/index.ts   (tables distinctes)
+  action_summaries  audit_log  device_auth_requests  events  file_activity
+  layer_firings  oauth_state  refresh_tokens  thread_messages
+
+$ grep -c 'DELETE FROM threads' src/sweeper/index.ts
+0
+```
+
+**La table `threads` n'est pas balayée.** `threads.plan` et `threads.resolution_summary` — les **décisions** — persistent indéfiniment, comme `dependency_map`, `working_files` et `agents`. Ce qui part à 30 jours est la *conversation* (`thread_messages`) et le *journal d'action* (`action_summaries`), pas la conclusion. **§4 se trompe donc quand elle écrit que les threads sont « orientés question/réponse synchrone, pas capitalisation »** : un `resolution_summary` sur une table jamais purgée *est* de la capitalisation.
+
+**Apport 2 — « adressabilité par sujet » : FAUX.** `listThreads(orgId, {module, status})` existe (`src/consultation.ts:511`) avec une correspondance **exacte** par module (`:563`) :
+
+```sql
+AND EXISTS (SELECT 1 FROM json_each(target_modules) WHERE value = ?)
+```
+
+C'est exposé comme l'outil MCP `list_threads` avec les filtres `module` et `status`, et il rend les lignes complètes — `plan` et `resolution_summary` inclus. Et `dependency_map` est indexé par `module_id`.
+
+**Apport 4 — « contenir plus qu'une ligne » : FAUX.** `summary: z.string()` (`consultation-tools.ts:506`) n'a **aucun `.max()`**. « One-liner » est de la prose de description, pas un contrat. (Cohérent avec ce que #355 a compté : 12 `z.string()` non bornés.)
+
+**Apport 3 — « être lu sans appel explicite » : à moitié faux.** `announce_work` renvoie `context: contextForInitiator` (`consultation-tools.ts:197-217`), construit par `contextProvider.getRelevantContext()`, que l'initiateur n'a pas demandé — et `src/mcp-instructions.ts:29` impose d'appeler `announce_work` avant toute édition. **La livraison automatique existe déjà**, adossée à un appel obligatoire. Ce qui manque est seulement la **cadence par tour**.
+
+**Bilan : K1 = 1 apport, pas 4.** Et il se formule précisément : *durable* et *auto-livré* existent sur **deux chemins différents**. Durable = `threads` (jamais purgée, mais il faut appeler `list_threads`). Auto-livré = `action_summaries` via le `context` d'`announce_work` (mais purgé à 30 j). **Rien ne combine les deux.**
+
+#### B. Et ce seul apport survivant coûte ~15 lignes, pas un sous-système
+
+`SummaryContextProvider.getRelevantContext()` (`src/context-provider.ts:42`) reçoit déjà `Consultation` par injection (`:13`). Y ajouter `listThreads(orgId, {module, status: 'resolved'})` fait remonter automatiquement les décisions durables du module concerné, dans le `context` que l'initiateur reçoit déjà sans le demander.
+
+Aucun memory tool, aucune table, aucun garde de traversal, aucun quota, aucun sweep, aucune clé API. **C'est la mesure qui tue la fiche** : son bénéfice réel est atteignable par un ajout de ~15 lignes dans un fournisseur existant, contre un effort annoncé `L`.
+
+#### C. Mon argument central était trop fort — le daemon *peut* forcer une lecture, mais par session
+
+J'allais écrire que mcp-coordinator ne peut **structurellement pas** fournir de lecture forcée. C'est faux comme formulé. `createMcpServer()` est documenté « one per MCP session » (`src/server-setup.ts:193`) et passe `{ instructions: MCP_INSTRUCTIONS }` (`:244`) avec `services` — donc tout le store — déjà en portée (`:212-224`). Le daemon **peut** calculer des `instructions` par session portant un instantané de mémoire partagée **dans le prompt système**.
+
+La formulation juste est donc : il peut forcer une lecture **par session**, pas **par tour**. Et deux choses la condamnent quand même :
+
+```
+MCP_INSTRUCTIONS            : 1 348 caracteres
+troncature Claude Code      : 2 048  (tests/unit/mcp-instructions.test.ts:125)
+budget restant              :   700 octets  (~175 tokens)
+```
+
+Et surtout — c'est le point qui aggrave K5 — `instructions` est **la seule chaîne qui atteint le prompt système** (établi par le challenge `C03`, cité dans le corps de #355). Y router de la prose d'agent lui donnerait l'**autorité opérateur**, c'est-à-dire **strictement pire que #355**, qui note explicitement que le contenu de channel atterrit dans un corps `<channel>` et « n'acquiert donc pas d'autorité opérateur ». Le seul canal de lecture forcée que MCP offre fait 700 octets, et le dépenser en prose d'agent est la seule escalade que le projet a jusqu'ici évitée.
+
+Note factuelle vérifiée au passage : le SDK MCP installé **supporte bien** `registerResource`, `registerPrompt`, `resources/list`, `resources/subscribe` et `sendResourceListChanged`. **K3 ne se déclenche donc pas** — mon critère supposait à tort qu'aucun point d'accroche n'existait. Mais aucun de ces mécanismes ne provoque une lecture par tour : une notification `resources/updated` peut être ignorée du client, et #281 a mesuré que Claude Code n'appelle jamais `resources/subscribe`.
+
+#### D. Le coût de contexte, et pourquoi il est pire que mon seuil
+
+```
+  5 entrees :   212 car.  (~59 tokens estimes)
+ 20 entrees :   764 car.  (~212 tokens estimes)
+100 entrees : 3 666 car.  (~1 018 tokens estimes)
+```
+
+**K4 se déclenche** (seuil 2 000 caractères à 100 entrées). Mais je le sous-estimais : c'est **par tour**, et chaque résultat de `view` reste dans le transcript. Vingt tours sur une mémoire de 100 entrées ≈ 20 000 tokens de listings répétés — et ça croît avec le nombre d'agents, puisque c'est précisément le partage qui fait grossir l'arbre. **C'est le cumulé qui passe mal à l'échelle, pas l'unitaire.**
+
+#### E. Deux erreurs de la fiche à corriger, et un motif à nommer
+
+`sdk/src/client.ts` (329 lignes) est **intégralement** de la plomberie OAuth/token — `deviceCodeStart/Poll`, `refresh`, `whoami`, `logout`, `revoke`, magasin de jetons. **Zéro méthode de données de coordination.** Il n'y a donc aucun store à exposer, et le « en quelques lignes » de §5 est faux d'une API de données entière.
+
+Et §0 affirme « **tous** les fichiers cités existent et toutes les affirmations tiennent ». Au moins cinq de ses chiffres sont faux :
+
+| Affirmation de la fiche | Réel |
+|---|---|
+| `src/database.ts` **66 Ko / 1697 lignes** | **96,8 Ko / 2370 lignes** |
+| migrations `_new` lignes ~1186-1478 | `threads_new` à **1502**, dernière à **2254** |
+| `handleAnnounce` à `rest-handlers.ts:189` | **204** |
+| `handleWorkingFilesStart` à `:863` | **994** |
+| « schéma courant lignes 90-326 » | la constante `SCHEMA` oui, mais 23 `CREATE TABLE` vont jusqu'à **1058** |
+
+Tiennent en revanche : 28 handlers exportés (« ~30 » est juste), `cli/channel.ts` = `mcp-coordinator-channel` v0.2.0 n'exposant que `post_to_thread`, les 6 signatures `registerXTools(server, services, mcpLog, getSessionClaims)`, les 26 outils, et le sweeper à 11 `DELETE` / 60 s / `getOrgSetting`.
+
+**Le motif mérite d'être nommé** : c'est la troisième fiche d'affilée (`E08`, `E09`, `E10`) dont la §0 se déclare vérifiée alors que ses références ont dérivé. La passe du 2026-08-14 a vérifié un HEAD qui a bougé depuis, et rien ne le signale au lecteur.
+
+#### F. Adjudication des six critères pré-enregistrés
+
+| # | Seuil | Mesure | Verdict |
+|---|---|---|---|
+| **K1** | liste des apports non couverts = 0 | **1** (et non 4) : rien ne combine *durable* et *auto-livré* — mais l'écart coûte ~15 lignes dans `context-provider.ts` | **NE SE DÉCLENCHE PAS** — la fiche ne se referme pas sur sa propre condition, mais de justesse et pour un enjeu minuscule |
+| **K2** | 0 demande | 0 mention dans `README.md` / `docs/` ; 0 sur 81 issues (mesuré en `E05`) ; `n_sources: 1`, confiance `medium` | **SE DÉCLENCHE** |
+| **K3** | 0 point d'accroche MCP, vérifié | **faux** : `registerResource`, `registerPrompt`, `resources/subscribe`, `sendResourceListChanged` existent dans le SDK installé | **NE SE DÉCLENCHE PAS** — mon critère supposait l'absence ; la formulation juste porte sur la **cadence**, pas sur l'existence |
+| **K4** | listing > 2 000 car. à 100 entrées | **3 666 car.** (~1 018 tokens), **par tour**, cumulatif dans le transcript | **SE DÉCLENCHE**, et je le sous-estimais |
+| **K5** | défaut ouvert de recopie + aucune allowlist | **#355 ouverte**, aucune allowlist d'émetteur sur le bus. Aggravé : le seul canal de lecture forcée passe par `instructions`, donc par le **prompt système** — l'autorité opérateur que #355 note comme *non* atteinte aujourd'hui | **SE DÉCLENCHE, en pire** |
+| **K6** | ≥ 5 sous-systèmes à toucher | table + migration `_new` (26 occurrences du pattern) + garde de traversal + quota + sweep + audit = **6**, dans un `database.ts` de **97 Ko** (et non 66) | **SE DÉCLENCHE**, la fiche sous-estimait sa propre estimation |
+
+**Quatre critères sur six se déclenchent.** Les deux qui ne se déclenchent pas le font **contre moi** : K1 parce que mes trois apports étaient faux, K3 parce que je supposais une absence sans vérifier — exactement la faute que `E08` m'avait déjà values.
 
 ### 6.5 Contre-arguments
 
@@ -155,11 +268,11 @@ Proposition d'étapes — à valider et amender pendant le challenge.
 
 | | |
 |---|---|
-| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ⬜ refuser |
-| **Date** | |
-| **Justification** | |
-| **Issue / PR** | |
-| **Jalon visé** | |
+| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ✅ **refuser** |
+| **Date** | 2026-08-17 |
+| **Justification** | Cette fiche est propriétaire de la question depuis que `E05` lui a renvoyé son angle (b). Elle se ferme ici. ⭑ **Refusé — la mémoire partagée en langage libre avec le daemon comme backend.** Quatre critères sur six se déclenchent : K2 (aucune demande, `n_sources: 1`), K4 (**3 666 caractères** de listing à 100 entrées, **par tour** et cumulatif dans le transcript), K5 (**en pire** : le seul canal de lecture forcée que MCP offre passe par `instructions`, donc par le **prompt système** — l'autorité opérateur que #355 note comme *non* atteinte aujourd'hui), K6 (**6** sous-systèmes dans un `database.ts` de **97 Ko** — la fiche annonçait 66). ⭑ **Mais ce qui tue vraiment la fiche est une mesure, pas un critère.** Son bénéfice réel se réduit à **un** apport non couvert : rien ne combine *durable* et *auto-livré*. Durable = `threads`, qui n'est **pas balayée par le sweeper** — les décisions (`plan`, `resolution_summary`) persistent indéfiniment. Auto-livré = `action_summaries` via le `context` qu'`announce_work` renvoie sans qu'on le demande. **Et l'écart entre les deux coûte ~15 lignes** : ajouter `listThreads(orgId, {module, status:'resolved'})` à `SummaryContextProvider.getRelevantContext` (`src/context-provider.ts:42`), où `Consultation` est déjà injecté. Aucune table, aucun garde de traversal, aucun quota, aucune clé API — contre un effort annoncé `L`. ⭑ **Renvoyé — la seconde branche de §6.1** (exposer l'état structuré comme une arborescence en lecture seule) **appartient à #281**, « Resources MCP : instruire une couche `coord://` », ouverte, cadrée et **sans propriétaire dans la veille**. E10 ne doit pas la pré-trancher. ⭑ **Corrections de méthode.** Trois de mes quatre apports K1 étaient **faux** : la rétention à 30 j ne touche pas les décisions (`threads` n'est pas balayée), l'adressabilité par sujet existe (`list_threads` avec `module`, correspondance exacte par `json_each`), et le « one-liner » de `summary` n'a aucun `.max()`. Le quatrième était à moitié faux (la livraison automatique existe déjà, adossée à un appel obligatoire). **K3 ne se déclenche pas non plus** : le SDK MCP supporte bel et bien `registerResource` / `resources/subscribe` — mon critère supposait une absence sans la vérifier, la faute même que `E08` m'avait déjà value. Et mon argument central était trop fort : le daemon **peut** forcer une lecture **par session** via des `instructions` calculées, avec **700 octets** de budget avant la troncature à 2 048 — pas par tour. **Erreurs de la fiche corrigées :** `sdk/src/client.ts` est intégralement de la plomberie OAuth (zéro méthode de données), donc le « en quelques lignes » de §5 est faux ; et §0 se déclare vérifiée alors qu'au moins **cinq** de ses chiffres ont dérivé — troisième fiche d'affilée (`E08`, `E09`, `E10`) dans ce cas. |
+| **Issue / PR** | **#359** — l'historique de coordination est supprimé à 30 jours en silence : la doc annonce **6** buckets de rétention, le code en lit **7** et n'en documente que **2**, et l'asymétrie `threads` (jamais purgée) / `thread_messages` (30 j) n'est écrite nulle part. À noter aussi sur **#281** : ses mesures visent `sdk@1.30.0`, plus une dépendance directe — j'ai re-vérifié contre `server@2.0.0` que le manque tient toujours. |
+| **Jalon visé** | Aucun pour le memory tool. Les ~15 lignes de `context-provider.ts` sont un candidat autonome, sans rapport avec cette fiche — à instruire seulement si quelqu'un demande de la capitalisation inter-agents. #359 est de la doc, sans urgence. **#281 reprend la main** sur la branche lecture seule. |
 
 ## 8. Journal
 
@@ -167,3 +280,4 @@ Proposition d'étapes — à valider et amender pendant le challenge.
 |---|---|
 | 2026-08-14 | Fiche créée par la veille plateforme. |
 | 2026-08-14 | Vérification des faits : API, dates et §5 exacts ; portée des helpers SDK précisée ; testabilité partielle. |
+| 2026-08-17 | **Challenge — verdict `refuser` ; la fiche se ferme et son bénéfice réel coûte ~15 lignes.** Propriétaire de la question depuis que `E05` lui a renvoyé son angle (b). **Ma liste K1 tombe de 4 apports à 1**, trois étant faux : (1) la rétention à 30 j **ne touche pas les décisions** — `threads` n'est **pas** dans les 9 tables balayées, donc `plan` et `resolution_summary` persistent indéfiniment, ce qui contredit §4 (« pas capitalisation ») ; (2) l'adressabilité par sujet **existe** — `listThreads(orgId, {module, status})` avec correspondance exacte `json_each(target_modules)` (`consultation.ts:563`), exposée comme `list_threads` ; (4) le « one-liner » de `summary` n'a **aucun `.max()`**. Le troisième apport était à moitié faux : `announce_work` renvoie déjà `context` sans qu'on le demande, adossé à un appel imposé par `mcp-instructions.ts:29` — seule la **cadence par tour** manque. **Le seul apport survivant : rien ne combine *durable* et *auto-livré*** — et l'écart coûte **~15 lignes** (`listThreads(..., status:'resolved')` dans `SummaryContextProvider.getRelevantContext`, où `Consultation` est déjà injecté), contre un effort annoncé `L`. **K2, K4, K5, K6 se déclenchent** : aucune demande (`n_sources: 1`) ; listing **3 666 car.** à 100 entrées, **par tour** et cumulatif ; **6** sous-systèmes dans un `database.ts` de **97 Ko** (la fiche annonçait 66) ; et K5 **en pire** — le seul canal de lecture forcée passe par `instructions`, donc par le **prompt système**, soit l'autorité opérateur que #355 note comme *non* atteinte aujourd'hui, avec **700 octets** de budget avant la troncature à 2 048. **K3 ne se déclenche pas** : le SDK MCP supporte `registerResource`/`resources/subscribe` — mon critère supposait une absence sans la vérifier, la faute même que `E08` m'avait déjà value ; et mon argument central était trop fort (le daemon peut forcer une lecture **par session**, pas par tour). **Seconde branche de §6.1 renvoyée à #281** (`coord://` en Resources, ouverte et sans propriétaire) — E10 ne doit pas la pré-trancher. **Erreurs de la fiche corrigées** : `sdk/src/client.ts` est intégralement de la plomberie OAuth, donc le « en quelques lignes » de §5 est faux ; et §0 se déclare vérifiée alors qu'au moins cinq de ses chiffres ont dérivé (`database.ts` 66 Ko → **96,8 Ko / 2370 lignes**, migrations `_new` → **1502-2254**, `handleAnnounce` 189 → **204**, `handleWorkingFilesStart` 863 → **994**) — troisième fiche d'affilée dans ce cas après `E08` et `E09`. Livrable : **#359**. |
