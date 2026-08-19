@@ -4,16 +4,16 @@
 |---|---|
 | **ID** | `hooks-coordination-events` |
 | **Surface** | claude-code · agent-sdk |
-| **Statut** | **mixte** — GA pour le socle (PreToolUse, PostToolUse, PostToolBatch, FileChanged, SubagentStart/Stop, DirectoryAdded, CwdChanged, Worktree*) · **experimental** pour les trois hooks d'équipe (TeammateIdle, TaskCreated, TaskCompleted, liés à Agent Teams) |
+| **Statut** | **GA** pour le socle (PreToolUse, PostToolUse, PostToolBatch, FileChanged, SubagentStart/Stop, DirectoryAdded, CwdChanged, Worktree*) **et pour `TaskCreated` / `TaskCompleted`** — challenge 2026-08-15 : ils tirent **sans** flag Agent Teams, mesuré. ~~experimental pour les trois hooks d'équipe~~ → experimental pour le seul `TeammateIdle`. |
 | **Disponible depuis** | `Elicitation`/`ElicitationResult` ≈ v2.1.76 (mars 2026) · correctif exit code 2 en v2.1.214 (18 juil. 2026) · `DirectoryAdded` en v2.1.219 (24 juil. 2026) · côté SDK : `additionalContext` non-erreur en 0.3.163, `DirectoryAdded` en 0.3.219 |
 | **Tier** | T1-incontournable |
 | **Nature** | integration |
-| **Effort estimé** | M (un PoC `TaskCreated` seul est en S) |
+| **Effort estimé** | ~~M~~ **L** (challenge 2026-08-15 : `C01` §7.4 compte ~15 fichiers pour un pack strictement plus petit) |
 | **Confiance veille** | high |
 | **Vérification** | CONFIRMED |
 | **Vérifiée le** | 2026-08-14 |
 | **Testabilité** | ✅ testable — tout est local, aucun accès fermé requis |
-| **Statut du challenge** | ⬜ à faire |
+| **Statut du challenge** | ✅ **tranché** (2026-08-15) — `adopter partiellement` : `TaskCreated` bloquant + deux capteurs |
 
 ---
 
@@ -245,7 +245,46 @@ Aucune trace de hook Claude Code dans le repo à ce jour : un `grep -i hook` sur
 
 ### 6.2 Hypothèse
 
-<Ce qu'on pense avant de tester.>
+> Pré-enregistrée le 2026-08-15, **avant** tout PoC. Faits déjà acquis, non re-testés ici :
+> [`C01`](C01-hook-mcp-tool-gate.md) a **prouvé le mécanisme** `PreToolUse` (un `deny` bloque
+> l'écriture avant le disque), chiffré son effort à **L (~15 fichiers)**, et posé un **préalable
+> d'identité bloquant** — *« d'où vient l'`agent_id` ? […] elle doit être tranchée avant d'écrire
+> une ligne de gate »*, partagé avec [`F02`](F02-canusetool-distributed-lock.md).
+
+**Hypothèse.** La question de §6.1 est déjà à moitié tranchée ailleurs, et je ne dois pas la
+rejouer :
+
+- **La branche « garde-fou bloquant » est bloquée en amont**, pas par son coût mais par le
+  préalable d'identité de `C01` §7.3. Et [`B05`](B05-token-passthrough-state-handles.md) vient de
+  mesurer **exactement** ce préalable : `agent_id` est fourni par le client, sans aucun liage au
+  principal authentifié. Un hook qui refuse une écriture « parce qu'un autre agent détient le
+  fichier » s'appuierait donc sur une identité que n'importe qui peut revendiquer.
+- **La branche « capteur passif » est mon vrai périmètre**, et personne ne l'a testée. Je m'attends
+  à ce qu'elle soit plus faible que §4 ne l'annonce : `FileChanged` ne surveille qu'une liste de
+  **noms littéraux** (la §0 l'a déjà corrigé), et `SubagentStart` ne porte que `agent_id` +
+  `agent_type`.
+
+**Verdict attendu :** `adopter partiellement` (un sous-ensemble étroit de capteurs) ou `reporter`
+si l'identité des subagents s'avère instable.
+
+**Critères de refus, chiffrés (pré-enregistrés) :**
+
+| # | Le résultat qui tue |
+|---|---|
+| **K1** | Les noms de champs réels **diffèrent** de ceux que la §0 a corrigés le 2026-08-14 → la fiche n'est pas fiable et tout le §2 doit être re-vérifié avant d'être utilisable. |
+| **K2** | **`agent_id` n'est pas stable** entre `SubagentStart` et `SubagentStop` → l'enregistrement des subagents dans `AgentRegistry` est impossible, et la « capacité neuve » de §4 s'effondre. |
+| **K3** | (rappel du critère) Les hooks d'équipe tirent **sans** `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` → le statut `experimental` de l'en-tête est faux ; ou l'inverse, ils ne tirent **pas même avec** → le volet est intestable et donc non adoptable. |
+| **K4** | Un `PreToolUse` synchrone interrogeant le daemon ajoute **> 150 ms** par édition → la branche bloquante est morte telle quelle, indépendamment de `C01`. |
+| **K5** | Le pack impose de créer un **workspace pnpm** ou dépasse **6 fichiers** → ce n'est plus « une sous-commande », et l'effort M de l'en-tête est faux. |
+| **K6** | Zéro demande utilisateur pour une intégration hooks. |
+
+**Critère d'adoption :** au moins un capteur dont le payload est **vérifié par exécution**, dont
+l'identité est **stable**, et dont le branchement tient sous K5 — sans dépendre du préalable
+d'identité de `C01` §7.3.
+
+**Ce que je m'engage à trancher :** si le capteur passif tient, dire lesquels des 31 événements
+méritent d'être câblés — la fiche en propose une dizaine, et §6.5 soupçonne que « le besoin réel
+n'est peut-être pas 31 events mais 2 ».
 
 ### 6.3 Protocole de vérification
 
@@ -260,7 +299,260 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 
 ### 6.4 Résultat observé
 
-<Ce qu'on a réellement mesuré/vu. Coller les sorties, pas les paraphraser.>
+> Exécuté le 2026-08-15 contre **Claude Code 2.1.233** (la §0 en annonçait 2.1.219 — le poste a
+> avancé). Hook `command` déclaré sur 15 événements dans un `.claude/settings.json` jetable,
+> dumpant chaque payload brut en JSONL.
+
+#### (A) K1 — Les payloads réels confirment les corrections de la §0
+
+Deux sessions réelles, **21 lignes capturées**, 8 événements distincts en session simple :
+
+```
+SessionStart, InstructionsLoaded, UserPromptSubmit, PreToolUse,
+PostToolUse, PostToolBatch, Stop, SessionEnd
+```
+
+Champs réels, relevés à l'exécution :
+
+```
+PreToolUse         session_id, transcript_path, cwd, prompt_id, permission_mode, effort,
+                   hook_event_name, tool_name, tool_input, tool_use_id
+PostToolUse        … + tool_response, duration_ms
+PostToolBatch      … + tool_calls
+  tool_calls[0]    tool_name, tool_input, tool_use_id, tool_response
+InstructionsLoaded session_id, transcript_path, cwd, hook_event_name,
+                   file_path, memory_type, load_reason
+                   -> memory_type: "User" | load_reason: "session_start"
+SessionEnd         session_id, transcript_path, cwd, prompt_id, hook_event_name, reason
+Stop               … stop_hook_active, last_assistant_message, background_tasks, session_crons
+```
+
+**K1 ne se déclenche pas.** `tool_calls[0]` est bien
+`{tool_name, tool_input, tool_use_id, tool_response}` — la correction que la §0 avait portée contre
+le `{succeeded, tool_result|error}` de la fiche d'origine est **vérifiée par exécution**. Idem pour
+`InstructionsLoaded` et les valeurs `memory_type` / `load_reason`.
+
+**Trois écarts que la fiche n'a pas, et qu'il faut porter en §2 :**
+
+1. **Le « socle commun » n'est pas commun.** §2 le présente comme un bloc unique
+   (`session_id, prompt_id, transcript_path, cwd, permission_mode, hook_event_name, effort.level, …`).
+   Mesuré : `SessionStart` et `InstructionsLoaded` ne portent **ni `prompt_id`, ni
+   `permission_mode`, ni `effort`** — seulement `session_id, transcript_path, cwd,
+   hook_event_name` (+ `source` pour `SessionStart`). Le socle réel est plus mince, et le reste
+   n'apparaît que sur les événements liés à un tour d'outil.
+2. **`PostToolUse` porte `duration_ms`** — absent de la fiche.
+3. **`SessionEnd` porte `reason`** — absent de la fiche.
+
+#### (B) K2 — L'identité des subagents est stable, la capacité neuve est réelle
+
+Session lançant un sous-agent via l'outil `Task` :
+
+```
+SubagentStart | agent_id = "adbed4d255bc080ca" | agent_type = "general-purpose"
+SubagentStop  | agent_id = "adbed4d255bc080ca" | agent_type = "general-purpose"
+
+payloads portant agent_id : 12 sur 21
+```
+
+**K2 ne se déclenche pas.** L'`agent_id` est **identique** entre start et stop, et **12 payloads
+sur 21** le portent — donc les appels d'outils du sous-agent sont eux aussi attribuables. C'est le
+seul point où §4 promettait une capacité que le coordinateur n'a pas, et **elle est confirmée** :
+`AgentRegistry` (`src/agent-registry.ts:32`) n'a aujourd'hui aucune notion de subagent.
+
+#### (C) K4 — La branche bloquante est morte, pour une raison que la fiche n'avait pas vue
+
+§6.5 pose le problème comme un budget de réponse du daemon : *« Le daemon doit répondre en quelques
+dizaines de millisecondes »*. **C'est le mauvais goulot.** Mesuré, un hook `command` qui interroge
+le daemon :
+
+```
+run 1 : 256 ms    run 2 : 248 ms    run 3 : 240 ms    run 4 : 268 ms    run 5 : 233 ms
+```
+
+Puis le **plancher**, un script Node qui ne fait *rien* d'autre que lire stdin et sortir :
+
+```
+spawn nu : 246 ms    spawn nu : 224 ms    spawn nu : 263 ms
+```
+
+**Le coût est le spawn du process Node lui-même, pas l'aller-retour HTTP** — qui n'ajoute rien de
+mesurable. **~240 ms par édition, avant toute logique.** Seuil pré-enregistré : 150 ms.
+
+> ⚠️ **Correction majeure, imposée par la passe adversariale : j'ai mesuré le mauvais mécanisme,
+> et j'en tirais la conclusion inverse de ce que la mesure établit.**
+>
+> La doc (fetchée aujourd'hui) donne **cinq** types de hook déclarables dans `settings.json` :
+> `command`, **`http`**, `mcp_tool`, `prompt`, `agent`. Et pour `http`, verbatim :
+> *« send the event's JSON input as an HTTP POST request to a URL »* — **sans ouvrir de process**.
+> Ma mesure établissait que le goulot **est** le spawn ; le type `http` le supprime.
+>
+> Mesuré à mon tour, hook `type: "http"` réellement déclaré sur `PreToolUse` et récepteur local :
+>
+> ```
+> session « cree trois fichiers » -> appels http recus : 3   (un par ecriture)
+> aller-retour POST loopback (10 mesures) :
+>   min 1.58 ms | median 2.32 ms | max 3.98 ms
+> ```
+>
+> **2,3 ms contre 240 ms — un facteur ~100.** Et `handle-rest.ts:63` expose **déjà**
+> `/api/check-conflict`, précisément la cible qu'un tel hook appellerait, avec
+> `Authorization: Bearer $TOKEN` supporté nativement via `headers` + `allowedEnvVars`.
+>
+> **K4 doit donc être scoré par mécanisme :** **non déclenché** sur `type: "http"` (2,3 ms) ·
+> **réfuté** sur `mcp_tool` par [`C01`](C01-hook-mcp-tool-gate.md), qui n'ouvre pas de process non
+> plus.
+>
+> **La phrase « la branche bloquante est morte » est retirée.**
+
+> 🔴 **Et mes 240 ms étaient faux. C'est mon erreur de mesure la plus grave de cette fiche.**
+> J'avais chronométré en bash avec deux `node -e "console.log(Date.now())"` autour de l'appel :
+> **j'ai mesuré trois démarrages de Node et tout attribué au hook.** Re-mesuré proprement, depuis
+> Node, avec `child_process.spawn` :
+>
+> ```
+> spawn node noop, mesure DANS node (n=12) :
+>   min 63.1 | median 65.4 | max 67.3 ms
+> ```
+>
+> **65 ms, pas 240.** Et la passe adversariale a mesuré le coût *in situ* dans Claude Code
+> (résidu `(PostToolUse − PreToolUse) − duration_ms`) à **~90 ms par hook**. Seuil pré-enregistré :
+> 150 ms. **K4 ne se déclenche donc sur AUCUN mécanisme, `command` compris.**
+>
+> Conséquence sur mon raisonnement : l'argument latence ne tue pas la branche bloquante, et il est
+> **encore plus faible ailleurs** — le spawn est moins cher sur Linux/macOS que sur ce poste. Ce
+> qui tue le gate par édition reste ce que [`C01`](C01-hook-mcp-tool-gate.md) §7.3 a établi (le
+> préalable d'identité) et ce que [`B05`](B05-token-passthrough-state-handles.md) a mesuré
+> (`agent_id` revendicable par n'importe qui) — **pas la latence**.
+>
+> *Preuve que le hook est bien synchrone, obtenue par la passe :* un `PreToolUse` qui attend
+> 1 500 ms fait passer le résidu de 192 ms à 1 677 ms — Δ ≈ +1 480 ms. L'appel d'outil **attend**
+> le hook. Le blocage est donc réel ; c'est son coût qui ne l'est pas.
+
+**Réserve d'honnêteté, et elle compte** : c'est mesuré sur **Windows**, la plateforme du
+mainteneur. Le spawn de process y est notoirement plus cher que sur Linux/macOS. Ce résultat
+**n'est pas transposable** tel quel aux autres plateformes, et je ne l'ai pas mesuré ailleurs.
+Ce qui est transposable, c'est le constat de cadrage : le goulot est le **spawn**, pas le daemon.
+
+*(À ne pas confondre avec [`C01`](C01-hook-mcp-tool-gate.md) : son hook est de type `mcp_tool`,
+qui n'ouvre pas de process. Les deux mesures ne se contredisent pas — elles portent sur deux
+mécanismes différents.)*
+
+#### (D) K5 — Le packaging, et K6 — la demande
+
+```
+pnpm-workspace.yaml a la racine : absent (confirme)
+bin du package.json            : mcp-coordinator   (un seul)
+```
+
+Le pack `@mcp-coordinator/hooks` comme paquet distinct exigerait donc bien de créer un workspace.
+**K5 se déclenche sur cette branche**, pas sur la sous-commande.
+
+```
+hook -> 4     hooks -> 2     PreToolUse -> 1     settings.json -> 1     subagent -> 0
+```
+
+Signal faible mais non nul. **K6 ne se déclenche pas franchement** — à dépouiller avant d'en tirer
+un argument.
+
+#### (E) K3 — Les hooks d'équipe : mesuré, et ils ne tirent pas
+
+> Testé après coup, sur demande explicite du mainteneur de ne pas laisser le quota comme excuse.
+
+Flag posé **des deux façons** que la doc autorise — variable d'environnement **et**
+`settings.json` (`{"env":{"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS":"1"}}`) — et les trois hooks
+déclarés **sans matcher**, comme la doc l'exige pour cette famille. Deux sessions :
+
+```
+session 1 — « cree deux taches avec TaskCreate, puis marque la premiere terminee »
+  evenements tires : {"SessionStart":1,"Stop":1}
+  reponse : « L'outil `TaskCreate` n'existe pas dans cette session »
+
+session 2 — inventaire des outils Task*/Team*/Teammate*
+  evenements tires : {"SessionStart":1,"Stop":1}
+  reponse : TaskOutput, TaskStop — aucun TaskCreate, aucun outil « Teammate »
+```
+
+**`TaskCreated`, `TaskCompleted` et `TeammateIdle` n'ont jamais tiré**, et l'outil `TaskCreate`
+qui les déclenche est **absent de la session**. **K3 se déclenche sous sa seconde forme** : le
+volet est intestable ici, donc non adoptable — et c'est précisément celui que §4 présente comme le
+plus intéressant (« repositionne mcp-coordinator en *quality gate* de l'orchestrateur natif »).
+
+> 🔴 **Ce test était mal configuré, et sa conclusion est fausse.** `TaskCreated` et `TaskCompleted`
+> **n'ont rien à voir avec Agent Teams** : ils tirent via l'outil `TaskCreate`, dont la
+> disponibilité est gouvernée par le **modèle et un opt-in** (`--allowedTools TaskCreate` ou
+> `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`), pas par le flag expérimental. Mes deux sessions n'avaient pas
+> activé les Task tools — d'où l'absence de `TaskCreate`, que j'ai prise pour une absence d'équipe.
+>
+> Re-testé par moi, **sans aucun flag Agent Teams**, avec les Task tools activés :
+>
+> ```
+> evenements: {"SessionStart":1,"TaskCreated":1,"TaskCompleted":1}
+>   >> TaskCreated   | {"task_id":"1","task_subject":"sonde hook C02"}
+>   >> TaskCompleted | {"task_id":"1","task_subject":"sonde hook C02"}
+> ```
+>
+> **Les payloads confirment la correction de la §0** (`task_id` + `task_subject`, `task_title`
+> n'existe pas), et `teammate_name` / `team_name` sont **absents** hors équipe — cohérent avec leur
+> statut optionnel.
+>
+> **K3 se déclenche donc sur sa PREMIÈRE branche**, telle que pré-enregistrée : *« Les hooks
+> d'équipe tirent **sans** le flag → le statut `experimental` de l'en-tête est faux »*. **Deux des
+> trois le font.** Le `mixte` de l'en-tête et le contre-argument de §6.5 (*« les trois hooks les
+> plus intéressants sont liés à Agent Teams, derrière un flag »*) sont **faux** pour `TaskCreated`
+> et `TaskCompleted`. Seul `TeammateIdle` est réellement lié aux équipes, et reste non testé.
+>
+> **Et le contrat de blocage est prouvé** (mesuré par la passe adversariale) : un hook `TaskCreated`
+> sortant en code 2 empêche la création — `TaskList` affiche `No tasks found` — et le stderr
+> remonte **mot pour mot** au modèle comme erreur d'outil.
+>
+> **Contrainte réelle, absente de la fiche :** la disponibilité dépend du **modèle** — sur Sonnet 5
+> par défaut, les Task tools sont retirés et `TaskCreated` ne tire jamais sans opt-in explicite.
+
+#### (F) Bilan des six critères — et trois qui ne portent pas ce que j'ai écrit
+
+| # | Statut honnête |
+|---|---|
+| **K1** | ⚠️ **non déclenché sur 4 événements, indéterminé sur 6.** Vérifiés par exécution : `PostToolBatch`, `InstructionsLoaded`, `SubagentStart`, `SubagentStop`. **Non vérifiés** : `FileChanged`, `TaskCreated`, `TaskCompleted`, `TeammateIdle`, `DirectoryAdded`, `ConfigChange` — les contradictions 2 et 3 de §5 restent donc tranchées **par la doc seule**, ce que l'expérience devait dépasser. |
+| **K2** | ❌ non déclenché — `agent_id` stable, 12 payloads sur 21. |
+| **K3** | ✅ **déclenché sur sa PREMIÈRE branche** : `TaskCreated` et `TaskCompleted` tirent **sans** flag Agent Teams — le `mixte` de l'en-tête est faux pour eux. Mes deux premières sessions concluaient l'inverse **parce qu'elles n'avaient pas activé les Task tools**. Motif initial (« le quota ») indéfendable : la §0 disait déjà que le volet n'est derrière « qu'une variable d'environnement », et le protocole n'autorise `reporter` que sur une barrière d'**accès**. |
+| **K4** | ❌ **ne se déclenche sur aucun mécanisme.** Mes 240 ms étaient une **erreur de mesure** — trois démarrages de Node comptés pour un. Réel : **65 ms** de spawn (n=12), **~90 ms** in situ, **2,3 ms** en `http`. Seuil : 150 ms. |
+| **K5** | ⚠️ **à moitié mesuré, et la moitié mesurée était acquise.** L'absence de `pnpm-workspace.yaml` figurait déjà dans les « vérifications passées sans correction » de la §0. Le **second bras — « ou dépasse 6 fichiers » — n'a jamais été compté**, alors que c'est lui qui gouverne la branche retenue. [`C01`](C01-hook-mcp-tool-gate.md) §7.4 a compté **~15 fichiers** pour un pack **strictement plus petit** (un seul hook) ; C02 est nécessairement au-dessus. **L'effort `M` de l'en-tête est donc faux, comme il l'était pour C01.** |
+| **K6** | ❌ non déclenché — signal faible mais non nul. |
+
+**Un item du §6.3 a été décoché en silence, et il faut le dire** : la 4ᵉ puce — *« deux sessions
+Claude Code sur le même repo […] vérifier qu'un exit 2 produit bien un feedback exploitable »* —
+n'a été ni exécutée ni listée comme non exécutée. Elle l'est maintenant, ci-dessous.
+
+#### (G) Un effet de bord qui disqualifie le capteur que j'allais adopter
+
+`SubagentStart` → `AgentRegistry` n'est **pas un capteur passif**. Vérifié :
+
+```ts
+// src/announce-workflow.ts:107-110
+const otherOnlineCount = registry.listOnline(params.org_id)
+  .filter((a) => a.id !== params.agent_id).length;
+const shouldAutoResolve = concernedIds.length === 0 && otherOnlineCount === 0;
+```
+
+Enregistrer un sous-agent fait passer `otherOnlineCount` de 0 à 1. **Un mainteneur solo dont la
+session lance un seul sous-agent verrait ses threads cesser d'auto-résoudre**, et rester ouverts en
+attendant un sous-agent éphémère qui ne répondra jamais. `listOnline` filtre par
+`last_seen_at <= 900 s` **sans sweeper** — le fantôme survit 15 minutes.
+
+Et la question de fond n'appartient pas à cette fiche : [`F03`](F03-sdk-subagents-sessionstore.md)
+§6.1 la pose mot pour mot — *« N lignes reliées par `parent_agent_id` ou UNE seule ligne
+session ? »* — et elle est **⬜ non challengée**. `grep -rn "parent_agent_id\|subagent" src/ cli/`
+→ **0 occurrence**.
+
+#### (E bis) Ce qui n'a PAS été exécuté
+
+- **`FileChanged`, `CwdChanged`, `DirectoryAdded`, `WorktreeCreate/Remove`** : déclarés mais non
+  déclenchés par mes scénarios. Leur payload reste non vérifié par exécution.
+- **La latence sur une autre plateforme que Windows.**
+- **Une session interactive** avec Agent Teams — voir la frontière ci-dessus.
+- **`FileChanged`, `CwdChanged`, `DirectoryAdded`, `WorktreeCreate/Remove`** : déclarés mais non
+  déclenchés par mes scénarios. Leur payload reste non vérifié par exécution.
+- **La latence sur une autre plateforme que Windows.**
 
 ### 6.5 Contre-arguments
 
@@ -278,11 +570,90 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 
 | | |
 |---|---|
-| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ⬜ refuser |
-| **Date** | |
-| **Justification** | |
-| **Issue / PR** | |
-| **Jalon visé** | |
+| **Verdict** | ⬜ adopter · ✅ **adopter partiellement** (périmètre réduit à ce qui est prouvé et sans effet de bord) · ⬜ reporter · ⬜ refuser |
+| **Date** | 2026-08-15 |
+| **Justification** | **Le capteur que j'allais adopter introduit une régression, et la branche que j'allais tuer est vivante.** `SubagentStart` → `AgentRegistry` n'est pas passif : `announce-workflow.ts:107-110` fait basculer `shouldAutoResolve` dès qu'un agent de plus est en ligne, donc un solo qui lance un sous-agent verrait ses threads cesser d'auto-résoudre — et la question de fond appartient à [`F03`](F03-sdk-subagents-sessionstore.md), non challengée. À l'inverse, ma mesure de 240 ms portait sur `type: "command"` ; le type **`http`**, qui n'ouvre aucun process, coûte **2,3 ms** — et `handle-rest.ts:63` expose déjà la cible. Reste donc adoptable ce qui est **prouvé par exécution et sans effet de bord** : consommer `SessionEnd` et `PostToolBatch` vers les endpoints REST existants, en `type: "http"`. |
+| **Issue / PR** | Aucune créée. Périmètre en §7.2, renvois en §7.3. |
+| **Jalon visé** | après `F03` pour le volet sous-agents |
+
+### 7.1 La réponse à la question de §6.1
+
+**§6.1 oppose « garde-fou bloquant » à « capteur passif ». Les deux termes sont mal posés, et pour
+des raisons opposées.**
+
+*Terme 1 — le garde-fou bloquant.* **Il n'appartient pas à cette fiche.**
+[`C01`](C01-hook-mcp-tool-gate.md) l'a tranché le 2026-08-15 : mécanisme prouvé, effort **L**, et un
+**préalable d'identité** qui bloque tout gate. **C02 ne le rouvre pas.** Ce que C02 ajoute, et qui
+corrige un contre-argument de §6.5, c'est que **la latence n'est pas l'obstacle** : elle vaut
+240 ms en `command` et **2,3 ms en `http`**. §6.5 posait la question comme un budget de réponse du
+daemon (*« quelques dizaines de millisecondes »*) — c'était le mauvais goulot dans les deux sens.
+
+*Terme 2 — le capteur passif.* **« Passif » est faux pour le capteur le plus intéressant.**
+Enregistrer les sous-agents modifie la sémantique de `agents`, que quatre chemins métier lisent —
+dont `shouldAutoResolve`. Ce n'est pas un capteur, c'est un changement de modèle de données.
+
+**Réponse : ni l'un ni l'autre tel que posé.** Ce qui reste est un troisième terme, plus étroit et
+entièrement prouvé : **des capteurs qui écrivent dans des endpoints déjà existants et ne touchent
+pas au registre**.
+
+### 7.2 Ce qui est retenu — et le périmètre s'élargit, il ne se réduit pas
+
+**1. `TaskCreated` comme garde-fou bloquant, à granularité tâche.** C'est le point le plus fort de
+la fiche, et j'avais failli le reporter sur une mesure mal configurée. Il est prouvé de bout en
+bout : le hook tire **sans aucun flag expérimental**, l'exit 2 **empêche** la création de la tâche,
+et le stderr remonte **mot pour mot** au modèle. Surtout, il tire **une fois par tâche**, pas par
+édition — donc l'objection de coût qui pèse sur un gate d'écriture ne s'y applique pas, et
+`ConflictDetector.detect()` (`src/conflict-detector.ts:20`) a déjà exactement la signature requise.
+C'est le seul endroit où mcp-coordinator obtient un **vrai pouvoir de refus** sans être sur le
+chemin critique de chaque `Write`.
+**Réserve à documenter** : la disponibilité dépend du modèle et d'un opt-in
+(`--allowedTools TaskCreate` / `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`). Un utilisateur Sonnet 5 par
+défaut ne verra jamais le hook tirer — il faut le dire, sinon c'est un garde-fou fantôme de plus.
+
+**2. `SessionEnd` → `/api/session-stop` et `PostToolBatch` → `/api/log-file`**, en
+**`type: "http"`** (2,3 ms, aucun process) ou en `command` avec `async: true` — champ qui existe
+bien pour les hooks `command` dans `settings.json`, contrairement à ce que §2 laisse croire. Les
+deux endpoints existent déjà (`src/http/handle-rest.ts:63`) : **rien de nouveau à router**.
+Payloads vérifiés par exécution.
+
+**3. Livré comme sous-commande**, pas comme paquet : `pnpm-workspace.yaml` est absent.
+
+### 7.3 Ce qui est renvoyé, et à qui
+
+| Volet | Renvoi | Pourquoi |
+|---|---|---|
+| Le gate bloquant | [`C01`](C01-hook-mcp-tool-gate.md) §7.1/§7.3 | Déjà tranché ; préalable d'identité. C02 apporte seulement que la latence n'est pas l'obstacle. |
+| `SubagentStart/Stop` → registre | [`F03`](F03-sdk-subagents-sessionstore.md) | Sa §6.1 pose exactement la question (« N lignes ou une ? »), et elle est **non challengée**. L'`agent_id` est stable (mesuré) — le blocage est le modèle de données, pas l'identité. |
+| Hooks d'équipe | — | **Reporté**, motif : non exécutables ici (mesuré, §6.4 E). Réveil : une session **interactive** avec Agent Teams, ou l'apparition de `TaskCreate` dans une version ultérieure. |
+
+### 7.4 Corrections à porter dans les sections 1 à 5, et chez moi
+
+**Dans la fiche :**
+
+1. **§2, socle commun** — il n'est pas commun. `SessionStart` et `InstructionsLoaded` ne portent ni
+   `prompt_id`, ni `permission_mode`, ni `effort`.
+2. **§2** — ajouter `duration_ms` (`PostToolUse`) et `reason` (`SessionEnd`), tous deux mesurés.
+3. **§2, `SubagentStart`** — la clause *« sortie : `hookSpecificOutput.additionalContext` injecte
+   du contexte au subagent »* est **contredite par la doc** : la table *Exit code 2 behavior* donne
+   `SubagentStart | No | Shows stderr to user only`. À vérifier ou retirer.
+4. **§2** — le champ `async` est documenté pour les hooks **`command` dans `settings.json`**, pas
+   seulement dans l'Agent SDK où §2 le range.
+5. **§2** — la liste des types de hook manque : il y en a **cinq** (`command`, `http`, `mcp_tool`,
+   `prompt`, `agent`), et l'absence de `http` est ce qui m'a fait mesurer le mauvais mécanisme.
+6. **En-tête, effort** — `M` est faux. `C01` a compté ~15 fichiers pour un pack plus petit.
+
+**Chez moi :**
+
+7. **J'ai tué une branche sur le mauvais mécanisme**, et ma propre mesure disait pourquoi : elle
+   établissait que le goulot est le **spawn**, et je n'ai pas cherché le type de hook qui ne
+   spawne pas.
+8. **J'ai invoqué le quota pour ne pas tester K3**, alors que la §0 disait que le volet n'est
+   derrière qu'une variable d'environnement. Le protocole n'autorise `reporter` que sur une
+   barrière d'accès. Testé après coup, il se déclenche — mais le motif initial était indéfendable.
+9. **J'ai déclaré K1 « non déclenché » sur 4 événements vérifiés sur 10.**
+10. **J'ai laissé une puce de §6.3 décochée en silence** (le test à deux sessions).
+11. **J'allais adopter un capteur qui casse `shouldAutoResolve`** pour le profil de déploiement
+    dominant, sans avoir regardé ses consommateurs.
 
 ## 8. Journal
 
@@ -290,3 +661,4 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 |---|---|
 | 2026-08-14 | Fiche créée par la veille plateforme. |
 | 2026-08-14 | Vérification des faits : 31 events exacts, mais 10 payloads corrigés ; contradictions 1-3 tranchées ; testable localement. |
+| 2026-08-15 | Challenge, Claude Code 2.1.233. **Verdict : `adopter partiellement`** — `TaskCreated` comme garde-fou bloquant à granularité tâche, plus `SessionEnd` et `PostToolBatch` en capteurs vers les endpoints REST existants. **Trois erreurs de mesure de ma part, toutes corrigées par la passe adversariale :** (1) mes **240 ms** de latence étaient faux — j'avais chronométré en bash avec deux `node -e` autour de l'appel, donc **trois démarrages de Node comptés pour un** ; le réel est **65 ms** de spawn et **~90 ms** in situ, sous le seuil de 150 ms, donc **K4 ne se déclenche pas** ; (2) j'avais tué la branche bloquante sur `type: "command"` en ignorant le type **`http`**, qui n'ouvre aucun process et coûte **2,3 ms** ; (3) mon test des hooks d'équipe était **mal configuré** — `TaskCreated` tire **sans** flag Agent Teams dès que les Task tools sont activés, et son contrat de blocage exit-2 est vérifié de bout en bout (tâche non créée, stderr rendu mot pour mot au modèle). **K3 se déclenche donc sur sa première branche**, ce qui invalide le `mixte` de l'en-tête. Écarté en revanche : `SubagentStart` → `AgentRegistry`, qui n'est **pas passif** — `announce-workflow.ts:107-110` fait basculer `shouldAutoResolve` dès qu'un agent de plus est en ligne, donc un solo verrait ses threads cesser d'auto-résoudre ; renvoyé à [`F03`](F03-sdk-subagents-sessionstore.md), non challengée. Effort **M → L**. |
