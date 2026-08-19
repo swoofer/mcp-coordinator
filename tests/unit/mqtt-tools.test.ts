@@ -42,6 +42,8 @@ function fakeExtra(sessionId = "sess-1"): ServerContext {
 
 interface RegisteredToolInternals {
   handler: (args: unknown, extra: ServerContext) => Promise<unknown>;
+  /** #383: the description a model reads in tools/list, before calling. */
+  description?: string;
 }
 
 function getTool(server: McpServer, toolName: string): RegisteredToolInternals {
@@ -128,6 +130,9 @@ describe("protocole-mcp-06: MQTT tools when the bridge IS connected — nominal 
         timestamp: 123,
       })),
       getQueuedMessages: vi.fn(() => [{ topic: "t", payload: { a: 1 }, timestamp: 1 }]),
+      // #357: the real bridge reports how many messages are still queued;
+      // a double that omits it no longer models the interface.
+      queueDepth: vi.fn(() => 0),
     };
   }
 
@@ -145,10 +150,13 @@ describe("protocole-mcp-06: MQTT tools when the bridge IS connected — nominal 
     const server = makeServer(bridge);
     const result = await callTool(server, "wait_for_message", { agent_id: "a1" });
     expect(result.isError).toBeFalsy();
+    // #357 adds queued_remaining to this payload. Additive: topic, payload and
+    // timestamp are untouched, so an existing consumer keeps parsing.
     expect(JSON.parse(result.content[0].text)).toEqual({
       topic: "coordinator/default/broadcast",
       payload: { hi: true },
       timestamp: 123,
+      queued_remaining: 0,
     });
     expect(bridge.waitForMessage).toHaveBeenCalledTimes(1);
   });
@@ -175,5 +183,56 @@ describe("protocole-mcp-06: MQTT tools when the bridge IS connected — nominal 
       { topic: "t", payload: { a: 1 }, timestamp: 1 },
     ]);
     expect(bridge.getQueuedMessages).toHaveBeenCalledWith("org-1", "a1");
+  });
+});
+
+// -- #383 / #357 -------------------------------------------------------------
+
+describe("MQTT tools announce their broker dependency in tools/list (#383)", () => {
+  // The runtime guard only speaks after the call. A model choosing tools has
+  // nothing but the description, so the caveat has to live there.
+  it.each(["wait_for_message", "get_queued_messages", "mqtt_publish"])(
+    "%s says it needs a live broker",
+    (name) => {
+      const server = makeServer({ isConnected: () => true });
+      const description = getTool(server, name).description ?? "";
+      expect(description).toMatch(/live MQTT broker/);
+      expect(description).toMatch(/stdio/);
+    },
+  );
+
+  // #280 made a busy MQTT port degrade the HTTP boot instead of killing it, so
+  // an HTTP daemon can run with no broker. A description that blamed the
+  // transport would now be wrong.
+  it("does not claim the transport is what decides availability", () => {
+    const server = makeServer({ isConnected: () => true });
+    const description = getTool(server, "mqtt_publish").description ?? "";
+    expect(description).not.toMatch(/HTTP transport only/i);
+  });
+});
+
+describe("wait_for_message reports the remaining queue depth (#357)", () => {
+  // waitForMessage shifts one message and leaves the rest. Without the count a
+  // model loops -- one billed turn per message -- instead of draining once.
+  it("returns queued_remaining alongside the message", async () => {
+    const server = makeServer({
+      isConnected: () => true,
+      waitForMessage: async () => ({ topic: "t", payload: "p", timestamp: 1 }),
+      queueDepth: () => 4,
+    });
+    const result = await callTool(server, "wait_for_message", { agent_id: "a1" });
+    const body = JSON.parse(result.content[0].text);
+    expect(body.queued_remaining).toBe(4);
+    expect(body.topic).toBe("t");
+  });
+
+  it("reports zero when the queue is drained", async () => {
+    const server = makeServer({
+      isConnected: () => true,
+      waitForMessage: async () => ({ topic: "t", payload: "p", timestamp: 1 }),
+      queueDepth: () => 0,
+    });
+    const result = await callTool(server, "wait_for_message", { agent_id: "a1" });
+    expect(JSON.parse(result.content[0].text).queued_remaining).toBe(0);
   });
 });

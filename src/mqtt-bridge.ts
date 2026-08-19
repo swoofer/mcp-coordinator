@@ -417,6 +417,19 @@ export class MqttBridge {
     return count;
   }
 
+  /**
+   * issue #357: how many messages are still queued for one agent.
+   *
+   * Read-only on purpose. waitForMessage and getQueuedMessages both call
+   * registerListener, so asking either of them how deep the queue is would
+   * create a listener as a side effect of an observation -- and
+   * getQueuedMessages would also drain it. This one does neither: an agent
+   * with no listener has nothing queued, which is the honest answer.
+   */
+  queueDepth(orgId: string, agentId: string): number {
+    return this.listeners.get(orgId)?.get(agentId)?.queue.length ?? 0;
+  }
+
   async waitForMessage(
     orgId: string,
     agentId: string,
