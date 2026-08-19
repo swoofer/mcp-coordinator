@@ -13,7 +13,7 @@
 | **Vérification** | CONFIRMED |
 | **Vérifiée le** | 2026-08-14 |
 | **Testabilité** | ✅ testable — Claude Code v2.1.219 local, aucun accès fermé requis |
-| **Statut du challenge** | ⬜ à faire |
+| **Statut du challenge** | ✅ **tranché** (2026-08-16) — recadrage ; K3 ne se déclenche pas, la persistance inter-session tient |
 
 ---
 
@@ -141,7 +141,37 @@ Le risque n'est pas frontal, il est **de cadrage**. `/batch` fait déjà « plus
 
 ### 6.2 Hypothèse
 
-<Ce qu'on pense avant de tester.>
+*Pré-enregistrée le 2026-08-16, **avant** toute exécution.*
+
+> ⚠️ **Position particulière de ce challenge :** je suis l'outil que la fiche instruit. Cette session
+> tourne avec `ultracode` actif et a lancé une vingtaine de sous-agents adversariaux. Le risque n'est
+> donc pas le manque de matière, c'est le **biais du praticien** : confondre « je m'en sers » avec
+> « c'est bon pour le projet ». Les critères ci-dessous sont écrits contre ce biais.
+
+**Ce que je crois qu'il va se passer.**
+
+1. La prémisse de §6.1 est **exacte** : le script de workflow n'a ni FS, ni shell, ni `import()`.
+   C'est écrit dans le contrat de l'outil livré, et c'est vérifiable.
+2. **Mais elle ne conduit pas à la conclusion que §6.1 en tire.** Les sous-agents, eux, atteignent
+   les outils MCP de la session. Le pré-check peut donc vivre dans un workflow — par les sous-agents,
+   pas par le script.
+3. Le vrai recouvrement n'est pas l'orchestration : c'est que le natif rend l'orchestration
+   **intra-session** triviale, donc dévalue toute orchestration maison qui ne survit pas à la session.
+4. Notre différenciateur restant est la **persistance inter-session**, pas le parallélisme.
+
+**Verdict pressenti :** réponse = **recadrage** — abandonner l'idée d'un workflow de référence en
+plugin, se repositionner sur ce qui survit à la fin de la session.
+
+**Critères de mort — écrits contre mon biais de praticien.**
+
+| # | Si… | …alors |
+|---|---|---|
+| **K1** | un sous-agent de workflow **ne peut pas** appeler un outil MCP du coordinateur | la branche « pré-check dans le workflow » est morte, et §6.1 a raison. |
+| **K2** | le script de workflow a un accès FS ou shell | la prémisse de §6.1 est fausse et toute la question est mal posée. |
+| **K3** | le natif **persiste** l'état d'orchestration entre deux sessions | notre dernier différenciateur tombe — **c'est le pire cas**, et je dois l'écrire sans l'adoucir. |
+| **K4** | un workflow de référence en plugin coûte plus de **8 fichiers** | la branche « livrer un workflow » est disqualifiée par le coût. |
+| **K5** | aucun utilisateur n'a demandé d'orchestration parallèle | filtre YAGNI — et mon usage personnel **ne compte pas** comme demande, cf. la leçon de `C12`. |
+| **K6** | l'orchestration native est derrière un flag distant | même réserve de durabilité que `C03`/`C05`/`D02` : on ne bâtit pas dessus. |
 
 ### 6.3 Protocole de vérification
 
@@ -154,6 +184,124 @@ Le risque n'est pas frontal, il est **de cadrage**. `/batch` fait déjà « plus
 - [ ] Tuer Claude Code en plein run, relancer, et observer si le replay ré-annonce des threads déjà ouverts (doublons dans `threads`).
 
 ### 6.4 Résultat observé
+
+*Challenge du 2026-08-16. Claude Code **2.1.233**. Un workflow réel a été lancé pour cette fiche.*
+
+#### A. Le bac à sable du script est **total**, et contrôlé en partie **au parsing**
+
+Mesuré en exécutant un workflow :
+
+```
+require → "ReferenceError: require is not defined"
+process → undefined
+fetch   → undefined
+```
+
+Et deux constructions sont rejetées **avant tout lancement** :
+
+```
+SyntaxError: import() is not available in workflow scripts.
+Date.now()/Math.random()/new Date() are unavailable (breaks resume)
+```
+
+**K2 ne se déclenche pas** : la prémisse de §6.1 est confirmée. Mais elle est **plus forte que ce que
+la fiche énonce**, et pour une raison qu'elle n'avait pas identifiée : l'interdiction de `Date.now()`
+n'est pas défensive, c'est un **contrat de déterminisme** — le moteur rejoue le préfixe inchangé des
+appels d'agents à la reprise, donc le script doit être reproductible.
+
+#### B. 🔴 K1 tombe — mais **par le contrat**, pas par ma mesure
+
+Ma sonde n'a **pas** pu tester K1 : **aucun serveur mcp-coordinator n'est connecté à cette session**
+(les serveurs présents sont `claude-in-chrome`, `computer-use`, `mcp-registry`, etc.). Le sous-agent
+l'a signalé lui-même, et il a aussi noté que `Bash` figurait déjà dans sa liste avant mon
+`ToolSearch` — mon test ne prouvait donc pas le chargement différé.
+
+La réponse vient du contrat de l'outil, verbatim :
+
+> « Workflow agents can reach all session-connected MCP tools via ToolSearch — schemas load on demand
+> per agent. **Caveat: interactively-authenticated MCP servers (e.g. claude.ai) may be absent in
+> headless/cron runs.** »
+
+**K1 ne se déclenche pas.** Mais deux réserves à écrire honnêtement :
+
+1. **C'est une chaîne de contrat, pas un run.** Plus fort que rien, moins fort qu'une mesure.
+2. **Le caveat nous vise directement.** `mcp-coordinator` s'authentifie en OAuth. S'il tombe dans la
+   classe « interactively-authenticated », les sous-agents le **perdent en run headless ou cron** —
+   c'est-à-dire précisément dans les runs non supervisés. Point de protocole absent de §6.3.
+
+#### C. 🔴 K3 ne se déclenche pas — le différenciateur tient, et c'est écrit dans le contrat
+
+Mon critère du pire cas demandait si le natif persiste l'état d'orchestration entre deux sessions.
+Le contrat de `resumeFromRunId` répond :
+
+> « Completed agent() calls with unchanged (prompt, opts) return their cached results instantly […]
+> **Same-session only.** »
+
+Vérifié sur disque : les journaux vivent sous `…/projects/<projet>/<UUID-de-session>/workflows/`.
+L'UUID **est** celui de la session. Les fichiers survivent — ce sont des artefacts forensiques — mais
+**l'état résumable est verrouillé sur la session courante**.
+
+**La persistance inter-session reste notre différenciateur.** Une fissure à surveiller, non instruite
+par la fiche : le mode `remote: true` dispatche vers l'infrastructure cloud, et c'est le seul endroit
+où le handle de reprise est une **URL de session cloud** — donc de l'état qui survit à la session.
+
+#### D. 🔴 Mon argument se retourne contre le produit, et je dois l'écrire
+
+J'allais qualifier le pré-check par sous-agent de « garde-fou fantôme ». **Deux erreurs.**
+
+**Le label est faux.** `audit/00-SYNTHESE.md` réserve ce terme à un contrôle « écrit, testé, documenté,
+mais **jamais vérifié en intégration réelle** » — un défaut de *câblage*. `announce_work` est
+parfaitement câblé ; l'audit le loue même.
+
+**Et l'argument, correctement nommé, condamne d'abord notre propre produit.** Le bon cadrage est celui
+de notre synthèse, `00-SYNTHESE.md` l. 62 : *« Un projet qui détecte les conflits mais ne peut pas les
+empêcher vend un rapport. »* Reprocher au natif qu'un pré-check dépende du bon vouloir de l'agent
+décrit `announce_work` **à la virgule près** — et c'est mesuré chez nous : `C06` a relevé
+**0 annonce spontanée sur 12 runs** sans `instructions`, et **0 sur 3** même avec, sur une tâche à
+écriture immédiate. Vérifié en outre : `src/http/rest-handlers.ts` contient **zéro** appel à
+`detect()` — le chemin REST d'annonce n'exécute même pas la détection.
+
+La seule asymétrie réelle qui subsiste : dans un workflow, le pré-check est écrit **une fois dans le
+script**, que l'humain voit dans le dialogue de permission **avant** lancement. C'est plus
+déterministe qu'une supplique adressée à chaque agent. Cela nuance l'argument ; cela ne le sauve pas.
+
+#### E. 🔴 L'argument central de §4 est mort : la primitive « manquante » existe
+
+§4 affirme qu'il n'y a « aucune détection de conflit côté runtime » et que le dépôt « a déjà exactement
+la primitive qui manque ». **Faux depuis la version installée.** Le contrat expose, **par appel
+`agent()`** :
+
+> « `opts.isolation: 'worktree'` runs the agent in a fresh git worktree — EXPENSIVE (~200-500 ms setup
+> + disk per agent), **use ONLY when agents mutate files in parallel and would otherwise conflict** »
+
+Ce n'est pas une option de `/batch` : c'est une option de premier rang sur chaque agent, avec une
+consigne explicite au modèle sur *quand* la prendre. La prémisse porteuse de §4 perd son objet.
+
+#### F. L'hypothèse inverse — instruite, puis écartée
+
+J'ai fait instruire l'hypothèse que `ultracode` et les workflows, en lançant N agents en parallèle sur
+le même dépôt, **renforceraient** la valeur du coordinateur au lieu de la menacer. Mécaniquement elle
+est vraie : arbre partagé, `acceptEdits`, jusqu'à 16 concurrents — la surface de conflit grandit.
+
+Elle ne se convertit pas en valeur, pour trois raisons :
+
+1. **Le remède natif est in-band et moins cher** : 200-500 ms et un flag dans le script, contre un
+   daemon + SQLite + MQTT et un aller-retour d'annonce par item.
+2. **Les conflits créés sont intra-session, un humain, une machine** — exactement le segment que
+   `D01` vient de concéder. L'hypothèse renforce un terrain déjà cédé.
+3. **La décision se prend à l'écriture du script**, visible avant lancement. Un pré-check par
+   sous-agent est strictement pire pour le même résultat.
+
+#### G. K5 se déclenche · K6 se déclenche, mais **plus faiblement** qu'ailleurs
+
+- **K5 :** 79 issues, 76 du mainteneur, 3 externes. Recherches `orchestration`, `subagent`,
+  `ultracode`, `swarm`, `pipeline` → **0**. **Et le détail vaut mieux que le compte** : les trois
+  seuls signaux externes portent sur la **persistance et la fiabilité de l'état partagé**. Nos
+  utilisateurs ont déjà voté pour le repositionnement.
+- **K6 :** l'orchestration est gouvernée par `tengu_workflows_enabled` — mais son défaut est **`true`**.
+  C'est un **kill switch**, pas un gate de déploiement progressif. La réserve de durabilité est donc
+  **réelle mais plus faible** que sur `C03`, `C05` ou `D02`, où le défaut était fermé. L'écrire au même
+  niveau serait surinterpréter.
 
 <Ce qu'on a réellement mesuré/vu. Coller les sorties, pas les paraphraser.>
 
@@ -174,11 +322,71 @@ Le risque n'est pas frontal, il est **de cadrage**. `/batch` fait déjà « plus
 
 | | |
 |---|---|
-| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ⬜ refuser |
-| **Date** | |
-| **Justification** | |
-| **Issue / PR** | |
-| **Jalon visé** | |
+| **Verdict** | **Réponse : recadrage** — abandonner le workflow de référence, se repositionner sur ce qui survit à la session. ⬜ contre-mesure technique · ✅ **recadrage** · ⬜ recouvrement assumé |
+| **Date** | 2026-08-16 |
+| **Justification** | **K3 ne se déclenche pas** : la reprise de workflow est **`Same-session only`** par contrat, et les journaux sont séquestrés sous l'UUID de session. **La persistance inter-session tient donc comme différenciateur**, et c'est le résultat le plus important de la fiche. K1 tombe **par le contrat** — les sous-agents atteignent les outils MCP de la session — mais avec un caveat qui nous vise : les serveurs **authentifiés interactivement** peuvent être absents en run headless ou cron. K5 se déclenche (0 demande externe sur 79 issues), et l'argument central de §4 est **mort** : `isolation: 'worktree'` existe comme option de premier rang. |
+| **Issue / PR** | aucune |
+| **Jalon visé** | réécriture de §4 avant réutilisation |
+
+### La frontière factuelle
+
+**Ce que le natif fait** : orchestration parallèle jusqu'à 16 agents concurrents, script déterministe
+et intégralement bacs-à-sable, sous-agents atteignant les outils MCP de la session, isolation par
+worktree en option par agent, et **reprise d'un run interrompu**.
+
+**Ce que le natif ne fait pas** : rien ne survit à la session. La reprise est `Same-session only`,
+l'état vit sous l'UUID de session, et il n'existe ni notion d'organisation, ni d'humain tiers, ni de
+chaîne d'audit.
+
+**Ce qui reste défendable** : **la persistance inter-session et inter-humaine.** Rien d'autre — et
+c'est exactement ce que les trois seuls retours utilisateurs externes du projet demandent
+(persistance, fiabilité de l'état partagé).
+
+### Ce qui est abandonné
+
+**Le workflow de référence livré en plugin.** Non pas parce qu'il serait techniquement impossible —
+K1 montre qu'il l'est — mais parce que : personne ne l'a demandé (K5), la primitive qu'il devait
+apporter existe désormais nativement (`isolation: 'worktree'`, §6.4-E), et le pré-check qu'il porterait
+ne contraindrait rien de plus que ce que nous avons déjà.
+
+### 🔴 Ce que ce challenge établit **contre** le projet
+
+Mon reproche au natif — « un pré-check qui dépend du bon vouloir de l'agent est un espoir, pas une
+garantie » — **décrit `announce_work` à la virgule près**. Et c'est mesuré chez nous : `C06` a relevé
+**0 annonce spontanée sur 12 runs**, et 0 sur 3 même avec `instructions`. Le chemin REST d'annonce
+n'appelle même pas `detect()`.
+
+Notre propre synthèse l'avait déjà écrit : *« un projet qui détecte les conflits mais ne peut pas les
+empêcher vend un rapport »*. Ce challenge le confirme par la mesure, et il en tire la conséquence :
+**le vrai chantier n'est pas d'orchestrer, c'est de contraindre** — donc `PreToolUse` (`C01`), déjà
+identifié, et déjà confirmé comme seule protection possible par `D02`.
+
+### Corrections obligatoires
+
+- **§4 : l'argument central est mort.** « Aucune détection de conflit côté runtime » et « le dépôt a
+  déjà exactement la primitive qui manque » sont faux depuis `isolation: 'worktree'`.
+- **§6.3 : ajouter un point de protocole** — mesurer si un serveur MCP authentifié en OAuth reste
+  atteignable par un sous-agent en run headless/cron. C'est le seul risque opérationnel réel.
+- **§1/§2 : la menace structurelle est mal située.** Ce n'est pas l'orchestration : c'est qu'Anthropic
+  construit un **canal de distribution** (champ `workflows` du manifeste plugin) et un **mode de
+  verrouillage entreprise**. Aucun des deux ne nous menace aujourd'hui, mais c'est la direction.
+
+### Note de méthode — le biais du praticien, et une étiquette fausse
+
+J'avais pré-enregistré que le risque de cette fiche était **le biais du praticien** : je suis l'outil
+qu'elle instruit, cette session tourne avec `ultracode` et a lancé une vingtaine de sous-agents. Ce
+garde-fou a servi — mon critère K5 disait explicitement que mon usage personnel ne compte pas comme
+demande, et K5 s'est déclenché.
+
+Mais j'ai commis deux fautes que la passe adversariale a corrigées. **J'ai emprunté une étiquette qui
+ne s'appliquait pas** — « garde-fou fantôme » désigne un défaut de câblage dans l'audit du projet, pas
+un défaut de contrainte. Et **je n'avais pas vu que mon argument se retournait contre le produit** :
+c'est la faute la plus utile de ce challenge, parce qu'elle transforme une fiche « menace » en
+confirmation d'un chantier interne déjà identifié.
+
+Enfin, **j'ai failli présenter comme mesuré ce qui relève du contrat** : K1 n'a pas été testé — aucun
+serveur mcp-coordinator n'était connecté à la session. Quatrième fois de ce corpus que je dois
+distinguer ce que j'ai exécuté de ce que j'ai lu.
 
 ## 8. Journal
 
@@ -186,3 +394,4 @@ Le risque n'est pas frontal, il est **de cadrage**. `/batch` fait déjà « plus
 |---|---|
 | 2026-08-14 | Fiche créée par la veille plateforme. |
 | 2026-08-14 | Vérification des faits : statut GA et §5 confirmés ligne à ligne ; options SDK `Workflow` partiellement tranchées ; testable localement. |
+| 2026-08-16 | **Challenge — réponse : recadrage.** Workflow réellement lancé. Bac à sable du script **total** et contrôlé en partie **au parsing** (`require` → ReferenceError, `process`/`fetch` undefined, `import()` et `Date.now()` rejetés avant lancement) : la prémisse de §6.1 tient, et l'interdiction de `Date.now()` est un **contrat de déterminisme**, pas une mesure défensive. **K3 ne se déclenche pas** — la reprise est `Same-session only` par contrat, journaux séquestrés sous l'UUID de session : **la persistance inter-session tient comme différenciateur**. K1 tombe **par le contrat** et non par ma mesure (aucun serveur mcp-coordinator n'était connecté), avec un caveat qui nous vise : les serveurs authentifiés interactivement peuvent être absents en headless/cron. **L'argument central de §4 est mort** : `isolation: 'worktree'` existe comme option de premier rang par agent. K5 déclenché (0 demande externe sur 79 issues ; les 3 signaux externes portent sur la persistance — les utilisateurs ont déjà voté pour le repositionnement). K6 déclenché mais **plus faiblement** qu'ailleurs : `tengu_workflows_enabled` a pour défaut `true`, c'est un kill switch et non un gate de déploiement. **Et l'argument se retourne contre nous** : mon reproche au natif décrit `announce_work` à la virgule près — `C06` a mesuré 0 annonce spontanée sur 12 runs, et le chemin REST n'appelle même pas `detect()`. Étiquette « garde-fou fantôme » retirée : elle désigne un défaut de câblage, pas de contrainte. Hypothèse inverse (les workflows renforceraient le coordinateur) instruite puis écartée. |
