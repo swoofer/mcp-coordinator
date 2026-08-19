@@ -454,6 +454,38 @@ describe("entropy: assertSecretEntropy boot check", () => {
     expect(() => assertSecretEntropy(buf)).toThrow(/dictionary word/);
   });
 
+  // #386: the substring half only applies from MIN_SUBSTRING_MATCH_LEN up. The
+  // two short entries, "dev" and "test", used to reject legitimate secrets --
+  // a real `openssl rand -base64 32` draw collides with one of them about once
+  // in 900, and the doctor hint recommends that exact recipe.
+  const COLLIDES_WITH_DEV = "zml4mAwDeVKVrg0kXyL0hNMJMlbp7yzot5QMp0yCVFE=";
+  const COLLIDES_WITH_TEST = "QHz7qoi/t/8cc6vdQTeSTGbm1TljHpcOpuOGrqbSVK4=";
+
+  it("a real base64 secret that happens to contain 'dev' is accepted", () => {
+    expect(COLLIDES_WITH_DEV.toLowerCase()).toContain("dev");
+    expect(() => assertSecretEntropy(Buffer.from(COLLIDES_WITH_DEV, "utf8"))).not.toThrow();
+  });
+
+  it("a real base64 secret that happens to contain 'test' is accepted", () => {
+    expect(COLLIDES_WITH_TEST.toLowerCase()).toContain("test");
+    expect(() => assertSecretEntropy(Buffer.from(COLLIDES_WITH_TEST, "utf8"))).not.toThrow();
+  });
+
+  // ...but a secret that IS one of those words is still refused: the equality
+  // half of the check has no length floor.
+  it.each(["dev", "test"])("the short dictionary word %s alone is still refused", (word) => {
+    expect(() => assertSecretEntropy(Buffer.from(word, "utf8"))).toThrow(/dictionary word/);
+  });
+
+  // The cases that make the substring half worth keeping. Matching on equality
+  // alone -- the first option the issue proposed -- would let all four through.
+  it.each(["mypassword123", "xxchange-mexx", "hunter2-password-hunter2", "s3cr3t-password"])(
+    "an embedded weak word is still refused: %s",
+    (secret) => {
+      expect(() => assertSecretEntropy(Buffer.from(secret, "utf8"))).toThrow(/dictionary word/);
+    },
+  );
+
   it("ASCII-only 32-byte string with very low byte diversity throws", () => {
     // 32 bytes alternating between two values -> Shannon entropy = 1 bit/byte
     // * 32 = 32 total bits, well below the 128 minimum.
