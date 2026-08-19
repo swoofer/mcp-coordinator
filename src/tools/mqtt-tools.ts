@@ -34,7 +34,21 @@ export const MAX_WAIT_TIMEOUT_SECONDS = 300;
  * debugging a coordination that "isn't going through" gets a real signal.
  */
 const MQTT_NOT_CONNECTED_MESSAGE =
-  "MQTT broker not available — stdio mode runs without MQTT. Use the HTTP transport for push messaging (mqtt_publish / wait_for_message / get_queued_messages).";
+  "MQTT broker not available — no broker is connected in this session. stdio mode never starts one, and since #280 an HTTP daemon also keeps running when its broker cannot bind. Use get_thread_updates for delivery that does not depend on the bus (mqtt_publish / wait_for_message / get_queued_messages).";
+
+/**
+ * issue #383: the guard above only speaks AFTER the call. A model reading
+ * tools/list has no way to know these three tools may be inert in its
+ * session, so it spends a round trip to find out.
+ *
+ * Phrased around the broker rather than the transport on purpose. The
+ * issue proposed "HTTP transport only -- unavailable in stdio mode", which
+ * stopped being true with #280: a busy MQTT port now degrades the HTTP boot
+ * instead of killing it, so an HTTP daemon can be running with no broker at
+ * all. stdio is one way to have no broker, not the only one.
+ */
+const MQTT_AVAILABILITY_CAVEAT =
+  " Needs a live MQTT broker: returns an error when none is connected, which is the case in stdio mode and on an HTTP daemon whose broker failed to start.";
 
 function mqttNotConnectedResult() {
   return {
@@ -55,7 +69,8 @@ export function registerMqttTools(
     "wait_for_message",
     {
       description:
-        "Block until an MQTT consultation message arrives, or time out. Best-effort push: nothing is buffered before this call registers a listener, so a message published earlier is already gone. Use get_thread_updates for delivery you can rely on.",
+        "Block until an MQTT consultation message arrives, or time out. Best-effort push: nothing is buffered before this call registers a listener, so a message published earlier is already gone. Use get_thread_updates for delivery you can rely on." +
+        MQTT_AVAILABILITY_CAVEAT,
       inputSchema: z.object({
         agent_id: z.string().describe("ID of the agent waiting for a message."),
         timeout_seconds: z
@@ -75,7 +90,14 @@ export function registerMqttTools(
       const timeoutMs = cappedSeconds * 1000;
       const msg = await mqttBridge.waitForMessage(claims.org, agent_id, timeoutMs);
       if (msg) {
-        return { content: [{ type: "text", text: JSON.stringify(msg) }] };
+        // issue #357: waitForMessage shifts ONE message and leaves the rest
+        // queued. Without this the model has no reason to suspect a backlog,
+        // so it loops on wait_for_message -- one billed turn per message --
+        // instead of draining the remainder in a single get_queued_messages.
+        const queued_remaining = mqttBridge.queueDepth(claims.org, agent_id);
+        return {
+          content: [{ type: "text", text: JSON.stringify({ ...msg, queued_remaining }) }],
+        };
       }
       return { content: [{ type: "text", text: JSON.stringify({ timeout: true }) }] };
     },
@@ -85,7 +107,8 @@ export function registerMqttTools(
     "get_queued_messages",
     {
       description:
-        "Drain queued MQTT messages without blocking. DESTRUCTIVE: messages are removed as they are returned, so a second call gets nothing and a crash mid-processing loses them. Nothing is buffered while no listener is registered, and the queue drops oldest-first when full. For delivery you can rely on, use get_thread_updates instead.",
+        "Drain queued MQTT messages without blocking. DESTRUCTIVE: messages are removed as they are returned, so a second call gets nothing and a crash mid-processing loses them. Nothing is buffered while no listener is registered, and the queue drops oldest-first when full. For delivery you can rely on, use get_thread_updates instead." +
+        MQTT_AVAILABILITY_CAVEAT,
       inputSchema: z.object({
         agent_id: z.string().describe("ID of the agent whose queued messages to fetch."),
       }),
@@ -108,7 +131,7 @@ export function registerMqttTools(
   server.registerTool(
     "mqtt_publish",
     {
-      description: "Publish a message to an MQTT topic",
+      description: "Publish a message to an MQTT topic." + MQTT_AVAILABILITY_CAVEAT,
       inputSchema: z.object({
         topic: z
           .string()
