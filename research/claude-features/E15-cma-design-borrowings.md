@@ -13,7 +13,7 @@
 | **Vérification** | CONFIRMED |
 | **Vérifiée le** | 2026-08-14 |
 | **Testabilité** | ⚠️ partielle — advisor et dreams exigent des accès API absents |
-| **Statut du challenge** | ⬜ à faire |
+| **Statut du challenge** | ✅ **tranché** (2026-08-17) — adopter partiellement ; 4 emprunts refuses, le 5e recentre ; livrable #368 |
 
 ---
 
@@ -182,7 +182,26 @@ GET  /v1/deployment_runs?deployment_id=&has_error=true
 
 ### 6.2 Hypothèse
 
-<Ce qu'on pense avant de tester.>
+**Ce que je pense avant de mesurer.** §6.5 dit déjà la chose honnête, et personne ne l'a tirée jusqu'au bout : *« Le jitter et le journal de tentative sont les seuls emprunts vraiment bon marché … ce qui affaiblit l'argument de traiter ces cinq mécanismes comme un lot. »* Mon hypothèse est que le verdict se joue là — cinq emprunts d'ampleur incomparable, dont **un seul** ne dépend d'aucune surface Anthropic.
+
+Et je pense que la prémisse de §6.1 est déjà fausse dans le code. Elle oppose « `consult_peer` éphémère » à « thread `propose_resolution` / `approve_resolution` persistant », en supposant que l'arbitrage **passe** par ce cycle. Or `E11` a relevé au passage que `runCommonAnnounceFlow` fait un `UPDATE threads SET status='resolved'` — il existe donc un chemin d'**auto-résolution** qui court-circuite le cycle complet. Si la majorité des threads se ferment ainsi, le « thread persistant sur-dimensionné » que §6.3 cherche à mesurer est déjà contourné par le produit lui-même, et `consult_peer` ne comble aucun manque.
+
+**Contrainte de mesure à annoncer d'avance** (leçon d'`E06`, où un corpus pré-enregistré s'est révélé vide) : `E10` a mesuré que les bases SQLite versionnées contiennent **0 thread**. Le point 1 de §6.3 — « compter combien de threads réels se terminent en un aller-retour » — n'a donc **pas de corpus**. Je ne le remplacerai pas par un échantillon fabriqué : je mesurerai à la place ce qui est vérifiable, à savoir **si le chemin d'auto-résolution existe et sous quelle condition il se déclenche**.
+
+### 6.2b Critères de mort — pré-enregistrés avant toute mesure
+
+Cinq emprunts, adjugés **séparément** — leçon d'`E11` et d'`E14`, où un seuil unique décidait de plusieurs changements.
+
+| # | Emprunt | Critère de mort | Seuil chiffré |
+|---|---|---|---|
+| **K1** | advisor / `consult_peer` | **Le cycle complet est déjà court-circuité.** Si le produit résout déjà des threads sans `propose_resolution`, `consult_peer` ne comble aucun manque. | un chemin d'auto-résolution existe **et** se déclenche sans intervention d'un pair |
+| **K2** | advisor | **Arbitrage inauditable.** Si le variant chiffré s'applique aux modèles qu'on utiliserait, le coordinateur reçoit un verdict qu'il ne peut ni journaliser ni afficher. | `advisor_redacted_result` documenté pour Opus 5 / Fable 5 / Mythos 5 |
+| **K3** | advisor | **Rupture de portabilité.** `ConflictDetector` deviendrait inutilisable hors plateforme Claude. | l'advisor n'a **aucun** équivalent dans le protocole MCP |
+| **K4** | budget | **YAGNI, et un troisième mécanisme de refus.** | **0** demande, et ≥ **2** mécanismes de limitation déjà présents |
+| **K5** | dreams | **Chantier `L` sans valeur démontrée.** | research preview sur demande, **0** signal que la connaissance accumulée se périme |
+| **K6** | jitter + journal de tentative | **Ce n'est pas bon marché.** Si l'emprunt touche plus de quelques dizaines de lignes ou dépend d'une API, il perd son seul avantage. | > **5** fichiers à toucher, ou une dépendance externe |
+
+**Règle que je m'impose :** §0 classe la fiche ⚠️ **partielle** — advisor et dreams exigent des accès absents. Ces deux volets ne peuvent **jamais** recevoir `adopter`. Et j'applique les leçons accumulées : mesurer le chemin réel et non le prédicat (`E04`, `E14`), vérifier une absence plutôt que la supposer (`E08`, `E10`, `E12`), grepper la doc du dépôt avant de crier à la découverte (`E09`), annoncer d'avance qu'un corpus manque plutôt que de lui substituer un échantillon fabriqué (`E06`), et distinguer une dérive de dépendance d'un défaut de vérification (`E13`, `E14`).
 
 ### 6.3 Protocole de vérification
 
@@ -199,7 +218,121 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 
 ### 6.4 Résultat observé
 
-<Ce qu'on a réellement mesuré/vu. Coller les sorties, pas les paraphraser.>
+#### A. Mon hypothèse sur K1 était fausse, et je l'écris
+
+J'avais parié que le cycle `propose_resolution` / `approve_resolution` était déjà court-circuité par une auto-résolution. Deux chemins existent — mais **tous deux ne se déclenchent que faute d'interlocuteur** :
+
+```
+src/announce-workflow.ts:110  shouldAutoResolve = concernedIds.length === 0 && otherOnlineCount === 0
+src/consultation.ts:422       if (t.status === "open" && updated.length === 0)   // handleAgentDeparture
+```
+
+Et le commentaire de `announce-workflow.ts:96-98` énonce l'intention : *« Auto-resolve only when truly alone — if peers are online but not concerned … keep the thread open »*. Le cycle persistant **est** donc le seul mécanisme d'arbitrage entre deux agents vivants. **K1 ne se déclenche pas**, et la prémisse de §6.1 tient.
+
+**Contrainte annoncée d'avance, tenue :** le point 1 de §6.3 — « compter combien de threads réels se terminent en un aller-retour » — n'a **pas de corpus** (`E10` a mesuré 0 thread dans les bases versionnées). Je ne lui ai pas substitué d'échantillon fabriqué ; j'ai mesuré à la place la **condition de déclenchement** du chemin, ce qui répond à la question sans inventer de données.
+
+#### B. Le volet que j'allais adopter s'effondre — sa justification est réfutée par le dépôt lui-même
+
+**§4.4 fonde le jitter sur un scénario qui viole un contrat documenté.** Le scénario est « une flotte d'instances auto-hébergées qui tapent le disque et git en même temps ». Or `docs/ops/single-instance-constraints.md` :
+
+> « **Run exactly one coordinator process per data directory.** Phase 5 introduces Redis-backed equivalents that lift this constraint. »
+
+Le multi-instance n'est pas un déploiement, c'est une **mauvaise configuration**. Et le document liste la contention du verrou SQLite comme le **signal de diagnostic** de cette erreur : le circuit du sweeper s'ouvre après `CIRCUIT_BREAK_THRESHOLD = 5` échecs, et `coordinator_sweeper_circuit_open=1` est le symptôme à surveiller. **Un jitter étalerait les écritures et rendrait ce signal muet**, sans toucher aucun des vrais dangers que le jitter ne peut pas adresser (course de migration, doublement du rate-limit, doublement du lockout, course sur la lecture d'epoch).
+
+**Le dépôt a déjà tranché la question, et il a choisi l'élection de leader.** `src/sweeper/index.ts:104-115` :
+
+> *« Phase 5 multi-instance: optional leader-election gate (Redis `SET key NX EX` lease per single-instance-constraints.md). When provided, each tick first asks the gate; non-leaders skip their pass so only one instance issues the DELETE batches. »*
+
+C'est une violation de la leçon d'`E09` par la fiche : **§4.4 annonce un manque que la doc et le code du dépôt avaient déjà comblé, par un autre mécanisme.**
+
+**Et le tueur structurel : il n'y a aucun cron.** `grep -rc "cron\|crontab\|node-cron" src/` → **0**. Les 11 timers sont tous **relatifs au boot**. Anthropic a besoin de jitter parce qu'une expression `"0 9 * * 1-5"` déclenche à 09:00:00 exactement pour chacun des 1 000 déploiements d'une org — un alignement sur l'horloge murale **par construction**. Deux processus coordinateur sont déjà déphasés par leur écart de démarrage. **L'emprunt transplante un correctif d'alignement horloge-murale sur des timers qui ne sont jamais alignés sur l'horloge murale.**
+
+**Ce qui survit, sur un tout autre motif.** Il existe un vrai convoi, et il est **intra-processus**, dans la topologie **supportée** : cinq timers armés à quelques millisecondes l'un de l'autre au boot, dont **trois écrivent en SQLite** —
+
+| Timer | Intervalle | Écrit en base |
+|---|---|---|
+| `sweeper.start()` (`boot.ts:541`) | 60 s | oui — 11 `DELETE … LIMIT 1000` × jusqu'à 3 passes chaînées |
+| `workingFiles.startSweeper()` (`server-setup.ts:70-72`) | 60 s | oui — `DELETE FROM working_files` |
+| `consultation.startTimeoutSweeper()` (`serve-http.ts:1433`) | 30 s | oui — s'aligne un tick sur deux |
+| `mcpSessionSweepHandle` (`serve-http.ts:1373`) | 60 s | non |
+| `rateLimiter.startSweeper()` | 60 s | non (en mémoire) |
+
+**Et je dois corriger mon propre seuil plutôt que de l'argumenter.** K6 disait « > 5 fichiers ⇒ pas bon marché » et j'avais mesuré **8 fichiers**, donc le seuil était **atteint**. J'allais écrire « seuil atteint mais inférence faible, un helper partagé rend le coût quasi constant » — c'est une rationalisation après coup. La bonne réponse est de **réduire le périmètre**, pas d'argumenter le coût à la baisse : recentré sur les timers qui se percutent réellement (`sweeper/index.ts`, `working-files-tracker.ts`, `consultation.ts`, `serve-http.ts:1373`), c'est **4 fichiers**, honnêtement sous le seuil.
+
+Trois sites sont exclus **au fond**, pas par commodité :
+
+- `serve-http.ts:385` — le heartbeat SSE. `SSE_HEARTBEAT_MS` accepte **n'importe quel entier positif sans borne haute** ; un opérateur à 55 000 ms plus 15 % de jitter obtient 63,25 s et perd la connexion que le heartbeat existe précisément pour préserver. **Y mettre du jitter est une régression.**
+- `boot-encryption.ts:436` — un rappel toutes les 24 h qui n'écrit qu'un log. Rien ne contend.
+- `quota/quota-cache.ts:215` — sa contention est avec une API **externe**, et elle a déjà été diagnostiquée et corrigée autrement (`DEFAULT_429_COOLDOWN_MS` + dédoublonnage single-flight), pas par étalement.
+
+**Correction de conception :** pour un convoi de boot, le remède juste est un **décalage de phase fixe** sur l'armement initial, pas un aléa par tick. Une ligne par site, déterministe, et ça ne casse pas les tests qui comptent les ticks. Anthropic a besoin d'aléa parce qu'il a 1 000 locataires indépendants ; nous avons cinq timers que nous contrôlons.
+
+#### C. Et la seconde moitié du volet adopté n'a aucun trou à combler — §4.4 est factuellement fausse
+
+§4.4 affirme : *« un échec de build n'est journalisé qu'en `log.warn` : il n'y a pas d'enregistrement de tentative interrogeable, l'équivalent de `GET /v1/deployment_runs?has_error=true` »*. **C'est faux.** `build()` instrumente déjà chaque chemin d'échec :
+
+```
+src/git-cochange-builder.ts:70,77,88,95,155  metrics.gitCochangeBuilds.inc({ outcome: … })
+                                              outcomes: failed | shallow_skipped | timeout | success
+src/git-cochange-builder.ts:86-87             setMeta("available","false") + setMeta("last_error", …)
+src/database.ts:242                           CREATE TABLE git_cochange_meta
+src/http/handle-health.ts:38,76,108           remonte sur /health/ready
+```
+
+C'est **exactement** un enregistrement de tentative interrogeable en SQL, avec une colonne d'erreur, déjà exposé sur l'endpoint de santé. Le sweeper de son côté a **quatre** métriques (`src/observability/metrics.ts:193-230`). « Les échecs de tâches périodiques ne sont pas observables » est faux **pour les deux sites que §4.4 nomme**.
+
+**Le vrai trou est bien plus étroit, et c'est un garde-fou fantôme, pas un emprunt.** `src/git-cochange-builder.ts:298-311` : le `catch` du **scheduler** ne contient qu'un `log.warn`. Or `build()` rattrape ses propres erreurs git et retourne normalement — donc ce `catch` ne se déclenche que sur ce que `build()` **ne** gère pas : `getDb()` et les écritures SQLite. Les échecs **les plus graves** n'ont donc **ni métrique, ni `setMeta`, ni circuit breaker**, et le scheduler se réarme à `retryMs` (défaut **300 000 ms**), pouvant tourner indéfiniment sans autre trace. À comparer au `CIRCUIT_BREAK_THRESHOLD = 5` du sweeper.
+
+Et `last_error` est **write-only** : `grep -rn "last_error" src/ | grep -v setMeta` → **rien**. Écrit à la ligne 87, jamais relu — `handle-health.ts:112` ne sélectionne que `available`. → **#368**
+
+#### D. Le refus du budget est correct, mais mes motifs étaient faibles
+
+`quota-cache` **ne peut pas** servir de base, et le rend plus cher, pas moins :
+
+```
+src/quota/quota.ts:13   utilization: number;      // 0.0 – 100.0
+```
+
+`QuotaInfo` porte trois buckets de **pourcentages**, `resetsAt`, `minutesUntilReset` — **aucun décompte de tokens, aucun montant**. `quota-cache.ts:20-22` le dit : « the quota endpoint moves in percentage points, not token counts ». Un budget en cents n'a donc **aucune source de données** dans le dépôt : il faudrait toute une comptabilité de tokens par agent, plus une table de prix.
+
+Et **#341** documente que `/api/token-usage` et les panneaux `token-total` / `token-agents` ont **zéro producteur** — ~134 lignes de code de budget de tokens mort, dont la recommandation est le **retrait**. Adopter un budget ressusciterait ce que le projet est sur le point de supprimer.
+
+Enfin, le signal de coût existe — et il argumente dans l'autre sens. **#357** chiffre qu'un agent facturé au tour paie un aller-retour par message ; **#361** qu'une réponse peut faire 59 ko ; **#366** que `detect()` prend 1,5 s. **Dans les trois cas le remède du projet est de corriger à la source, jamais de plafonner la dépense en aval.** C'est un K4 beaucoup plus fort que « 0 demande + 4 mécanismes déjà là » : le budget n'est pas seulement non demandé, il est **étranger au style** de ce projet.
+
+#### E. K2 ne porte pas — le refus de l'advisor tient sur autre chose
+
+Le variant chiffré est **opt-in par choix de modèle** : §2 dit que « les autres (ex. `claude-opus-4-8`) renvoient le texte clair », et `model` est un champ requis de la définition d'outil. K2 est donc satisfait comme **fait documentaire** mais n'établit qu'une contrainte de sélection de modèle, pas une impossibilité d'audit. **Je l'adjuge « déclenché, inférence faible »** et ne le présente pas comme porteur.
+
+Ce qui porte :
+
+1. **K3, inentamé.** Aucun équivalent MCP ; `ConflictDetector` deviendrait Anthropic-only, pour un serveur dont tout le positionnement est la neutralité client.
+2. **Ma propre règle pré-enregistrée** : §0 classe la fiche ⚠️ partielle, et §6.2b s'engageait à ce qu'advisor et dreams ne reçoivent **jamais** `adopter`.
+3. **Un argument neuf, plus propre que K2** : éviter le variant chiffré impose de se fixer sur `claude-opus-4-8`, un modèle **plus ancien**, précisément pour garder l'arbitrage auditable. Or §4.2 justifie l'advisor par le fait de « déplacer ce jugement vers un modèle **plus capable** ». **Le bénéfice annoncé et l'exigence d'auditabilité sont mutuellement exclusifs** — et tenir cette ligne suppose d'épingler un identifiant de modèle derrière un header beta daté.
+
+#### F. §0 était exacte — dérive de dépendance, zéro défaut de vérification
+
+J'avais relevé quatre écarts de lignes (`git-cochange-builder` 302/305/310 contre 288/294/300 ; `working-files-tracker` 104 contre 96 ; heartbeat 385 contre 384 ; sweep MCP 1373 contre 1372). Vérifié à `605c082`, dernier commit du **2026-08-14** — la date de vérification :
+
+```
+git-cochange-builder.ts  288 startScheduler | 294 log.warn | 300 setTimeout(tick, 5000)
+working-files-tracker.ts  96 sweeperHandle
+serve-http.ts            384 heartbeat | 1372 mcpSessionSweepHandle
+sweeper/index.ts         126 | consultation.ts 45 | rate-limit.ts 154
+boot-encryption.ts       436 | quota-cache.ts 215
+```
+
+**Chaque numéro de §0 était juste quand il a été écrit**, y compris `log.warn` 294 et la première passe 300. Seuls 4 des 11 ont dérivé, à cause de quatre commits du 2026-08-15. **Dérive de dépendance, pas défaut de vérification** — la leçon d'`E13`/`E14` s'applique en faveur de la fiche, et c'est la **deuxième** fiche propre d'affilée après `E14`.
+
+#### G. Adjudication des six critères
+
+| # | Emprunt | Seuil | Mesure | Verdict |
+|---|---|---|---|---|
+| **K1** | advisor / `consult_peer` | un chemin d'auto-résolution se déclenche sans intervention d'un pair | les deux chemins exigent **zéro interlocuteur** (`otherOnlineCount === 0`, `updated.length === 0`) | **NE SE DÉCLENCHE PAS** — mon hypothèse était fausse |
+| **K2** | advisor | variant chiffré documenté | documenté — **mais opt-in par choix de modèle** | **SE DÉCLENCHE, inférence faible** |
+| **K3** | advisor | aucun équivalent MCP | confirmé | **SE DÉCLENCHE** |
+| **K4** | budget | 0 demande, ≥ 2 mécanismes | 0 issue ; 4 mécanismes ; **et aucune source de données en cents** (`QuotaInfo` = pourcentages) ; **et #341 propose de supprimer la comptabilité de tokens** | **SE DÉCLENCHE, renforcé** |
+| **K5** | dreams | research preview, 0 signal de péremption | confirmé ; **#341** ajoute qu'un daemon vivant à 26 h d'uptime a `orgs = 1` et toutes les autres tables à zéro — il n'y a **aucune** connaissance accumulée à consolider | **SE DÉCLENCHE** |
+| **K6** | jitter + journal | > 5 fichiers, ou dépendance externe | **8 fichiers** sur le périmètre annoncé → **seuil atteint**. Recentré sur les 4 fichiers qui se percutent réellement, il passe dessous — mais **par réduction de périmètre, pas par argumentation** | **SE DÉCLENCHE sur le périmètre de §4.4**, ne se déclenche pas sur le périmètre corrigé |
 
 ### 6.5 Contre-arguments
 
@@ -218,11 +351,11 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 
 | | |
 |---|---|
-| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ⬜ refuser |
-| **Date** | |
-| **Justification** | |
-| **Issue / PR** | |
-| **Jalon visé** | |
+| **Verdict** | ⬜ adopter · ✅ **adopter partiellement** · ⬜ reporter · ⬜ refuser |
+| **Date** | 2026-08-17 |
+| **Justification** | Cinq emprunts, adjugés séparément. **Quatre refusés, et le seul que j'allais adopter s'est effondré sous la mesure — il ne survit que recentré, et sur un tout autre motif.** ⭑ **Refusé — advisor.** K3 : aucun équivalent MCP, `ConflictDetector` deviendrait Anthropic-only pour un serveur dont tout le positionnement est la neutralité client. Et un argument neuf, plus propre que celui de la fiche : éviter le variant chiffré impose de se fixer sur `claude-opus-4-8`, un modèle **plus ancien**, alors que §4.2 justifie l'advisor par le passage à un modèle « plus capable » — **le bénéfice annoncé et l'exigence d'auditabilité sont mutuellement exclusifs**. ⭑ **Refusé — `consult_peer` comme outil MCP.** 0 demande, et `consultation-tools.ts` est déjà le plus gros bloc (11 des 26 outils). **Mais K1 ne se déclenche pas** : mon hypothèse d'un cycle déjà court-circuité était **fausse** — les deux chemins d'auto-résolution exigent **zéro interlocuteur**, donc le thread persistant est bien le seul mécanisme d'arbitrage. Le point de positionnement de §4.2 (consultation agent-à-agent ≠ modèle-à-modèle) mérite d'être écrit. ⭑ **Refusé — budget, sur des motifs bien plus forts que les miens.** `QuotaInfo` ne porte que des **pourcentages** (`utilization: 0.0-100.0`), aucun décompte de tokens, aucun montant : un budget en cents n'a **aucune source de données** dans le dépôt. **#341** propose de **supprimer** les ~134 lignes de comptabilité de tokens morte. Et #357/#361/#366 montrent que **le projet corrige le coût à la source, jamais en plafonnant la dépense en aval** : le budget n'est pas seulement non demandé, il est **étranger au style** du projet. ⭑ **Refusé — dreams.** Research preview, chantier `L`, et #341 mesure qu'un daemon vivant à 26 h d'uptime a `orgs = 1` et toutes les autres tables à zéro : il n'y a **aucune** connaissance accumulée à consolider. ⭑ **Adopté — le décalage de phase, mais pas pour la raison de §4.4, et sur 4 fichiers au lieu de 8.** §4.4 fonde le jitter sur une flotte multi-instance ; or `docs/ops/single-instance-constraints.md` dit **« Run exactly one coordinator process per data directory »** — ce n'est pas un déploiement, c'est une mauvaise configuration, dont la contention SQLite est précisément le **signal de diagnostic** que le jitter rendrait **muet**. Le dépôt a déjà tranché autrement : le `leaderGate` de `sweeper/index.ts:104-115`. Et `grep -rc "cron"` sur `src/` → **0** : les 11 timers sont **relatifs au boot**, donc l'emprunt transplante un correctif d'alignement horloge-murale là où il n'y a aucun alignement. **Ce qui survit est un autre constat** : un convoi **intra-processus**, dans la topologie **supportée** — trois écrivains SQLite armés à quelques millisecondes au boot, sur 60 s (et un quatrième à 30 s qui s'aligne un tick sur deux). **Correction de méthode :** mon seuil K6 (« > 5 fichiers ») était **atteint** à 8, et j'allais écrire « inférence faible, un helper rend le coût constant » — une rationalisation après coup. J'ai **réduit le périmètre** au lieu d'argumenter le coût : 4 fichiers, sous le seuil, avec trois sites exclus **au fond** — le heartbeat SSE (`SSE_HEARTBEAT_MS` sans borne haute : 55 s + 15 % = 63 s, donc le jitter y est une **régression**), le rappel 24 h, et `quota-cache` dont la contention est externe et déjà traitée autrement. Et un **décalage de phase fixe** à l'armement vaut mieux qu'un aléa par tick : déterministe, une ligne par site, sans casser les tests qui comptent les ticks. ⭑ **La seconde moitié du volet adopté est supprimée : §4.4 est factuellement fausse.** Elle affirme qu'« il n'y a pas d'enregistrement de tentative interrogeable » ; il y en a un — `git_cochange_meta` avec `available` et `last_error` (`database.ts:242`), le compteur `gitCochangeBuilds{outcome}` sur cinq chemins, et la remontée sur `/health/ready`. Le sweeper a en plus **quatre** métriques. **Le vrai trou est bien plus étroit** et c'est un garde-fou fantôme, pas un emprunt → **#368**. ⭑ **Et §0 était exacte** : les quatre écarts de lignes que j'avais relevés sont de la **dérive de dépendance** (vérifié à `605c082`, dernier commit du 2026-08-14), imputable à quatre commits du lendemain. **Deuxième fiche propre d'affilée** après `E14`. |
+| **Issue / PR** | **#368** — le `catch` du scheduler de `git-cochange-builder` (`:298-311`) ne contient qu'un `log.warn` : il ne se déclenche que sur ce que `build()` ne rattrape pas (`getDb()`, les écritures SQLite), donc sur les échecs **les plus graves**, et ceux-là n'ont ni métrique, ni `setMeta`, ni circuit breaker — avec un réarmement à **300 000 ms** qui peut tourner indéfiniment. Plus : `last_error` est **write-only**, jamais relu. Famille des garde-fous fantômes (#313, #317, #353), indépendante de cette fiche. |
+| **Jalon visé** | **#368** est petit et borné (le builder est opt-in, `null` sans `COORDINATOR_REPO_ROOT`) — à traiter avec les autres garde-fous fantômes. Le décalage de phase sur les 4 sweepers SQLite est un candidat autonome, à instruire **après** #368 puisque c'est le même fichier de départ. Aucun jalon pour advisor, budget, dreams ni `consult_peer`. |
 
 ## 8. Journal
 
@@ -230,3 +363,4 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 |---|---|
 | 2026-08-14 | Fiche créée par la veille plateforme. |
 | 2026-08-14 | Vérification des faits : §2 et §5 confirmés au mot près ; bloc `redacted` reclassé comme générique. |
+| 2026-08-17 | **Challenge — verdict `adopter partiellement` ; le seul volet que j'allais adopter s'est effondré sous la mesure.** **§4.4 fonde le jitter sur un scénario qui viole un contrat documenté** : `docs/ops/single-instance-constraints.md` dit **« Run exactly one coordinator process per data directory »**. Le multi-instance n'est pas un déploiement mais une mauvaise configuration, dont la contention SQLite est le **signal de diagnostic** que le jitter rendrait **muet**. Le dépôt a déjà tranché autrement — le `leaderGate` de `sweeper/index.ts:104-115`, cité dans le même document. Et `grep -rc "cron"` sur `src/` → **0** : les 11 timers sont **relatifs au boot**, donc l'emprunt transplante un correctif d'alignement horloge-murale là où rien n'est aligné. Violation de la leçon d'`E09` par la fiche : elle annonce un manque que la doc et le code avaient déjà comblé. **Ce qui survit est un autre constat** : un convoi **intra-processus** dans la topologie **supportée** — trois écrivains SQLite armés à quelques ms au boot sur 60 s (`sweeper`, `working-files-tracker`, `consultation` à 30 s qui s'aligne un tick sur deux), plus le sweep de sessions MCP. **Correction de méthode : mon seuil K6 était atteint (8 fichiers > 5) et j'allais écrire « inférence faible, un helper rend le coût constant » — une rationalisation après coup.** J'ai **réduit le périmètre** au lieu d'argumenter le coût : **4 fichiers**, avec trois exclusions **au fond** — le heartbeat SSE (`SSE_HEARTBEAT_MS` sans borne haute : 55 s + 15 % = 63,25 s, le jitter y est une **régression** face au kill proxy à ~60 s), le rappel 24 h qui n'écrit qu'un log, et `quota-cache` dont la contention est **externe** et déjà traitée par `DEFAULT_429_COOLDOWN_MS`. Et un **décalage de phase fixe** à l'armement vaut mieux qu'un aléa par tick : déterministe, une ligne par site, sans casser les tests qui comptent les ticks. **La seconde moitié du volet est supprimée — §4.4 est factuellement fausse** : elle affirme qu'« il n'y a pas d'enregistrement de tentative interrogeable » alors que `git_cochange_meta` (`available`, `last_error`, `database.ts:242`) plus `gitCochangeBuilds{outcome}` sur cinq chemins plus la remontée `/health/ready` constituent exactement cela ; le sweeper a en plus **quatre** métriques. **Le vrai trou est plus étroit** : le `catch` du scheduler (`git-cochange-builder.ts:298-311`) ne contient qu'un `log.warn`, et il ne se déclenche que sur ce que `build()` ne rattrape pas — `getDb()` et les écritures SQLite, donc les échecs **les plus graves** — sans métrique, sans `setMeta`, sans circuit breaker, avec réarmement à **300 000 ms**. Et `last_error` est **write-only**. → **#368**. **K1 ne se déclenche pas et mon hypothèse était fausse** : les deux chemins d'auto-résolution exigent **zéro interlocuteur** (`otherOnlineCount === 0` ; `updated.length === 0` dans `handleAgentDeparture`), le commentaire de `announce-workflow.ts:96-98` l'énonçant explicitement — le thread persistant **est** le seul mécanisme d'arbitrage. **K2 est déclenché mais d'inférence faible** : le variant chiffré est **opt-in par choix de modèle**. Le refus de l'advisor porte sur K3 plus un argument neuf : éviter le chiffrement impose `claude-opus-4-8`, un modèle **plus ancien**, alors que §4.2 justifie l'advisor par un modèle « plus capable » — **bénéfice annoncé et auditabilité sont mutuellement exclusifs**. **K4 renforcé** : `QuotaInfo` ne porte que des **pourcentages**, donc un budget en cents n'a **aucune source de données** ; **#341** propose de supprimer les ~134 lignes de comptabilité de tokens morte ; et #357/#361/#366 montrent que le projet **corrige le coût à la source, jamais en plafonnant en aval** — le budget est *étranger au style* du projet. **K5** : #341 mesure un daemon à 26 h d'uptime avec `orgs = 1` et tout le reste à zéro — aucune connaissance à consolider. **Contrainte annoncée d'avance, tenue** : le point 1 de §6.3 n'a **pas de corpus** (0 thread dans les bases versionnées, mesuré en `E10`) ; je n'y ai pas substitué d'échantillon fabriqué, j'ai mesuré la condition de déclenchement. **Et §0 était exacte** : les quatre écarts de lignes relevés sont de la **dérive de dépendance**, vérifiée à `605c082` (dernier commit du 2026-08-14) — deuxième fiche propre d'affilée après `E14`. |
