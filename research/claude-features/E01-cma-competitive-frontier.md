@@ -17,7 +17,7 @@
 | **Vérification** | CONFIRMED |
 | **Vérifiée le** | 2026-08-14 |
 | **Testabilité** | ⚠️ partielle — collision testable en local, session CMA non |
-| **Statut du challenge** | ⬜ à faire |
+| **Statut du challenge** | ✅ **tranché** (2026-08-16) — frontière assumée ; K5 seul se déclenche, ma mesure a testé le mauvais harnais |
 
 > **Divergence entre chercheurs, non tranchée.** Trois dates circulent pour la beta publique de la brique multiagent : 6 mai 2026, 19 mai 2026 (billet blog Anthropic), et une confusion avec la conférence Code with Claude à San Francisco. Le consensus des vérificateurs : Managed Agents est en beta publique depuis le **8 avril 2026** (d'où le header daté `2026-04-01`), la conférence n'a **pas** annoncé le produit mais l'a démontré, et la brique multiagent est arrivée en mai. La date du **7 août 2026** pour l'`advisor` n'est attestée que par des sources secondaires. Ces dates n'engagent aucune décision technique.
 
@@ -213,6 +213,31 @@ Rate limits par org : 300 req/min en création, 1200 req/min en lecture. **Non �
 
 ### 6.2 Hypothèse
 
+*Pré-enregistrée le 2026-08-16, **avant** toute exécution.*
+
+**Ce que je crois qu'il va se passer.**
+
+1. **La collision de nom n'existe pas.** Les outils MCP sont **namespacés par serveur** — j'ai vu
+   `mcp__probe-key__probe_echo` et `mcp__c11spy__c11_probe` pendant les challenges `C03` et `C11`.
+   Deux serveurs exposant `list_agents` produiront donc deux noms distincts.
+2. Si c'est le cas, **la moitié « résoudre la collision » de §6.1 tombe d'elle-même**, et la question
+   se réduit à : faut-il devenir un serveur MCP déclarable dans un roster CMA ?
+3. Cette seconde moitié n'est **pas** testable ici (clé API avec header beta, URL publique, sandbox
+   facturé) — donc `reporter` sur elle, jamais `adopter`.
+
+**Verdict pressenti :** réponse = **frontière assumée**, avec une correction de §6.1 dont la première
+branche est un faux problème.
+
+**Critères de mort.**
+
+| # | Si… | …alors |
+|---|---|---|
+| **K1** | les deux outils **entrent réellement en collision** (un seul survit, ou l'appel est ambigu) | ma prémisse est fausse, la branche « résoudre la collision » est réelle et devient le livrable. |
+| **K2** | le volet CMA reste entièrement non exécuté | **note de périmètre** (leçon `C10`/`C11`), pas un critère : je le marque comme tel au lieu de feindre de l'adjuger. |
+| **K3** | devenir serveur MCP d'un roster CMA exige d'exposer le daemon sur Internet | c'est un changement de posture de sécurité, pas une option de confort — et `C04` a montré que notre ACL n'autorise que par préfixe d'org. `refuser` cette branche. |
+| **K4** | le chantier dépasse **10 fichiers** | l'effort n'est plus L. |
+| **K5** | aucun utilisateur n'a demandé une intégration CMA | filtre YAGNI. |
+
 <Ce qu'on pense avant de tester.>
 
 ### 6.3 Protocole de vérification
@@ -229,6 +254,120 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 - [ ] Chiffrer le coût du chemin « monté dans CMA » : combien de fichiers touchés entre `src/serve-http.ts`, `src/auth/service-tokens.ts` et la doc, hors renommage d'outil ?
 
 ### 6.4 Résultat observé
+
+*Challenge du 2026-08-16.*
+
+#### A. 🔴 Ma mesure a testé le mauvais harnais — K1 est **non adjugé**, pas éteint
+
+J'ai monté deux serveurs MCP exposant chacun `list_agents`, et obtenu deux noms distincts :
+
+```
+outils list_agents vus: [ 'mcp__cma-roster__list_agents', 'mcp__coordinator__list_agents' ]
+```
+
+J'en ai conclu que la collision était un faux problème. **C'est hors sujet.**
+
+§4 vise une autre paire : **notre outil MCP `list_agents`** contre **l'outil de délégation conféré par
+la plateforme CMA**, dans le contexte d'un agent CMA. Ni deux serveurs MCP, ni le built-in de Claude
+Code — dont le nom est d'ailleurs `ListAgents`, en PascalCase, donc sans collision possible.
+
+**J'ai mesuré Claude Code, qui préfixe systématiquement en `mcp__<serveur>__<outil>`. CMA n'est pas
+Claude Code.** Et `E03` §0, vérifié le 2026-08-14, dit l'inverse pour CMA : `configs[].name` est *« le
+nom nu de l'outil tel que le serveur le rapporte »*, l'identité du serveur voyageant dans un champ
+`server_name` séparé. **Le corpus penche donc pour l'existence de la collision**, pas contre.
+
+> **K1 bascule sous note de périmètre.** Il n'est pas testable ici : il faudrait une session CMA
+> réelle. Le protocole §6.3 est lui-même mal spécifié — il parle d'« un **client** qui expose aussi un
+> outil `list_agents` », ce qui n'est **pas montable** dans Claude Code, où l'on ne peut pas fabriquer
+> un built-in homonyme. J'ai substitué serveur-contre-serveur à built-in-contre-serveur, et validé la
+> substitution comme si elle répondait.
+
+Deux corrections de la fiche au passage :
+
+- **§4 contredit son propre §0.** Il attribue `list_agents` à `agent_toolset_20260401`, alors que §0
+  a corrigé : les outils de délégation viennent de la déclaration `multiagent`. Corollaire : la
+  collision ne peut toucher que **l'agent coordinateur**, jamais les délégués.
+- **Le mot « immédiate » est faux** : la collision exige un agent CMA en `multiagent: coordinator`,
+  **plus** mcp-coordinator déclaré dans son `mcp_servers`, **plus** une URL joignable. Aucun des trois
+  n'existe.
+
+Et si K1 se déclenchait un jour, **le livrable serait un paragraphe de doc, pas un renommage** :
+`E03` documente la parade native, `configs: [{ name: "list_agents", enabled: false }]`. Rappel utile :
+`C06` a déjà **refusé** le renommage — « breaking change de surface publique pour un gain nul ».
+
+#### B. 🔴 K3 est empiriquement faux — et la « posture localhost » n'existe pas
+
+Mon verdict projeté refusait la branche « serveur MCP d'un roster CMA » parce qu'elle exigerait
+d'exposer le daemon sur Internet. **Trois chemins ne touchent pas à la posture :**
+
+1. **Le tunnel** (`E02`) : connexions **sortantes uniquement**, mTLS externe, TLS interne dont
+   Cloudflare ne détient pas la clé.
+2. **Les custom tools** (`E03` §1b) : *« Pas de tunnel, pas d'endpoint public »*. Mapping MCP →
+   custom **1:1**. Nos 26 outils sont directement mappables. Posture réseau **inchangée**.
+> 🔴 **Corrigé le 2026-08-16 par le challenge `E03`.** La citation ci-dessous est **fausse**, et
+> j'aurais dû le voir : cette fiche liste elle-même, parmi ses faits vérifiés,
+> « `github_repository` **non supporté** en sandbox self-hosted ». J'ai donc affirmé une chose et son
+> contraire dans le même fichier. La doc d'Anthropic tranche : *« Anthropic doesn't mount files or
+> GitHub repositories into self-hosted sandboxes »*, et `resources` y est **rejeté**. **C'est le cloud
+> qui monte un dépôt.** Ce qui reste vrai : un opérateur qui lance le worker depuis son checkout fait
+> travailler l'agent sur le vrai working tree, parce que `--workdir` vaut `.` — une capacité qu'il se
+> donne en possédant l'hôte, pas une propriété de CMA.
+
+3. **Le worker self-hosted** (`E03` §1c) : polling sortant — et c'est ~~*« le seul montage où un agent
+   CMA et les agents Claude Code locaux partagent réellement le même checkout git »*, c'est-à-dire
+   **exactement notre cas d'usage central**. Je refusais la branche la moins coûteuse en posture et
+   la plus proche du produit.
+
+**Et surtout, il n'y a pas de posture localhost à protéger.** Vérifié :
+
+```
+src/boot.ts:197   const publicUrl = readRequiredEnv(env, "COORDINATOR_PUBLIC_URL");
+src/boot.ts:612   throw new BootValidationError(`COORDINATOR_PUBLIC_URL is not a valid URL: …`)
+```
+
+`COORDINATOR_PUBLIC_URL` est une variable **requise au boot**, validée en `http(s)://`. La doc
+d'auto-hébergement documente un déploiement HTTPS public, et les callbacks OAuth en dépendent.
+**§6.5 affirme « aujourd'hui la cible est localhost/LAN » — c'est faux pour toute la moitié Phase 2
+du produit.**
+
+**#330 n'est pas non plus un argument contre CMA.** C'est un bug du broker MQTT, et le risque est
+**déjà pris** par la recette LAN que nous publions. Le rattacher à CMA, c'est facturer à CMA une dette
+contractée pour le LAN.
+
+#### C. K4 ne discrimine rien : le chemin d'intégration coûte **0 fichier source**
+
+| Exigence CMA | État du dépôt |
+|---|---|
+| `type:"url"` HTTPS, streamable HTTP | route `/mcp` + transport déjà en place |
+| URL publique | `COORDINATOR_PUBLIC_URL`, **requise** |
+| `static_bearer` | `src/auth/service-tokens.ts` — plafond 90 j, `jti` validé en base, révocation immédiate |
+| Auth sur `/mcp` | les deux branches sont gatées |
+| CORS | non-problème : un sandbox est un client serveur, sans `Origin` |
+
+**Zéro fichier source.** C'est du **déploiement**, pas du code. Pour comparaison : renommer
+`list_agents` coûterait 7 fichiers, documenter la frontière 4. **Mon seuil de 10 ne discriminait
+aucune branche.**
+
+#### D. K5 est le **seul** critère qui se déclenche — et il révèle un trou de documentation
+
+Recherche des issues : `cma` → aucune, `managed agents` → aucune, `roster` → aucune,
+`orchestrat` → aucune. **Zéro demande.**
+
+Et surtout, vérifié : **aucun fichier** de `README.md`, `HANDOFF.md` ou `docs/` ne mentionne
+« managed agents ». **Il n'existe aucune posture publiée sur le sujet.** C'est le vrai trou, et c'est
+un trou de **documentation**, pas de code.
+
+#### E. La menace de positionnement : deux lignes nommables
+
+Elle n'est pas décidable sur données — il n'y en a pas — mais elle est **nommable au fichier près** :
+
+- **La ligne qui rétrécit**, `README.md:26` : *« Building a multi-agent orchestrator → a drop-in
+  conflict layer … **Bring your own spawn strategy**. »* CMA fournit désormais la spawn strategy
+  **et** le harnais. Cette ligne est directement mangée.
+- **La ligne qui se renforce**, `README.md:27` : *« Self-hosting for a regulated org »*. §2 l'établit :
+  CMA n'est éligible **ni ZDR ni HIPAA BAA**, ses vaults sont scopés au workspace, et le dépôt GitHub
+  n'est pas supporté sur sandbox self-hosted. **L'auto-hébergeur régulé ne peut pas utiliser CMA
+  pleinement** — et c'est écrit dans la documentation d'Anthropic, pas dans notre argumentaire.
 
 <Ce qu'on a réellement mesuré/vu. Coller les sorties, pas les paraphraser.>
 
@@ -249,11 +388,63 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 
 | | |
 |---|---|
-| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ⬜ refuser |
-| **Date** | |
-| **Justification** | |
-| **Issue / PR** | |
-| **Jalon visé** | |
+| **Verdict** | **Réponse : frontière assumée**, justifiée par **K5 seul**. ⬜ contre-mesure · ✅ **frontière + doc** · ⬜ recouvrement assumé |
+| **Date** | 2026-08-16 |
+| **Justification** | **Le seul critère qui se déclenche est K5** : zéro demande, et surtout **aucune posture publiée** — pas une ligne sur CMA dans `README.md`, `HANDOFF.md` ou `docs/`. K1 est **non adjugé** (ma mesure a testé le mauvais harnais ; le corpus penche pour la collision). K3 est **empiriquement faux** : trois chemins n'exposent rien, et `COORDINATOR_PUBLIC_URL` est **requis au boot** — il n'y a pas de « posture localhost » à protéger. K4 ne discrimine rien : le chemin d'intégration coûte **0 fichier source**. |
+| **Issue / PR** | aucune — le livrable est documentaire |
+| **Jalon visé** | prochaine passe de documentation |
+
+### Le livrable : écrire la frontière, en 4 fichiers
+
+Ce challenge ne produit pas de code. Il produit **la posture manquante**, à écrire dans `README.md`,
+`docs/operating-modes.md`, `docs/clients.md` et `docs/index.html` :
+
+- **Ce que CMA fait** : héberge l'orchestration multi-agents, fournit le harnais et la spawn strategy,
+  et sait déclarer un serveur MCP distant dans le roster de chaque agent.
+- **Ce que CMA ne fait pas** : il n'est éligible **ni ZDR ni HIPAA BAA**, ses vaults sont scopés au
+  workspace sans isolation par utilisateur final, et le dépôt GitHub n'est pas supporté sur sandbox
+  self-hosted. **L'auto-hébergeur régulé ne peut pas l'utiliser pleinement** — écrit dans la
+  documentation d'Anthropic.
+- **Ce qui reste défendable** : `README.md:27`, « self-hosting for a regulated org ». Et ce qui est
+  **directement mangé** : `README.md:26`, « bring your own spawn strategy » — CMA fournit désormais
+  les deux.
+
+### Ce qui est **reporté**, et non refusé
+
+**La branche « devenir serveur MCP déclarable dans un roster CMA ».** Mon verdict projeté la refusait
+sur K3 ; K3 est faux. Le coût réel est de **0 fichier source**, et trois chemins n'exposent rien —
+dont le **worker self-hosted**. ~~Qui serait selon `E03` le seul montage où un agent CMA et les agents
+Claude Code locaux partagent le même checkout git, c'est-à-dire notre cas d'usage central.~~
+
+> 🔴 **Rétracté le 2026-08-16** — voir l'encadré plus haut. La doc dit l'inverse, et la question ne se
+> pose de toute façon pas : le détecteur de conflit ne touche aucun filesystem, il compare des chemins
+> repo-relatifs. Un agent en sandbox **cloud** joint donc parfaitement un agent local.
+
+**Condition de réveil :** la première demande d'un utilisateur, ou l'ouverture de la research preview
+des tunnels. Rien à construire d'ici là.
+
+### Corrections obligatoires
+
+- **§6.1, branche 1** : ce n'est pas un « faux problème », c'est **non testé** — et le corpus penche
+  pour la collision (`E03` §0 : noms nus côté CMA).
+- **§4 contredit son propre §0** sur l'origine de `list_agents`, et le mot « immédiate » est faux :
+  la collision exige trois conditions dont aucune n'est réunie.
+- **§6.5 : « aujourd'hui la cible est localhost/LAN » est faux** pour toute la moitié Phase 2 —
+  `COORDINATOR_PUBLIC_URL` est requis au boot.
+- **§6.5 : « ça casse la portabilité » est un homme de paille** — 0 fichier source, et
+  `type:"url"` + Bearer est du MCP générique.
+
+### Note de méthode — j'ai testé le mauvais harnais, et facturé une dette au mauvais dossier
+
+**Ma mesure était hors sujet.** J'ai testé le namespacing de Claude Code alors que la fiche vise le
+contexte **CMA**, qui présente selon `E03` des **noms nus**. J'ai généralisé d'un harnais à l'autre
+sans le dire, et j'ai éteint un critère sur cette base. C'est la cinquième fois de ce corpus que je
+dois distinguer ce que j'ai exécuté de ce que j'ai inféré — après `C11`, `C13`, `D01` et `D04`.
+
+**Et j'ai imputé #330 à CMA.** C'est un bug du broker MQTT, dont le risque est déjà pris par la
+recette LAN que nous publions. Facturer à un dossier une dette contractée ailleurs gonfle
+artificiellement le coût d'une branche — exactement le biais inverse de celui que la passe
+adversariale traque d'habitude.
 
 ## 8. Journal
 
@@ -261,3 +452,5 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 |---|---|
 | 2026-08-14 | Fiche créée par la veille plateforme. |
 | 2026-08-14 | Vérification des faits : 4 corrections (origine des outils de délégation, budget, environment_id, lignes files-tools). Statut beta confirmé. |
+| 2026-08-16 | **Challenge — réponse : frontière assumée, justifiée par K5 seul.** **Ma mesure a testé le mauvais harnais** : j'ai monté deux serveurs MCP exposant `list_agents` et obtenu des noms préfixés (`mcp__coordinator__list_agents`), mais §4 vise la collision entre **notre outil** et **l'outil de délégation CMA**, dans un contexte CMA — or `E03` §0 établit que CMA présente des **noms nus**. **K1 est donc non adjugé**, pas éteint, et le corpus penche pour la collision. §6.3 est lui-même mal spécifié (il demande un *client* avec un built-in homonyme, non montable dans Claude Code). **K3 est empiriquement faux** : trois chemins n'exposent rien (tunnel sortant, custom tools sans endpoint, worker self-hosted — ce dernier étant selon `E03` le seul montage partageant le même checkout git que nos agents locaux), et surtout `COORDINATOR_PUBLIC_URL` est **requis au boot** — il n'y a pas de « posture localhost » à protéger, contrairement à ce qu'affirme §6.5. **K4 ne discrimine rien** : le chemin d'intégration coûte **0 fichier source** (route `/mcp`, transport, service tokens et URL publique existent déjà) ; renommer coûterait 7 fichiers, documenter 4. **K5 seul se déclenche** : zéro demande, et **aucune posture publiée** — pas une ligne sur CMA dans README, HANDOFF ou docs. Corrections : §4 contredit son propre §0 sur l'origine de `list_agents` et le mot « immédiate » est faux (trois conditions, aucune réunie) ; « ça casse la portabilité » est un homme de paille. **J'ai aussi imputé #330 à CMA** alors que c'est un bug du broker dont le risque est déjà pris par notre recette LAN. Menace de positionnement nommée au fichier près : `README.md:26` (« bring your own spawn strategy ») est mangée, `README.md:27` (« self-hosting for a regulated org ») se renforce — CMA n'étant éligible ni ZDR ni HIPAA BAA. |
+| 2026-08-16 | 🔴 **Annotation portée par le challenge `E03`.** J'avais cité comme un acquis l'affirmation « le worker self-hosted est le seul montage où un agent CMA partage le checkout git ». Elle est **fausse** — et cette fiche contenait déjà le fait correct, listé parmi ses propres vérifications : « `github_repository` non supporté en sandbox self-hosted ». J'ai donc affirmé une chose et son contraire dans le même fichier. La doc d'Anthropic tranche : « Anthropic doesn't mount files or GitHub repositories into self-hosted sandboxes », et `resources` y est **rejeté** — **c'est le cloud qui monte un dépôt**. Le verdict de la fiche (frontière assumée, justifiée par K5) **ne change pas** : il ne reposait pas sur cette affirmation. Seules les deux citations en §6.4-B sont rétractées. |
