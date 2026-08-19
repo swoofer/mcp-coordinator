@@ -13,7 +13,7 @@
 | **Vérification** | CONFIRMED |
 | **Vérifiée le** | 2026-08-14 |
 | **Testabilité** | ⚠️ partielle — API outcomes hors de portée ; heuristique locale rejouable |
-| **Statut du challenge** | ⬜ à faire |
+| **Statut du challenge** | ✅ **tranché** (2026-08-17) — adopter partiellement : rendre le verdict à l'agent (4 lignes), refuser la refonte (#351) |
 
 ---
 
@@ -180,7 +180,35 @@ verbes FR/EN codée en dur serait un « garde-fou fantôme » de plus.
 
 ### 6.2 Hypothèse
 
-<Ce qu'on pense avant de tester.>
+**Ce que je pense avant de mesurer.** `assessPlanQuality()` (48 lignes, `src/plan-quality.ts`) est un « garde-fou fantôme » en puissance : trois regex dont deux sont manifestement fragiles à la lecture.
+
+- `mentions_files` = `/\w+\/\w+|\.\w{2,4}\b/` — n'importe quel `mot/mot` (`read/write`, `et/ou`, une date `12/03`) ou n'importe quel point suivi de 2 à 4 caractères (`Node.js`, `v0.11.0`) déclenche « mentionne des fichiers ». **Faux positifs attendus.**
+- `concrete_approach` = une liste de 15 stems FR/EN codés en dur. `refactor`, `fix`, `update`, `rename`, `corrig`, `modifi`, `test`, `document`, `renomm` en sont **absents**, alors que `wrap` y est. **Faux négatifs attendus.**
+- `sufficient_detail` = plus de 20 mots. Muet sur la qualité.
+
+Le mode bascule à `score >= 2`, donc **deux checks sur trois suffisent** — et comme `sufficient_detail` est quasi-gratuit pour un plan sérieux, la décision se joue en pratique entre les deux regex fragiles.
+
+Hypothèse principale : **le problème n'est pas la forme du verdict, c'est l'instrument.** La fiche propose de remplacer un entier opaque par un verdict typé et une explication ; mais si l'instrument se trompe, un verdict typé ne fait que rendre l'erreur plus lisible et plus crédible. Et la valeur réelle du modèle outcome — la **boucle d'itération** (`needs_revision` → révision → réévaluation) — n'existe pas chez nous et ne peut pas exister tant que le verdict ne revient pas à l'agent.
+
+Hypothèse secondaire : le juge LLM est disqualifié sans mesure, parce qu'il mettrait un appel réseau sortant payant sur le chemin synchrone d'`announce_work` dans un serveur qui fonctionne aujourd'hui hors ligne.
+
+### 6.2b Critères de mort — pré-enregistrés avant toute mesure
+
+Écrits **avant** d'exécuter quoi que ce soit. Un seul qui se déclenche tue `adopter`.
+
+**Méthode de mesure de K1, fixée d'avance pour ne pas pouvoir choisir l'échantillon après coup :** je n'ai pas de base de production avec de vrais `threads.plan`. J'utiliserai donc l'échantillon le moins contestable qui existe — **les plans que le projet lui-même donne en exemple** dans son `README.md`, `cli/init.ts`, `docs/` et ses specs, c'est-à-dire ce qu'il dit à ses utilisateurs d'écrire. Si les exemples officiels du projet échouent à son propre contrôle, la mesure ne peut pas m'être reprochée comme biaisée. J'y ajouterai les 8 cas de `tests/unit/plan-quality.test.ts` comme témoin.
+
+| # | Critère de mort | Seuil chiffré |
+|---|---|---|
+| **K1** | **L'instrument est sain.** Si l'heuristique classe correctement les plans que le projet documente lui-même, il n'y a pas de défaut à corriger et la refonte est cosmétique. | taux d'erreur (faux `discovery` + faux `with_plan`) **< 20 %** sur l'échantillon documenté |
+| **K2** | **Aucun consommateur décisionnel.** Si `mode`/`score` ne change le comportement de rien côté serveur, refondre le verdict est un investissement sans bénéficiaire — le contre-argument YAGNI de §6.5 l'emporte. | **0** site où `planQuality.mode` ou `.score` conditionne un comportement (hors émission d'événement) |
+| **K3** | **L'itération est inatteignable.** Le cœur de la valeur des outcomes est la boucle révision. Si le verdict ne revient pas à l'agent dans la réponse d'`announce_work`, aucune révision n'est possible, et « verdict typé + explication » se réduit à de la cosmétique de dashboard. | `announce_work` ne renvoie **pas** `plan_quality` dans son résultat d'outil |
+| **K4** | **Le juge LLM est une régression produit.** Si aucun appel réseau sortant vers un tiers n'existe aujourd'hui sur le chemin d'annonce, en ajouter un (clé API, latence, coût par annonce, dégradation hors ligne) est une régression nette pour l'auto-hébergeur. | **0** appel HTTP sortant vers un service tiers dans le chemin `announce_work` |
+| **K5** | **Contrat public déjà figé.** Si `plan_quality` est exposé dans ≥ 2 payloads publics et lu par un client, changer sa forme est un *breaking change* pour des consommateurs qu'on ne contrôle pas — et le vocabulaire à copier est encore en **beta**. | `plan_quality` présent dans ≥ **2** payloads publics distincts |
+| **K6** | **L'effort annoncé est un plancher.** Si le nombre de fichiers réellement impactés dépasse les 9 recensés en §5, l'estimation `M` ment. | > **9** fichiers à modifier |
+| **K7** | **La rubrique paramétrable est de la surface de support.** Si aucun mécanisme de configuration par org n'existe déjà pour y ranger une rubrique, il faut en créer un (stockage, validation, absence, migration) — coût récurrent pour un mainteneur solo. | aucun emplacement de config par org réutilisable en l'état |
+
+**Règle que je m'impose :** §0 classe cette fiche ⚠️ **partielle** — l'API outcomes n'est pas atteignable. L'angle « appeler l'API » ne peut donc jamais recevoir `adopter`. Seul le **modèle de conception** appliqué à notre code local est jugeable ici.
 
 ### 6.3 Protocole de vérification
 
@@ -204,7 +232,97 @@ Proposition de protocole (non exécuté) :
 
 ### 6.4 Résultat observé
 
-<Ce qu'on a réellement mesuré/vu. Coller les sorties, pas les paraphraser.>
+#### A. Ma première mesure était biaisée — je la retire
+
+La méthode pré-enregistrée en §6.2b (« les plans que le projet documente lui-même ») s'est révélée **sans objet** : le dépôt ne contient **aucun** exemple de `plan`. L'exemple canonique d'`announce_work` de `docs/usage.md:176-183` ne passe **que** `target_files`. Le `CLAUDE_MD_TEMPLATE` de `cli/init.ts:40-45` liste `subject`, `target_files`, `depends_on_files`, `target_modules` — **pas `plan`**. Le SDK n'a aucune occurrence d'`announce`. Et les bases SQLite versionnées contiennent **0** ligne `threads.plan` non vide.
+
+J'ai donc substitué les messages de commit. **C'était une mauvaise substitution, et la passe adversariale l'a démontée** : le dépôt est un **clone shallow de 40 commits couvrant 4 jours** (2026-08-13 → 2026-08-16), c'est-à-dire ma propre semaine de veille, en style *conventional commit* uniforme. Mon `git log -n 120 … .slice(0, 100)` annonçait 100 enregistrements et en traitait 40, sans le dire. Les trois chiffres que j'en avais tirés — « `concrete_approach` décisif dans 3 % des cas », « 3 faux positifs `mentions_files` », « 93 % de `with_plan` » — sont des **artefacts de ce corpus**, et je les retire.
+
+#### B. Le corpus correct, et le résultat qui tranche
+
+Il existe dans le dépôt un corpus de plans **prospectifs** — écrits avant le travail, citant des chemins réels : `docs/superpowers/plans/*.md`, 11 fichiers, **83 blocs `## Task N:`**. Mesure sur ce corpus, plus trois témoins :
+
+```
+A. plans prospectifs (repo)     n= 83  files  98%  concret  88%  detail 100%  WITH_PLAN 100%  concret-decisif   2%
+B. temoin : plans MAUVAIS       n= 20  files   0%  concret   0%  detail  25%  WITH_PLAN   0%  concret-decisif  25%
+C. temoin : plans BONS          n= 10  files 100%  concret  50%  detail  30%  WITH_PLAN  80%  concret-decisif  70%
+D. commits (TRONQUE, 4 jours)   n= 40  files  98%  concret  78%  detail  93%  WITH_PLAN  93%  concret-decisif  10%
+```
+
+Et c'est là que le vrai résultat apparaît. Le réfuteur, en extrayant les mêmes blocs plus courts, obtenait `concret-décisif` à **47 %** ; moi, en les tronquant à 600 caractères, à **2 %**. Quinze à vingt fois d'écart **sur le même texte**. J'ai donc fait varier la seule chose qui différait :
+
+```
+Le MEME corpus (83 plans), tronque a differentes longueurs :
+
+  mots gardes | detail | WITH_PLAN | concret decisif
+            8 |   0%   |   2%      |  12%
+           12 |   0%   |  11%      |  29%
+           16 |   0%   |  31%      |  61%
+           20 |   0%   |  36%      |  69%
+           25 | 100%   |  87%      |  24%
+           30 | 100%   |  89%      |  16%
+           40 | 100%   |  90%      |  16%
+           60 | 100%   |  96%      |   6%
+          100 | 100%   | 100%      |   2%
+```
+
+**Sur les mêmes 83 plans, le verdict passe de 2 % à 100 % de `with_plan` selon le nombre de mots conservés — et la bascule tient en 5 mots : 36 % à 20 mots, 87 % à 25.** C'est le seuil `wordCount > 20` de `src/plan-quality.ts:37`.
+
+**Conclusion : `assessPlanQuality` n'est pas un détecteur de qualité de plan, c'est un détecteur de longueur avec une décoration lexicale.** Mon désaccord avec le réfuteur n'était pas un désaccord : nous échantillonnions deux longueurs du même texte, et l'instrument ne mesure que ça.
+
+#### C. Le trou de vocabulaire est réel, et **sans effet** — c'est le point qui tue la fiche
+
+C'est le chiffre que j'allais publier de travers. Les deux mesures :
+
+```
+CONTRE-TEST vocabulaire :
+  verbes non reconnus par le check ISOLE        : 34/40
+  verbes qui BASCULENT le mode en plan realiste :  0/40
+  accent : "creer"=false  "créer"=true  |  "implementer"=true
+```
+
+34 verbes d'action courants sur 40 (`refactor`, `fix`, `corriger`, `update`, `rename`, `test`, `document`, `modifier`, `optimiser`, `rewrite`, `aligner`…) ne sont pas reconnus par `concrete_approach` **pris isolément**. Mais placés dans un plan réaliste (un chemin de fichier + 25 mots), **zéro sur quarante** fait basculer le mode : `mentions_files` + `sufficient_detail` donnent déjà 2 points. Le trou de vocabulaire — précisément ce que la fiche veut remplacer par une rubrique — **est masqué en pratique par le seuil de longueur**.
+
+Publier « 34/40 » sans ce contre-test aurait été malhonnête : c'est le chiffre d'un check, présenté comme le chiffre de l'instrument.
+
+**Correction d'une erreur de ma part :** j'affirmais que `cré` **et** `implémen` exigeaient l'accent. Faux — `implement` (stem anglais) est aussi dans la regex, donc `implementer` passe. **Seul `cré` est piégé** : `creer` échoue, `créer` passe, et aucun stem ne couvre la forme non accentuée.
+
+#### D. Ce que l'instrument fait correctement
+
+Témoin B — 20 plans délibérément mauvais, dont **5 pièges verbeux** de plus de 20 mots et vides de contenu (« Je vais commencer par regarder un peu ce qui se passe… ») : **0/20 classés `with_plan`**. Aucun faux négatif. L'heuristique rejette la bouillie, y compris la bouillie longue — parce qu'elle ne cite aucun fichier.
+
+Témoin C — 10 bons plans prospectifs de longueur réaliste : **8/10 passent, 2 sont recalés**, tous deux courts-mais-bons. ~20 % d'erreur sur le seul corpus étiqueté à la main.
+
+#### E. Adjudication des sept critères pré-enregistrés
+
+| # | Seuil | Mesure | Verdict |
+|---|---|---|---|
+| **K1** | erreur < 20 % ⇒ instrument sain | 0/20 faux positifs sur la bouillie ; 2/10 recalés sur les bons plans (**20 %**) ; et l'erreur dominante n'est **pas** le vocabulaire (0/40 bascules) mais la **longueur** (2 %→100 % sur le même corpus) | **SE DÉCLENCHE, mais pas comme prévu** — l'instrument n'est pas *faux*, il est **hors sujet** : il mesure la longueur. Une rubrique ne corrige pas ça, elle l'habille. |
+| **K2** | 0 site décisionnel | `planQuality.mode` est lu à **3** endroits (`announce-workflow.ts:160`, `consultation-tools.ts:189`, `rest-handlers.ts:310`) mais **un seul décide** (l.160), et il ne décide que d'émettre un événement SSE. Aucun *gate*, aucun blocage. | **SE DÉCLENCHE** |
+| **K3** | le verdict ne revient pas à l'agent | MCP `consultation-tools.ts:208-220` → `{thread, conflicts, context, impact}`. REST `rest-handlers.ts:317` → `{thread_id, status, impact}`. **Aucun des deux ne renvoie `plan_quality`.** | **SE DÉCLENCHE** |
+| **K4** | 0 appel sortant sur le chemin d'annonce | 0 sur le chemin `announce_work` — mais **le produit n'est pas hors ligne** : `src/quota/quota.ts:62` appelle `https://api.anthropic.com/api/oauth/usage` sur un timer de fond (`serve-http.ts:1120`), et `auth/providers/*` appellent les IdP. | **SE DÉCLENCHE pour le chemin synchrone** — mais le contre-argument « serveur hors ligne » de §6.5 est **faux** et doit être corrigé |
+| **K5** | ≥ 2 payloads publics | 2 : `consultation-tools.ts:191` et `rest-handlers.ts:312`, lus par `dashboard/public/dashboard.js:172-179`. Vocabulaire source encore en **beta**. | **SE DÉCLENCHE** |
+| **K6** | > 9 fichiers | 9 fichiers de code + `src/types.ts` (l'`EventType` manquant) = **10**. Le 11ᵉ que j'avais compté est un rapport d'audit, pas du code. | **SE DÉCLENCHE de justesse** — l'estimation `M` est un plancher, pas un mensonge |
+| **K7** | aucun emplacement de config par org | `getOrgSetting` (`src/auth/org-settings.ts:44-60`) lit des **colonnes de la table `orgs`** (`columns.has(key)` → `SELECT ${key} FROM orgs`). Ranger une rubrique markdown exige donc **une migration et une colonne**, pour un document qui n'a rien à faire dans une colonne de settings. | **SE DÉCLENCHE** — je m'étais trompé en concluant l'inverse de « `getOrgSetting` existe et sert 12 fois » |
+
+**Sept critères sur sept se déclenchent.**
+
+#### F. Ce qui coûte 4 lignes, et qu'il faut faire
+
+K3 nomme le blocage réel : sans le verdict dans la réponse, aucune révision n'est possible et « verdict typé + explication » se réduit à de la cosmétique de dashboard. Or le correctif est trivial et je l'ai vérifié :
+
+- `planQuality` est déstructuré à `consultation-tools.ts:163`, **dans la même fonction**, en portée à la l.217. Ajouter `plan_quality: planQuality,` = **1 ligne**.
+- `planDowngradeReason()` est privé (`announce-workflow.ts:210-216`) et absent du retour de `runCommonAnnounceFlow()` (l.183). `export` + l'inclure = **2 lignes**.
+- REST `rest-handlers.ts:317` = **1 ligne**.
+
+Vérifié : **aucun test n'assertionne le jeu de clés** de la réponse d'`announce_work` — l'ajout est purement additif dans un blob `JSON.parse`é. Les 8 tests témoins passent (`Test Files 1 passed / Tests 8 passed / 292ms`).
+
+#### G. Défauts d'hygiène trouvés en chemin
+
+- **Deux imports morts** : `assessPlanQuality` est importé et jamais appelé dans `src/serve-http.ts:48` et `src/server-setup.ts:21` (exactement 1 occurrence du symbole dans chaque fichier).
+- **`tests/unit/plan-quality.test.ts` est en UTF-8 double-encodé, avec BOM** (`EF BB BF` ; `améliorer` stocké `61 6d c3 83 c2 a9`). **Conséquence que je n'avais pas vue :** le test des l.22-31 croit exercer le stem `cré` via `CrÃ©er` — il ne matche rien. Le test ne passe que grâce à `Ajouter`. **Le seul stem piégé par l'accent a donc une couverture de test nulle.**
+- **Trois commentaires périmés** : les deux tests intitulés `BUG:` décrivent une regex `vaguePatterns` qui a **0 occurrence** dans `src/plan-quality.ts`. Les tests **passent** — ce sont des gardes de non-régression valides ; ce sont leurs titres et commentaires qui mentent.
+- **`A03` est déjà tranché** — `✅ tranché — 2026-08-15, verdict reporter`. `assessPlanQuality` n'y apparaît que dans une cellule de tableau §5 (l.185), jamais en §6 ni §7. La menace « promotion en *gate* » que j'envisageais comme livrable **n'a plus d'adversaire**. Et le §0 de cette fiche cite « A03 l.177 » — c'est **l.185** aujourd'hui.
 
 ### 6.5 Contre-arguments
 
@@ -236,11 +354,11 @@ Proposition de protocole (non exécuté) :
 
 | | |
 |---|---|
-| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ⬜ refuser |
-| **Date** | |
-| **Justification** | |
-| **Issue / PR** | |
-| **Jalon visé** | |
+| **Verdict** | ⬜ adopter · ✅ **adopter partiellement** · ⬜ reporter · ⬜ refuser |
+| **Date** | 2026-08-17 |
+| **Justification** | **Les sept critères pré-enregistrés se déclenchent** — mais le résultat qui compte n'est aucun de ceux que la fiche annonçait. ⭑ **Refusé — (a) la rubrique paramétrable.** K7 : `getOrgSetting` (`org-settings.ts:44-60`) lit des **colonnes de la table `orgs`** ; ranger un document markdown y exige une migration et une colonne, pour un signal dont **aucun *gate* ne dépend** (K2 : un seul site décisionnel, et il ne décide que d'émettre un événement SSE). ⭑ **Refusé — (c) la boucle d'itération.** Personne ne bloque sur `mode: "discovery"`, et `A03` — la seule fiche qui envisageait d'en faire un *gate* — est tranchée `reporter` depuis le 2026-08-15. ⭑ **Adopté — (b) rendre le verdict à l'agent.** C'est le blocage que K3 nomme : la réponse MCP (`consultation-tools.ts:208-220`) et la réponse REST (`rest-handlers.ts:317`) ne contiennent **ni l'une ni l'autre** `plan_quality`. Coût vérifié : **4 lignes, 3 fichiers**, purement additif, aucun test n'assertionne le jeu de clés. Sans lui, « verdict typé + explication » n'est que de la cosmétique de dashboard. ⭑ **Mais la découverte réelle est ailleurs, et elle invalide la prémisse de la fiche** : `assessPlanQuality` n'est **pas** un détecteur de qualité, c'est un **détecteur de longueur**. Sur les mêmes 83 plans, le verdict passe de **2 % à 100 %** de `with_plan` selon la troncature, avec une bascule de 51 points en 5 mots autour du seuil `wordCount > 20`. Et le trou de vocabulaire que la fiche veut réparer par une rubrique — 34 verbes courants sur 40 non reconnus — **ne bascule le mode dans aucun plan réaliste (0/40)** : il est masqué par le seuil de longueur. Remplacer l'entier par un verdict typé rendrait l'erreur **plus lisible et plus crédible**, pas plus juste. **Correction de méthode :** ma première mesure était biaisée et je l'ai retirée — j'avais substitué les messages de commit à un corpus pré-enregistré qui s'est révélé vide, sans voir que le dépôt est un **clone shallow de 40 commits sur 4 jours**, c'est-à-dire ma propre prose de la semaine. Trois chiffres publiés de travers, retirés. J'ai aussi conclu à tort que K7 ne se déclenchait pas, et attribué à tort un piège d'accent à `implémen` (seul `cré` l'est). |
+| **Issue / PR** | **#351** — le seuil de longueur non calibré, le verdict qui ne revient pas à l'agent, le piège d'accent `creer`/`créer`, deux imports morts, le double encodage du fichier de test (qui laisse le stem `cré` sans couverture), trois commentaires périmés citant une regex disparue |
+| **Jalon visé** | Le correctif (b) — 4 lignes — dans la prochaine mineure. Le reste est de l'hygiène sans urgence : aucun *gate* ne dépend de ce signal. **Aucune refonte sur le modèle des outcomes** tant que le seuil de longueur n'est pas calibré sur de vrais plans — et le dépôt n'en possède aucun. |
 
 ## 8. Journal
 
@@ -248,3 +366,4 @@ Proposition de protocole (non exécuté) :
 |---|---|
 | 2026-08-14 | Fiche créée par la veille plateforme. |
 | 2026-08-14 | Vérification des faits : §2 confirmée par la doc, 2 corrections mineures (payload webhook, ligne 250-251). |
+| 2026-08-17 | **Challenge — verdict `adopter partiellement` ; les 7 critères se déclenchent, et la prémisse de la fiche tombe.** `assessPlanQuality` n'est pas un détecteur de qualité de plan mais un **détecteur de longueur** : sur les **mêmes** 83 plans prospectifs (`docs/superpowers/plans/*.md`), le verdict passe de **2 % à 100 %** de `with_plan` selon la seule troncature, avec 51 points de bascule en 5 mots autour du seuil `wordCount > 20` (`plan-quality.ts:37`). Et le trou de vocabulaire que la fiche veut réparer par une rubrique — **34 verbes courants sur 40 non reconnus** (`refactor`, `fix`, `corriger`, `update`, `rename`, `test`, `document`…) — **ne fait basculer le mode dans aucun plan réaliste : 0/40**, masqué par le seuil de longueur. Un verdict typé rendrait donc l'erreur plus lisible, pas plus juste. Témoins : **0/20** plans délibérément mauvais passent (dont 5 pièges verbeux > 20 mots), **2/10** bons plans courts sont recalés. Piège d'accent réel : `creer` échoue, `créer` passe (seul `cré` est concerné — `implement` couvre l'anglais, ma première affirmation sur `implémen` était fausse). **Refusé** : (a) la rubrique paramétrable — K7, `getOrgSetting` lit des **colonnes de `orgs`**, il faudrait une migration ; (c) la boucle d'itération — K2, aucun *gate*, et `A03` est tranché `reporter` depuis le 2026-08-15. **Adopté** : (b) rendre le verdict à l'agent — K3, ni la réponse MCP (`consultation-tools.ts:208-220`) ni la REST (`:317`) ne portent `plan_quality` ; coût vérifié **4 lignes / 3 fichiers**, purement additif, aucun test n'assertionne le jeu de clés. Hygiène : 2 imports morts (`serve-http.ts:48`, `server-setup.ts:21`), fichier de test en **UTF-8 double-encodé avec BOM** — ce qui laisse le stem `cré` **sans aucune couverture** — et 3 commentaires périmés décrivant une regex `vaguePatterns` disparue. → **#351**. **Correction de méthode :** ma première mesure était biaisée et je l'ai retirée. Le corpus pré-enregistré (« les plans que le projet documente ») s'est révélé **vide** — 0 ligne `threads.plan`, aucun exemple dans `README`/`docs`/`cli`/`sdk`, et `docs/usage.md:176` ne passe même pas de `plan`. Je lui ai substitué les messages de commit **sans voir que le dépôt est un clone shallow de 40 commits sur 4 jours**, c'est-à-dire ma propre prose de veille : trois chiffres publiés de travers, retirés. J'avais aussi conclu à tort que K7 ne se déclenchait pas. Correction de la fiche : §0 cite « A03 l.177 » — c'est **l.185** ; et le contre-argument §6.5 « serveur local sans réseau sortant » est **faux**, `src/quota/quota.ts:62` appelle déjà `api.anthropic.com` sur un timer de fond. |
