@@ -1,3 +1,4 @@
+import { withTransaction } from "../db-adapter.js";
 import { getDb } from "../database.js";
 import { getRequestId } from "../auth/request-id.js";
 import { getCurrentActor, getCurrentRequest } from "../auth/audit-context.js";
@@ -126,8 +127,27 @@ export function audit(action: string, options: AuditOptions = {}): void {
 /**
  * Shared insert helper for the Tier 1 sync path (and the legacy
  * `auditLog` shim). Looks up the current tip's row_hash, computes the
- * new row's hash, then INSERTs with both columns. Wrapped in IMMEDIATE
- * so a concurrent inserter cannot insert between our SELECT and INSERT.
+ * new row's hash, then INSERTs with both columns.
+ *
+ * #317: this used to claim it was wrapped in IMMEDIATE. It was not wrapped in
+ * anything -- the tip SELECT and the INSERT were two separate implicit
+ * transactions, so a second writer could read the same tip and fork the chain
+ * that audit-chain.ts exists to make verifiable. Within one process that is
+ * unreachable (the driver is synchronous and there is no await between the
+ * two), but a second PROCESS reaches it: cli/encryption/migrate.ts opens the
+ * same database and emits its own encryption.* rows.
+ *
+ * The pair is now atomic. withTransaction nests through the driver's
+ * savepoints, so this stays correct when a caller has already opened one --
+ * which is the common case, since handle-admin-users, handle-admin-orgs,
+ * oauth-finalize and consultation all emit Tier 1 rows inside their own
+ * transaction.
+ *
+ * What it deliberately does NOT claim: the outermost transaction is DEFERRED,
+ * because the adapter interface has no way to express IMMEDIATE and forcing a
+ * BEGIN IMMEDIATE here would throw the moment a caller had nested us. Under a
+ * concurrent second process, SQLite answers a deferred read-then-write with
+ * SQLITE_BUSY rather than letting both commit -- an error, not a silent fork.
  *
  * The `hasOutcomeAndRequestId` parameter discriminates between the new
  * 9-column shape (used by `audit()`) and the legacy 7-column shape
@@ -141,65 +161,67 @@ function insertAuditRowWithChain(
     | (Omit<AuditQueueRow, "outcome" | "request_id"> & { outcome: null; request_id: null }),
   hasOutcomeAndRequestId: boolean,
 ): void {
-  const tipStmt = db.prepare(
-    "SELECT row_hash FROM audit_log WHERE row_hash IS NOT NULL ORDER BY id DESC LIMIT 1",
-  );
-  const tip = tipStmt.get() as { row_hash: string } | undefined;
-  const prevHash = tip?.row_hash ?? GENESIS_HASH;
-
-  const chainRow = {
-    action: row.action,
-    actor_org_id: row.actor_org_id,
-    actor_ip: row.actor_ip,
-    actor_user_agent: row.actor_user_agent,
-    actor_user_id: row.actor_user_id,
-    metadata_json: row.metadata_json,
-    outcome: row.outcome ?? null,
-    request_id: row.request_id ?? null,
-    target: row.target,
-  };
-  // getAuditChainKey() returns the master-derived HMAC key (keyed, forge-
-  // resistant against DB-write-only attackers) or null when encryption is
-  // disabled (unkeyed sha256 fallback, recorded honestly).
-  const rowHash = computeRowHash(prevHash, chainRow, getAuditChainKey());
-
-  if (hasOutcomeAndRequestId) {
-    db.prepare(
-      `INSERT INTO audit_log
-         (actor_user_id, actor_org_id, action, target,
-          actor_ip, actor_user_agent, request_id, outcome, metadata_json,
-          prev_hash, row_hash)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(
-      row.actor_user_id,
-      row.actor_org_id,
-      row.action,
-      row.target,
-      row.actor_ip,
-      row.actor_user_agent,
-      row.request_id,
-      row.outcome,
-      row.metadata_json,
-      prevHash,
-      rowHash,
+  withTransaction(db, () => {
+    const tipStmt = db.prepare(
+      "SELECT row_hash FROM audit_log WHERE row_hash IS NOT NULL ORDER BY id DESC LIMIT 1",
     );
-  } else {
-    db.prepare(
-      `INSERT INTO audit_log
-         (actor_user_id, actor_org_id, action, target,
-          actor_ip, actor_user_agent, metadata_json,
-          prev_hash, row_hash)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(
-      row.actor_user_id,
-      row.actor_org_id,
-      row.action,
-      row.target,
-      row.actor_ip,
-      row.actor_user_agent,
-      row.metadata_json,
-      prevHash,
-      rowHash,
-    );
-  }
+    const tip = tipStmt.get() as { row_hash: string } | undefined;
+    const prevHash = tip?.row_hash ?? GENESIS_HASH;
+
+    const chainRow = {
+      action: row.action,
+      actor_org_id: row.actor_org_id,
+      actor_ip: row.actor_ip,
+      actor_user_agent: row.actor_user_agent,
+      actor_user_id: row.actor_user_id,
+      metadata_json: row.metadata_json,
+      outcome: row.outcome ?? null,
+      request_id: row.request_id ?? null,
+      target: row.target,
+    };
+    // getAuditChainKey() returns the master-derived HMAC key (keyed, forge-
+    // resistant against DB-write-only attackers) or null when encryption is
+    // disabled (unkeyed sha256 fallback, recorded honestly).
+    const rowHash = computeRowHash(prevHash, chainRow, getAuditChainKey());
+
+    if (hasOutcomeAndRequestId) {
+      db.prepare(
+        `INSERT INTO audit_log
+           (actor_user_id, actor_org_id, action, target,
+            actor_ip, actor_user_agent, request_id, outcome, metadata_json,
+            prev_hash, row_hash)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        row.actor_user_id,
+        row.actor_org_id,
+        row.action,
+        row.target,
+        row.actor_ip,
+        row.actor_user_agent,
+        row.request_id,
+        row.outcome,
+        row.metadata_json,
+        prevHash,
+        rowHash,
+      );
+    } else {
+      db.prepare(
+        `INSERT INTO audit_log
+           (actor_user_id, actor_org_id, action, target,
+            actor_ip, actor_user_agent, metadata_json,
+            prev_hash, row_hash)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        row.actor_user_id,
+        row.actor_org_id,
+        row.action,
+        row.target,
+        row.actor_ip,
+        row.actor_user_agent,
+        row.metadata_json,
+        prevHash,
+        rowHash,
+      );
+    }
+  });
 }
