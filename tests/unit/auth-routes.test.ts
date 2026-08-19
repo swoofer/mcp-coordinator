@@ -362,6 +362,51 @@ describe("dispatchAuthRoutes — T18 /api/auth/oauth/token dispatched (not 501 s
     const body = res.body as Record<string, unknown>;
     expect(body.error).toBe("invalid_request");
   });
+
+  // #318: the endpoint had no rate limit on any of its three grants. It is
+  // unauthenticated by design -- it is what mints the bearer -- so an
+  // anonymous caller could drive it as fast as the box allowed. The device
+  // poll's own slow_down is keyed on the device_code and does nothing against
+  // a caller rotating them.
+  it("POST /api/auth/oauth/token answers 429 once the per-IP budget is spent", async () => {
+    // Spend the bucket the dispatcher will consult, without going through the
+    // handler: what is under test is that the guard answers first. mockReq has
+    // no socket, so the key is the `unknown` IP for every call.
+    for (let i = 0; i < 60; i++) {
+      await ctx.rateLimiter.check("oauth-token:unknown", { per: 60, window_seconds: 60 });
+    }
+
+    const res = mockResponse();
+    const handled = await dispatchAuthRoutes(
+      mockReq("POST", "/api/auth/oauth/token"),
+      res as unknown as ServerResponse,
+      ctx,
+    );
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(429);
+    expect(res.headers["Retry-After"]).toBeDefined();
+    expect((res.body as Record<string, unknown>).code).toBe("RATE_LIMITED");
+  });
+
+  // The negative control for the case above: one request short of the budget
+  // still reaches the handler, which answers 400 for the unparseable body.
+  // Without it, a guard that rejected everything would look just as green.
+  it("a request inside the budget still reaches the handler", async () => {
+    for (let i = 0; i < 59; i++) {
+      await ctx.rateLimiter.check("oauth-token:unknown", { per: 60, window_seconds: 60 });
+    }
+
+    const res = mockResponse();
+    await dispatchAuthRoutes(
+      mockReq("POST", "/api/auth/oauth/token"),
+      res as unknown as ServerResponse,
+      ctx,
+    );
+
+    expect(res.statusCode).toBe(400);
+    expect((res.body as Record<string, unknown>).error).toBe("invalid_request");
+  });
 });
 
 describe("dispatchAuthRoutes — T17 /api/auth/oauth/device_authorization dispatched (not 501 stub)", () => {
