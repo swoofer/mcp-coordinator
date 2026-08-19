@@ -15,6 +15,8 @@ References:
 - `docs/security/threat-model.md` -- STRIDE-by-asset analysis
 - `docs/ops/key-rotation.md` -- JWT signing key rotation
 - `docs/ops/upgrade-phase1-to-phase2.md` -- v0.7.0 -> v0.8.0 migration
+- `docs/clients.md` -- connecting an MCP client, including against an
+  authenticated daemon
 - CHANGELOG v0.8.0 -- shipped surface area
 
 ## Outcome
@@ -218,6 +220,13 @@ plain HTTP. For local development with `http://localhost`, this is fine
 (loopback is treated as secure). For any other `http://` host, you must
 set `COORDINATOR_INSECURE_COOKIES=true` -- but the strong recommendation
 is to put a TLS-terminating reverse proxy in front instead.
+
+The same applies to tunnels. Publishing a local daemon through ngrok, a
+Cloudflare tunnel or a Tailscale funnel gives it a public URL, and Anthropic's
+own guidance is to keep authentication enabled on the server while tunneling.
+An authless daemon behind a tunnel exposes all 26 tools -- writes included -- to
+anyone who reaches the URL. See `docs/clients.md` for the client-side header
+setup.
 
 ## 4. First boot
 
@@ -452,6 +461,8 @@ service token instead of using OAuth:
 
 ```bash
 mcp-coordinator service-token issue \
+  --server https://coordinator.example.com \
+  --admin-token "$COORDINATOR_ADMIN_TOKEN" \
   --user <admin_user_id> \
   --org <org_id> \
   --scope read \
@@ -459,10 +470,30 @@ mcp-coordinator service-token issue \
   --reason "GitHub Actions CI -- deploy.yml"
 ```
 
+Pass `--server` explicitly. The CLI defaults it to `http://localhost:3000`
+while the coordinator listens on 3100, so an invocation without it quietly
+targets the wrong port. `--admin-token` also reads `COORDINATOR_ADMIN_TOKEN`
+from the environment if you prefer not to put it on the command line.
+
 The 90-day TTL ceiling is hardcoded (V4 §5.5). Reason field requires >=10
 characters and is preserved in the audit trail. Service tokens are
 DB-verified on every request (admin force-revoke takes effect immediately,
 overriding the §9.5 trust-signature path).
+
+The token is presented as `Authorization: Bearer` -- see `docs/clients.md`
+for the client side.
+
+### `--scope` is not enforced yet
+
+The scope is validated when the token is minted and written into the JWT, and
+then **never read back on a request**. A `--scope read` token writes, deletes
+and publishes exactly like an `--scope admin` one; nothing in the request path
+consults the claim.
+
+Until [#313](https://github.com/swoofer/mcp-coordinator/issues/313) closes,
+treat every service token as full access. Bound it by what it can reach --
+a separate org, a short TTL, prompt revocation -- rather than by the flag,
+and do not hand one to a caller you would not trust with `admin`.
 
 ## Backup
 

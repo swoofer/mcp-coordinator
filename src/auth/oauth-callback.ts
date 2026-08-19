@@ -59,10 +59,15 @@ function hmacEqual(a: string, b: string): boolean {
  * state, state_binding_key) base64url-encoded. Mismatch → audit
  * auth.state.replay (Tier 1) + 400.
  *
- * Per spec §6.3 mix-up defense: row.provider MUST equal the expected
- * "github". Mismatch → audit auth.state.mixup (Tier 1) + 400.
+ * The state's provider must still be registered when the callback lands.
+ * It is never a name a third party chose: /auth/login only ever stores one
+ * that already resolved in the registry. A miss therefore means the daemon
+ * restarted with different provider config inside the state's TTL — audit
+ * auth.state.provider_unregistered (Tier 1) + 400. This event was called
+ * auth.state.mixup until #305, a name that promised a mix-up defence the
+ * branch never provided.
  *
- * Per RFC 6749 §4.1.2.1: GitHub may redirect with ?error=... instead of
+ * Per RFC 6749 §4.1.2.1: an IdP may redirect with ?error=... instead of
  * ?code=...; bubble that up as 400 with error description.
  */
 export async function handleOAuthCallback(
@@ -146,14 +151,21 @@ export async function handleOAuthCallback(
     }
   }
 
-  // T46: mix-up defense (V4) — verify the state's provider is one we
-  // currently have registered. Unknown name → 400 + Tier 1 audit. The
-  // observed_provider is kept in the audit so operators see what arrived;
-  // the registered names list bounds the expected side without leaking
-  // anything sensitive.
+  // Verify the state's provider is one we currently have registered.
+  // Unknown name → 400 + Tier 1 audit. The observed_provider is kept in the
+  // audit so operators see what arrived; the registered names list bounds
+  // the expected side without leaking anything sensitive.
+  //
+  // #305: `row.provider` is a value we wrote ourselves at /auth/login, from
+  // a provider that had already resolved in the registry, and the registry
+  // has no unregister() — only boot registers. So no request can drive this
+  // branch: reaching it means the daemon restarted with different provider
+  // config while a state row was still live. Tier 1 stays justified — it is
+  // a hard authorization denial, and being unforgeable it carries no volume
+  // risk — but the name had to stop claiming mix-up detection.
   const provider = ctx.providers.get(row.provider);
   if (!provider) {
-    audit("auth.state.mixup", {
+    audit("auth.state.provider_unregistered", {
       tier: 1,
       metadata: {
         observed_provider: row.provider,

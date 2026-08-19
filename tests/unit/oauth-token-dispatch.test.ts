@@ -323,18 +323,64 @@ describe("handleOAuthToken — dispatch validation", () => {
 // ===========================================================================
 describe("handleOAuthToken — authorization_code provider selection", () => {
   it("unknown provider name in body → 400 invalid_request naming the provider", async () => {
-    const req = mockRequest({
-      grant_type: "authorization_code",
-      code: "c",
-      redirect_uri: "http://localhost/cb",
-      provider: "not-registered",
-    });
+    const req = mockRequest(
+      {
+        grant_type: "authorization_code",
+        code: "c",
+        redirect_uri: "http://localhost/cb",
+        provider: "not-registered",
+      },
+      { ip: "203.0.113.7" },
+    );
     const res = mockResponse();
     await handleOAuthToken(req, res as unknown as ServerResponse, makeCtx());
     expect(res.statusCode).toBe(400);
     const body = JSON.parse(res.body!);
     expect(body.error).toBe("invalid_request");
     expect(body.error_description).toBe("Unknown provider: not-registered");
+  });
+
+  // #305: this is the only path where a third party chooses the provider name,
+  // and it emitted nothing at all before. The callback had the audit; this had
+  // the attacker-controlled value.
+  it("unknown provider name in body → Tier 2 audit auth.provider.unknown with the caller IP", async () => {
+    const req = mockRequest(
+      {
+        grant_type: "authorization_code",
+        code: "c",
+        redirect_uri: "http://localhost/cb",
+        provider: "not-registered",
+      },
+      { ip: "203.0.113.7" },
+    );
+    await handleOAuthToken(req, mockResponse() as unknown as ServerResponse, makeCtx());
+    const rows = findAuditRows("auth.provider.unknown");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].outcome).toBe("denied");
+    expect(JSON.parse(rows[0].metadata_json as string)).toEqual({
+      observed_provider: "not-registered",
+      registered_providers: ["github"],
+      phase: "auth_code_grant",
+      client_ip: "203.0.113.7",
+    });
+  });
+
+  // The value is raw wire input and audit() JSON.stringifies metadata, so an
+  // unbounded provider= would land verbatim in metadata_json.
+  it("oversized provider name is truncated before it reaches metadata_json", async () => {
+    const huge = "z".repeat(5000);
+    const req = mockRequest({
+      grant_type: "authorization_code",
+      code: "c",
+      redirect_uri: "http://localhost/cb",
+      provider: huge,
+    });
+    await handleOAuthToken(req, mockResponse() as unknown as ServerResponse, makeCtx());
+    const rows = findAuditRows("auth.provider.unknown");
+    expect(rows).toHaveLength(1);
+    const meta = JSON.parse(rows[0].metadata_json as string);
+    expect(meta.observed_provider).toBe(`${"z".repeat(64)}...(truncated)`);
+    expect(meta.observed_provider.length).toBeLessThan(100);
   });
 
   it("no provider in body and no default registered → 400 invalid_request", async () => {
@@ -353,6 +399,23 @@ describe("handleOAuthToken — authorization_code provider selection", () => {
     const body = JSON.parse(res.body!);
     expect(body.error).toBe("invalid_request");
     expect(body.error_description).toBe("No IdP provider is registered");
+  });
+
+  // Same 400, different meaning: nobody chose a provider, the operator just
+  // registered none. That is a misconfiguration already visible in the
+  // response, not a probe, so it must not manufacture a security event.
+  it("no provider in body and no default registered → no audit row", async () => {
+    const req = mockRequest({
+      grant_type: "authorization_code",
+      code: "c",
+      redirect_uri: "http://localhost/cb",
+    });
+    await handleOAuthToken(
+      req,
+      mockResponse() as unknown as ServerResponse,
+      makeCtx({ providers: new ProviderRegistry() }),
+    );
+    expect(findAuditRows("auth.provider.unknown")).toHaveLength(0);
   });
 
   it("explicit provider name matching a registered provider → dispatches normally (200)", async () => {

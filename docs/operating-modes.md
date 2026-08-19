@@ -44,6 +44,11 @@ mcp-coordinator server start --daemon
 # }
 ```
 
+That snippet has no credentials in it, which is right for loopback and wrong
+for a daemon anything else can reach. `docs/clients.md` covers connecting with
+authentication enabled, and why a third-party MCP client cannot discover an
+OAuth flow here.
+
 That's it — the 26 tools are registered and reachable. What actually enters the
 model's context at session start is narrower: with tool search on (the default in
 Claude Code), only tool NAMES and the server's `instructions` are loaded up front,

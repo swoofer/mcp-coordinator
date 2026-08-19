@@ -7,7 +7,12 @@ const DISCOVERY_PATH = "/.well-known/oauth-authorization-server";
 
 export interface DiscoveryDoc {
   issuer: string;
-  authorization_endpoint: string;
+  /**
+   * Absent from coordinators >= the fix for issue #307, which publish no
+   * authorization endpoint of their own. Older servers still send it. The SDK
+   * never reads it — only device_authorization_endpoint drives a flow here.
+   */
+  authorization_endpoint?: string;
   token_endpoint: string;
   device_authorization_endpoint: string;
   revocation_endpoint: string;

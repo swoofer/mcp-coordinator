@@ -53,8 +53,17 @@ import { Sweeper } from "../../src/sweeper/index.js";
 import type { AuthHandlerContext } from "../../src/auth/context.js";
 import type { IdPProvider, ExchangeCodeResult } from "../../src/auth/providers/types.js";
 
+// Production derives BOTH key materials from the single COORDINATOR_JWT_SECRET:
+//   Phase 1 — serve-http.ts `initAuth(JWT_SECRET)`      -> TextEncoder().encode(s)
+//   Phase 2 — boot.ts `buildJwtKeyRegistry(Buffer.from(s, "utf8"))`
+// so they are byte-identical. This bench used to give them DIFFERENT secrets,
+// which made Phase 1 verification throw on every Phase 2 token and routed the
+// D1 Bearer assertions through a fallback branch that production never reaches
+// — hiding a regression where every Bearer-presented Phase 2 JWT 401'd with
+// "v0.6 token rejected". Keep these two tied together; the guard test in D1
+// asserts the derived keys still match.
 const PHASE1_SECRET = "phase1-test-secret-at-least-32-chars-long!";
-const SIGNING_SECRET = Buffer.alloc(32, 0x32);
+const SIGNING_SECRET = Buffer.from(PHASE1_SECRET, "utf8");
 const ISSUER = "http://localhost:3000";
 const STATE_BINDING_KEY = Buffer.alloc(32, 0x32);
 const registry = buildJwtKeyRegistry(SIGNING_SECRET);
@@ -339,6 +348,16 @@ function makeCtx(overrides: Partial<AuthHandlerContext> = {}): AuthHandlerContex
 // D1 — cookie + Bearer race (Scenario d > Scenario 5)
 // ===========================================================================
 describe("D1 — cookie auth + Bearer header race", () => {
+  it("00: bench fidelity — Phase 1 and Phase 2 keys are byte-identical (as in prod)", () => {
+    // Guards the D1/01 + D1/02 Bearer assertions below: if the two phases ever
+    // drift onto different secrets again, Phase 1 verification starts throwing
+    // on Phase 2 tokens and those assertions pass via a branch production
+    // cannot reach. See tests/unit/auth-bearer-production-wiring.test.ts.
+    expect(Buffer.from(registry.current.key)).toEqual(
+      Buffer.from(new TextEncoder().encode(PHASE1_SECRET)),
+    );
+  });
+
   it("01: Bearer Phase 2 JWT wins when both cookie + Bearer present", async () => {
     // Two different identities: cookie claims u-admin-acme; Bearer JWT claims
     // u-member-beta. Per spec §9.5 + auth.ts dispatcher, Bearer must win.
