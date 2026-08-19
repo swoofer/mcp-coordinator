@@ -13,7 +13,7 @@
 | **Vérification** | CONFIRMED |
 | **Vérifiée le** | 2026-08-14 |
 | **Testabilité** | ⚠️ partielle — SDK installé encore en 2025-11-25, sessions présentes |
-| **Statut du challenge** | ⬜ à faire |
+| **Statut du challenge** | ✅ **tranché** (2026-08-15) — `adopter partiellement` : la documentation seule ; le code est reporté |
 
 ---
 
@@ -134,7 +134,43 @@ Trois risques distincts, de gravité croissante.
 
 ### 6.2 Hypothèse
 
-<Ce qu'on pense avant de tester.>
+> Pré-enregistrée le 2026-08-15, **avant** tout PoC. Seul fait déjà collecté : `main` a migré vers
+> le **SDK v2** depuis la rédaction de la §0, et `LATEST_PROTOCOL_VERSION` y vaut toujours
+> **`2025-11-25`** — donc la prémisse de la §0 (pas de transport sessionless, `extra.sessionId`
+> existe) **survit à la migration**. Le risque n°3 reste prospectif.
+
+**Hypothèse.** Les trois risques de §4 n'ont ni la même réalité ni la même urgence :
+
+1. **L'usurpation intra-org (risque 2) est probablement réelle et reproductible.** Chaque outil
+   prend `agent_id` **du client** en argument libre et ne scope que sur `claims.org`. Je m'attends
+   à ce qu'un seul token permette d'agir sous n'importe quelle identité d'agent de l'org — et à ce
+   que la chaîne d'audit enregistre l'identité **usurpée**.
+2. **L'absence de validation `aud` (risque 1) est réelle mais peu exploitable** : elle suppose une
+   seconde instance partageant `JWT_SECRET` **et** `COORDINATOR_PUBLIC_URL`. C'est un MUST non
+   tenu, pas une porte ouverte.
+3. **La sortie de session (risque 3) est prospective** et le reste sous SDK v2.
+
+**Verdict attendu :** `adopter partiellement` — le liage principal↔`agent_id`, ou au minimum sa
+traçabilité ; `reporter` la sortie de session ; le volet `resource`/RFC 9728 dépend de ce que
+`B03`/`B04` ont déjà tranché.
+
+**Critères de refus, chiffrés (pré-enregistrés) :**
+
+| # | Le résultat qui tue |
+|---|---|
+| **K1** | L'usurpation intra-org **échoue** — un garde existant que je n'ai pas vu lie déjà l'appelant à `agent_id`. Le risque 2 s'évapore. |
+| **K2** | L'usurpation réussit **mais la chaîne d'audit enregistre l'identité réelle** (le porteur du token), pas l'usurpée → le risque est de confort, pas d'intégrité. |
+| **K3** | Le liage `<user_id>:<agent_id>` casse un usage légitime **mesurable dans le dépôt** (tests, essaim, exemples) → §6.5 a raison, le remède est pire que le mal. |
+| **K4** | Le JWT forgé sans `aud` est **rejeté** → le risque 1 n'existe pas. |
+| **K5** | Ajouter `aud` casse **> 10 tests** ou impose une fenêtre de grâce dans `refresh-rotation.ts` → disproportionné. |
+| **K6** | Zéro demande utilisateur **et** le profil mono-utilisateur rend l'usurpation sans objet (un seul `user_id` dans l'org). |
+
+**Critère d'adoption :** une usurpation **reproduite ici**, avec une trace d'audit **fausse**, et
+un remède dont le coût tient sous K3/K5.
+
+**Ce que je m'engage à trancher :** si l'usurpation marche, dire si le liage est **applicable**
+(y a-t-il plusieurs `user_id` par org dans un déploiement réel ?) ou si la seule action honnête
+est de **documenter la limite** et de corriger la chaîne d'audit.
 
 ### 6.3 Protocole de vérification
 
@@ -151,7 +187,215 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 
 ### 6.4 Résultat observé
 
-<Ce qu'on a réellement mesuré/vu. Coller les sorties, pas les paraphraser.>
+> Exécuté le 2026-08-15 contre le daemon réel (`AUTH_ENABLED=true` + `OAUTH_ENABLED=true`),
+> **sur SDK v2** (`main` a intégré `A02`). Frontière exécuté / lu marquée en (D).
+
+#### (A) K1 et K2 — L'usurpation intra-org est complète, et la trace est fausse
+
+**Un seul token**, présenté sur une seule session MCP. Il enregistre **deux agents distincts** :
+
+```
+1. UN SEUL token enregistre DEUX agents distincts
+   alpha : {"id":"alpha","org_id":"default","name":"Alpha","status":"online", …}
+   beta  : {"id":"beta","org_id":"default","name":"Beta","status":"online", …}
+```
+
+Puis il ouvre un thread **au nom de beta**, et y poste sous **deux identités différentes** :
+
+```
+thread ouvert par beta : ff1bcf8e-… | initiator: beta
+
+>>> Le MEME token poste SOUS L IDENTITE DE BETA :
+    {"agent_id":"beta","type":"context","content":"message signe beta", …}
+
+>>> ... puis sous l identite d ALPHA, dans le thread de beta :
+    {"agent_id":"alpha","type":"warning","content":"message signe alpha", …}
+
+>>> Ce que le thread a enregistre :
+    agent_id = "beta"  | message signe beta
+    agent_id = "alpha" | message signe alpha
+```
+
+**K1 ne se déclenche pas** : aucun garde ne lie l'appelant à l'`agent_id`. La trace persistée
+enregistre l'identité **usurpée**, pas le porteur du token.
+
+> ⚠️ **Deux corrections de ma part, imposées par la passe adversariale et re-vérifiées.**
+>
+> **(1) L'étiquette `from_agent` était la mienne, pas celle du dépôt.** `grep -rn "from_agent"`
+> sur `src/`, `sdk/src/`, `cli/` → **0 occurrence** ; mon script affichait
+> `m.from_agent || m.agent_id` et c'est le repli qui parlait. La vraie colonne est
+> **`thread_messages.agent_id`** (`src/database.ts:128`). Sorties ci-dessus corrigées.
+>
+> **(2) « La chaîne d'audit enregistre une identité fausse » est FAUX, et c'est plus grave.**
+> `grep -rn "audit" src/tools/` → **0 résultat**. `src/agent-registry.ts` et
+> `src/announce-workflow.ts` non plus. **Aucun outil n'écrit jamais dans la chaîne d'audit**, et
+> `src/security/audit-events.ts` ne contient aucun événement `thread.*`, `agent.*` ou `tool.*` —
+> uniquement `auth.*`, `admin.*`, `config.*`, `recovery.*`, `system.*`, `migration.*`. Quand la
+> chaîne enregistre quelque chose, l'acteur vient de `getCurrentActor()`
+> (`src/security/audit.ts:101`), alimenté par le **token vérifié**, jamais par le client.
+>
+> **La chaîne d'audit n'enregistre donc rien de ces appels — ni l'identité réelle, ni la fausse.**
+> Ce qui porte l'identité usurpée est une **donnée métier** (`thread_messages.agent_id`), pas la
+> piste d'audit chaînée. **K2 n'est ni déclenché ni non-déclenché : sa prémisse est vide.**
+>
+> **Conséquences sur la fiche, à corriger :** §4 risque 2 (« La piste d'audit
+> (`src/security/audit-chain.ts`) enregistre alors une identité fausse ») et §5 dernière ligne
+> (« Les événements portent l'identité déclarée par le client ») sont **toutes deux fausses**.
+> J'en avais hérité sans les vérifier, alors que le protocole dit que les sections 1 à 5 sont des
+> affirmations à vérifier. Le défaut reste réel — fausse attribution dans les données de
+> coordination — mais ce **n'est pas** une compromission de la piste d'audit de sécurité, et
+> l'analogie « garde-fou fantôme » est mal placée.
+
+Détail qui aggrave : `initiator_id` du thread est lui aussi entièrement fourni par le client.
+
+**Le serveur le dit désormais lui-même.** Le champ `instructions` livré par `C06` (#271, arrivé
+dans `main` pendant cette session) écrit : *« registering an id another agent already holds
+**takes it over silently** »*. La prise de contrôle silencieuse est donc **documentée au client**
+sans être empêchée côté serveur.
+
+#### (B) K4 — Aucun contrôle d'audience
+
+Token forgé avec le **même** `JWT_SECRET` et le **même** `iss`, mais explicitement destiné à un
+autre service :
+
+```
+aud = https://un-autre-service.example/mcp  ->  HTTP 200  ACCEPTE (aucun controle d audience)
+```
+
+**K4 ne se déclenche pas.** `src/auth.ts` passe `algorithms` + `issuer` + `clockTolerance` à
+`jwtVerify`, jamais `audience`, et `mintAccessJWT` ne pose aucun `aud`. Le MUST de la spec
+(RFC 8707 §2 + OAuth 2.1 §5.2) n'est pas tenu.
+
+**Portée réelle, à ne pas exagérer :** l'attaquant doit déjà posséder `JWT_SECRET`. Un token
+« destiné ailleurs » n'existe que si une **seconde instance** partage ce secret. C'est un MUST non
+tenu et un défaut de défense en profondeur, **pas** une porte ouverte depuis l'extérieur.
+
+#### (B bis) §6.5 puce 1 est falsifiée — le multi-utilisateur intra-org est vendu publiquement
+
+§6.5 argumente que le liage est sans objet parce qu'il n'y aurait « **qu'un seul `user_id` par
+org**, ce qui n'est le cas d'aucun auto-hébergeur connu ». **Faux, et c'est le profil que le
+projet met en avant :**
+
+```
+README.md:25
+| **A small team where everyone runs their own AI agent on the same repo** |
+  One shared coordinator over LAN. Real-time conflict detection across teammates' agents. |
+```
+
+Et le code porte un garde qui **n'a de sens qu'en multi-utilisateur** : `LAST_ADMIN`
+(`src/admin/handle-admin-users.ts`) refuse de retirer le dernier admin. S'ajoutent la table
+`user_orgs`, l'allowlist par org IdP qui mappe tous les membres d'une org GitHub vers le même
+`org_id`, et `docs/onboarding-self-host.md` (« *Subsequent users land as `member`* »).
+
+**Conséquence : K6 se déclenche sur sa première moitié (zéro demande) et est falsifié sur la
+seconde.** Et l'usurpation compte **plus** que §6.5 ne le prétend : dans le profil équipe vendu au
+README, chaque coéquipier a son propre `user_id`, et n'importe lequel peut poster sous l'`agent_id`
+d'un autre.
+
+*Réserve d'équité :* la **seconde** puce de §6.5 (un humain pilotant dix agents depuis un seul
+token) reste debout et **non testée** — K3 n'est pas mesuré. Le multi-utilisateur rend le liage
+*pertinent*, pas *gratuit*.
+
+#### (C) K6 — La demande utilisateur
+
+```
+usurpation -> 0     impersonat -> 0     audience -> 1
+agent_id -> 6       multi-user -> 3     tenant -> 9
+```
+
+Aucune demande ne porte sur l'usurpation. Les `tenant` / `multi-user` relèvent du multi-org, pas de
+l'identité d'agent. **K6 se déclenche sur sa première moitié.**
+
+#### (C bis) K3 et K5, mesurés par la passe adversariale — les deux se déclenchent
+
+**K5 — ajouter `aud` casse 66 tests, six fois le seuil.** Branche jetable,
+`.setAudience(opts.issuer)` + `audience:` dans `jwtVerify`, suite complète :
+
+```
+BASELINE   18 failed | 3092 passed | 6 skipped   (3116)
+WITH AUD   66 failed | 3050 passed               (3116)
+```
+
+Les 18 d'origine étaient des flakes de port-binding et repassent au vert ; les deux ensembles sont
+quasi disjoints. Attribuables à `aud` : **66 tests sur 6 fichiers** (`device-approve` 20, `logout`
+19, `auth-scenario5` 11, `userinfo` 10, `d1-d10-matrix` 4, `token-type-confusion` 2). Seuil
+pré-enregistré : 10. **K5 se déclenche largement.**
+
+Nature : surtout des fixtures qui forgent leurs JWT à la main sans `setAudience` — réparable.
+**Mais le vrai danger n'est pas là où §6.5 le plaçait.** Ce n'est pas `refresh-rotation.ts` (il ne
+vérifie que des refresh tokens, sans `audience`, et le re-mint déterministe survit) : ce sont les
+**service tokens**. `verifyPhase2SessionCookie` est aussi le fallback Bearer, donc activer `aud`
+**401 tous les service tokens en circulation** jusqu'à re-mint manuel — des credentials CI de
+longue durée. Le blast radius n'est pas la fenêtre de 15 min des sessions navigateur.
+
+**K3 — le remède ne bloque pas l'attaque que j'ai démontrée.** C'est la mesure la plus utile de
+cette passe, et elle est pire que le critère que j'avais pré-enregistré. Mon PoC n'a **qu'un seul
+`user_id`** (`u-solo`) qui enregistre légitimement `alpha` **et** `beta`. Sous un liage
+`<user_id>:<agent_id>`, `u-solo` **possède les deux** — poster sous l'un puis sous l'autre
+**passerait toujours**. Le liage ne mord qu'avec 2+ `user_id` distincts dans l'org.
+
+Et il n'a aucune table sur laquelle s'appuyer : la table `agents` est
+`id, name, modules, status, registered_at, last_seen_at` (+ `org_id`) — **aucune colonne
+propriétaire** ; `user_orgs` lie users↔orgs, jamais users↔agents. Surface : **16 outils** prennent
+`agent_id` en argument, 26 sites `getSessionClaims`, 34 fichiers de test utilisant 2+ `agent_id`.
+Plus un contre-exemple **déjà livré** : `cli/channel.ts` utilise `CHANNEL_REPLY_AGENT_ID = "channel"`,
+un `agent_id` synthétique qui n'est **pas** un agent enregistré.
+
+**Le scénario reste confirmé sous `role: "member"`**, pas seulement `admin` — donc ma réserve
+sur le rôle tombe : `grep claims.role src/tools/` → **0**, et `ADMIN_ONLY_ROUTES` ne couvre pas
+`/mcp`.
+
+#### (C ter) Deux réfutations qui vont plus loin que ce que j'avais écrit
+
+**(1) L'audit est encore plus absent que je ne l'ai dit.** `withAuditContext` n'est appelé
+**nulle part** dans `src/` (uniquement dans `tests/`), alors que `handle-admin-users.ts:27`
+invoque « the outer withAuditContext established by the route dispatcher ». Sonde runtime, appel
+`audit()` à l'identique de la production :
+
+```json
+{ "action": "auth.login.success", "actor_user_id": null, "actor_org_id": null }
+```
+
+Et après tout le scénario d'usurpation : `audit_log` → **0 ligne**. La chaîne n'enregistre donc
+pas seulement *rien* pour les outils — quand elle enregistre, l'acteur est **NULL**. C'est un
+garde-fou fantôme de plus, et il appartient à un périmètre distinct.
+
+**(2) Mon volet `aud` est encore plus faible que je ne l'ai concédé.** `mintAccessJWT` reçoit
+`issuer: COORDINATOR_PUBLIC_URL`, et c'est **la même valeur** qui servirait d'`aud`. Donc
+`aud === iss`, et `iss` est **déjà validé**. Mon scénario « une seconde instance partageant le
+secret **et** l'URL » s'auto-annule : même URL ⇒ même `aud` ⇒ `aud` ne discrimine rien ; URL
+différente ⇒ `iss` rejette déjà. Le mode multi-instance livré (`COORDINATOR_REDIS_URL`) réplique le
+**même** service derrière la **même** URL. **Delta défensif nul dans cette architecture** — §6.5
+puce 6 le disait, et j'ai été trop indulgent en parlant de « défense en profondeur ».
+
+**(3) M4 est réfuté : la sortie de session n'est PAS prospective.** Le mode sessionless est une
+**option de constructeur**, orthogonale à `LATEST_PROTOCOL_VERSION`. Preuve runtime sur le
+`@modelcontextprotocol/node@2.0.0` **installé** :
+
+```
+tool ctx sous sessionIdGenerator: undefined ->
+[{ "sessionIdType": "undefined", "hasHttp": true, "httpKeys": ["req","closeSSE",…] }]
+```
+
+`ctx.sessionId` vaut **`undefined`**, donc `getSessionClaims(ctx.sessionId ?? "")` → `null` → **les
+26 outils lèvent**. Reproductible **aujourd'hui**, en changeant un mot. Trois aggravations :
+`BaseContext.sessionId` est typé **optionnel** ; `createMcpHandler` du SDK v2 sert le trafic 2025
+en `'stateless'` **par défaut** ; et le remplaçant est **déjà livré** — `BaseContext.http.authInfo`.
+Le contre-argument §6.5 (« migrer maintenant, c'est écrire deux fois le même code ») **s'inverse** :
+c'est *reporter* qui fait écrire le code deux fois. Enfin, c'est déjà cassé en pratique :
+`sessionClaims` est une `Map` in-process alors que le multi-instance Redis a shippé — une session
+ouverte sur l'instance A est un 404 sur l'instance B.
+
+#### (D) Ce qui n'a PAS été exécuté
+
+- **Le risque n°3 (sortie de session) reste prospectif**, et la migration SDK v2 **ne l'a pas
+  changé** : vérifié, `LATEST_PROTOCOL_VERSION = "2025-11-25"` dans
+  `@modelcontextprotocol/core@2.0.0`. `extra.sessionId` existe toujours. La §0 reste exacte malgré
+  le changement de SDK.
+- **La 4ᵉ puce** (client MCP réel émettant `resource` face à une PRM servie) : non exécutée.
+- **K3 et K5 non mesurés** : je n'ai ni implémenté le liage `<user_id>:<agent_id>` ni ajouté `aud`,
+  donc je ne peux pas dire combien de tests cassent ni quel usage légitime serait bloqué. **Ces
+  deux critères restent ouverts et ne portent pas le verdict.**
 
 ### 6.5 Contre-arguments
 
@@ -165,15 +409,133 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 
 ---
 
+### 6.4 bis — Bilan des six critères
+
+| # | Statut | Ce qui l'établit |
+|---|---|---|
+| **K1** | ❌ non déclenché · ⚠️ **acquis d'avance** | L'usurpation réussit (A). Mais §4 l. 95 l'affirmait déjà le 2026-08-14. **Confirmation, pas découverte.** |
+| **K2** | ⚫ **prémisse vide** | La chaîne d'audit n'enregistre **rien** de ces appels. Le critère opposait deux issues dont aucune n'existe. |
+| **K3** | ✅ **déclenché** (mesuré par la passe) | Le liage **ne bloquerait pas l'attaque démontrée** : un seul `user_id` possède les deux agents. Et aucune table ne relie users↔agents. |
+| **K4** | ❌ non déclenché · ⚠️ **acquis d'avance** | Token `aud` étranger accepté (B). Mais §4 l. 101, §5 et la §0 du 2026-08-14 le disaient déjà. |
+| **K5** | ✅ **déclenché** (mesuré par la passe) | **66 tests** cassent, six fois le seuil de 10. Et `aud === iss` : delta défensif nul. |
+| **K6** | ◑ **moitié déclenchée, moitié falsifiée** | Zéro demande, oui. Mais « un seul `user_id` par org » est **faux** (B bis). |
+
+**Aucun critère n'a produit d'information neuve décisive.** K1 et K4 confirment par exécution ce
+que la fiche affirmait déjà par lecture — ce qui a de la valeur, mais n'est pas une découverte.
+
+---
+
 ## 7. Décision
 
 | | |
 |---|---|
-| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ⬜ refuser |
-| **Date** | |
-| **Justification** | |
-| **Issue / PR** | |
-| **Jalon visé** | |
+| **Verdict** | ⬜ adopter · ✅ **adopter partiellement** (documentation seule) · ⬜ reporter · ⬜ refuser |
+| **Date** | 2026-08-15 |
+| **Justification** | **L'usurpation intra-org est reproduite de bout en bout** — un seul token enregistre deux agents, ouvre un thread au nom de l'un et poste sous les deux identités, la trace persistant l'identité usurpée. **Et elle compte plus que §6.5 ne le prétend** : le profil « équipe, chacun son agent » est vendu au `README.md:25`, avec un multi-utilisateur intra-org implémenté, testé et gardé (`LAST_ADMIN`). **Mais l'item que j'allais adopter n'a pas d'objet** : « corriger la chaîne d'audit » repose sur une affirmation de §4/§5 que j'avais héritée sans la vérifier et qui est **fausse** — aucun outil n'écrit dans la chaîne d'audit. Ce qu'il faudrait est du code **neuf**, dont le coût tombe dans mon angle mort (K3 et K5 non mesurés). **Seul le volet documentaire a un coût nul par construction et est donc adopté** ; tout ce qui est du code est reporté avec conditions de réveil. |
+| **Issue / PR** | Aucune créée. Périmètres en §7.2 et §7.3, **à confirmer avec le mainteneur**. |
+| **Jalon visé** | prochaine mineure pour la doc |
+
+### 7.1 La réponse à la question de §6.1
+
+**§6.1 pose un OU entre deux termes. Je réponds aux deux, et je refuse le troisième que j'allais
+substituer.**
+
+*Terme 1 — « faire du couple `(user_id, agent_id)` la clé d'identité de tous les outils ».*
+**Pertinent — §6.5 avait tort de le déclarer sans objet** (B bis) — mais **le remède ne bloque pas
+l'attaque que j'ai démontrée**, et c'est mesuré (C bis) : mon PoC n'a qu'**un seul `user_id`** qui
+possède légitimement `alpha` et `beta`, donc le liage le laisserait passer. Il ne mord qu'avec 2+
+utilisateurs distincts, et il n'a **aucune table** sur laquelle s'appuyer — `agents` n'a pas de
+colonne propriétaire. **Reporté**, et pour un bien meilleur motif que « trop cher ».
+
+*Terme 2 — « conserver le scope org et se contenter d'ajouter `aud` + RFC 9728 ».* Deux faits
+mesurés le tuent. D'abord **`aud` ne corrige pas l'usurpation** : l'attaquant du scénario (A)
+présente un token parfaitement valide. Ensuite **`aud` ne corrige rien du tout ici** :
+`mintAccessJWT` reçoit `issuer: COORDINATOR_PUBLIC_URL`, et c'est la même valeur qui servirait
+d'`aud` — donc `aud === iss`, et `iss` est **déjà validé**. Pour **66 tests cassés** (K5 mesuré,
+six fois le seuil) et un risque de 401 sur tous les service tokens en circulation. **Reporté**,
+avec un delta défensif qualifié de **nul dans cette architecture**.
+
+*Le troisième terme que j'allais substituer — « corriger la chaîne d'audit » — est retiré :* il
+n'a pas d'objet (§6.4 A, correction 2).
+
+**Ce qui reste, et qui est le seul terme dont le coût est trivialement nul : dire la limite là où
+la promesse est faite.**
+
+### 7.2 Ce qui est adopté : documenter la limite là où le profil équipe est vendu
+
+Le champ `instructions` du serveur (livré par [`C06`](C06-tool-search-defer-loading.md), #271,
+arrivé dans `main` pendant cette session) dit déjà au **client** : *« registering an id another
+agent already holds **takes it over silently** »*. Mais la **documentation de déploiement**, qui
+vend le profil équipe, n'en dit rien.
+
+- [ ] `README.md:25` (« A small team where everyone runs their own AI agent ») et
+      `docs/onboarding-self-host.md` : écrire que l'`agent_id` est **déclaratif**, que le scope
+      d'isolation est l'**org** et non l'utilisateur, et qu'un coéquipier authentifié peut agir
+      sous l'`agent_id` d'un autre.
+- [ ] `docs/ops/access-review.md` : ajouter que `thread_messages.agent_id` est une **identité
+      déclarée**, non authentifiée — pour qu'une revue d'accès ne la lise pas comme une preuve.
+
+**Coût nul par construction** : aucune ligne de code, donc K3 et K5 sont sans objet sur ce volet.
+C'est la seule branche du critère d'adoption qui soit trivialement satisfaite.
+
+### 7.3 Ce qui est reporté, avec conditions de réveil
+
+| Volet | Pourquoi reporté | Condition de réveil |
+|---|---|---|
+| Liage `<user_id>:<agent_id>` | **K3 mesuré et déclenché, sous une forme pire que prévue** : le liage **ne bloquerait pas l'attaque démontrée** (un seul `user_id` possède les deux agents), et aucune table ne relie users↔agents | Un déploiement **multi-utilisateur réel** — c'est le seul cas où le liage mord — **et** la création d'une colonne propriétaire sur `agents` |
+| Événements d'audit sur les appels d'outils | Code neuf, et plus cher qu'annoncé : émission sur ~16 outils **plus** les handlers REST jumeaux, câblage de `withAuditContext` dans `serve-http.ts` (jamais appelé en prod), **et** enregistrement des noms d'action dans `TIER1_EVENTS`/`TIER2_EVENTS` — sinon le sweeper (`src/sweeper/index.ts`) ne les purge **jamais**, sur le chemin le plus chaud du produit | Une exigence de conformité qui demande l'attribution des actions de coordination |
+| `aud` sur les JWT émis | **K5 mesuré et déclenché : 66 tests**, six fois le seuil. Et le delta défensif est **nul** ici (`aud === iss`, et `iss` est déjà validé) | Une architecture où `aud ≠ iss` — c'est-à-dire un AS distinct du serveur de ressource. **Et un staging mint-first / verify-later**, sinon tous les service tokens en circulation prennent 401 |
+| PRM RFC 9728 servie | **MUST de la spec non tenu** — mais [`B04`](B04-scope-step-up-lazy-auth.md) §7.4 a établi que le SDK v2 l'exporte déjà (`buildOAuthProtectedResourceMetadata`), donc le coût a chuté | Livrer avec le gate de `B04` §7.2(2), **pas avant** — publier `scopes_supported` avant que le scope soit appliqué reproduirait le motif que `B03` §7.3 interdit |
+| `resource` RFC 8707 côté SDK | mcp-coordinator est son propre AS **et** sa propre ressource ; le paramètre protège d'un AS tiers, scénario inexistant | Le jour où un AS tiers émet des tokens pour nous (cf. `B02` §7.3) |
+
+> ⚠️ **Une ligne de ce tableau est à requalifier, et c'est la plus importante : la sortie de
+> session n'est pas reportable — sa condition de réveil est déjà remplie.**
+> §6.4 (C ter)(3) le mesure : le mode sessionless est une **option de constructeur** du SDK v2
+> **installé**, `ctx.sessionId` y vaut `undefined`, et les 26 outils lèvent. Ce n'est plus un
+> risque prospectif conditionné à une révision de protocole — c'est une panne **déclenchable
+> aujourd'hui**, déjà réelle en multi-instance (la `Map` in-process contre Redis). Et le
+> remplaçant (`BaseContext.http.authInfo`) est **déjà livré**.
+>
+> **Je ne le tranche pas ici** : c'est le chantier d'identité de tout le serveur, il appartient à
+> [`A01`](A01-mcp-2026-07-28-stateless.md) (verdict `reporter`) dont c'est le sujet, et le trancher
+> dans une fiche « menace » du bloc B serait un débordement. **Mais `A01` doit savoir que sa
+> prémisse a changé** : elle a été reportée en partie parce que « le repli fonctionne » et que rien
+> ne pressait. La panne est désormais à un mot de distance.
+
+**Renvoi explicite pour éviter une décision contradictoire :** le `403 insufficient_scope`, le
+`scope=` dans `WWW-Authenticate` et surtout **le point d'application du gate** appartiennent à
+[`B04`](B04-scope-step-up-lazy-auth.md) §7.2(2), qui les a déjà tranchés — « via le gate HTTP,
+**surtout pas dans `src/tools/*.ts`** ». B05 ne re-choisit pas.
+
+### 7.4 Ce que ce challenge a corrigé chez moi
+
+1. **J'ai hérité de deux affirmations de §4/§5 sans les vérifier**, alors qu'elles sont fausses :
+   les outils n'écrivent **jamais** dans la chaîne d'audit. Mon item central était bâti dessus.
+2. **J'ai lu ma propre sortie de travers** : `from_agent` n'existe pas dans le dépôt — c'était le
+   repli de mon script. La vraie colonne est `thread_messages.agent_id`.
+3. **J'ai laissé K3 et K5 non mesurés** et j'allais conclure quand même sur un item dont c'est
+   précisément le coût. La passe les a mesurés à ma place, et **les deux se déclenchent** — K5 à
+   66 tests, K3 sous une forme que je n'avais pas anticipée : **le remède ne bloque pas l'attaque
+   que j'avais démontrée**. Ne pas les avoir mesurés est l'économie la moins défendable de ce
+   challenge ; ils changent les *motifs* du verdict, pas son dispositif.
+4. **J'ai qualifié le volet `aud` de « défense en profondeur ». C'est trop indulgent** :
+   `aud === iss` par construction, donc le contrôle ne rejetterait rien que `iss` ne rejette déjà.
+   Mon propre §6.5 puce 6 le disait, et je ne l'ai pas repris.
+5. **J'ai déclaré la sortie de session « prospective ». C'est faux** : le mode sessionless est une
+   option de constructeur du SDK **installé**, `ctx.sessionId` y vaut `undefined`, et les 26 outils
+   lèvent. La panne est à un mot de distance, et déjà réelle en multi-instance.
+4. **K1 et K4 étaient acquis d'avance.** Les exécuter avait de la valeur ; les présenter comme des
+   découvertes, non.
+
+### 7.5 Corrections à porter dans les sections 1 à 5
+
+1. **§4, risque 2** — « La piste d'audit (`src/security/audit-chain.ts`) enregistre alors une
+   identité fausse » : **faux**. Aucun outil n'écrit dans la chaîne d'audit. Remplacer par
+   « `thread_messages.agent_id` enregistre une identité déclarée, non authentifiée ».
+2. **§5, dernière ligne** — « Les événements portent l'identité déclarée par le client » : **faux**
+   pour la même raison ; `audit()` prend l'acteur du token vérifié.
+3. **§6.5, puce 1** — « un seul `user_id` par org, ce qui n'est le cas d'aucun auto-hébergeur
+   connu » : **falsifié** par `README.md:25`, `LAST_ADMIN`, `user_orgs` et l'allowlist par org IdP.
 
 ## 8. Journal
 
@@ -181,3 +543,4 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 |---|---|
 | 2026-08-14 | Fiche créée par la veille plateforme. |
 | 2026-08-14 | Vérification des faits : fiche saine, statut GA confirmé, RFC 9728 est un MUST, une ligne renumérotée. |
+| 2026-08-15 | Challenge, sur **SDK v2**. **Verdict : `adopter partiellement` — la documentation seule.** Mesuré : un seul token enregistre `alpha` **et** `beta`, ouvre un thread au nom de beta, puis y poste sous les deux identités ; la trace persiste l'identité usurpée. Et un token portant `aud` d'un autre service est **accepté en 200**. **Deux corrections lourdes imposées par la passe adversariale :** (1) mon affirmation « la chaîne d'audit enregistre une identité fausse » est **fausse** — `grep -rn "audit" src/tools/` → **0**, aucun outil n'y écrit jamais, et `audit()` prend son acteur du **token vérifié** ; j'avais hérité de §4/§5 sans vérifier, et l'item que j'allais adopter n'avait donc **pas d'objet** ; (2) l'étiquette `from_agent` de mes sorties était le **repli de mon propre script** — elle n'existe pas dans le dépôt, la colonne est `thread_messages.agent_id`. **§6.5 puce 1 est falsifiée** : le multi-utilisateur intra-org est implémenté, gardé (`LAST_ADMIN`) et **vendu au `README.md:25`**, donc l'usurpation compte plus que la fiche ne le disait. K3 et K5 restent **non mesurés** — c'est ce qui interdit d'adopter le code, et K5 était mesurable en une heure. K1 et K4 étaient **acquis d'avance**. Corrections portées à §4 (risque 2), §5 (dernière ligne) et §6.5 (puce 1). |
