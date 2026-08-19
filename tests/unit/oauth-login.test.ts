@@ -518,6 +518,28 @@ describe("handleAuthLogin — picker (multi-provider)", () => {
     });
   });
 
+  // The handler reads `req.socket?.remoteAddress ?? null`; without a request
+  // that actually lacks a socket, that fallback is never taken and
+  // oauth-login.ts drops below its coverage floor.
+  //
+  // Built inline rather than via mockReq(undefined, ...): passing undefined
+  // triggers the parameter default and hands back 127.0.0.1, which is exactly
+  // the opposite of what this pins.
+  it("records a null client_ip when the request carries no socket", async () => {
+    const sharedCtx = makeCtx({
+      providers: multiProviderRegistry("github", "google"),
+    });
+    const socketless = {
+      method: "GET",
+      url: "/auth/login?provider=evil",
+    } as unknown as IncomingMessage;
+    await handleAuthLogin(socketless, mockResponse() as unknown as ServerResponse, sharedCtx);
+
+    const rows = findAuditRows("auth.provider.unknown");
+    expect(rows).toHaveLength(1);
+    expect(JSON.parse(rows[0].metadata_json as string).client_ip).toBeNull();
+  });
+
   // The picker path is not a probe: no name was submitted, so nothing to audit.
   it("no ?provider= with several registered emits nothing", async () => {
     const sharedCtx = makeCtx({
