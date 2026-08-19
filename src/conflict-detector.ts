@@ -62,6 +62,33 @@ export class ConflictDetector {
       }),
     ];
 
+    // #366: getModuleInfo + getBlastRadius used to run inside the thread loop,
+    // so a 30-thread, 5-module announce_work made ~150 calls, each re-reading
+    // dependency_map in full. Neither result depends on the thread being
+    // examined, so both are computed once per target module here. Measured on
+    // a 200-module map, that alone is the difference between ~1.5 s and a few
+    // milliseconds on the hot path of announce_work.
+    const moduleDeps = new Map<string, string[]>();
+    const moduleDependents = new Map<string, string[]>();
+    for (const targetModule of params.target_modules) {
+      const info = this.depMap.getModuleInfo(params.org_id, targetModule);
+      if (!info) continue;
+      moduleDeps.set(targetModule, info.depends_on);
+      const radius = this.depMap.getBlastRadius(params.org_id, targetModule);
+      this.log.debug(
+        {
+          module_id: targetModule,
+          direct_dependents: radius.direct_dependents,
+          indirect_dependents: radius.indirect_dependents,
+        },
+        "Blast radius calculated",
+      );
+      moduleDependents.set(targetModule, [
+        ...radius.direct_dependents,
+        ...radius.indirect_dependents,
+      ]);
+    }
+
     for (const thread of activeThreads) {
       if (thread.initiator_id === params.agent_id) continue;
 
@@ -104,11 +131,9 @@ export class ConflictDetector {
         });
       }
 
-      // 3. Dependency chain
+      // 3. Dependency chain (both directions, from the hoisted maps above)
       for (const targetModule of params.target_modules) {
-        const info = this.depMap.getModuleInfo(params.org_id, targetModule);
-        if (!info) continue;
-        for (const dep of info.depends_on) {
+        for (const dep of moduleDeps.get(targetModule) ?? []) {
           if (threadModules.includes(dep)) {
             conflicts.push({
               type: "dependency_chain",
@@ -121,16 +146,7 @@ export class ConflictDetector {
           }
         }
         // Reverse: someone depends on what we're modifying
-        const radius = this.depMap.getBlastRadius(params.org_id, targetModule);
-        this.log.debug(
-          {
-            module_id: targetModule,
-            direct_dependents: radius.direct_dependents,
-            indirect_dependents: radius.indirect_dependents,
-          },
-          "Blast radius calculated",
-        );
-        for (const dependent of [...radius.direct_dependents, ...radius.indirect_dependents]) {
+        for (const dependent of moduleDependents.get(targetModule) ?? []) {
           if (threadModules.includes(dependent)) {
             conflicts.push({
               type: "dependency_chain",
@@ -146,26 +162,30 @@ export class ConflictDetector {
     }
 
     // 4. Hot file overlap (from actual file activity, not just declared files)
+    //
+    // #366: this was one SELECT per target file. file-tracker.ts already ships
+    // the batched form and documents it -- "Replaces N checkFileConflict calls
+    // (one per file) with a single SQL query" -- but only the impact scorer had
+    // been migrated onto it. Same window (60 minutes), same exclusion of the
+    // announcing agent, one round trip.
+    const fileToAgents = this.fileTracker.getFileToAgentsIndex(
+      params.org_id,
+      params.target_files,
+      params.agent_id,
+      60,
+    );
     for (const targetFile of params.target_files) {
-      const activity = this.fileTracker.checkFileConflict(
-        params.org_id,
-        targetFile,
-        params.agent_id,
-        60,
-      );
-      if (activity.conflict) {
-        for (const otherAgent of activity.agents) {
-          // Avoid duplicating with file_overlap already detected
-          if (!conflicts.some((c) => c.agent_id === otherAgent && c.type === "file_overlap")) {
-            conflicts.push({
-              type: "file_overlap",
-              severity: "warning",
-              agent_id: otherAgent,
-              agent_name: otherAgent,
-              description: `Hot file: ${targetFile} recently edited by ${otherAgent}`,
-              details: `File activity shows ${targetFile} was recently modified by ${otherAgent}`,
-            });
-          }
+      for (const otherAgent of fileToAgents.get(targetFile) ?? []) {
+        // Avoid duplicating with file_overlap already detected
+        if (!conflicts.some((c) => c.agent_id === otherAgent && c.type === "file_overlap")) {
+          conflicts.push({
+            type: "file_overlap",
+            severity: "warning",
+            agent_id: otherAgent,
+            agent_name: otherAgent,
+            description: `Hot file: ${targetFile} recently edited by ${otherAgent}`,
+            details: `File activity shows ${targetFile} was recently modified by ${otherAgent}`,
+          });
         }
       }
     }

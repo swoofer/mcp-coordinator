@@ -172,28 +172,48 @@ export class DependencyMapper {
     };
   }
 
+  /**
+   * #366: the BFS used to re-walk Object.entries(map) on every dequeue, so a
+   * 200-module map cost O(V^2) per call. It now builds the reverse edge index
+   * once and walks it, which is O(V + E).
+   *
+   * The scan itself is unchanged: getMap still reads the table on each call.
+   * Caching it would be the obvious next step and is deliberately not done
+   * here -- a per-process cache goes stale the moment a second instance writes
+   * the map, and wrong conflict detection is worse than a slow one. Hoisting
+   * the call out of the nested loop in conflict-detector removes the
+   * multiplier that made the scan hurt.
+   */
   getBlastRadius(orgId: string, moduleId: string): BlastRadius {
     const map = this.getMap(orgId);
-    const direct: string[] = [];
-    const indirect: string[] = [];
-    const visited = new Set<string>();
 
+    // moduleId -> everything that declares a dependency on it.
+    const dependents = new Map<string, string[]>();
     for (const [id, info] of Object.entries(map)) {
-      if (info.depends_on.includes(moduleId)) direct.push(id);
+      for (const dep of info.depends_on) {
+        let list = dependents.get(dep);
+        if (!list) {
+          list = [];
+          dependents.set(dep, list);
+        }
+        list.push(id);
+      }
     }
 
-    const queue = [...direct];
-    visited.add(moduleId);
-    for (const d of direct) visited.add(d);
+    const direct: string[] = dependents.get(moduleId) ?? [];
+    const indirect: string[] = [];
+    const visited = new Set<string>([moduleId, ...direct]);
 
-    while (queue.length > 0) {
-      const current = queue.shift()!;
-      for (const [id, info] of Object.entries(map)) {
-        if (!visited.has(id) && info.depends_on.includes(current)) {
-          indirect.push(id);
-          visited.add(id);
-          queue.push(id);
-        }
+    const queue = [...direct];
+    // Index rather than shift(): shift() is O(n) on a large array, which put
+    // another quadratic term on the same hot path.
+    for (let head = 0; head < queue.length; head++) {
+      const current = queue[head];
+      for (const id of dependents.get(current) ?? []) {
+        if (visited.has(id)) continue;
+        indirect.push(id);
+        visited.add(id);
+        queue.push(id);
       }
     }
 
