@@ -107,6 +107,8 @@ export function buildChannelNotification(
     const agentId = strField(payload, "agent_id");
     const type = strField(payload, "type");
     const content = strField(payload, "content");
+    // strField already caps and sanitises; this keeps the tighter 160-char
+    // budget a message body had before #355, so the notification stays short.
     const trimmed = content.length > 160 ? `${content.slice(0, 157)}...` : content;
     return {
       content: `Message on thread ${threadId} from ${agentId || "unknown"} [${type || "msg"}]: ${trimmed}`,
@@ -142,10 +144,53 @@ export function buildChannelNotification(
   return null;
 }
 
-/** Read a string field from a parsed JSON payload, defaulting to "". */
+/**
+ * Longest a single relayed field may be once it reaches another agent's
+ * context. The five fields this bridge copies -- subject, plan, content,
+ * summary, reason -- are declared `z.string()` with no `.max()` at either
+ * transport, so an agent can put an arbitrary amount of text in one.
+ */
+const MAX_RELAYED_FIELD_CHARS = 200;
+
+/**
+ * Read a string field from a parsed JSON payload and make it safe to splice
+ * into a <channel> body (#355).
+ *
+ * Everything this function returns was written by *another agent* and lands
+ * verbatim in the reader's context. It is read as conversation content rather
+ * than operator instruction -- only the static `instructions` string reaches a
+ * system prompt -- so this is peer-level prompt injection, not privilege
+ * escalation. It is still a real surface, and it was entirely unguarded:
+ * newlines passed through, angle brackets passed through, and only `content`
+ * had any length cap at all.
+ *
+ * Three things happen here, in order:
+ *   - control characters and newlines collapse to spaces, so a payload cannot
+ *     forge what looks like a new line of the transcript;
+ *   - `<` and `>` are replaced, so a payload cannot close the surrounding
+ *     <channel> tag or open one of its own;
+ *   - the result is capped, with an explicit marker rather than a silent cut.
+ */
 function strField(obj: Record<string, unknown>, key: string): string {
   const v = obj[key];
-  return typeof v === "string" ? v : "";
+  if (typeof v !== "string") return "";
+  let s = "";
+  for (const ch of v) {
+    const code = ch.codePointAt(0) ?? 0;
+    if (code < 0x20 || code === 0x7f) {
+      s += " ";
+    } else if (ch === "<") {
+      s += "(";
+    } else if (ch === ">") {
+      s += ")";
+    } else {
+      s += ch;
+    }
+  }
+  s = s.replace(/ {2,}/g, " ").trim();
+  return s.length > MAX_RELAYED_FIELD_CHARS
+    ? `${s.slice(0, MAX_RELAYED_FIELD_CHARS)}... (truncated)`
+    : s;
 }
 
 const INSTRUCTIONS = [
