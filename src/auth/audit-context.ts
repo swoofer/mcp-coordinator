@@ -44,3 +44,18 @@ export function setActor(actor: ActorContext): void {
   if (!scope) throw new Error("setActor: no active audit context");
   scope.actor = actor;
 }
+
+/**
+ * Same as setActor, but a no-op when there is no active context (#319).
+ *
+ * The strict setActor is right for a handler that knows it opened a scope.
+ * This one exists for authenticateRequest, which is also reached from paths
+ * that never enter one -- the MQTT broker's authenticate hook, and every test
+ * that calls it directly. Throwing there would turn a missing audit detail
+ * into a failed authentication, which is the wrong trade.
+ */
+export function setActorIfInScope(actor: ActorContext): void {
+  const scope = als.getStore();
+  if (!scope) return;
+  scope.actor = actor;
+}

@@ -1,3 +1,4 @@
+import { setActorIfInScope } from "./auth/audit-context.js";
 import { SignJWT, jwtVerify, decodeProtectedHeader, errors } from "jose";
 import { randomUUID } from "crypto";
 import type { IncomingMessage } from "http";
@@ -275,6 +276,11 @@ export type AuthResult =
  */
 function applyRouteGuards(result: AuthResult, req: IncomingMessage): AuthResult {
   if (!result.ok) return result;
+  // #319: the one point every authenticated path funnels through, so the
+  // actor is recorded once rather than at each call site. Tolerant by
+  // design: authenticateRequest is also reached with no audit scope open
+  // (the MQTT authenticate hook, direct calls in tests).
+  setActorIfInScope({ userId: result.claims.user_id, orgId: result.claims.org });
   if (isRevoked(result.claims.org, result.claims.sub)) {
     return { ok: false, status: 403, error: "Agent has been revoked" };
   }
