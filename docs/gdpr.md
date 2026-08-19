@@ -194,6 +194,26 @@ or `DELETE FROM audit_log`. Only the sweeper (which runs the retention
 window deletion) is exempted via path allowlist. This makes accidental
 audit-log mutation impossible to merge.
 
+> **⚠️ The SQL in this runbook breaks the audit hash chain. Do not run it as
+> written.** `actor_user_id` and `metadata_json` are both inputs to
+> `canonicalRowFields` (`src/security/audit-chain.ts`), so updating them in
+> place invalidates the stored `row_hash` of every row touched.
+>
+> Replayed verbatim against a seeded database, `scripts/verify-audit-chain.ts`
+> goes from `exit 0` to `exit 1` with `wrong_row_hash` on every affected row --
+> which `docs/ops/audit-integrity.md` defines as *"the row content has been
+> mutated in place after the original insert"* and instructs the operator to
+> treat as a Tier 1 security signal.
+>
+> Until [#349](https://github.com/swoofer/mcp-coordinator/issues/349) lands a
+> redaction path that preserves the chain, an erasure request has to be handled
+> with that consequence understood and recorded, not by following these two
+> statements as if they were safe.
+>
+> This was latent while `actor_user_id` was NULL on every row -- the `WHERE`
+> clause matched nothing. [#319](https://github.com/swoofer/mcp-coordinator/issues/319)
+> populates that column, so the runbook now bites.
+
 GDPR erasure REQUIRES mutation. The reconciliation is:
 
 1. **Anonymize, do not delete**. The `UPDATE audit_log SET
