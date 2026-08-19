@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
 import Database from "better-sqlite3";
-import { randomBytes } from "node:crypto";
 import {
   probePublicUrl,
   probeDiscoveryDoc,
@@ -328,8 +327,17 @@ describe("probeJwtSecretEntropy", () => {
     expect(r.detail).toMatch(/dictionary word/);
   });
 
-  it("returns ok on 32 crypto-random bytes (base64)", async () => {
-    const secret = randomBytes(32).toString("base64");
+  // #309/#386: this drew a fresh random secret on every run and failed roughly
+  // once in 900 -- not on the Shannon estimate, which rejected 0 of 200k draws,
+  // but on the dictionary substring check hitting "dev". Frozen inputs now, so
+  // a failure here means the rule changed rather than the dice.
+  const REAL_BASE64_SECRETS = [
+    "Zx8kQvN2mJ4pL7wR1sT6yU9aB3cD5eF0gH2iK4lM6nQ=",
+    "zml4mAwDeVKVrg0kXyL0hNMJMlbp7yzot5QMp0yCVFE=", // contains "dev"
+    "QHz7qoi/t/8cc6vdQTeSTGbm1TljHpcOpuOGrqbSVK4=", // contains "test"
+  ];
+
+  it.each(REAL_BASE64_SECRETS)("returns ok on a real 32-byte base64 secret: %s", async (secret) => {
     const r = await probeJwtSecretEntropy(secret);
     expect(r.severity).toBe("ok");
   });
