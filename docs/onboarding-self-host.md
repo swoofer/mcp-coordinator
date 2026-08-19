@@ -461,6 +461,8 @@ service token instead of using OAuth:
 
 ```bash
 mcp-coordinator service-token issue \
+  --server https://coordinator.example.com \
+  --admin-token "$COORDINATOR_ADMIN_TOKEN" \
   --user <admin_user_id> \
   --org <org_id> \
   --scope read \
@@ -468,10 +470,30 @@ mcp-coordinator service-token issue \
   --reason "GitHub Actions CI -- deploy.yml"
 ```
 
+Pass `--server` explicitly. The CLI defaults it to `http://localhost:3000`
+while the coordinator listens on 3100, so an invocation without it quietly
+targets the wrong port. `--admin-token` also reads `COORDINATOR_ADMIN_TOKEN`
+from the environment if you prefer not to put it on the command line.
+
 The 90-day TTL ceiling is hardcoded (V4 §5.5). Reason field requires >=10
 characters and is preserved in the audit trail. Service tokens are
 DB-verified on every request (admin force-revoke takes effect immediately,
 overriding the §9.5 trust-signature path).
+
+The token is presented as `Authorization: Bearer` -- see `docs/clients.md`
+for the client side.
+
+### `--scope` is not enforced yet
+
+The scope is validated when the token is minted and written into the JWT, and
+then **never read back on a request**. A `--scope read` token writes, deletes
+and publishes exactly like an `--scope admin` one; nothing in the request path
+consults the claim.
+
+Until [#313](https://github.com/swoofer/mcp-coordinator/issues/313) closes,
+treat every service token as full access. Bound it by what it can reach --
+a separate org, a short TTL, prompt revocation -- rather than by the flag,
+and do not hand one to a caller you would not trust with `admin`.
 
 ## Backup
 
