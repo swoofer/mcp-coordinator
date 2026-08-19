@@ -55,6 +55,16 @@ function postJson(
   });
 }
 
+/** carol touches a file through the OTHER observed writer, /api/log-file. */
+async function carolTouchesViaLogFile(declaredForm: string): Promise<void> {
+  const r = await postJson(port, "/api/log-file", {
+    session_id: "s-2",
+    agent_id: "carol",
+    tool_name: "Edit",
+    file: declaredForm,
+  });
+  expect(r.status).toBe(200);
+}
 /** alice touches src/Types.ts, recorded through the observed path. */
 async function aliceTouches(declaredForm: string): Promise<void> {
   const r = await postJson(port, "/api/file-activity", {
@@ -159,5 +169,44 @@ describe("declared ↔ observed path join (#275)", () => {
     });
     expect(r.status).toBe(400);
     expect(JSON.stringify(r.body)).toMatch(/outside repoRoot|invalid path/i);
+  });
+
+  // -- #375: the second observed writer -------------------------------------
+  //
+  // file_activity has exactly two writers. /api/file-activity normalised;
+  // /api/log-file stored the caller's string verbatim. Since every reader
+  // matches by exact SQL equality, that one raw writer was enough to make a
+  // file invisible to conflict detection.
+
+  it("/api/log-file stores the observed side canonically, like /api/file-activity", async () => {
+    await carolTouchesViaLogFile("C:/repo/src/Widget.ts");
+    const row = getDb()
+      .prepare("SELECT file_path FROM file_activity WHERE agent_id = 'carol' LIMIT 1")
+      .get() as { file_path: string };
+    expect(row.file_path).toBe("src/widget.ts");
+  });
+
+  it("a file logged via /api/log-file is found by a differently-shaped declaration", async () => {
+    // dave declares the same file in the relative, lower-case form. Before the
+    // fix the stored row was the raw absolute string and this returned no
+    // conflict -- the strongest signal in the scoring, lost in silence.
+    const r = await postJson(port, "/api/check-conflict", {
+      file: `src${BACKSLASH}Widget.ts`,
+      agent_id: "dave",
+    });
+    expect(r.status).toBe(200);
+    expect(r.body.conflict).toBe(true);
+    expect(r.body.warnings.join(" ")).toContain("carol");
+  });
+
+  it("/api/log-file rejects a path outside the repo root with 400, like the sibling route", async () => {
+    const r = await postJson(port, "/api/log-file", {
+      session_id: "s-2",
+      agent_id: "carol",
+      tool_name: "Edit",
+      file: "D:/elsewhere/secret.ts",
+    });
+    expect(r.status).toBe(400);
+    expect(String(r.body.error)).toMatch(/outside repoRoot|invalid file/i);
   });
 });
