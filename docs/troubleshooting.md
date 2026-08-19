@@ -35,6 +35,18 @@ A bind can also be refused rather than busy: a command launched from an agent
 running under a sandboxed Bash may be denied the listen outright. It lands in
 the same place, with the daemon's own error at the end of `server.log`.
 
+**Since issue #280, only 3100 is fatal.** A busy MQTT port no longer stops the
+coordinator: it logs
+`MQTT broker failed to start - continuing without MQTT` at `warn` and carries on.
+The three MQTT tools (`wait_for_message`, `get_queued_messages`, `mqtt_publish`)
+then report themselves unavailable; the other 23 tools, the REST API, the
+dashboard SSE feed and every stdio-mode session are unaffected. If you would
+rather the boot fail loudly, set `COORDINATOR_MQTT_REQUIRED=true`.
+
+So a coordinator that starts but whose MQTT tools all refuse is usually this,
+not a broken install -- grep `server.log` for that warning before looking
+further.
+
 **Likely cause.** Both listeners fail closed on bind: the HTTP server
 (`httpServer.listen(port, bindHost)`) and the embedded MQTT TCP broker
 (`tcpServer.listen(tcpPort, "127.0.0.1")`) each reject on the `error` event,

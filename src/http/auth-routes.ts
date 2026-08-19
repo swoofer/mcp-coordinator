@@ -28,6 +28,17 @@ import { appError } from "./response-contract.js";
  */
 const ADMIN_MUT_RATE_LIMIT = { per: 30, window_seconds: 60 };
 
+// #318: POST /api/auth/oauth/token had no rate limit at all, on any of its
+// three grants. It is unauthenticated by design -- it is the endpoint that
+// mints the bearer -- so an anonymous caller could drive authorization_code,
+// refresh_token and the device_code poll as fast as the box allowed. The
+// device poll's own slow_down is keyed on the device_code, which does nothing
+// against a caller rotating them.
+//
+// 60/min per IP leaves the legitimate device poll (RFC 8628 suggests ~5s, so
+// about 12/min) a wide margin including retries, while bounding a probe.
+const OAUTH_TOKEN_RATE_LIMIT = { per: 60, window_seconds: 60 };
+
 /** Regex matchers for parameterized admin routes — see service-tokens
  *  /revoke pattern at handle-service-tokens.ts §handleRevokeServiceToken. */
 const ADMIN_ORG_ID_RE = /^\/api\/admin\/orgs\/([^/]+)$/;
@@ -96,6 +107,7 @@ export async function dispatchAuthRoutes(
     return true;
   }
   if (url === "/api/auth/oauth/token" && method === "POST") {
+    if (!(await checkOAuthTokenRateLimit(req, res, ctx))) return true;
     await handleOAuthToken(req, res, ctx);
     return true;
   }
@@ -242,6 +254,35 @@ function methodForPath(url: string): string {
  * `device-auth-min:${ip}` / `auth-login:${ip}` / `userinfo:${user_id}` /
  * `logout-all:${user_id}` to avoid cross-contamination between policies.
  */
+/**
+ * Per-IP throttle for the token endpoint (#318).
+ *
+ * Key namespace `oauth-token:${ip}` is deliberately distinct from
+ * `device-auth-min:` and `auth-login:` so a client exhausting one policy does
+ * not consume another's budget.
+ *
+ * The 429 body uses the appError shape rather than an OAuth error object:
+ * device-flow.ts already answers its own 429s that way, and RFC 6749 5.2 has
+ * no code for this -- `slow_down` belongs to the device-flow extension and
+ * would be wrong on the other two grants.
+ */
+async function checkOAuthTokenRateLimit(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: AuthHandlerContext,
+): Promise<boolean> {
+  const ip = req.socket?.remoteAddress ?? "unknown";
+  const result = await ctx.rateLimiter.check(`oauth-token:${ip}`, OAUTH_TOKEN_RATE_LIMIT);
+  if (result.allowed) return true;
+  res.writeHead(429, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+    "Retry-After": String(result.retry_after_seconds),
+  });
+  res.end(JSON.stringify(appError("RATE_LIMITED", "Too many token requests")));
+  return false;
+}
+
 async function checkAdminMutationRateLimit(
   req: IncomingMessage,
   res: ServerResponse,

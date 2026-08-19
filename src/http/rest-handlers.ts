@@ -184,18 +184,32 @@ export function handleLogFile(
     return;
   }
   const { session_id, agent_id, agent_name, tool_name, file } = parsed.data;
+  // #375: this was the one writer into file_activity that stored the caller's
+  // string as it arrived. Every reader matches by exact SQL equality --
+  // file-tracker.ts has no normalisation of its own -- so a single raw writer
+  // is enough to poison the column for checkFileConflict, the impact scorer
+  // and hot_files: a row written as C:\repo\src\Types.ts never joins a query
+  // carrying src/types.ts, though they name the same file.
+  const repoRoot = process.env.COORDINATOR_REPO_ROOT || null;
+  let filePath: string;
+  try {
+    filePath = normalizePath(repoRoot, file);
+  } catch (err) {
+    json(res, { error: `invalid file: ${(err as Error).message}` }, 400);
+    return;
+  }
   fileTracker.log({
     org_id: ctx.claims.org,
     session_id,
     agent_id,
     agent_name,
     tool_name,
-    file_path: file,
+    file_path: filePath,
   });
-  activityTracker.reportFileActivity(ctx.claims.org, agent_id, file);
+  activityTracker.reportFileActivity(ctx.claims.org, agent_id, filePath);
   sseEmitter.emit(
     "file_edited",
-    { agent_id, agent_name: agent_name || agent_id, file, tool_name },
+    { agent_id, agent_name: agent_name || agent_id, file: filePath, tool_name },
     { org_id: ctx.claims.org },
   );
   json(res, { ok: true });

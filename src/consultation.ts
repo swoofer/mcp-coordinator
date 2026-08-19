@@ -16,6 +16,39 @@ export interface ResolutionEvent {
   had_messages: boolean;
 }
 
+/**
+ * SQLite CURRENT_TIMESTAMP shape carrying no timezone designator:
+ * "YYYY-MM-DD HH:MM:SS", tolerating a "T" separator and fractional seconds.
+ * This is exactly the shape get_thread_updates hands back to the caller in
+ * ThreadMessage.created_at.
+ */
+const TIMEZONE_LESS_TIMESTAMP = new RegExp(
+  "^\\d{4}-\\d{2}-\\d{2}[ T]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?$",
+);
+
+/**
+ * Normalise a caller-supplied `since` cursor to the SQLite storage shape,
+ * "YYYY-MM-DD HH:MM:SS" in UTC.
+ *
+ * #346: the previous version handed everything to `new Date(...)`. A string with
+ * no timezone designator -- precisely what we hand back as a cursor -- is parsed
+ * by V8 as LOCAL time and re-emitted as UTC, so the cursor moved by the host's
+ * offset on every round trip. West of UTC that pushes it forward and
+ * `created_at >= ?` silently stops matching recent messages; east of it, hours of
+ * history are replayed. Only a UTC host was unaffected, which is why it went
+ * unnoticed there: the shift is zero and `>=` merely repeats the boundary message.
+ *
+ * A timezone-less cursor is therefore taken as already-UTC and passed through
+ * untouched; anything carrying an offset or a trailing "Z" is still converted.
+ */
+export function normalizeSinceCursor(since: string): string {
+  if (TIMEZONE_LESS_TIMESTAMP.test(since)) {
+    return since.replace("T", " ").slice(0, 19);
+  }
+  const date = new Date(since);
+  return isNaN(date.getTime()) ? since : date.toISOString().replace("T", " ").slice(0, 19);
+}
+
 export class Consultation {
   private onResolveCallback: ((event: ResolutionEvent) => void) | null = null;
   private log: Logger;
@@ -594,16 +627,7 @@ export class Consultation {
 
     if (since) {
       sql += " AND tm.created_at >= ?";
-      // Normalize ANY parseable ISO/date string (including timezone offsets
-      // like "+05:00", "-0800", fractional seconds) to SQLite CURRENT_TIMESTAMP
-      // format "YYYY-MM-DD HH:MM:SS" in UTC. The old regex-based normalization
-      // only handled the `.\d+$` suffix, which left "+05:00" in place and
-      // broke the comparison.
-      const date = new Date(since);
-      const normalized = isNaN(date.getTime())
-        ? since
-        : date.toISOString().replace("T", " ").slice(0, 19);
-      params.push(normalized);
+      params.push(normalizeSinceCursor(since));
     }
     sql += " ORDER BY tm.created_at";
     return db.prepare(sql).all(...params) as ThreadMessage[];
@@ -632,8 +656,16 @@ export class Consultation {
     let sql = "SELECT * FROM action_summaries WHERE org_id = ? AND agent_id = ?";
     const params: unknown[] = [orgId, agentId];
     if (since) {
+      // #346: same normalisation as getThreadUpdates. This branch has no
+      // production caller today (context-provider.ts never passes `since`), but it
+      // fed the raw string straight to SQL, so the first caller to arrive would
+      // have inherited the identical timezone bug.
+      //
+      // The operator differs from getThreadUpdates -- `>` here, `>=` there. Left
+      // as it is: changing it is a semantic change to a separate function, and
+      // #361 already owns this query.
       sql += " AND created_at > ?";
-      params.push(since);
+      params.push(normalizeSinceCursor(since));
     }
     sql += " ORDER BY created_at DESC";
     return db.prepare(sql).all(...params) as ActionSummary[];

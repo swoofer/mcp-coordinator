@@ -296,6 +296,19 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/OAuthError' }
+        '429':
+          description: |
+            Too many token requests from this IP (60 per 60s, issue #318).
+            Applies to all three grants. The body uses the AppError shape,
+            not OAuthError: RFC 6749 §5.2 defines no code for this, and
+            `slow_down` belongs to the device-flow extension.
+          headers:
+            Retry-After:
+              schema: { type: integer }
+              description: Seconds to wait before retrying.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AppError' }
         '503':
           description: temporarily_unavailable — IdP unreachable.
           content:

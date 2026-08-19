@@ -51,6 +51,7 @@ import { getVersion } from "./version.js";
 const VERSION = getVersion();
 import { startEmbeddedMqttBroker, type MqttAuthResult } from "./mqtt-broker.js";
 import { withRequestId, resolveRequestId } from "./auth/request-id.js";
+import { withAuditContext } from "./auth/audit-context.js";
 import { bootPhase2, type Phase2Bootstrap } from "./boot.js";
 import { Sweeper } from "./sweeper/index.js";
 import { realClock } from "./auth/clock.js";
@@ -527,373 +528,400 @@ function createHttpHandler(
   return async (req, res) => {
     const requestId = resolveRequestId(req.headers["x-request-id"]);
     res.setHeader("X-Request-Id", requestId);
-    return withRequestId(requestId, async () => {
-      const url = req.url || "";
+    // #319: withRequestId was the only scope opened per request, so every
+    // audit row the daemon wrote carried actor_ip, actor_user_agent,
+    // actor_user_id and actor_org_id as NULL -- withAuditContext had no
+    // production call site at all. A security event that cannot say who
+    // caused it answers half the question it exists for.
+    //
+    // The network half is known here and seeded immediately. The identity
+    // half is filled in by applyRouteGuards once claims resolve; requests
+    // that never authenticate keep a null actor, which is accurate.
+    return withRequestId(requestId, async () =>
+      withAuditContext(
+        { userId: null, orgId: null },
+        {
+          ip: req.socket?.remoteAddress ?? null,
+          userAgent:
+            typeof req.headers["user-agent"] === "string"
+              ? (req.headers["user-agent"] as string)
+              : null,
+        },
+        async () => {
+          const url = req.url || "";
 
-      // CORS preflight
-      // protocole-mcp-02 / securite-surface-06: never reflect "*" — validate the
-      // Origin header (MCP spec MUST + DNS-rebinding hardening) and echo back
-      // only an allowed Origin. Non-browser callers (no Origin header at all)
-      // are unaffected. Disallowed cross-site Origins get a 403, not a
-      // same-response allow-all.
-      if (req.method === "OPTIONS") {
-        const origin = req.headers.origin;
-        if (!isAllowedOrigin(origin, process.env.COORDINATOR_PUBLIC_URL)) {
-          res.writeHead(403, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Origin not allowed" }));
-          return;
-        }
-        res.writeHead(204, {
-          "Access-Control-Allow-Origin": origin ?? "*",
-          "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type, mcp-session-id, Authorization",
-          // protocole-mcp-11: without Access-Control-Expose-Headers, a browser
-          // MCP client cannot read the `mcp-session-id` response header (only
-          // "CORS-safelisted" headers are exposed by default), so it can never
-          // learn the session id `initialize` assigns it — session
-          // establishment silently fails for browser clients. Harmless on
-          // preflights for non-/mcp routes too.
-          "Access-Control-Expose-Headers": "mcp-session-id",
-          ...(origin ? { Vary: "Origin" } : {}),
-        });
-        res.end();
-        return;
-      }
-
-      // T29: Phase 2 auth-route dispatch. Only active when Phase 2 was composed
-      // (COORDINATOR_OAUTH_ENABLED=true). Runs BEFORE the Phase 1 route checks so
-      // OAuth endpoints (/auth/login, /api/auth/oauth/*, /auth/device/*, etc.) are
-      // owned by the dispatcher. Returns true if the URL was an auth route and the
-      // handler ran; we then short-circuit. False means "not my URL — fall through".
-      if (ctx.phase2Bootstrap) {
-        try {
-          const handled = await dispatchAuthRoutes(req, res, ctx.phase2Bootstrap.context);
-          if (handled) return;
-        } catch (err) {
-          httpLog.error({ err, url: redactTokenParam(req.url || "") }, "Phase 2 auth route error");
-          // qualite-code-08: never leak err.message (file paths, SQLite errors, ...)
-          // to the client — log the detail, return a generic body + request_id.
-          if (!res.headersSent) {
-            json(res, appError("INTERNAL_ERROR", "Internal server error"), 500);
-          }
-          return;
-        }
-      }
-
-      try {
-        if (url === "/dashboard" || url.startsWith("/dashboard/")) {
-          const dashboardDir = await getDashboardDir().catch((err) => {
-            httpLog.warn({ err }, "Dashboard not found");
-            return null;
-          });
-          if (!dashboardDir) {
-            json(res, { error: "dashboard not available" }, 404);
+          // CORS preflight
+          // protocole-mcp-02 / securite-surface-06: never reflect "*" — validate the
+          // Origin header (MCP spec MUST + DNS-rebinding hardening) and echo back
+          // only an allowed Origin. Non-browser callers (no Origin header at all)
+          // are unaffected. Disallowed cross-site Origins get a 403, not a
+          // same-response allow-all.
+          if (req.method === "OPTIONS") {
+            const origin = req.headers.origin;
+            if (!isAllowedOrigin(origin, process.env.COORDINATOR_PUBLIC_URL)) {
+              res.writeHead(403, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ error: "Origin not allowed" }));
+              return;
+            }
+            res.writeHead(204, {
+              "Access-Control-Allow-Origin": origin ?? "*",
+              "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+              "Access-Control-Allow-Headers": "Content-Type, mcp-session-id, Authorization",
+              // protocole-mcp-11: without Access-Control-Expose-Headers, a browser
+              // MCP client cannot read the `mcp-session-id` response header (only
+              // "CORS-safelisted" headers are exposed by default), so it can never
+              // learn the session id `initialize` assigns it — session
+              // establishment silently fails for browser clients. Harmless on
+              // preflights for non-/mcp routes too.
+              "Access-Control-Expose-Headers": "mcp-session-id",
+              ...(origin ? { Vary: "Origin" } : {}),
+            });
+            res.end();
             return;
           }
-          // B5 fix: defend against path traversal. safeJoinUnderRoot decodes the
-          // URL, strips leading slashes, resolves the path, and verifies the
-          // result stays under dashboardDir. Returns null on traversal attempts.
-          let filePath: string | null;
-          if (url === "/dashboard" || url === "/dashboard/") {
-            filePath = path.join(dashboardDir, "index.html");
-          } else {
-            // Strip query string before joining (browsers append ?v=...)
-            const urlPath = (url.split("?")[0] || "").replace("/dashboard/", "");
-            filePath = safeJoinUnderRoot(dashboardDir, urlPath);
-          }
-          if (filePath && existsSync(filePath)) {
-            const ext = path.extname(filePath);
-            const contentTypes: Record<string, string> = {
-              ".html": "text/html",
-              ".js": "application/javascript",
-              ".css": "text/css",
-              ".json": "application/json",
-            };
-            const content = readFileSync(filePath, "utf-8");
-            // T08 (v0.10.6): admin pages get hardened headers and DROP the
-            // wildcard CORS that the legacy dashboard inherits. Scope regex
-            // matches admin.{html,js,css} and admin-<word>.{html,js,css}
-            // (e.g. admin-orgs.html, admin-users.html) ONLY — rejects
-            // admin.html.bak, notadmin.html, admin/orgs.html, admin-x-y.html.
-            // index.html and any other legacy dashboard asset keep existing
-            // headers untouched (Round 2 finding #1, V3 PATCH 6 + 7).
-            const urlNoQuery = url.split("?")[0] || "";
-            const isAdminAsset = /^\/dashboard\/admin(?:-[a-z]+)?\.(?:html|js|css)$/.test(
-              urlNoQuery,
-            );
-            if (isAdminAsset) {
-              res.writeHead(200, {
-                "Content-Type": contentTypes[ext] || "text/plain",
-                "Content-Security-Policy":
-                  "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
-                "X-Frame-Options": "DENY",
-                "X-Content-Type-Options": "nosniff",
-                "Referrer-Policy": "same-origin",
-                "Cache-Control": "no-store",
-              });
-            } else {
-              // securite-surface-07 / architecture-14 follow-up: legacy
-              // dashboard assets (index.html, dashboard.js, and any other
-              // non-admin-scoped file under this path) now get the same
-              // strict script-src as the admin baseline. The former inline
-              // <script> in index.html was extracted to dashboard.js (#192)
-              // and the 5 remaining inline onclick= handlers were converted
-              // to addEventListener — nothing in this asset set relies on
-              // inline script anymore, so `script-src 'self'` is safe (it's
-              // same-origin, so dashboard.js/.css load fine). `style-src`
-              // keeps 'unsafe-inline': the ~16 inline `style="..."` attributes
-              // and the <style> block in index.html are unmigrated (separate,
-              // non-security-critical follow-up) — inline CSS isn't an XSS
-              // vector the way inline JS is, so this doesn't undercut the
-              // script-src hardening. X-Frame-Options: DENY is safe here too:
-              // nothing in this repo (or its docs) iframes the legacy
-              // dashboard, so there's no legitimate embedding to preserve.
-              // ACAO: * is left untouched — some deployments may have
-              // external clients depending on it.
-              res.writeHead(200, {
-                "Content-Type": contentTypes[ext] || "text/plain",
-                "Access-Control-Allow-Origin": "*",
-                "Content-Security-Policy":
-                  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
-                "X-Content-Type-Options": "nosniff",
-                "X-Frame-Options": "DENY",
-                "Referrer-Policy": "same-origin",
-              });
-            }
-            res.end(content);
-          } else {
-            json(res, { error: "not found" }, 404);
-          }
-          return;
-        } else if (url === "/livez") {
-          handleLivez(req, res);
-          services.metrics.recordHttpRequest("/livez", 200);
-        } else if (url === "/readyz") {
-          handleReadyz(req, res, services);
-          services.metrics.recordHttpRequest("/readyz", res.statusCode || 0);
-        } else if (url === "/health") {
-          await handleHealth(req, res, {
-            authEnabled: AUTH_ENABLED,
-            jwtSecretSet: JWT_SECRET_EXPLICITLY_SET,
-          });
-          services.metrics.recordHttpRequest("/health", 200);
-        } else if (url === "/healthz") {
-          // architecture-01: alias consumed by the SDK/doctor (cli/doctor.ts
-          // probe 1 — HEAD /healthz). Distinct handler from /livez: same
-          // alive-only semantics but the minimal { status: "alive" } body the
-          // SDK's HealthzResponse type expects, per T29's src/http/health.ts.
-          handleHealthz(req, res);
-          services.metrics.recordHttpRequest("/healthz", 200);
-        } else if (url === "/health/ready") {
-          // architecture-01: alias consumed by the SDK/doctor (cli/doctor.ts
-          // probes 6/7 — audit_queue depth + sweeper circuit). NOT the same
-          // handler as /readyz: /readyz reports db+mqtt+tree_sitter+git_cochange
-          // (Phase 1 dependency readiness), while /health/ready reports
-          // db+audit_queue+sweeper+draining (Phase 2 auth-flow readiness) —
-          // the exact shape sdk/src/types.ts::HealthReadyResponse documents.
-          await handleHealthReady(req, res);
-          services.metrics.recordHttpRequest("/health/ready", res.statusCode || 0);
-        } else if (url === "/.well-known/oauth-authorization-server" && ctx.phase2Bootstrap) {
-          // protocole-mcp-03: RFC 8414 discovery doc, gated on Phase 2 actually
-          // being active. When OAuth is off there is no metadata to serve —
-          // falls through to the generic 404 below rather than leaking the
-          // route's existence/shape to an unauthenticated prober.
-          handleDiscovery(req, res, ctx.phase2Bootstrap.context.publicUrl);
-          services.metrics.recordHttpRequest("/.well-known/oauth-authorization-server", 200);
-        } else if (url === "/metrics" && req.method === "GET") {
-          // Unlike /api/* and /mcp, this route used to be dispatched before
-          // the shared authenticateRequest gate below and carried no
-          // AUTH_ENABLED check of its own — reachable without a token even
-          // with auth turned on. Gate it the same way: skip entirely when
-          // auth is disabled (unchanged open behavior), otherwise require a
-          // valid token before serving the Prometheus text exposition.
-          if (AUTH_ENABLED) {
-            const authResult = await authenticateRequest(req, { authEnabled: AUTH_ENABLED });
-            if (!authResult.ok) {
-              jsonAuthError(res, authResult);
-              services.metrics.recordHttpRequest("/metrics", authResult.status);
+
+          // T29: Phase 2 auth-route dispatch. Only active when Phase 2 was composed
+          // (COORDINATOR_OAUTH_ENABLED=true). Runs BEFORE the Phase 1 route checks so
+          // OAuth endpoints (/auth/login, /api/auth/oauth/*, /auth/device/*, etc.) are
+          // owned by the dispatcher. Returns true if the URL was an auth route and the
+          // handler ran; we then short-circuit. False means "not my URL — fall through".
+          if (ctx.phase2Bootstrap) {
+            try {
+              const handled = await dispatchAuthRoutes(req, res, ctx.phase2Bootstrap.context);
+              if (handled) return;
+            } catch (err) {
+              httpLog.error(
+                { err, url: redactTokenParam(req.url || "") },
+                "Phase 2 auth route error",
+              );
+              // qualite-code-08: never leak err.message (file paths, SQLite errors, ...)
+              // to the client — log the detail, return a generic body + request_id.
+              if (!res.headersSent) {
+                json(res, appError("INTERNAL_ERROR", "Internal server error"), 500);
+              }
               return;
             }
           }
-          await serveMetrics(req, res, services, services.metrics);
-          services.metrics.recordHttpRequest("/metrics", 200);
-        } else if (url === "/metrics/auth" && req.method === "GET" && ctx.phase2Bootstrap) {
-          // documentation-02 / securite-surface-02: the Phase 2 metrics
-          // registry (29 metrics — src/observability/metrics.ts), gated on
-          // Phase 2 actually being active (no registry to serve when it
-          // isn't — falls through to the generic 404 below, matching
-          // docs/ops/feature-flag-rollout.md's documented behavior). Access
-          // control (loopback OR bearer) is handled entirely inside
-          // handleMetrics; see src/http/metrics.ts.
-          await handleMetrics(req, res, {
-            localhostOnly: true,
-            bearerToken: process.env.COORDINATOR_METRICS_BEARER,
-          });
-          services.metrics.recordHttpRequest("/metrics/auth", res.statusCode || 200);
-        } else if (url === "/api/events" && req.method === "GET") {
-          await handleSse(req, res);
-        } else if (url.startsWith("/api/auth/")) {
-          if (!AUTH_ENABLED && url !== "/api/auth/refresh") {
-            json(res, { error: "Authentication is not enabled on this coordinator" }, 501);
-          } else {
-            await handleAuth(req, res);
-          }
-        } else if (url === "/mcp") {
-          // protocole-mcp-02: MCP spec MUST — validate Origin on every request
-          // to the Streamable HTTP transport, not just the OPTIONS preflight.
-          // No-Origin requests (curl, the MCP SDK's HTTP client — never sets
-          // Origin) are unaffected; only a present-and-disallowed Origin is
-          // rejected.
-          if (!isAllowedOrigin(req.headers.origin, process.env.COORDINATOR_PUBLIC_URL)) {
-            res.writeHead(403, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: "Origin not allowed" }));
-            return;
-          }
-          const sessionId = req.headers["mcp-session-id"] as string | undefined;
 
-          // protocole-mcp-11: expose `mcp-session-id` via CORS on the actual
-          // /mcp response too (not just the OPTIONS preflight) — browser MCP
-          // clients need to read this header off the `initialize` response to
-          // establish a session. Setting it here (before the transport writes
-          // its own headers) is preserved: Node merges response.setHeader()
-          // values with whatever headers.writeHead() passes later, as long as
-          // that later call doesn't redeclare the same header name — the SDK
-          // transport never sets Access-Control-Expose-Headers itself.
-          res.setHeader("Access-Control-Expose-Headers", "mcp-session-id");
+          try {
+            if (url === "/dashboard" || url.startsWith("/dashboard/")) {
+              const dashboardDir = await getDashboardDir().catch((err) => {
+                httpLog.warn({ err }, "Dashboard not found");
+                return null;
+              });
+              if (!dashboardDir) {
+                json(res, { error: "dashboard not available" }, 404);
+                return;
+              }
+              // B5 fix: defend against path traversal. safeJoinUnderRoot decodes the
+              // URL, strips leading slashes, resolves the path, and verifies the
+              // result stays under dashboardDir. Returns null on traversal attempts.
+              let filePath: string | null;
+              if (url === "/dashboard" || url === "/dashboard/") {
+                filePath = path.join(dashboardDir, "index.html");
+              } else {
+                // Strip query string before joining (browsers append ?v=...)
+                const urlPath = (url.split("?")[0] || "").replace("/dashboard/", "");
+                filePath = safeJoinUnderRoot(dashboardDir, urlPath);
+              }
+              if (filePath && existsSync(filePath)) {
+                const ext = path.extname(filePath);
+                const contentTypes: Record<string, string> = {
+                  ".html": "text/html",
+                  ".js": "application/javascript",
+                  ".css": "text/css",
+                  ".json": "application/json",
+                };
+                const content = readFileSync(filePath, "utf-8");
+                // T08 (v0.10.6): admin pages get hardened headers and DROP the
+                // wildcard CORS that the legacy dashboard inherits. Scope regex
+                // matches admin.{html,js,css} and admin-<word>.{html,js,css}
+                // (e.g. admin-orgs.html, admin-users.html) ONLY — rejects
+                // admin.html.bak, notadmin.html, admin/orgs.html, admin-x-y.html.
+                // index.html and any other legacy dashboard asset keep existing
+                // headers untouched (Round 2 finding #1, V3 PATCH 6 + 7).
+                const urlNoQuery = url.split("?")[0] || "";
+                const isAdminAsset = /^\/dashboard\/admin(?:-[a-z]+)?\.(?:html|js|css)$/.test(
+                  urlNoQuery,
+                );
+                if (isAdminAsset) {
+                  res.writeHead(200, {
+                    "Content-Type": contentTypes[ext] || "text/plain",
+                    "Content-Security-Policy":
+                      "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+                    "X-Frame-Options": "DENY",
+                    "X-Content-Type-Options": "nosniff",
+                    "Referrer-Policy": "same-origin",
+                    "Cache-Control": "no-store",
+                  });
+                } else {
+                  // securite-surface-07 / architecture-14 follow-up: legacy
+                  // dashboard assets (index.html, dashboard.js, and any other
+                  // non-admin-scoped file under this path) now get the same
+                  // strict script-src as the admin baseline. The former inline
+                  // <script> in index.html was extracted to dashboard.js (#192)
+                  // and the 5 remaining inline onclick= handlers were converted
+                  // to addEventListener — nothing in this asset set relies on
+                  // inline script anymore, so `script-src 'self'` is safe (it's
+                  // same-origin, so dashboard.js/.css load fine). `style-src`
+                  // keeps 'unsafe-inline': the ~16 inline `style="..."` attributes
+                  // and the <style> block in index.html are unmigrated (separate,
+                  // non-security-critical follow-up) — inline CSS isn't an XSS
+                  // vector the way inline JS is, so this doesn't undercut the
+                  // script-src hardening. X-Frame-Options: DENY is safe here too:
+                  // nothing in this repo (or its docs) iframes the legacy
+                  // dashboard, so there's no legitimate embedding to preserve.
+                  // ACAO: * is left untouched — some deployments may have
+                  // external clients depending on it.
+                  res.writeHead(200, {
+                    "Content-Type": contentTypes[ext] || "text/plain",
+                    "Access-Control-Allow-Origin": "*",
+                    "Content-Security-Policy":
+                      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+                    "X-Content-Type-Options": "nosniff",
+                    "X-Frame-Options": "DENY",
+                    "Referrer-Policy": "same-origin",
+                  });
+                }
+                res.end(content);
+              } else {
+                json(res, { error: "not found" }, 404);
+              }
+              return;
+            } else if (url === "/livez") {
+              handleLivez(req, res);
+              services.metrics.recordHttpRequest("/livez", 200);
+            } else if (url === "/readyz") {
+              handleReadyz(req, res, services);
+              services.metrics.recordHttpRequest("/readyz", res.statusCode || 0);
+            } else if (url === "/health") {
+              await handleHealth(req, res, {
+                authEnabled: AUTH_ENABLED,
+                jwtSecretSet: JWT_SECRET_EXPLICITLY_SET,
+              });
+              services.metrics.recordHttpRequest("/health", 200);
+            } else if (url === "/healthz") {
+              // architecture-01: alias consumed by the SDK/doctor (cli/doctor.ts
+              // probe 1 — HEAD /healthz). Distinct handler from /livez: same
+              // alive-only semantics but the minimal { status: "alive" } body the
+              // SDK's HealthzResponse type expects, per T29's src/http/health.ts.
+              handleHealthz(req, res);
+              services.metrics.recordHttpRequest("/healthz", 200);
+            } else if (url === "/health/ready") {
+              // architecture-01: alias consumed by the SDK/doctor (cli/doctor.ts
+              // probes 6/7 — audit_queue depth + sweeper circuit). NOT the same
+              // handler as /readyz: /readyz reports db+mqtt+tree_sitter+git_cochange
+              // (Phase 1 dependency readiness), while /health/ready reports
+              // db+audit_queue+sweeper+draining (Phase 2 auth-flow readiness) —
+              // the exact shape sdk/src/types.ts::HealthReadyResponse documents.
+              await handleHealthReady(req, res);
+              services.metrics.recordHttpRequest("/health/ready", res.statusCode || 0);
+            } else if (url === "/.well-known/oauth-authorization-server" && ctx.phase2Bootstrap) {
+              // protocole-mcp-03: RFC 8414 discovery doc, gated on Phase 2 actually
+              // being active. When OAuth is off there is no metadata to serve —
+              // falls through to the generic 404 below rather than leaking the
+              // route's existence/shape to an unauthenticated prober.
+              handleDiscovery(req, res, ctx.phase2Bootstrap.context.publicUrl);
+              services.metrics.recordHttpRequest("/.well-known/oauth-authorization-server", 200);
+            } else if (url === "/metrics" && req.method === "GET") {
+              // Unlike /api/* and /mcp, this route used to be dispatched before
+              // the shared authenticateRequest gate below and carried no
+              // AUTH_ENABLED check of its own — reachable without a token even
+              // with auth turned on. Gate it the same way: skip entirely when
+              // auth is disabled (unchanged open behavior), otherwise require a
+              // valid token before serving the Prometheus text exposition.
+              if (AUTH_ENABLED) {
+                const authResult = await authenticateRequest(req, { authEnabled: AUTH_ENABLED });
+                if (!authResult.ok) {
+                  jsonAuthError(res, authResult);
+                  services.metrics.recordHttpRequest("/metrics", authResult.status);
+                  return;
+                }
+              }
+              await serveMetrics(req, res, services, services.metrics);
+              services.metrics.recordHttpRequest("/metrics", 200);
+            } else if (url === "/metrics/auth" && req.method === "GET" && ctx.phase2Bootstrap) {
+              // documentation-02 / securite-surface-02: the Phase 2 metrics
+              // registry (29 metrics — src/observability/metrics.ts), gated on
+              // Phase 2 actually being active (no registry to serve when it
+              // isn't — falls through to the generic 404 below, matching
+              // docs/ops/feature-flag-rollout.md's documented behavior). Access
+              // control (loopback OR bearer) is handled entirely inside
+              // handleMetrics; see src/http/metrics.ts.
+              await handleMetrics(req, res, {
+                localhostOnly: true,
+                bearerToken: process.env.COORDINATOR_METRICS_BEARER,
+              });
+              services.metrics.recordHttpRequest("/metrics/auth", res.statusCode || 200);
+            } else if (url === "/api/events" && req.method === "GET") {
+              await handleSse(req, res);
+            } else if (url.startsWith("/api/auth/")) {
+              if (!AUTH_ENABLED && url !== "/api/auth/refresh") {
+                json(res, { error: "Authentication is not enabled on this coordinator" }, 501);
+              } else {
+                await handleAuth(req, res);
+              }
+            } else if (url === "/mcp") {
+              // protocole-mcp-02: MCP spec MUST — validate Origin on every request
+              // to the Streamable HTTP transport, not just the OPTIONS preflight.
+              // No-Origin requests (curl, the MCP SDK's HTTP client — never sets
+              // Origin) are unaffected; only a present-and-disallowed Origin is
+              // rejected.
+              if (!isAllowedOrigin(req.headers.origin, process.env.COORDINATOR_PUBLIC_URL)) {
+                res.writeHead(403, { "Content-Type": "application/json" });
+                res.end(JSON.stringify({ error: "Origin not allowed" }));
+                return;
+              }
+              const sessionId = req.headers["mcp-session-id"] as string | undefined;
 
-          if (sessionId && ctx.sessions.has(sessionId)) {
-            // Existing-session branch — AUTH-GATED ON EVERY REQUEST per spec §J.
-            const claims = await authenticateMcpRequest(req, res);
-            if (!claims) return; // 401 already written
-            // Task 23.5: update stored claims to support mid-session JWT rotation.
-            // The latest verified claims always win.
-            ctx.sessionClaims.set(sessionId, claims);
-            // performance-07: any authenticated request against a known session
-            // counts as activity — resets the idle clock so the sweeper leaves
-            // it alone.
-            ctx.sessionLastActivity.set(sessionId, Date.now());
-            await ctx.sessions.get(sessionId)!.handleRequest(req, res);
-          } else if (req.method === "POST" && !sessionId) {
-            // New-session branch — also gated.
-            const claims = await authenticateMcpRequest(req, res);
-            if (!claims) return; // 401 already written
-            const authenticatedAgent = claims.sub;
+              // protocole-mcp-11: expose `mcp-session-id` via CORS on the actual
+              // /mcp response too (not just the OPTIONS preflight) — browser MCP
+              // clients need to read this header off the `initialize` response to
+              // establish a session. Setting it here (before the transport writes
+              // its own headers) is preserved: Node merges response.setHeader()
+              // values with whatever headers.writeHead() passes later, as long as
+              // that later call doesn't redeclare the same header name — the SDK
+              // transport never sets Access-Control-Expose-Headers itself.
+              res.setHeader("Access-Control-Expose-Headers", "mcp-session-id");
 
-            // Create transport + server
-            // securite-surface-06: enableDnsRebindingProtection is defense-in-depth
-            // on top of the Origin check above (deprecated-but-functional SDK
-            // option; the SDK's own docs point at "external middleware" for this,
-            // which is exactly what the check above is). allowedOrigins only
-            // needs to cover the known-safe static set since anything else was
-            // already rejected before we got here.
-            const allowedOriginsForTransport = [
-              `http://localhost:${ctx.port}`,
-              `http://127.0.0.1:${ctx.port}`,
-              `http://[::1]:${ctx.port}`,
-            ];
-            const publicUrlEnv = process.env.COORDINATOR_PUBLIC_URL;
-            if (publicUrlEnv) {
-              try {
-                allowedOriginsForTransport.push(new URL(publicUrlEnv).origin);
-              } catch {
-                /* malformed COORDINATOR_PUBLIC_URL — ignore */
+              if (sessionId && ctx.sessions.has(sessionId)) {
+                // Existing-session branch — AUTH-GATED ON EVERY REQUEST per spec §J.
+                const claims = await authenticateMcpRequest(req, res);
+                if (!claims) return; // 401 already written
+                // Task 23.5: update stored claims to support mid-session JWT rotation.
+                // The latest verified claims always win.
+                ctx.sessionClaims.set(sessionId, claims);
+                // performance-07: any authenticated request against a known session
+                // counts as activity — resets the idle clock so the sweeper leaves
+                // it alone.
+                ctx.sessionLastActivity.set(sessionId, Date.now());
+                await ctx.sessions.get(sessionId)!.handleRequest(req, res);
+              } else if (req.method === "POST" && !sessionId) {
+                // New-session branch — also gated.
+                const claims = await authenticateMcpRequest(req, res);
+                if (!claims) return; // 401 already written
+                const authenticatedAgent = claims.sub;
+
+                // Create transport + server
+                // securite-surface-06: enableDnsRebindingProtection is defense-in-depth
+                // on top of the Origin check above (deprecated-but-functional SDK
+                // option; the SDK's own docs point at "external middleware" for this,
+                // which is exactly what the check above is). allowedOrigins only
+                // needs to cover the known-safe static set since anything else was
+                // already rejected before we got here.
+                const allowedOriginsForTransport = [
+                  `http://localhost:${ctx.port}`,
+                  `http://127.0.0.1:${ctx.port}`,
+                  `http://[::1]:${ctx.port}`,
+                ];
+                const publicUrlEnv = process.env.COORDINATOR_PUBLIC_URL;
+                if (publicUrlEnv) {
+                  try {
+                    allowedOriginsForTransport.push(new URL(publicUrlEnv).origin);
+                  } catch {
+                    /* malformed COORDINATOR_PUBLIC_URL — ignore */
+                  }
+                }
+                const transport = new NodeStreamableHTTPServerTransport({
+                  sessionIdGenerator: () => randomUUID(),
+                  enableDnsRebindingProtection: true,
+                  allowedOrigins: allowedOriginsForTransport,
+                });
+                // Task 23.5: pass a getter so tool handlers can look up per-session claims.
+                const mcpServer = createMcpServer(
+                  services,
+                  (sid) => ctx.sessionClaims.get(sid) ?? null,
+                );
+
+                // performance-07 / protocole-mcp-07: set onclose BEFORE connect() so
+                // the SDK's own wrapping (Protocol#connect chains whatever onclose
+                // is already present, then runs its own McpServer-side cleanup)
+                // actually fires. Assigning onclose AFTER connect() — as this code
+                // used to — silently clobbers the SDK's wrapped handler, so the
+                // McpServer's internal state (pending handlers, abort controllers)
+                // never got cleaned up on close, transport eviction or not.
+                transport.onclose = () => {
+                  const sid = transport.sessionId;
+                  if (sid) {
+                    ctx.sessions.delete(sid);
+                    ctx.sessionClaims.delete(sid); // Task 23.5: evict claims on session close
+                    ctx.sessionLastActivity.delete(sid);
+                  }
+                  mcpLog.info(
+                    { session_id: sid, remaining: ctx.sessions.size },
+                    "MCP session closed",
+                  );
+                };
+                await mcpServer.connect(transport);
+
+                await transport.handleRequest(req, res);
+
+                const sid = transport.sessionId;
+                if (sid) {
+                  ctx.sessions.set(sid, transport);
+                  ctx.sessionClaims.set(sid, claims); // Task 23.5: stash claims after sessionId is assigned
+                  ctx.sessionLastActivity.set(sid, Date.now());
+                  mcpLog.info(
+                    { session_id: sid, total: ctx.sessions.size, agent_id: authenticatedAgent },
+                    "MCP session opened",
+                  );
+                }
+              } else {
+                json(
+                  res,
+                  {
+                    error:
+                      "Session not found. Send a request without mcp-session-id to start a new session.",
+                  },
+                  404,
+                );
+              }
+            } else {
+              // Always authenticate — under AUTH_ENABLED=false this returns synthetic legacy claims
+              // so handlers can always read claims.org. Required for Tasks 15-19 which scope every
+              // database query by claims.org.
+              const authResult = await authenticateRequest(req, { authEnabled: AUTH_ENABLED });
+              if (!authResult.ok) {
+                authLog.warn(
+                  {
+                    reason: authResult.error,
+                    url: redactTokenParam(url),
+                    ip: req.socket.remoteAddress,
+                  },
+                  "Auth rejected",
+                );
+                services.metrics.recordAuthRejected();
+                jsonAuthError(res, authResult);
+                return;
+              }
+
+              if (url.startsWith("/api/") && (req.method === "POST" || req.method === "GET")) {
+                await handleRest(req, res, authResult.claims);
+                // performance-03: normalize id-like segments so cardinality is bounded
+                // by route TEMPLATES, not by distinct ids ever seen. See src/http/utils.ts.
+                services.metrics.recordHttpRequest(
+                  metricRoute(url.split("?")[0] || ""),
+                  res.statusCode || 0,
+                );
+              } else {
+                json(res, { error: "not found" }, 404);
+                // performance-03: a 404 is, by definition, an unmatched path — never
+                // give it a dynamic label (unbounded cardinality from prober/scanner
+                // traffic). Use a single constant label instead.
+                services.metrics.recordHttpRequest("<unmatched>", 404);
               }
             }
-            const transport = new NodeStreamableHTTPServerTransport({
-              sessionIdGenerator: () => randomUUID(),
-              enableDnsRebindingProtection: true,
-              allowedOrigins: allowedOriginsForTransport,
-            });
-            // Task 23.5: pass a getter so tool handlers can look up per-session claims.
-            const mcpServer = createMcpServer(
-              services,
-              (sid) => ctx.sessionClaims.get(sid) ?? null,
-            );
-
-            // performance-07 / protocole-mcp-07: set onclose BEFORE connect() so
-            // the SDK's own wrapping (Protocol#connect chains whatever onclose
-            // is already present, then runs its own McpServer-side cleanup)
-            // actually fires. Assigning onclose AFTER connect() — as this code
-            // used to — silently clobbers the SDK's wrapped handler, so the
-            // McpServer's internal state (pending handlers, abort controllers)
-            // never got cleaned up on close, transport eviction or not.
-            transport.onclose = () => {
-              const sid = transport.sessionId;
-              if (sid) {
-                ctx.sessions.delete(sid);
-                ctx.sessionClaims.delete(sid); // Task 23.5: evict claims on session close
-                ctx.sessionLastActivity.delete(sid);
-              }
-              mcpLog.info({ session_id: sid, remaining: ctx.sessions.size }, "MCP session closed");
-            };
-            await mcpServer.connect(transport);
-
-            await transport.handleRequest(req, res);
-
-            const sid = transport.sessionId;
-            if (sid) {
-              ctx.sessions.set(sid, transport);
-              ctx.sessionClaims.set(sid, claims); // Task 23.5: stash claims after sessionId is assigned
-              ctx.sessionLastActivity.set(sid, Date.now());
-              mcpLog.info(
-                { session_id: sid, total: ctx.sessions.size, agent_id: authenticatedAgent },
-                "MCP session opened",
-              );
+          } catch (err) {
+            httpLog.error({ err }, "HTTP request error");
+            // qualite-code-08: never leak err.message (file paths, SQLite errors, ...)
+            // to the client — log the detail, return a generic body + request_id.
+            if (!res.headersSent) {
+              json(res, appError("INTERNAL_ERROR", "Internal server error"), 500);
             }
-          } else {
-            json(
-              res,
-              {
-                error:
-                  "Session not found. Send a request without mcp-session-id to start a new session.",
-              },
-              404,
-            );
           }
-        } else {
-          // Always authenticate — under AUTH_ENABLED=false this returns synthetic legacy claims
-          // so handlers can always read claims.org. Required for Tasks 15-19 which scope every
-          // database query by claims.org.
-          const authResult = await authenticateRequest(req, { authEnabled: AUTH_ENABLED });
-          if (!authResult.ok) {
-            authLog.warn(
-              {
-                reason: authResult.error,
-                url: redactTokenParam(url),
-                ip: req.socket.remoteAddress,
-              },
-              "Auth rejected",
-            );
-            services.metrics.recordAuthRejected();
-            jsonAuthError(res, authResult);
-            return;
-          }
-
-          if (url.startsWith("/api/") && (req.method === "POST" || req.method === "GET")) {
-            await handleRest(req, res, authResult.claims);
-            // performance-03: normalize id-like segments so cardinality is bounded
-            // by route TEMPLATES, not by distinct ids ever seen. See src/http/utils.ts.
-            services.metrics.recordHttpRequest(
-              metricRoute(url.split("?")[0] || ""),
-              res.statusCode || 0,
-            );
-          } else {
-            json(res, { error: "not found" }, 404);
-            // performance-03: a 404 is, by definition, an unmatched path — never
-            // give it a dynamic label (unbounded cardinality from prober/scanner
-            // traffic). Use a single constant label instead.
-            services.metrics.recordHttpRequest("<unmatched>", 404);
-          }
-        }
-      } catch (err) {
-        httpLog.error({ err }, "HTTP request error");
-        // qualite-code-08: never leak err.message (file paths, SQLite errors, ...)
-        // to the client — log the detail, return a generic body + request_id.
-        if (!res.headersSent) {
-          json(res, appError("INTERNAL_ERROR", "Internal server error"), 500);
-        }
-      }
-    });
+        },
+      ),
+    );
   };
 }
 
@@ -934,34 +962,58 @@ async function wireMqtt(opts: MqttWiring): Promise<{
   // Only install the verifier (and therefore the ACL hooks) when auth is enabled.
   // Without this guard, AUTH_ENABLED=false would still reject anonymous v0.6
   // MQTT clients at the authenticate hook, breaking backward compatibility.
-  const broker = MQTT_EMBEDDED
-    ? await startEmbeddedMqttBroker({
-        tcpPort: mqttTcpPort,
-        httpServer,
-        wsPath: mqttWsPath,
-        logger: log.child({ component: "mqtt-broker" }),
-        ...(AUTH_ENABLED
-          ? {
-              authenticate: async (
-                _username: string | undefined,
-                password: Buffer | undefined,
-              ): Promise<MqttAuthResult> => {
-                if (!password) return { ok: false };
-                try {
-                  const { verifyTokenStrict } = await import("./auth.js");
-                  const { claims } = await verifyTokenStrict(password.toString("utf-8"));
-                  // Thread the role through so mqtt-broker.ts's ACL hooks can
-                  // recognize and exempt the internal bridge (role "internal",
-                  // minted below) from the org-prefix check.
-                  return { ok: true as const, org: claims.org, role: claims.role };
-                } catch {
-                  return { ok: false };
-                }
-              },
-            }
-          : {}),
-      })
-    : undefined;
+  // #280: an occupied 1883 -- a previous daemon still alive, or any other
+  // broker on the box -- used to take the entire HTTP server down with it.
+  // wireMqtt was unguarded and mqtt-broker.ts rejects on the listener's error
+  // event, so the rejection reached startServer and killed the boot.
+  //
+  // Everything else in the tree already treats the broker as optional: the
+  // three MQTT tools return an explicit isError when the bridge is absent,
+  // every publisher in mqtt-bridge.ts opens with an `if (!this.client ...)`
+  // guard, stdio mode runs all 26 tools with no broker at all, and the
+  // dashboard reads /api/events over SSE rather than MQTT. Startup was the
+  // only place treating it as mandatory.
+  //
+  // Set COORDINATOR_MQTT_REQUIRED=true to keep the strict behaviour.
+  const mqttRequired = process.env.COORDINATOR_MQTT_REQUIRED === "true";
+  let broker: Awaited<ReturnType<typeof startEmbeddedMqttBroker>> | undefined;
+  try {
+    broker = MQTT_EMBEDDED
+      ? await startEmbeddedMqttBroker({
+          tcpPort: mqttTcpPort,
+          httpServer,
+          wsPath: mqttWsPath,
+          logger: log.child({ component: "mqtt-broker" }),
+          ...(AUTH_ENABLED
+            ? {
+                authenticate: async (
+                  _username: string | undefined,
+                  password: Buffer | undefined,
+                ): Promise<MqttAuthResult> => {
+                  if (!password) return { ok: false };
+                  try {
+                    const { verifyTokenStrict } = await import("./auth.js");
+                    const { claims } = await verifyTokenStrict(password.toString("utf-8"));
+                    // Thread the role through so mqtt-broker.ts's ACL hooks can
+                    // recognize and exempt the internal bridge (role "internal",
+                    // minted below) from the org-prefix check.
+                    return { ok: true as const, org: claims.org, role: claims.role };
+                  } catch {
+                    return { ok: false };
+                  }
+                },
+              }
+            : {}),
+        })
+      : undefined;
+  } catch (err) {
+    if (mqttRequired) throw err;
+    log.warn(
+      { err, tcpPort: mqttTcpPort },
+      "MQTT broker failed to start - continuing without MQTT. The 3 MQTT tools will report unavailable; everything else is unaffected. Set COORDINATOR_MQTT_REQUIRED=true to fail startup instead.",
+    );
+    return { broker: undefined, resolvedMqttTcpPort: mqttTcpPort };
+  }
 
   // B3: when AUTH_ENABLED, the internal coordinator client must authenticate
   // too. Mint a short-lived internal-role token for the bridge: "internal"
@@ -975,14 +1027,31 @@ async function wireMqtt(opts: MqttWiring): Promise<{
   // 0 sentinel meaning "OS, pick one". Connecting the bridge to `:0` would
   // send mqtt.js to its 1883 default and fail with ECONNREFUSED.
   const resolvedMqttTcpPort = broker?.tcpPort ?? mqttTcpPort;
-  await services.mqttBridge.connect({
-    url: MQTT_URL || `mqtt://127.0.0.1:${resolvedMqttTcpPort}`,
-    username: AUTH_ENABLED ? "coordinator-internal" : MQTT_USERNAME,
-    password: AUTH_ENABLED ? internalToken : MQTT_PASSWORD,
-    // P1 fix: stable agent identity for LWT topic
-    // (`coordinator/agents/coordinator-internal/status`).
-    agentId: "coordinator-internal",
-  });
+  try {
+    await services.mqttBridge.connect({
+      url: MQTT_URL || `mqtt://127.0.0.1:${resolvedMqttTcpPort}`,
+      username: AUTH_ENABLED ? "coordinator-internal" : MQTT_USERNAME,
+      password: AUTH_ENABLED ? internalToken : MQTT_PASSWORD,
+      // P1 fix: stable agent identity for LWT topic
+      // (`coordinator/agents/coordinator-internal/status`).
+      agentId: "coordinator-internal",
+    });
+  } catch (err) {
+    if (mqttRequired) throw err;
+    // The broker may have bound before the bridge failed to reach it; close
+    // it rather than leaving a listener nothing will ever shut down -- the
+    // teardown path only closes the handle we return.
+    try {
+      await broker?.close();
+    } catch {
+      // best effort: we are already degrading
+    }
+    log.warn(
+      { err },
+      "MQTT bridge failed to connect - continuing without MQTT. Set COORDINATOR_MQTT_REQUIRED=true to fail startup instead.",
+    );
+    return { broker: undefined, resolvedMqttTcpPort };
+  }
   // issue #236: surface discarded messages as a counter alongside the warn
   // line the bridge already emits, so a steady drip of drops is visible on
   // /metrics rather than only in the log.

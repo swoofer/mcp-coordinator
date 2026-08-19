@@ -1,8 +1,8 @@
 ﻿// tests/consultation.test.ts
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
 import { AgentRegistry } from "../../src/agent-registry.js";
-import { Consultation } from "../../src/consultation.js";
+import { Consultation, normalizeSinceCursor } from "../../src/consultation.js";
 import { seedTestOrgs } from "../helpers/orgs.js";
 import fs from "fs";
 
@@ -1221,5 +1221,81 @@ describe("consultation corrupted column resilience (qualite-code-07)", () => {
     consultation.proposeResolution("default", thread.id, "a1", "done");
 
     expect(() => consultation.approveResolution("default", thread.id, "a1")).not.toThrow();
+  });
+});
+
+// -- #346: the cursor we hand out is not the cursor we accept ---------------
+
+describe("normalizeSinceCursor (#346)", () => {
+  const HOST_TZ = process.env.TZ;
+
+  afterEach(() => {
+    if (HOST_TZ === undefined) delete process.env.TZ;
+    else process.env.TZ = HOST_TZ;
+  });
+
+  // get_thread_updates returns ThreadMessage.created_at verbatim, and that
+  // value carries no timezone designator. Handing it to `new Date` reads it as
+  // LOCAL time, so the round trip used to shift the cursor by the host offset:
+  // forward west of UTC (recent messages silently lost), backward east of it
+  // (hours replayed). Pinned under both signs so a UTC CI host cannot hide it.
+  it.each(["America/Toronto", "Asia/Tokyo", "UTC"])(
+    "a SQLite cursor survives the round trip unchanged under TZ=%s",
+    (tz) => {
+      process.env.TZ = tz;
+      expect(normalizeSinceCursor("2026-08-17 04:18:48")).toBe("2026-08-17 04:18:48");
+    },
+  );
+
+  it("still converts a cursor carrying an offset", () => {
+    process.env.TZ = "America/Toronto";
+    expect(normalizeSinceCursor("2026-08-17T09:18:48+05:00")).toBe("2026-08-17 04:18:48");
+  });
+
+  it("still converts a Z cursor, dropping fractional seconds", () => {
+    expect(normalizeSinceCursor("2026-08-17T04:18:48.123Z")).toBe("2026-08-17 04:18:48");
+  });
+
+  it("passes an unparseable cursor through untouched", () => {
+    expect(normalizeSinceCursor("not-a-date")).toBe("not-a-date");
+  });
+});
+
+describe("getThreadUpdates cursor round trip (#346)", () => {
+  const HOST_TZ = process.env.TZ;
+
+  afterEach(() => {
+    if (HOST_TZ === undefined) delete process.env.TZ;
+    else process.env.TZ = HOST_TZ;
+  });
+
+  // The nominal loop an agent runs: read updates, keep the last created_at,
+  // pass it back. West of UTC this returned nothing at all before the fix.
+  it("replaying the returned created_at still finds that message", () => {
+    process.env.TZ = "America/Toronto";
+    registry.register("default", "a2", "Agent B", ["src/auth"]);
+    const thread = consultation.announceWork("default", {
+      agent_id: "a1",
+      subject: "cursor round trip",
+      target_modules: ["src/auth"],
+      target_files: [],
+    });
+    consultation.postToThread("default", {
+      thread_id: thread.id,
+      agent_id: "a2",
+      type: "context",
+      content: "first",
+    });
+
+    const first = consultation.getThreadUpdates("default", "a1");
+    expect(first.length).toBe(1);
+
+    const cursor = first[first.length - 1].created_at;
+    const replayed = consultation.getThreadUpdates("default", "a1", cursor);
+
+    // `>=` is inclusive, so the boundary message comes back. What must never
+    // happen is an empty result: that is the data loss #346 describes.
+    expect(replayed.length).toBeGreaterThanOrEqual(1);
+    expect(replayed.map((m) => m.content)).toContain("first");
   });
 });
