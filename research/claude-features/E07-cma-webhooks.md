@@ -13,7 +13,7 @@
 | **Vérification** | CONFIRMED |
 | **Vérifiée le** | 2026-08-14 |
 | **Testabilité** | ✅ testable — PoC 100 % local, aucun accès Anthropic requis |
-| **Statut du challenge** | ⬜ à faire |
+| **Statut du challenge** | ✅ **tranché** (2026-08-17) — refuser : §4 se contredit ; livrable #353 |
 
 ---
 
@@ -148,7 +148,30 @@ Faible et non urgent. Le coût est un coût d'intégration continu : chaque nouv
 
 ### 6.2 Hypothèse
 
-<Ce qu'on pense avant de tester.>
+**Ce que je pense avant de mesurer.** La question §6.1 oppose deux branchements — `sseEmitter.addListener()` contre un EventBus/outbox à extraire. À la lecture de `src/sse-emitter.ts` (144 lignes), je pense que **l'opposition est mal posée dans les deux sens**.
+
+D'un côté, le chemin listener est disqualifié d'avance et pas seulement « best-effort » : `emit()` fait un `INSERT` **synchrone** puis fan-out en `setImmediate` avec un `catch {}` **vide** (l. 64-71), et `addListener` rend `NOOP` **silencieusement** au-delà de `MAX_SSE_CLIENTS` (l. 118-122). Une livraison réseau greffée là serait perdue sans trace à la moindre exception, et muette sans trace si le dispatcher s'enregistre après le plafond.
+
+De l'autre, l'outbox n'est pas « à extraire » : il **existe déjà**. La table `events` porte un `id` auto-incrémenté peuplé par `emit()` (l. 46-49), et `getEventsSince(orgId, lastId, limit)` (l. 84-96) est exactement la lecture par curseur qu'il faut. Ce qui manque n'est pas le bus, c'est la **table de tentatives** — et c'est là que se cache le vrai coût.
+
+Hypothèse principale : le verdict ne se jouera ni sur le branchement ni sur la faisabilité, mais sur le **bénéfice annoncé en §4** — « rendre obsolètes les trois exemples `examples/*` ». Si ces trois ponts ne sont pas majoritairement du code qu'un webhook sortant supprimerait, la justification s'effondre et il ne reste qu'un sous-système à écrire et à maintenir pour un besoin que personne n'a formulé.
+
+Hypothèse secondaire : la surface SSRF sortante est le vrai coût caché, et le dépôt vient précisément de trancher deux fois sur ce sujet (`B03`, et le correctif OIDC #304/#310).
+
+### 6.2b Critères de mort — pré-enregistrés avant toute mesure
+
+Écrits **avant** d'exécuter quoi que ce soit. Un seul qui se déclenche tue `adopter`.
+
+| # | Critère de mort | Seuil chiffré |
+|---|---|---|
+| **K1** | **Personne ne l'a demandé.** Le déploiement typique est un mainteneur solo avec un swarm local, pas une flotte d'intégrations tierces. | **0** issue ou discussion GitHub réclamant un push sortant / webhook |
+| **K2** | **Le bénéfice annoncé n'existe pas.** §4 affirme que la feature rendrait les trois `examples/*` obsolètes « en tant que code à maintenir ». Si l'essentiel de leur code n'est **pas** du pont MQTT remplaçable, la justification principale tombe. | **< 50 %** des lignes des trois exemples supprimées par un webhook sortant |
+| **K3** | **Le chemin listener perd en silence.** Si une exception dans un listener est avalée sans trace **et** qu'aucune tentative n'est persistée, une livraison réseau greffée là est plus faible que celle d'Anthropic — qui, elle, retente 3 fois. | perte silencieuse **démontrée par exécution**, pas par lecture |
+| **K4** | **Le plafond est un piège muet.** Si `addListener` rend `NOOP` sans lever ni journaliser, un dispatcher enregistré après le plafond est silencieusement mort. | `NOOP` silencieux **démontré par exécution** |
+| **K5** | **Aucun garde d'origine sortante réutilisable.** Ouvrir un client HTTP vers une URL configurable, c'est ouvrir une SSRF. S'il n'existe aucun contrôle d'origine réutilisable dans le dépôt, il faut l'écrire — travail sensible et facile à rater. | **0** helper d'allowlist/contrôle d'URL sortante réutilisable en l'état |
+| **K6** | **L'effort `M` est un mensonge.** Un canal de plus, c'est un sous-système : retry jitté, déduplication, auto-désactivation, rotation de secret, CRUD d'administration, métriques, persistance des tentatives. | ≥ **5** sous-systèmes distincts à écrire de zéro |
+
+**Règle que je m'impose :** §0 classe la fiche ✅ **testable** — PoC 100 % local, aucune excuse pour conclure sur du raisonnement. K3 et K4 doivent être **exécutés**, pas lus.
 
 ### 6.3 Protocole de vérification
 
@@ -162,7 +185,133 @@ Faible et non urgent. Le coût est un coût d'intégration continu : chaque nouv
 
 ### 6.4 Résultat observé
 
-<À remplir pendant le challenge.>
+#### A. Le résultat qui tranche : **§4 se contredit elle-même**, et aucune variante de conception ne le répare
+
+§4 tire deux bénéfices de la feature, dans le même paragraphe (l. 113-117) :
+
+- **(A)** rendre les trois `examples/*` « obsolètes en tant que code à maintenir » ;
+- **(B)** le payload minimal `{type, id}` « supprime le risque de fuite de contenu (`plan`, `resolution_summary`) vers un endpoint tiers ».
+
+Mesuré : les trois ponts lisent **9 champs de payload**.
+
+```
+agent_id, claimed_at, claimed_by, completed_by, status, subject,
+summary, target_modules, thread_id
+```
+
+Un `{type, id}` n'en porte **aucun**. Donc **(B) ⇒ ¬(A)** : le payload minimal ne peut pas alimenter les ponts qu'il est censé rendre obsolètes.
+
+Et le corollaire est plus dur encore. Sous (B), le consommateur doit refaire un `GET /api/events?since=` **vers le coordinateur** — or `hooks.slack.com` ne rappellera jamais votre daemon. **La conception d'Anthropic ne peut structurellement servir qu'un consommateur que vous hébergez vous-même.** C'est-à-dire : un pont. C'est-à-dire exactement ce qui existe déjà.
+
+La variante « payload complet + en-têtes et corps configurables » échappe à la contradiction, mais elle déplace les fonctions de formatage d'`examples/` — un échantillon forkable, sans garantie de compatibilité — vers `src/`, où elles héritent du semver, des tests et du support. Le coût de maintenance monte, il ne baisse pas.
+
+#### B. Ce qu'un webhook sortant supprimerait vraiment (K2)
+
+**J'ai d'abord mesuré ça de travers.** Ma première méthode classait ligne à ligne sur une regex (`mqtt|client.connect|subscribe|TOPIC_FILTER|…`) et rendait « 13 % supprimables » ; elle ne captait que la ligne portant le mot-clé et ratait les blocs entiers (`client.on("connect", …)`, la fenêtre de drain, les gardes). Une seconde méthode par délimitation d'accolades a rendu « 84 % ». **Trois méthodes, trois chiffres** : c'est le signal que le comptage de lignes n'est pas un argument robuste, et je ne m'appuie pas dessus.
+
+Voici l'inventaire brut, qui lui est vérifiable :
+
+```
+examples/slack-webhook/bridge.mjs  (169 lignes)
+     9 l.  function parsePayload(buf)
+     5 l.  function threadIdFromTopic(topic)
+    61 l.  function formatEvent(topic, data)          <- survit
+    15 l.  async function postToSlack(message)        <- survit
+
+examples/discord-webhook/bridge.mjs  (171 lignes)
+     9 l.  function parse(payload)
+    14 l.  async function postToDiscord(embed)        <- survit
+    64 l.  function toEmbed(topic, data)              <- survit
+
+examples/github-actions-mqtt-bridge/bridge.mjs  (210 lignes)
+     9 l.  function parsePayload(buf)
+     4 l.  function threadIdFromTopic(topic)
+    29 l.  function summarize(topic, data)            <- survit
+     8 l.  function webhookBody(topic, data, text)    <- survit
+    17 l.  async function forward(topic, data, text)  <- survit
+    10 l.  async function shutdown(code)
+```
+
+**208 lignes sur 550 (38 %) sont du formatage et du POST vers le tiers : elles survivent intactes.** Le transport MQTT proprement dit fait environ 206 lignes (≈ 38 %) et disparaît ; le reste est de l'analyse d'environnement et des gardes qu'un récepteur webhook redemande — auxquelles il faut **ajouter** un serveur HTTP, la vérification de signature et la déduplication.
+
+**K2 se déclenche** : au mieux ~38 % de lignes supprimées, sous le seuil de 50 %, et une partie du solde est remplacée plutôt que supprimée. Trois précisions honnêtes :
+
+- `threadIdFromTopic` **disparaît vraiment** — il n'existe que parce que MQTT encode le `thread_id` dans le chemin du topic, alors que le payload le porte déjà.
+- `parsePayload` est **remplacé**, pas supprimé (`req.json()`).
+- Le **filtrage** est **déplacé**, pas supprimé : il y a **21 sites `sseEmitter.emit()` pour 16 `EventType`** contre 7 `mqttBridge.publish*`. Un dispatcher branché sur `addListener` verrait tout (`impact_scored`, `file_edited`, `token_usage`…) ; le filtre redevient nécessaire, côté coordinateur cette fois.
+
+#### C. K3 et K4 — exécutés, pas déduits
+
+```
+--- K3 : perte silencieuse ---
+  emit() a-t-il leve ?                   : false
+  le listener en echec a-t-il ete appele : true
+  le listener voisin a-t-il recu         : true
+  un signal quelconque de l'echec ?      : aucun (catch {} vide, sse-emitter.ts:67-71)
+  l'evenement est-il en base malgre tout : true (id=1)
+  => K3 SE DECLENCHE : l'echec de livraison est indiscernable du succes
+
+--- K4 : plafond muet ---
+  MAX_SSE_CLIENTS                        : 100
+  listenerCount apres saturation         : 100
+  addListener a-t-il leve ?              : non (il rend une fonction)
+  la valeur rendue est-elle distinguable : function — indiscernable d'un vrai unsubscribe
+  le dispatcher tardif a-t-il recu       : false
+  refus comptabilises                    : 1 (compteur prive, aucune metrique)
+  => K4 SE DECLENCHE : dispatcher muet, sans erreur ni exception
+```
+
+Greffer une livraison réseau sur ce chemin donnerait une livraison **plus faible que celle d'Anthropic** — qui, elle, retente 3 fois et désactive l'endpoint en le disant.
+
+**Latence — le risque n'est pas celui qu'annonçait §6.3.** 50 `emit()` avec un listener bloqué 2 s : **7,4 ms au total, 0,15 ms par emit**. Le fan-out est en `setImmediate`, donc `emit()` ne bloque pas. Le vrai risque est l'accumulation **non bornée** de closures en attente, sans file ni contre-pression.
+
+**Et l'outbox existe déjà.** `events` porte un `id` auto-incrémenté peuplé par `emit()` (`sse-emitter.ts:46-49`) et `getEventsSince(orgId, lastId, limit)` (`:84-96`) est la lecture par curseur. Vérifié : 20 `emit()` → 20 lignes lues, zéro perte. **La question §6.1 est donc mal posée** : le bus n'est pas « à extraire », il est là. Ce qui manque est la **table de tentatives**.
+
+#### D. Ce que je dois concéder : pour GitHub Actions, mon argument s'inverse
+
+J'allais écrire qu'un webhook sortant est « strictement pire » pour l'auto-hébergeur, parce qu'un client MQTT marche derrière un NAT alors qu'un endpoint HTTPS doit être publiquement joignable. C'est vrai pour deux des trois — et **faux pour le troisième** :
+
+| Exemple | URL broker | « marche derrière un NAT » |
+|---|---|---|
+| `slack-webhook/bridge.mjs:18` | `mqtt://127.0.0.1:1883` | ✅ |
+| `discord-webhook/bridge.mjs:16` | `mqtt://127.0.0.1:1883` | ✅ |
+| `github-actions-mqtt-bridge/bridge.mjs:50-58` | `wss://` **imposé par une garde** | ❌ **inversé** |
+
+Le pont GHA refuse explicitement `mqtt://` : *« The coordinator's TCP broker is bound to 127.0.0.1, so it is NOT reachable from a GitHub-hosted runner »*. Il **impose donc aujourd'hui d'exposer le coordinateur publiquement** derrière un reverse proxy TLS. Un webhook sortant le laisserait derrière son NAT. Et son README nomme la contrainte de fond : *« Actions is not a daemon »* — avec `RUN_SECONDS=55` toutes les 15 min, soit **~6 % de couverture**, et un renvoi vers `examples/fly-io` (une machine `always-on`, carte bancaire requise) pour ne rien rater.
+
+**C'est le meilleur argument contre mon verdict, et il ne vaut que pour un tiers du corpus.** Il ne le sauve pas pour autant : `repository_dispatch` — le cas d'usage que §4 met en avant — **n'existe nulle part dans le dépôt** (aucune occurrence hors de cette fiche), et il exigerait que le coordinateur stocke un PAT GitHub `repo`, c'est-à-dire une nouvelle classe de secret tiers, dans un projet qui vient de durcir son egress (#304/#310).
+
+#### E. Adjudication des six critères pré-enregistrés
+
+| # | Seuil | Mesure | Verdict |
+|---|---|---|---|
+| **K1** | 0 issue réclamant un push sortant | 0. Les 3 issues qui matchent (**#89, #90, #94**, CLOSED) sont les issues de **création des exemples eux-mêmes** ; #130 porte sur les channels. | **SE DÉCLENCHE** |
+| **K2** | < 50 % des lignes supprimées | ~38 % au mieux ; 208/550 lignes de formatage survivent intactes ; le filtrage migre vers `src/` au lieu de disparaître. | **SE DÉCLENCHE** |
+| **K3** | perte silencieuse démontrée | exécuté : `catch {}` vide, aucun signal, `emit()` ne lève pas. | **SE DÉCLENCHE** |
+| **K4** | `NOOP` silencieux démontré | exécuté : dispatcher tardif muet, valeur rendue indiscernable, `rejectedCount` sans métrique. | **SE DÉCLENCHE** |
+| **K5** | 0 garde d'origine réutilisable | **faux** : `isLoopbackHostname` est **exporté** (`boot.ts:137`) et déjà réutilisé (`:436`), et `oidc.ts:120-156` porte une allowlist d'origine (correctif #310). *Réserve honnête :* elle n'est pas branchable telle quelle — elle dérive sa confiance d'un `issuerUrl`, et un endpoint webhook n'a aucun émetteur qui le cautionne ; il faudrait une nouvelle racine de confiance (~60 lignes). | **NE SE DÉCLENCHE PAS** |
+| **K6** | ≥ 5 sous-systèmes de zéro | **1 brique réutilisable** (`getEventsSince`). **5 patrons à recopier**, dont `handle-service-tokens.ts` — que `admin-common.ts:6-8` documente explicitement comme *« does NOT use these helpers — it hand-rolls its own … intentionally NOT wired »*, soit le handler le **moins factorisé** du dépôt. **8 à 10 à écrire** : table de tentatives + migration, retry jitté (`grep -riE "backoff\|jitter"` = **2 occurrences, toutes deux des commentaires**), déduplication, auto-désactivation + `disabled_reason`, rotation de secret, CRUD admin, métriques, allowlist d'origine sortante, diagnostic `doctor` du 3ᵉ canal, abonnement par type. Et `audit-queue.ts` **n'est pas un outbox** : buffer mémoire `CAPACITY = 10_000` qui **jette** au débordement (`:89`). | **SE DÉCLENCHE** |
+
+**Cinq sur six.** Le seul qui ne se déclenche pas le fait en ma défaveur — le garde d'origine existe, donc l'argument SSRF de §6.5 est plus faible que la fiche ne le dit.
+
+#### F. Le précédent que le projet a déjà écrit
+
+`docs/maintainer-notes.md:93-106`, sur une question structurellement identique (l'`EventStore` du transport MCP) :
+
+> *« This is intentional (**YAGNI**), not an oversight: server-pushed events already have a dedicated, reliable channel — the embedded MQTT broker / SSE emitter … **Policy**: implement the SDK's `EventStore` interface … only if a concrete client need emerges that MQTT/SSE can't already satisfy. **Don't build it speculatively.** »*
+
+Et `README.md:559-563` : la roadmap v1.0 est multi-instance + Postgres + SDK. **Aucune entrée « push sortant ».** Le seul « webhook » des docs livrées est **entrant** (invalidation de cache de membership GitHub App).
+
+#### G. Le livrable réel, sans rapport avec les webhooks
+
+`src/sse-emitter.ts:35-36` déclare l'intention : *« track refusals **so operators can see** when the cap is being hit »*. Elle n'est pas réalisée :
+
+- `getRejectedCount()` (`:141`) a **zéro appelant en production** — seulement `tests/unit/p3-sse-resilience.test.ts:48` et `:61`.
+- `src/metrics.ts:141` n'expose que la **jauge** `mcp_coordinator_sse_clients_active`. Au plafond elle est figée à 100 : **rien ne distingue « 100 clients sains » de « 100 clients + N refus »**.
+- Asymétrie sur le `catch {}` : `src/mqtt-bridge.ts:84` journalise (`"MQTT message dropped"` avec `reason` et `topic`) ; `src/sse-emitter.ts:67-71` n'a **aucune** ligne de log.
+- Le correctif a déjà sa forme dans le dépôt : `mcp_coordinator_mqtt_messages_dropped_total{reason}` (`src/metrics.ts:97`), livré en #263.
+
+C'est un « garde-fou fantôme » de la même famille que #317, #319 et #324 — une intention écrite en commentaire, jamais câblée.
 
 ### 6.5 Contre-arguments
 
@@ -179,11 +328,11 @@ Faible et non urgent. Le coût est un coût d'intégration continu : chaque nouv
 
 | | |
 |---|---|
-| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ⬜ refuser |
-| **Date** | |
-| **Justification** | |
-| **Issue / PR** | |
-| **Jalon visé** | |
+| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ✅ **refuser** |
+| **Date** | 2026-08-17 |
+| **Justification** | ⭑ **§4 se contredit elle-même, et aucune variante de conception ne le répare.** Elle tire deux bénéfices du même paragraphe : (A) rendre les trois `examples/*` obsolètes, et (B) un payload minimal `{type, id}` qui empêche toute fuite de contenu. Or les trois ponts lisent **9 champs de payload** (`subject`, `summary`, `status`, `claimed_by`…) dont `{type, id}` ne porte aucun : **(B) ⇒ ¬(A)**. Pire, sous (B) le consommateur doit refaire un `GET` **vers le coordinateur** — et `hooks.slack.com` ne rappellera jamais votre daemon. **La conception d'Anthropic ne peut structurellement servir qu'un consommateur que vous hébergez vous-même : un pont. C'est-à-dire ce qui existe déjà.** La variante « corps configurable » y échappe, mais elle déplace le formatage d'`examples/` (forkable, sans garantie) vers `src/` (semver, tests, support) : le coût de maintenance monte. ⭑ **Cinq critères sur six se déclenchent.** K1 : aucune demande — les 3 issues qui matchent sont celles de **création des exemples eux-mêmes**. K2 : ~38 % de lignes supprimées au mieux, 208/550 de formatage survivent, et le filtrage **migre** vers `src/` (21 sites `emit()` / 16 `EventType` contre 4 événements voulus). K3 et K4 **exécutés** : le `catch {}` de `emit()` est vide et `addListener` rend `NOOP` — une livraison réseau greffée là serait **plus faible que celle d'Anthropic**, qui retente 3 fois et le dit. K6 : **1 brique réutilisable**, 5 patrons à recopier (dont le handler que `admin-common.ts:6-8` documente comme le moins factorisé du dépôt), **8 à 10 sous-systèmes à écrire** — `backoff\|jitter` ne rend que **2 commentaires** dans tout `src/`. ⭑ **Et le projet a déjà écrit ce refus.** `docs/maintainer-notes.md:93-106`, sur une question structurellement identique : *« server-pushed events already have a dedicated, reliable channel … implement it only if a concrete client need emerges that MQTT/SSE can't already satisfy. **Don't build it speculatively.** »* La roadmap v1.0 (`README.md:559-563`) ne porte aucune entrée « push sortant ». ⭑ **Ce que je concède.** Pour **GitHub Actions**, mon argument NAT s'inverse : `bridge.mjs:50-58` **refuse** `mqtt://` et impose d'exposer le coordinateur en `wss://` public, et son README nomme la contrainte de fond — *« Actions is not a daemon »*, ~6 % de couverture. C'est le meilleur argument contre ce verdict, et il ne vaut que pour un tiers du corpus ; le cas d'usage `repository_dispatch` que §4 met en avant **n'existe nulle part dans le dépôt** et exigerait de stocker un PAT GitHub. ⭑ **Corrections de la fiche.** K5 **ne se déclenche pas** : `isLoopbackHostname` est exporté et déjà réutilisé, et `oidc.ts:120-156` porte une allowlist d'origine (#310) — l'argument SSRF de §6.5 est donc plus faible que la fiche ne le dit. Et **§6.1 est mal posée** : l'outbox n'est pas « à extraire », il **existe** (`events.id` + `getEventsSince`) ; ce qui manque est la table de tentatives. **Correction de méthode :** ma première mesure de K2 rendait « 13 % », une seconde « 84 % » — trois méthodes, trois chiffres. J'ai retiré l'argument par comptage de lignes comme porteur et publié l'inventaire brut des fonctions à la place. |
+| **Issue / PR** | **#353** — les refus de listener SSE sont invisibles : `getRejectedCount()` sans appelant en production, jauge `sse_clients_active` qui sature à 100, et deux `catch {}` sans journalisation là où le chemin MQTT journalise et compte (#263) |
+| **Jalon visé** | Aucun pour la feature. #353 est de l'hygiène d'observabilité, sans urgence. Reconsidérer **uniquement** si un besoin concret émerge que MQTT/SSE ne satisfont pas — et le seul candidat identifié est GitHub Actions, qu'il faudrait d'abord voir demandé par quelqu'un. |
 
 ## 8. Journal
 
@@ -191,3 +340,4 @@ Faible et non urgent. Le coût est un coût d'intégration continu : chaque nouv
 |---|---|
 | 2026-08-14 | Fiche créée par la veille plateforme. |
 | 2026-08-14 | Vérification des faits : payload et champ de déduplication corrigés, lignes serve-http.ts recalées, testable localement. |
+| 2026-08-17 | **Challenge — verdict `refuser`.** Le résultat décisif n'est pas une mesure mais une contradiction : **§4 tire deux bénéfices incompatibles** du même paragraphe — (A) rendre les trois `examples/*` obsolètes, (B) un payload minimal `{type, id}` qui empêche les fuites. Les trois ponts lisent **9 champs de payload** dont `{type,id}` ne porte aucun, donc **(B) ⇒ ¬(A)** ; et sous (B) le consommateur doit rappeler le **coordinateur**, ce que `hooks.slack.com` ne fera jamais. La conception d'Anthropic ne peut donc servir qu'un consommateur auto-hébergé — un pont, c'est-à-dire l'existant. **Cinq critères sur six se déclenchent.** K1 : les 3 issues qui matchent sont celles de **création des exemples** (#89, #90, #94). K2 : ~38 % de lignes supprimées au mieux, 208/550 de formatage survivent, le filtrage **migre** vers `src/`. K3 et K4 **exécutés** : `catch {}` vide et `addListener → NOOP`, donc une livraison réseau greffée là serait plus faible que celle d'Anthropic. K6 : 1 brique réutilisable, 8 à 10 sous-systèmes de zéro (`backoff|jitter` = **2 commentaires** dans tout `src/` ; `audit-queue.ts` n'est pas un outbox, il **jette** au débordement). **Et le projet avait déjà écrit ce refus** : `docs/maintainer-notes.md:93-106` — *« Don't build it speculatively »* — sur une question structurellement identique. **Concession** : pour GitHub Actions mon argument NAT **s'inverse** (`bridge.mjs:50-58` refuse `mqtt://` et impose un `wss://` public ; *« Actions is not a daemon »*, ~6 % de couverture) — meilleur argument adverse, valable pour un tiers du corpus. **Corrections de la fiche** : K5 **ne se déclenche pas** (`isLoopbackHostname` exporté et réutilisé, allowlist d'origine en `oidc.ts:120-156` depuis #310) — l'argument SSRF de §6.5 est plus faible qu'annoncé ; et **§6.1 est mal posée**, l'outbox existe déjà (`events.id` + `getEventsSince`, vérifié : 20 émissions, 20 lignes, zéro perte), ce qui manque est la table de tentatives. **Correction de méthode** : ma première mesure de K2 rendait 13 %, une seconde 84 % — j'ai retiré le comptage de lignes comme argument porteur et publié l'inventaire brut. Livrable sans rapport avec les webhooks : **#353**, les refus de listener SSE sont invisibles (`getRejectedCount()` sans appelant en production, jauge figée à 100, deux `catch {}` muets là où MQTT journalise et compte depuis #263). |
