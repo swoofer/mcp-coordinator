@@ -13,7 +13,7 @@
 | **Vérification** | CONFIRMED |
 | **Vérifiée le** | 2026-08-14 |
 | **Testabilité** | ✅ testable — tout le protocole §6.3 tourne en local |
-| **Statut du challenge** | ⬜ à faire |
+| **Statut du challenge** | ✅ **tranché** (2026-08-17) — refuser l'emprunt CMA ; le livrable est un bug P1 de fuseau (#346) |
 
 ---
 
@@ -121,6 +121,36 @@ L'opt-in par connexion (`event_deltas[]`) est aussi un bon modèle pour laisser 
 
 ### 6.2 Hypothèse
 
+*Pré-enregistrée le 2026-08-17, **avant** toute exécution.*
+
+> 📌 **Leçon de `E03`, appliquée d'entrée.** Ce corpus vient de découvrir qu'une inférence non sourcée
+> s'était propagée à travers trois fiches par citation croisée. Ici, **rien ne sera repris d'une autre
+> fiche sans mesure ou source directe** — et les affirmations sur CMA seront marquées « lu » plutôt
+> que « mesuré ».
+
+**Ce que je crois qu'il va se passer.**
+
+1. **La collision de curseur est réelle.** `since` en ISO milliseconde ne peut pas départager deux
+   messages écrits dans la même milliseconde : soit on en perd, soit on en duplique. C'est un défaut
+   de correction **indépendant de CMA**, et c'est le vrai livrable de cette fiche.
+2. Le trou de replay existe aussi, mais il est **borné et connu** (`SSE_RESUME_CAP`) — la question est
+   de savoir si le client peut le **détecter**.
+3. Le renommage du vocabulaire d'événements sera **cher pour un gain nul** — `EventType` est une union
+   fermée consommée par le dashboard et les tests.
+
+**Verdict pressenti :** `adopter partiellement` — corriger le curseur (défaut propre), refuser
+l'alignement de vocabulaire.
+
+**Critères de mort.**
+
+| # | Si… | …alors |
+|---|---|---|
+| **K1** | `get_thread_updates` **ne perd ni ne duplique** rien à la milliseconde | mon hypothèse principale est fausse, et le livrable disparaît. |
+| **K2** | la troncature SSE est **déjà détectable** par le client | le second grief tombe. |
+| **K3** | ajouter un `since_id` casse des tests existants | ce n'est plus un ajout non cassant : le coût monte et le verdict change. |
+| **K4** | le renommage de `EventType` touche plus de **8 fichiers** | la branche « aligner le vocabulaire » est disqualifiée par le coût. |
+| **K5** | aucun utilisateur n'a signalé de perte de messages | filtre YAGNI — **mais à peser** : `#236`, de `fosketer`, portait précisément sur des fenêtres de perte de messages. |
+
 <Ce qu'on pense avant de tester.>
 
 ### 6.3 Protocole de vérification
@@ -135,7 +165,98 @@ Proposition (non exécutée) :
 
 ### 6.4 Résultat observé
 
-<Ce qu'on a réellement mesuré/vu. Coller les sorties, pas les paraphraser.>
+*Challenge du 2026-08-17.*
+
+#### A. 🔴 Le vrai défaut n'est pas une collision de seconde — c'est un **décalage de fuseau**
+
+Ma première mesure portait sur le **prédicat SQL** : horodatages stockés à la seconde
+(`2026-08-17 04:12:50`, 19 caractères), cinq messages en rafale → **un seul** horodatage distinct,
+donc doublons avec `>=`. Exact, mais **ce n'est pas le mode de défaillance dominant.**
+
+La fonction **normalise d'abord** (`src/consultation.ts:601-605`) :
+
+```js
+const date = new Date(since);
+… date.toISOString().replace("T", " ").slice(0, 19);
+```
+
+`new Date("2026-08-17 04:18:48")` — format SQLite, **sans `Z`** — est interprété comme de l'**heure
+locale**. Mesuré **sur cette machine** (`America/Toronto`, offset −4 h) :
+
+```
+curseur rendu par get_thread_updates : 2026-08-17 04:18:48
+normalisé par getThreadUpdates       : 2026-08-17 08:18:48   ← avancé de 4 h
+```
+
+Rejeu sur le vrai chemin de code (`dist/src/consultation.js`) :
+
+```
+TZ=UTC              -> ["msg-0".."msg-4"]   4 doublons
+TZ=America/Toronto  -> []                   5 PERDUS
+```
+
+**K1 tient, mais pas pour la raison que j'avais écrite.** Ce n'est pas une seconde qui se perd, c'est
+**tout ce qui est plus récent que l'offset de l'hôte**, à chaque appel.
+
+#### B. Et c'est le cas nominal
+
+`get_thread_updates` renvoie `created_at` **brut**, au format SQLite. Un agent qui repasse le curseur
+qu'on vient de lui remettre tape exactement ce chemin — et c'est ce que notre doc lui demande
+(« fetch only new posts since a timestamp »). **Le format que nous renvoyons et celui que nous
+acceptons ne sont pas le même.**
+
+Le silence des utilisateurs s'explique : sur un hôte **UTC** (Docker, CI), le `>=` produit des
+**doublons** plutôt que des pertes, et un agent absorbe un doublon sans le signaler.
+
+#### C. 🔴 Le défaut touche le chemin que nous vendons comme fiable — et #236 en dépend
+
+`src/tools/mqtt-tools.ts` dit deux fois : *« For delivery you can rely on, use `get_thread_updates`
+instead »*. Et **#236** (`fosketer`, ouverte, « Message loss windows ») reçoit la même réponse — le
+chemin durable serait `thread_messages`.
+
+**Ce n'est donc pas une quatrième fenêtre de perte MQTT : c'est un trou dans le remède proposé pour
+les trois premières.** Vérifié : #236 ne décrit que des causes MQTT, celle-ci n'y figure pas.
+→ **issue #346**.
+
+#### D. Ma seconde mesure décrivait du **code mort**
+
+J'avais écrit « 2 messages perdus » pour `getActionSummaries`. Son seul appelant
+(`src/context-provider.ts:42`) **ne passe pas de `since`** — la branche n'est exercée que par un test.
+Le défaut y est pire (aucune normalisation, `>` strict, donc 100 % perdu quel que soit le format),
+mais **inatteignable aujourd'hui**. À corriger ou retirer avant qu'un appelant n'arrive.
+
+#### E. K2 se déclenche à moitié : la troncature est silencieuse mais **détectable**
+
+Aucun marqueur de troncature n'est émis. **Mais le client peut la déduire** : chaque événement porte
+`id: <rowid>`, et le rejeu part contigu au curseur — le trou est donc **à la fin**, visible comme un
+saut d'id. En mono-org (le cas de l'auto-hébergeur solo) les ids sont contigus, donc la détection est
+**exacte**. Le grief se réduit à **une ligne de documentation**, pas à un défaut de correction.
+
+Deux notes trouvées en passant : le dashboard ne persiste jamais `lastEventId` (le rejeu ne survit pas
+à un rechargement), et le sweeper purge `events` à 7 jours.
+
+#### F. K4 se déclenche à 2,9× — et le vocabulaire n'est pas aligné **avec lui-même**
+
+Renommer l'union `EventType` sur le vocabulaire CMA : **23 fichiers, 139 occurrences** (9 dans `src/`,
+2 dans `dashboard/`, 12 dans `tests/`). Seuil 8.
+
+Et l'argument d'alignement s'effondre de lui-même : le dashboard écoute `'run_config'`, qui **n'est
+pas** dans l'union `EventType` — il est émis via un cast. Symétriquement, `task_claimed` est dans
+l'union et **n'a aucun listener**. On n'aligne pas sur un tiers un vocabulaire qui n'est pas aligné
+sur son propre consommateur.
+
+#### G. K3 ne se déclenche pas · §0 se prétend vérifiée et ne l'est pas
+
+**K3 :** un `since_id` optionnel ne casse rien — sur 15 références aux tests, **aucune** n'assertit
+sur la forme de l'`inputSchema` de `get_thread_updates`. Coût : 2 fichiers en version rowid, 5 en
+version honnête (colonne `seq`, parce que `thread_messages.id` est un UUID non ordonnable et que les
+migrations recréent la table).
+
+**§0** affirme que « les plages de lignes citées pointent bien sur ce que la fiche affirme ».
+`get_thread_updates` est en **431-452**, pas 378-396 — cette dernière plage tombe sur
+`close_thread`/`cancel_thread`. Et la fiche `A05` en donne encore une troisième valeur. **Trois
+fiches, trois numéros, aucun juste** — le motif exact que `E03` vient de dénoncer, reproduit dans la
+fiche qui le cite.
 
 ### 6.5 Contre-arguments
 
@@ -154,11 +275,52 @@ Proposition (non exécutée) :
 
 | | |
 |---|---|
-| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ⬜ refuser |
-| **Date** | |
-| **Justification** | |
-| **Issue / PR** | |
-| **Jalon visé** | |
+| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ✅ **refuser** l'emprunt à CMA |
+| **Date** | 2026-08-17 |
+| **Justification** | **Rien de CMA ne survit.** K4 se déclenche à 2,9× (23 fichiers, 139 occurrences) pour aligner un vocabulaire qui n'est **pas aligné avec son propre consommateur** — le dashboard écoute un événement absent de l'union, et un membre de l'union n'a aucun listener. K2 se réduit à une ligne de doc : la troncature SSE est silencieuse mais **déductible** par contiguïté d'id. Et le seul livrable réel de cette fiche **n'est pas un emprunt** : c'est un bug de fuseau horaire dans notre propre curseur → **#346**. |
+| **Issue / PR** | [#346](https://github.com/swoofer/mcp-coordinator/issues/346) — P1, ouvert par ce challenge |
+| **Jalon visé** | aucun pour la fiche ; #346 est prioritaire |
+
+### Le vrai livrable : un bug P1, et il n'a rien à voir avec CMA
+
+`get_thread_updates` réinterprète en **heure locale** le curseur qu'il a lui-même rendu au format
+SQLite. Sur tout hôte à offset négatif, le curseur est **avancé** et la requête ne matche plus rien :
+**perte totale de tout message plus récent que l'offset, à chaque appel**. Mesuré sur cette machine
+(−4 h) et rejoué sur le vrai chemin de code.
+
+C'est un trou dans le chemin que nous documentons comme la garantie de livraison — celui-là même que
+la réponse à **#236** oppose à MQTT.
+
+### Ce qui est refusé
+
+- **L'alignement du vocabulaire d'événements sur CMA** (K4).
+- **Le curseur `(event_id, index)` emprunté à CMA** : notre problème n'est pas la forme du curseur,
+  c'est que nous renvoyons un format que nous n'acceptons pas. Un `since_id` reste une option — non
+  cassante, mesurée — mais elle relève de #346, pas d'un emprunt.
+
+### Ce qui n'est pas refusé
+
+**Une ligne de documentation** sur la troncature du replay SSE : elle est déductible côté client par
+saut d'id, mais rien ne le dit.
+
+### Corrections obligatoires
+
+- **§4 point 3 est faux de trois ordres de grandeur et sur la nature du défaut** : « deux messages
+  dans la même **milliseconde** » → c'est la **seconde**, et le mode dominant est un décalage de
+  **fuseau entier**.
+- **§0 se prétend vérifiée** : `get_thread_updates` est en 431-452, pas 378-396.
+- Le schéma du paramètre `since` **ment** : il annonce « only messages **after** this time » alors que
+  le SQL est `>=`.
+
+### Note de méthode
+
+**J'ai mesuré le prédicat, pas la fonction.** Mon banc reproduisait le schéma et testait `>=` contre
+`>` — le résultat était exact et la conclusion incomplète, parce que la vraie fonction **normalise
+avant de comparer**, et c'est la normalisation qui casse. Un banc qui reproduit le stockage sans
+reproduire le chemin d'appel mesure la moitié du problème.
+
+C'est la même famille de faute que `E02` (« j'ai lu une ligne de log sans la lire ») et `E01` (« j'ai
+testé le mauvais harnais ») : **l'instrument fonctionnait, il n'était pas branché au bon endroit.**
 
 ## 8. Journal
 
@@ -166,3 +328,4 @@ Proposition (non exécutée) :
 |---|---|
 | 2026-08-14 | Fiche créée par la veille plateforme. |
 | 2026-08-14 | Vérification des faits : header beta tranché, endpoints et événements confirmés, §5 exact, fiche testable en local. |
+| 2026-08-17 | **Challenge — verdict `refuser` l'emprunt à CMA, et découverte d'un bug P1.** Le vrai défaut n'est pas la collision de seconde que §4 envisageait : `getThreadUpdates` **réinterprète en heure locale** le curseur qu'il a lui-même rendu au format SQLite (`new Date("2026-08-17 04:18:48")` sans `Z`). Mesuré sur cette machine (`America/Toronto`, −4 h) : curseur `04:18:48` → normalisé `08:18:48`, **avancé de 4 h**. Rejoué sur le vrai chemin : `TZ=UTC` → 4 doublons, `TZ=America/Toronto` → **5 messages perdus sur 5**. C'est le cas nominal, puisque nous renvoyons `created_at` brut et que la doc demande de le repasser — **le format rendu et le format accepté ne sont pas le même**. Et cela troue le chemin que `mqtt-tools.ts` et la réponse à **#236** présentent comme la garantie de livraison → **issue #346**. Ma seconde mesure (`getActionSummaries`) décrivait du **code mort** : son seul appelant ne passe pas de `since`. **K4 déclenché à 2,9×** (23 fichiers, 139 occurrences) — et l'alignement s'effondre de lui-même, le dashboard écoutant `run_config`, absent de l'union `EventType`, tandis que `task_claimed` n'a aucun listener. **K2 à moitié** : la troncature SSE est silencieuse mais **déductible** par contiguïté d'id, donc une ligne de doc suffit. K3 non déclenché : un `since_id` optionnel ne casse aucun test. **§0 se prétend vérifiée** alors que `get_thread_updates` est en 431-452 et non 378-396 — et `A05` en donne une troisième valeur. |
