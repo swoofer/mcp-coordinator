@@ -15,8 +15,8 @@
 | **Confiance veille** | high |
 | **Vérification** | CONFIRMED |
 | **Vérifiée le** | 2026-08-14 |
-| **Testabilité** | ⚠️ partielle — PoC plugin local OK, `.mcpb` et allowlist Anthropic hors portée |
-| **Statut du challenge** | ⬜ à faire |
+| **Testabilité** | ⚠️ partielle — PoC plugin local OK (**confirmé : `claude plugin validate` passe sur un manifeste complet**), `.mcpb` et allowlist Anthropic hors portée |
+| **Statut du challenge** | ✅ **tranché** (2026-08-16) — `reporter` : K4, K5 et K6 déclenchés |
 
 ---
 
@@ -332,7 +332,35 @@ fonctionnalité de push temps réel qu'aucun utilisateur en entreprise ne peut a
 
 ### 6.2 Hypothèse
 
-<Ce qu'on pense avant de tester.>
+*Pré-enregistrée le 2026-08-16, **avant** toute exécution.*
+
+**Ce que je crois qu'il va se passer.**
+
+1. `claude plugin validate` accepte un manifeste minimal, et `/plugin marketplace add` depuis un
+   chemin local fonctionne — la distribution *technique* n'est pas le problème.
+2. **Le plugin installé localement ne débloque PAS le channel.** Le challenge `C03` a déjà lu la
+   porte du client : pour une entrée `plugin:` sans marqueur `dev`, l'allowlist s'applique, et
+   `--dangerously-load-development-channels` pose `dev` **par entrée**. Empaqueter en plugin
+   n'achète donc rien sur ce point précis.
+3. Le schéma du champ `channels`, que « aucune source du bundle ne donne », est **lisible dans le
+   binaire livré** — c'est la méthode qui a marché pour `C03`, `C04` et `C05`.
+4. La question de §6.1 se tranche sans test : embarquer le daemon dans le plugin donne **un
+   coordinateur par poste**, ce qui détruit le modèle « un daemon, N agents ».
+
+**Verdict pressenti :** `adopter partiellement` — plugin **client** seulement, en refusant
+l'embarquement du daemon et sans compter sur l'allowlist.
+
+**Critères de mort.**
+
+| # | Si… | …alors |
+|---|---|---|
+| **K1** | `claude plugin validate` échoue sur un manifeste minimal, ou `/plugin marketplace add` local ne marche pas | la distribution par plugin n'est pas praticable ici → `reporter` avec le blocage nommé. |
+| **K2** | un plugin installé localement **suffit** à charger le channel sans flag `dangerously` | l'acquis de `C03` est faux, je dois le corriger noir sur blanc — et la valeur du plugin monte fortement. |
+| **K3** | le schéma de `channels` reste introuvable | on ne peut pas écrire le manifeste complet → la partie channel du plugin est `reporter`, jamais `adopter`. |
+| **K4** | `${CLAUDE_PLUGIN_DATA}` ne survit pas à une désinstallation/réinstallation | le plugin ne peut pas héberger la base SQLite, ce qui ferme définitivement la branche « daemon embarqué » de §6.1. |
+| **K5** | le chantier dépasse **12 fichiers** | l'effort n'est plus M. |
+| **K6** | aucun utilisateur n'a demandé une install par plugin | filtre YAGNI — mais attention : la friction d'installation est un problème **constaté** du projet, pas supposé ; ce critère doit être pesé, pas appliqué mécaniquement. |
+| **K7** | le `.mcpb` ne survit pas au binaire natif `better-sqlite3` | la branche bundle est morte, indépendamment du reste. |
 
 ### 6.3 Protocole de vérification
 
@@ -364,6 +392,159 @@ fonctionnalité de push temps réel qu'aucun utilisateur en entreprise ne peut a
       celle de `package.json` l. 3 et celle rapportée par `system/init` coïncident.
 
 ### 6.4 Résultat observé
+
+*Challenge du 2026-08-16. Claude Code **2.1.233**. PoC jetable dans le scratchpad.*
+
+#### A. La distribution technique marche — et j'ai trouvé le schéma que §6.3 déclarait introuvable
+
+`claude plugin validate` passe sur un manifeste complet. Le schéma du champ `channels`, lu dans le
+binaire (« aucune source du bundle ne le donne » disait §6.3) :
+
+```js
+channels: ht(be({
+  server: F().min(1).describe("Name of the MCP server this channel binds to. Must match a key in this plugin's mcpServers."),
+  displayName: F().optional(),
+  userConfig: oo(F(), Jeu()).optional(),
+}).strict())
+```
+
+**Confirmé par exécution**, pas seulement lu — une clé inventée est rejetée :
+
+```
+❯ plugins[0] plugin.json → channels.0: Unrecognized key: "cleInventee"
+```
+
+Et le validateur m'a appris une contrainte que ma lecture n'avait pas fait ressortir : chaque entrée
+`userConfig` **exige un `title`**. Manifeste final, `✔ Validation passed` :
+
+```jsonc
+{
+  "name": "mcp-coordinator", "version": "0.0.1", "author": { "name": "swoofer" },
+  "userConfig": {
+    "COORDINATOR_URL": { "type": "string", "title": "Coordinator URL",
+                         "description": "URL du daemon", "default": "http://localhost:3100" }
+  },
+  "mcpServers": {
+    "coordinator":         { "type": "http", "url": "${user_config.COORDINATOR_URL}/mcp" },
+    "coordinator-channel": { "command": "mcp-coordinator", "args": ["channel"] }
+  },
+  "channels": [ { "server": "coordinator-channel", "displayName": "mcp-coordinator" } ]
+}
+```
+
+**`${user_config.KEY}` s'expanse bien dans `url`** — tranché contre la description du champ, qui dit
+« substituted into `${user_config.KEY}` references in the mcpServers **env** ». Le résolveur `hRb`
+substitue `url` pour `http`/`sse`/`ws`, et il existe un code d'erreur dédié `user_config_missing`
+déclenché sur une `url` contenant encore `${user_config.` après substitution — ce qui ne peut exister
+que si `url` est un site de substitution. **La doc du champ est périmée.**
+
+> ⚠️ Ne pas confondre : `CLAUDE_PLUGIN_OPTION_<KEY>` est injecté **uniquement** dans l'env des hooks.
+> La forme valable dans `mcpServers` est `${user_config.KEY}`.
+
+#### B. 🔴 §1 se trompe : `channels` n'est pas « le chemin officiel pour distribuer un channel »
+
+Ce qui fait d'un serveur un channel, c'est **la capability annoncée à l'exécution** (`b3r`), pas le
+manifeste. La porte `xLt` matche sur le nom du **plugin**, jamais sur `manifest.channels`. Et
+`manifest.channels` n'a que **deux consommateurs**, aucun n'inscrivant le channel dans la session.
+
+Pire : une entrée `channels` **sans `userConfig` est inerte** — `_aa` la saute (`if (!o.userConfig ||
+Object.keys(o.userConfig).length === 0) continue`). Le champ est un **porte-schéma de configuration**
+pour un dialogue TUI, pas un mécanisme de chargement.
+
+#### C. Mon affirmation centrale était trop forte — il existe **un** chemin sans flag
+
+J'affirmais : « empaqueter en plugin n'achète rien, l'utilisateur devra toujours taper
+`--dangerously-load-development-channels` ». Le gate `UWr` le confirme pour un individu — et
+`dev` n'a que **deux sites d'écriture**, tous deux sous ce flag.
+
+**Mais** : si une org pose `allowedChannelPlugins` **et** `channelsEnabled: true` en managed
+settings, alors `source === "org"`, et **le flag n'est jamais tapé**. Ce chemin n'implique Anthropic
+à aucun moment — et il **exige** l'identité `plugin@marketplace`.
+
+> **Donc le plugin est nécessaire et suffisant pour le segment entreprise, et inutile pour
+> l'individu.** C'est la seule valeur réelle de cette fiche, et je l'avais écartée à tort.
+
+Deux précisions du même passage : l'allowlist par défaut n'est **pas** `claude-plugins-official`
+mais `tengu_harbor_ledger`, un **feature flag servi côté serveur** (défaut `[]`) ; et le flag `dev`
+déclenche un `DevChannelsDialog` **à chaque démarrage** — friction pire que documentée.
+
+#### D. 🔴 K4 se déclenche : `${CLAUDE_PLUGIN_DATA}` est détruit par défaut
+
+Chemin réel : `~/.claude/plugins/data/<id assaini>`. Il survit à une **mise à jour**, mais est
+**supprimé** par un `/plugin uninstall` ordinaire — vérifié, l'option est
+`--keep-data : « Preserve the plugin's persistent data directory (~/.claude/plugins/data/{id}/) »`,
+donc **préserver est l'opt-in et détruire est le défaut** — ainsi que par un
+`/plugin marketplace remove` (qui détruit les données de *tous* ses plugins) et par le prune des
+orphelins. S'ajoute la fragilité de la clé : changer de marketplace orpheline silencieusement la base.
+
+**La branche « daemon embarqué » de §6.1 est donc morte sur la durée de vie du stockage**, avant même
+l'argument « un coordinateur par poste ».
+
+#### E. 🔴 Le bénéfice n°2 de §4 est arithmétiquement **inversé**
+
+§4 annonce que « l'installation passe de quatre étapes à une ». L'entrée
+`{"command": "mcp-coordinator", "args": ["channel"]}` invoque le **binaire installé globalement**, et
+`cli/channel.ts` exige en plus `~/.mcp-coordinator/config.json` et un broker déjà à l'écoute. Le
+plugin ne fournit **aucun** des trois.
+
+| Étape | Après le plugin |
+|---|---|
+| `npm install -g mcp-coordinator` | **toujours requise** |
+| `mcp-coordinator init` | **toujours requise** |
+| `server start --daemon` | **toujours requise** |
+| coller le snippet `.mcp.json` | **supprimée** — mais `init --write-mcp-config` l'automatisait déjà |
+
+Et le plugin **ajoute** `/plugin marketplace add`, `/plugin install`, et le prompt `userConfig`.
+**Bilan : 4 étapes → 6.** Le plugin **déplace** la friction, il ne la réduit pas. Il constitue en
+outre un **cinquième** vecteur d'installation (npm, Docker/GHCR, binaires, snippet, plugin) chez un
+mainteneur solo.
+
+#### F. K5 se déclenche : 18 à 20 fichiers pour un seuil de 12
+
+Dont `docs/index.html` — 6 dictionnaires de langue, ~79 éditions pour un nouveau chemin
+d'installation — et surtout deux fichiers de publication que la fiche ne compte pas :
+`package.json` (`files[]` n'inclut pas `.claude-plugin/`) et **`release-please-config.json`, qui n'a
+aucune clé `extra-files`** (vérifié : 0 occurrence) — donc la version de `plugin.json` **ne serait
+jamais bumpée**.
+
+#### G. K7 était **mal spécifié** — la mécanique marche, la branche meurt ailleurs
+
+K7 testait « le `.mcpb` survit-il au binaire natif ». Réponse : **oui**. `better-sqlite3` livre
+**8 prebuilds** (N-API, layout prebuildify), dont `win32-x64`, `win32-arm64`, `darwin-x64` et
+`darwin-arm64` — précisément les cibles MCPB. Archive estimée à 15-25 Mo zippés, très en dessous du
+plafond. Appliqué à la lettre, **K7 revient « non déclenché », ce qui se lirait comme un feu vert.**
+C'est un défaut de mon critère : il mesurait l'emballage au lieu du modèle de déploiement.
+
+La branche meurt pour la raison de §6.5, qui ne demandait aucune mesure : un `.mcpb` installe un
+serveur MCP **local et par machine**, alors que mcp-coordinator est un daemon **partagé**.
+*N* bundles = *N* coordinateurs qui ne coordonnent rien.
+
+**Correction de §2 au passage :** le paquet `mcpb` **n'existe pas** sur npm (404). Le nom réel est
+**`@anthropic-ai/mcpb`** (2.1.2). Un lecteur qui suit la fiche prend une erreur.
+
+#### H. K6 se déclenche, sur sa lecture forte
+
+Recherche exhaustive du tracker (`install`, `plugin`, `marketplace`, `onboarding`, `setup`, `mcpb`,
+`dxt`) : **`mcpb` → 0, `dxt` → 0, `marketplace` → 1**, et cette unique occurrence est **#328**, qui
+mentionne l'empaquetage plugin uniquement pour le mettre **explicitement hors périmètre**.
+
+Ce n'est donc pas « personne n'a demandé » : c'est **« le mainteneur a déjà examiné cette question
+exacte et l'a écartée »**, il y a quelques heures, dans une issue ouverte par ce corpus.
+
+La friction d'installation, elle, **est** constatée — mais c'est une autre : de la documentation qui
+ment (#328, #277) et de la fragilité de dépendances natives (#75). Un plugin ne corrige ni l'une ni
+l'autre.
+
+#### I. 🆕 Défauts documentaires trouvés en passant, vérifiés
+
+- **`docs/index.html` porte 15 références à `ghcr.io/…:2.0.0`** alors que `package.json` est en
+  **2.1.0** — deux releases de retard.
+- **`docs/index.html` documente deux fois un flag `--name`** (`mcp-coordinator init ~/project --name "Alice"`)
+  qui **n'existe nulle part dans `cli/`** — vérifié, zéro occurrence.
+
+Ajouter un quatrième emplacement de version machine-lisible à un projet qui rate déjà le troisième
+quinze fois de suite, sans `extra-files` dans release-please, aggraverait un défaut constaté. Traité
+séparément.
 
 <Ce qu'on a réellement mesuré/vu. Coller les sorties, pas les paraphraser.>
 
@@ -415,11 +596,55 @@ fonctionnalité de push temps réel qu'aucun utilisateur en entreprise ne peut a
 
 | | |
 |---|---|
-| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ⬜ refuser |
-| **Date** | |
-| **Justification** | |
-| **Issue / PR** | |
-| **Jalon visé** | |
+| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ✅ **reporter** · ⬜ refuser |
+| **Date** | 2026-08-16 |
+| **Justification** | **K4, K5 et K6 se déclenchent.** Le bénéfice n°2 de §4 est **arithmétiquement inversé** — le plugin fait passer l'installation de 4 à 6 étapes, il déplace la friction au lieu de la réduire. Le bénéfice n°1 est nul **aujourd'hui** sur les trois chemins d'allowlist. §1 se trompe : `channels` n'est pas le mécanisme de chargement d'un channel, c'est un porte-schéma de configuration, inerte sans `userConfig`. **Mais** un chemin réel existe et je l'avais écarté à tort : avec `allowedChannelPlugins` + `channelsEnabled`, un admin d'org lève le flag **sans Anthropic**, et ce chemin **exige** l'identité `plugin@marketplace`. D'où `reporter` et non `refuser`. |
+| **Issue / PR** | [#333](https://github.com/swoofer/mcp-coordinator/issues/333) — défauts documentaires trouvés en passant, **sans rapport avec l'adoption** |
+| **Jalon visé** | aucun. Réveil sur demande, pas sur version. |
+
+### Condition de réveil — précise, et c'est le livrable
+
+**La première org ou le premier opérateur qui demande à activer le channel sans flag `dangerously`.**
+C'est le seul segment où le plugin est **nécessaire et suffisant** : un administrateur qui pose
+`allowedChannelPlugins` + `channelsEnabled: true` lève le verrou sans jamais passer par Anthropic —
+mais il ne peut le faire que sur une identité `plugin@marketplace`, donc seulement si nous publions
+le plugin.
+
+Le jour où cette demande arrive, **le manifeste est déjà écrit et validé** (§6.4-A). C'est le second
+livrable de ce challenge : il n'y aura pas de travail d'exploration à refaire.
+
+### Ce qui est refusé dès maintenant
+
+- **Embarquer le daemon dans le plugin** (la branche « oui » de §6.1). Tuée par K4 : le répertoire
+  `${CLAUDE_PLUGIN_DATA}` est **détruit par défaut** à la désinstallation, à la suppression du
+  marketplace, et orphelin en cas de changement de marketplace. Une base SQLite de coordination n'y
+  survit pas. L'argument « un coordinateur par poste » n'a même pas besoin d'être invoqué.
+- **La branche `.mcpb`.** Non pas pour la raison que testait K7 — l'emballage marche, `better-sqlite3`
+  livre 8 prebuilds dont les cibles Windows et macOS — mais parce qu'un bundle installe un serveur
+  MCP **local et par machine**, quand mcp-coordinator est un daemon **partagé**.
+
+### Corrections à porter dans la fiche
+
+- **§1** : `channels` n'est pas « le chemin officiel pour distribuer un channel ». La capability
+  annoncée à l'exécution l'est ; le champ est un porte-schéma, inerte sans `userConfig`.
+- **§2** : le paquet npm est **`@anthropic-ai/mcpb`**, pas `mcpb` (404).
+- **§4** : le bénéfice n°2 (« quatre étapes à une ») est faux ; c'est 4 → 6.
+- **§2/§6.3** : le schéma de `channels` n'est plus inconnu (§6.4-A), et `${user_config.KEY}`
+  s'expanse dans `url` — la description du champ, qui dit « env », est périmée.
+
+### Note de méthode
+
+Deux fautes symétriques, corrigées par la passe adversariale.
+
+**J'étais trop catégorique** en écrivant que le plugin « n'achète rien ». C'est vrai pour un
+utilisateur individuel, faux pour une org — et c'est précisément ce qui fait la différence entre
+`refuser` et `reporter`. Le premier réfuteur a trouvé le seul chemin qui lève le flag sans Anthropic,
+et il exige le plugin.
+
+**Et mon critère K7 était mal spécifié.** Il testait la mécanique d'emballage, qui fonctionne ; il
+serait donc revenu « non déclenché », ce qui se serait lu comme un feu vert pour une branche que
+§6.5 avait déjà tuée pour une raison de modèle de déploiement. Un critère de mort qui mesure la
+mauvaise chose est pire qu'un critère absent : il fabrique une autorisation.
 
 ## 8. Journal
 
@@ -427,3 +652,4 @@ fonctionnalité de push temps réel qu'aucun utilisateur en entreprise ne peut a
 |---|---|
 | 2026-08-14 | Fiche créée par la veille plateforme. |
 | 2026-08-14 | Vérification des faits : schéma `channels` tranché, sources plugin et `strictPluginOnlyCustomization` corrigés, statut nuancé (channels = research preview), §5 vérifié fichier par fichier. |
+| 2026-08-16 | **Challenge — verdict `reporter`.** K4, K5, K6 déclenchés. **Livrable : un manifeste plugin complet qui passe `claude plugin validate`**, et le schéma du champ `channels` que §6.3 déclarait introuvable (`{server, displayName?, userConfig?}`, `.strict()`), tous deux vérifiés par exécution. `${user_config.KEY}` s'expanse bien dans `url` — la description du champ, qui dit « env », est périmée. **Corrections :** §1 se trompe, `channels` n'est pas le mécanisme de chargement d'un channel mais un porte-schéma inerte sans `userConfig` ; §2 nomme un paquet npm inexistant (`mcpb` → `@anthropic-ai/mcpb`) ; **le bénéfice n°2 de §4 est arithmétiquement inversé — 4 étapes deviennent 6**. `reporter` et non `refuser` parce qu'un chemin réel existe, que j'avais écarté à tort : `allowedChannelPlugins` + `channelsEnabled` permet à un admin d'org de lever le flag **sans Anthropic**, et ce chemin exige l'identité `plugin@marketplace`. Refusés dès maintenant : le daemon embarqué (K4 — `${CLAUDE_PLUGIN_DATA}` est détruit par défaut à la désinstallation) et le `.mcpb` (modèle par machine contre daemon partagé). Mon critère K7 était **mal spécifié** : il mesurait l'emballage, qui marche. Défauts documentaires trouvés en passant → #333. |
