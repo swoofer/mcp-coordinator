@@ -13,7 +13,7 @@
 | **Vérification** | CONFIRMED |
 | **Vérifiée le** | 2026-08-14 |
 | **Testabilité** | ⚠️ partielle — APIs Analytics hors de portée, faute de clés org |
-| **Statut du challenge** | ⬜ à faire |
+| **Statut du challenge** | ✅ **tranché** (2026-08-16) — `reporter` : réveil sur l'émission de clés SEP-414 |
 
 ---
 
@@ -170,7 +170,33 @@ Nature de fond : Anthropic construit le plan de données d'observabilité multi-
 
 ### 6.2 Hypothèse
 
-<Ce qu'on pense avant de tester.>
+*Pré-enregistrée le 2026-08-16, **avant** toute exécution.*
+
+**Ce que je crois qu'il va se passer.**
+
+1. **Aucun `traceparent` n'arrive** sans télémétrie active. La fiche le pressent (§0) ; c'est
+   précisément ce qui décide de §6.1, puisque tout le scénario « participant passif » suppose que
+   l'en-tête soit là.
+2. `params._meta` d'un `tools/call` ne portera **pas** les clés SEP-414 par défaut.
+3. Le remplacement de `POST /api/token-usage` est donc hors sujet tant que la chaîne amont n'émet
+   rien : on ne remplace pas une source de vérité par un flux absent.
+
+**Verdict pressenti :** `reporter`, avec pour livrable la mesure de ce qui arrive réellement.
+
+**Critères de mort.**
+
+| # | Si… | …alors |
+|---|---|---|
+| **K1** | `traceparent` **arrive** sans réglage particulier | mon hypothèse est fausse et la branche « participant passif » devient réelle : je dois l'écrire et réévaluer §6.1. |
+| **K2** | `traceparent` n'arrive **jamais**, même avec la télémétrie activée | la branche « participant passif » est morte pour ce déploiement, et §4 est à corriger. |
+| **K3** | `params._meta` ne porte aucune clé SEP-414 | le chemin stdio ne peut pas non plus servir de porteur, et il faut le dire. |
+| **K4** | le remplacement de `/api/token-usage` toucherait plus de **8 fichiers** ou casserait un appelant réel | on ne déprécie pas : le canal maison reste. |
+| **K5** | les deux APIs Analytics restent non exécutables | elles sortent du périmètre décidable — `reporter` nommément sur elles, comme K7 l'a fait pour `C10`. |
+| **K6** | aucun utilisateur n'a demandé d'observabilité | filtre YAGNI, à peser : le projet a déjà des métriques Prometheus, donc le besoin n'est pas nul par principe. |
+
+> 📌 **Leçon de `C10` appliquée d'avance :** K5 ci-dessus est une **note de périmètre**, pas un
+> critère — il est vrai avant l'expérience, comme K7 l'était pour `C10`. Je le marque comme tel au
+> lieu de feindre de l'adjuger à la fin.
 
 ### 6.3 Protocole de vérification
 
@@ -183,6 +209,102 @@ Nature de fond : Anthropic construit le plan de données d'observabilité multi-
 - [ ] Mesurer le coût du remplacement : compter les appelants réels de `POST /api/token-usage` (SDK, dashboard, agents de test) avant d'envisager sa dépréciation.
 
 ### 6.4 Résultat observé
+
+*Challenge du 2026-08-16. Claude Code **2.1.233**, serveur MCP HTTP espion + collecteur OTLP local.*
+
+#### A. `traceparent` arrive — mais au bout d'une chaîne à **cinq** conditions
+
+Trois mesures successives, sur le même serveur espion :
+
+| Configuration | `traceparent` |
+|---|---|
+| aucun réglage | **absent** |
+| `CLAUDE_CODE_ENABLE_TELEMETRY=1` + `CLAUDE_CODE_ENHANCED_TELEMETRY_BETA=1` | **absent** |
+| + `OTEL_TRACES_EXPORTER=otlp` + `OTEL_EXPORTER_OTLP_ENDPOINT` + **collecteur vivant** | ✅ **présent** |
+
+```
+#1 POST /v1/traces 16774o                       ← le collecteur reçoit
+"traceparent": "00-a46d81d66918c3e5ed48e010741f0960-76d854fe4da37ec1-01"
+```
+
+> 🔴 **Correction d'une erreur que j'allais commettre.** Après les deux premières mesures j'allais
+> écrire que `traceparent` « n'arrive jamais, même avec la télémétrie activée ». **C'est faux**, et le
+> binaire l'aurait réfuté : l'injection existe bien dans le chemin de requête MCP (wrapper `fetch`,
+> requêtes non-GET). Ce qui bloquait était en aval — sans `OTEL_TRACES_EXPORTER`, aucun *trace
+> provider* n'est installé, le span est non-enregistrant, le `traceId` vaut 32 zéros, et l'injection
+> se retire d'elle-même sur ce test.
+>
+> **J'avais sauté la troisième puce de mon propre §6.3** (« collecteur OTLP local »), puis généralisé
+> depuis une mesure incomplète. C'est la faute de `C03` sous une autre forme : conclure « jamais »
+> à partir de « pas dans les deux cas que j'ai essayés ».
+
+**K1 se déclenche donc, et K2 ne se déclenche pas.** La branche « participant passif » est **réelle**
+— mais son coût d'activation est **entièrement à la charge de l'opérateur** : deux variables de
+télémétrie, un exportateur, un endpoint, et un collecteur qui tourne. Ce n'est pas « lire un en-tête
+qui est déjà là ».
+
+Jeu complet des en-têtes **par défaut**, pour mémoire — aucun n'est lié au tracing :
+
+```
+accept · accept-encoding · content-type · user-agent
+mcp-protocol-version · connection · host · content-length
+user-agent: claude-code/2.1.233 (claude-desktop, agent-sdk/0.3.229)
+```
+
+#### B. 🔴 SEP-414 : **aucune clé émise**, et c'est une preuve, pas un constat
+
+`params._meta` d'un `tools/call`, par défaut :
+
+```json
+{"claudecode/toolUseId":"toolu_01BzmP6m7m3BqeRcwPbQPdqB","progressToken":2}
+```
+
+Aucune clé SEP-414. Et la recherche du binaire le confirme : **aucune** des occurrences de
+`traceparent` ne se trouve dans une construction `_meta`. **K3 se déclenche**, et le contre-argument
+de §6.5 qui présentait SEP-414 comme « le seul morceau réellement portable » est **mort** : ce
+morceau n'a aucune implémentation sur le seul client qui compte.
+
+#### C. `claudecode/toolUseId` : redondant **1:1**, pas une opportunité
+
+J'ai d'abord vu dans cette clé une corrélation gratuite. Elle ne vaut rien pour ce projet :
+
+- Sur le chemin HTTP, **un `tools/call` = un `POST /mcp` = un `request_id`**. La clé est donc en
+  correspondance **1:1** avec l'identifiant maison déjà présent (`src/serve-http.ts`,
+  `resolveRequestId`) et déjà porté par la chaîne d'audit. **Aucun gain de granularité.**
+- Elle est **préfixée fournisseur**, non standard, modifiable sans révision de protocole.
+- Elle n'est peuplée que pour Claude Code. Cursor, Cline, l'API REST et le SDK n'en produisent
+  aucune → **preuve à deux vitesses** dans une chaîne d'audit dont toute la valeur est l'uniformité.
+- Coût réel non nul : `CoordinatorEvent` n'a que `id`/`type`/`payload`/`created_at` — l'ajouter
+  signifie migration, contrat SSE et dashboard.
+
+#### D. 🔴 Deux bénéfices de §4 sont **factuellement faux**
+
+1. **§4 bénéfice 1** décrit l'existant comme « un identifiant maison, plat, sans parent, qui ne relie
+   rien à la session Claude Code émettrice ». **Faux :** `ctx.sessionId` est lu dans **6 fichiers** de
+   `src/tools/` et sert précisément à résoudre les claims de l'agent émetteur. La fiche sous-décrit
+   l'existant pour gonfler le bénéfice.
+2. **§4 bénéfice 2** parle de rendre `POST /api/token-usage` redondant. **Le canal n'a aucun
+   producteur** : hors définition et dashboard, **zéro appelant** dans `src/`, `cli/`, `sdk/`,
+   `examples/`, `scripts/`. Le dashboard lit des champs que rien dans le dépôt ne produit. On ne
+   remplace pas un doublon — on remplacerait un tuyau vide par un tuyau vide plus coûteux.
+
+**K4 ne se déclenche pas** : 8 fichiers exactement, pour un seuil fixé à « plus de 8 ». Mais le
+décompte est sans objet, puisqu'il n'y a rien à déprécier.
+
+#### E. K6 se déclenche — et l'observabilité existe déjà
+
+Aucune demande : recherche sur `otel`, `telemetry`, `observability`, `metrics`, `trace` → rien
+d'externe. Et le projet livre **déjà** deux registres Prometheus, un dashboard Grafana
+(`docs/ops/dashboards/`) et des règles d'alerte (`docs/ops/alerts/`). La seule métrique traçable à un
+utilisateur réel est un **compteur** ajouté pour l'issue #236.
+
+Détail qui achève la branche : `docs/ops/single-instance-constraints.md` — le daemon est
+**mono-nœud**. Il n'y a pas de système distribué sur lequel distribuer une trace.
+
+#### F. Note de périmètre (et non critère) : les deux APIs Analytics
+
+Comme annoncé en §6.2, elles exigent une clé Admin d'org et une clé Analytics de Primary Owner. Rien
+n'a été exécuté sur elles ; elles sortent du périmètre décidable.
 
 <Ce qu'on a réellement mesuré/vu. Coller les sorties, pas les paraphraser.>
 
@@ -202,11 +324,61 @@ Nature de fond : Anthropic construit le plan de données d'observabilité multi-
 
 | | |
 |---|---|
-| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ⬜ refuser |
-| **Date** | |
-| **Justification** | |
-| **Issue / PR** | |
-| **Jalon visé** | |
+| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ✅ **reporter** · ⬜ refuser |
+| **Date** | 2026-08-16 |
+| **Justification** | `traceparent` **arrive bien** sur le chemin MCP (K1) — mais au bout d'une chaîne à **cinq conditions**, toutes à la charge de l'opérateur. Aucune n'est réunie chez un utilisateur du profil de déploiement actuel, et **K6 se déclenche** : aucune demande, alors que deux registres Prometheus, un dashboard Grafana et des règles d'alerte sont **déjà livrés** — pour un daemon **mono-nœud**, donc sans système distribué à tracer. Deux bénéfices de §4 sont par ailleurs **factuellement faux**. |
+| **Issue / PR** | aucune |
+| **Jalon visé** | aucun |
+
+### Condition de réveil — une seule, nommée
+
+**Le jour où Claude Code émet des clés SEP-414 dans `params._meta`.** C'est le seul déclencheur qui
+change la donne, parce que c'est le seul qui rendrait le contexte de trace disponible **sans** exiger
+qu'un opérateur monte une chaîne OTLP complète — et le seul qui soit **portable** hors Claude Code.
+Aujourd'hui, mesuré : **aucune clé SEP-414 n'est émise**.
+
+Déclencheur secondaire, plus faible : un utilisateur qui exploite déjà OTLP et demande la jointure.
+Il n'en existe aucun.
+
+### Ce qui est refusé
+
+**Exploiter `claudecode/toolUseId` comme clé de corrélation.** C'était mon « adopter partiellement »
+projeté ; il n'a pas de substance (§6.4-C). La clé est en correspondance **1:1** avec le `request_id`
+déjà porté par la chaîne d'audit, elle est préfixée fournisseur, et elle n'est peuplée que pour un
+client — ce qui introduirait une **preuve à deux vitesses** dans une chaîne d'audit dont toute la
+valeur tient à son uniformité.
+
+**Déprécier `POST /api/token-usage`** n'a pas de sens non plus : le canal **n'a aucun producteur**.
+Ce n'est pas un doublon à retirer, c'est un tuyau vide — et le vrai constat, hors périmètre de cette
+fiche, est qu'un lecteur dashboard complet fait face à un émetteur inexistant.
+
+### Corrections à porter dans la fiche
+
+- **§4 bénéfice 1 est faux** : `ctx.sessionId` relie déjà chaque appel d'outil à la session MCP
+  émettrice, dans 6 fichiers de `src/tools/`.
+- **§4 bénéfice 2 est faux** : le canal `token_usage` n'a aucun producteur.
+- **§6.5, ligne « dépendance à une beta » : à réécrire.** Le coût réel n'est pas « un flag beta » mais
+  **cinq conditions** — `CLAUDE_CODE_ENABLE_TELEMETRY`, `CLAUDE_CODE_ENHANCED_TELEMETRY_BETA`,
+  `OTEL_TRACES_EXPORTER=otlp`, un endpoint, et un collecteur vivant.
+- **§6.5, ligne SEP-414 : morte.** Le « seul morceau réellement portable » n'a aucune implémentation.
+- **§1/§2** : ajouter que `params._meta` porte `claudecode/toolUseId` et `progressToken` par défaut —
+  fait absent de la fiche, même si la conclusion est de ne pas s'en servir.
+
+### Note de méthode
+
+**J'allais écrire une affirmation fausse, et la passe adversariale l'a arrêtée.** Après deux mesures
+négatives, j'étais prêt à conclure que `traceparent` « n'arrive jamais, même avec la télémétrie
+activée ». Le binaire dit le contraire : l'injection existe dans le chemin MCP, et c'est un maillon
+en aval qui manquait. **J'avais sauté la troisième puce de mon propre §6.3** — le collecteur OTLP —
+puis généralisé depuis une mesure incomplète.
+
+C'est la même faute qu'en `C03`, sous une autre forme : conclure « jamais » à partir de « pas dans
+les deux configurations que j'ai essayées ». La parade n'est pas de mesurer plus, c'est de **dérouler
+le protocole que j'ai moi-même écrit avant de conclure**.
+
+Bonne nouvelle méthodologique en revanche : le critère K5 avait été explicitement marqué **note de
+périmètre** dès §6.2, en application de la leçon de `C10`. Il n'a donc pas été présenté comme un
+résultat.
 
 ## 8. Journal
 
@@ -214,3 +386,4 @@ Nature de fond : Anthropic construit le plan de données d'observabilité multi-
 |---|---|
 | 2026-08-14 | Fiche créée par la veille plateforme. |
 | 2026-08-14 | Vérification des faits : noms OTel exacts, §5 exact ; corrigés traceparent conditionnel, query_source, champs et URL Analytics. |
+| 2026-08-16 | **Challenge — verdict `reporter`.** Mesuré sur un serveur MCP espion : `traceparent` **arrive bien** sur le chemin MCP, mais seulement au bout de **cinq conditions** (`ENABLE_TELEMETRY` + `ENHANCED_TELEMETRY_BETA` + `OTEL_TRACES_EXPORTER=otlp` + endpoint + collecteur vivant) — sans exportateur, aucun trace provider n'est installé, le `traceId` vaut 32 zéros et l'injection se retire. **J'allais écrire « n'arrive jamais » après deux mesures négatives ; c'était faux**, la passe adversariale l'a arrêté — j'avais sauté la 3e puce de mon propre §6.3. **Aucune clé SEP-414 n'est émise** (preuve, pas constat) : la ligne de §6.5 qui en faisait « le seul morceau portable » est morte. `params._meta` porte en revanche `claudecode/toolUseId` + `progressToken` par défaut — **refusé** : correspondance 1:1 avec le `request_id` existant, clé préfixée fournisseur, et preuve à deux vitesses dans la chaîne d'audit. **Deux bénéfices de §4 sont factuellement faux** : `ctx.sessionId` relie déjà l'appel à la session émettrice (6 fichiers de `src/tools/`), et `POST /api/token-usage` **n'a aucun producteur**. K6 déclenché : deux registres Prometheus, un dashboard Grafana et des alertes sont déjà livrés, pour un daemon mono-nœud. |
