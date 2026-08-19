@@ -13,7 +13,7 @@
 | **Vérification** | CONFIRMED |
 | **Vérifiée le** | 2026-08-14 |
 | **Testabilité** | ⚠️ partielle — caches et carte Connect exigent l'infra Claude |
-| **Statut du challenge** | ⬜ à faire |
+| **Statut du challenge** | ✅ **tranché** (2026-08-15) — `adopter partiellement` ; le vrai défaut est le rejet Bearer |
 
 ---
 
@@ -135,7 +135,42 @@ Deux risques concrets, pas hypothétiques. (1) Le « garde-fou fantôme » `Serv
 
 ### 6.2 Hypothèse
 
-<Ce qu'on pense avant de tester.>
+> Pré-enregistrée le 2026-08-15, **avant** tout PoC. Seuls faits déjà collectés : la lecture de
+> `src/auth.ts:39-51` (l'interface `AuthClaims` n'a **pas** de champ `scope`) et de `:465-477`
+> (l'objet retourné ne le porte pas non plus).
+
+**Hypothèse.** La fiche contient **deux sujets de tailles très différentes**, et son §6.1 les traite
+comme un seul :
+
+1. **Un garde-fou fantôme, probablement réel et déjà exploitable.** `ServiceTokenScope`
+   (`read`/`write`/`admin`) est validé au minting et écrit dans le JWT, mais **jeté à la
+   vérification**. Je m'attends à ce qu'un token `read` puisse appeler `mqtt_publish` et
+   `approve_resolution`. C'est le motif que l'audit v0.13.0 a déjà relevé ailleurs, et le dépôt
+   vient d'en trouver deux autres (`A04` sur `resources.subscribe`, `B03` sur `auth.state.mixup`).
+2. **Une machinerie step-up/PRM/lazy-auth disproportionnée** : bufferiser le corps JSON-RPC avant
+   `transport.handleRequest`, servir une PRM, publier un vocabulaire de scopes — pour un
+   comportement que **seul Claude** sait exploiter, et que je ne peux pas tester ici.
+
+**Verdict attendu :** `adopter partiellement` — le noyau (propager `scope`, refuser l'écriture aux
+tokens `read`), et **refuser** la bufferisation + PRM + step-up.
+
+**Critères de refus, chiffrés (pré-enregistrés) :**
+
+| # | Volet | Le résultat qui tue |
+|---|---|---|
+| **K1** | garde-fou | Un service token `scope: "read"` est **déjà refusé** sur `mqtt_publish` → pas de garde-fou fantôme, le noyau n'a rien à réparer. |
+| **K2** | garde-fou | Propager `scope` jusqu'au refus exige **> 4 fichiers** → ce n'est plus le « correctif bien plus petit » de §6.5. |
+| **K3** | lazy-auth | Le PoC de bufferisation casse `initialize`, `tools/list` ou une session SSE → le chemin n'est pas viable, indépendamment de son intérêt. |
+| **K4** | step-up | Le comportement client (`403 insufficient_scope` → relance d'autorisation) **n'est pas testable ici** → `adopter` interdit par le protocole sur ce volet. |
+| **K5** | tous | Zéro demande utilisateur. |
+| **K6** | garde-fou | Les service tokens ne sont **pas utilisables sur `/mcp`** de toute façon → le scénario est sans objet. |
+
+**Critère d'adoption :** pour le noyau — un token `read` qui **écrit réellement** ici, et un
+correctif tenant sous le seuil de K2. Pour le step-up — un client qui **relance une autorisation**
+sur `403 insufficient_scope`, exécuté ici ; à défaut, `refuser` ou `reporter`, jamais `adopter`.
+
+**Ce que je m'engage à trancher :** si le garde-fou fantôme est confirmé, dire s'il est
+**exploitable** (qui peut obtenir un token `read` ?) ou seulement **trompeur**.
 
 ### 6.3 Protocole de vérification
 
@@ -152,11 +187,180 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 
 ### 6.4 Résultat observé
 
-<Ce qu'on a réellement mesuré/vu. Coller les sorties, pas les paraphraser.>
+> Exécuté le 2026-08-15 contre le daemon réel (`AUTH_ENABLED=true` + `OAUTH_ENABLED=true`).
+> **Frontière exécuté / lu :** (A) à (C) sont exécutés ; (D) nomme ce qui ne l'a pas été. Le dépôt
+> n'a pas été modifié.
+>
+> ⚠️ **Note d'environnement :** `main` a intégré la migration SDK d'[`A02`](A02-mcp-sdk-typescript-v2.md)
+> pendant cette session — `@modelcontextprotocol/sdk@1.30.0` a été remplacé par la famille
+> `@modelcontextprotocol/{core,client,server,node}@2.0.0`. Les mesures ci-dessous sont donc les
+> premières de cette série à porter sur le **SDK v2**.
+
+#### (A) K1 — Le garde-fou fantôme est réel, et reproduit
+
+Deux service tokens mintés par la **vraie** fonction de production `issueServiceToken()`, l'un
+`read`, l'autre `admin` :
+
+```
+read   -> jti 88f075db | token 487 car.
+admin  -> jti 8c09178e | token 488 car.
+
+payload (read): {"sub":"u-b04","active_org_id":"default","role":"service",
+                 "service_account":true,"scope":"read","typ":"access", …}
+```
+
+Le `scope` est bien **dans le JWT**. Les deux tokens, présentés en session sur `/mcp`, appellent
+`mqtt_publish` :
+
+```
+--- token read : initialize -> HTTP/1.1 200 OK
+    ECRITURE mqtt_publish : {"result":{"content":[{"type":"text","text":"published"}]}}
+--- token admin : initialize -> HTTP/1.1 200 OK
+    ECRITURE mqtt_publish : {"result":{"content":[{"type":"text","text":"published"}]}}
+```
+
+**Un token `scope: "read"` écrit. K1 ne se déclenche pas — le garde-fou fantôme est confirmé.**
+
+La cause est lisible et tient en deux lignes : `AuthClaims` (`src/auth.ts:39-51`) **n'a pas de
+champ `scope`**, et l'objet retourné par la vérification (`:465-477`) ne le porte pas non plus.
+Le `scope` est validé au minting (`service-tokens.ts:85`), écrit dans le JWT
+(`jwt-mint.ts:13`), puis **jeté**. Zéro lecture de `.scope` dans `src/auth.ts`, `src/tools/*.ts`
+et `src/serve-http.ts`.
+
+**Exploitabilité — l'engagement de §6.2, tranché.** Le minting est **admin-only** : il exige un
+`issuedByAdminId` et passe par des routes gardées. Ce n'est donc **pas** une escalade de privilège
+par un tiers, c'est un **échec de délégation** : l'admin croit déléguer un accès en lecture, il
+délègue l'écriture complète. La gravité est réelle mais bornée au cercle des porteurs de tokens
+émis volontairement.
+
+#### (B) Un défaut plus grave, trouvé en chemin et absent de la fiche
+
+Le même token `read`, présenté en **`Authorization: Bearer`** — la façon dont un client MCP
+s'authentifie — est **rejeté** :
+
+```
+{"error":"v0.6 token rejected: upgrade required (AUTH_ENABLED=true)"}
+```
+
+La chaîne est lisible : `verifyTokenStrict` (`auth.ts:141`) détecte la « v0.7 » par
+`typeof payload.user_id === "string" && typeof payload.org === "string"`. Or `mintAccessJWT`
+produit `sub` + `active_org_id`, **jamais** `user_id` ni `org`. Le token est donc classé
+`wasLegacy: true`, et `authenticateRequest` (`auth.ts:598-605`) le rejette en 401 dès que
+`authEnabled`.
+
+Le repli Phase 2 (`verifyPhase2SessionCookie`) **n'est jamais atteint** : il n'est tenté que si
+`verifyTokenStrict` **lève**. Ici la signature est valide — Phase 1 et Phase 2 dérivent toutes deux
+leur clé du **même** `COORDINATOR_JWT_SECRET` (`serve-http.ts:103` → `initAuth`, et
+`boot.ts:152` → `buildJwtKeyRegistry`) — donc elle ne lève pas.
+
+**Ce n'est pas un artefact de banc, et le dépôt ne le couvre pas.** Le seul test qui exerce un
+service token de bout en bout passe par le **cookie**, et son commentaire le dit :
+
+```ts
+// tests/integration/d1-d10-matrix.test.ts:430-432
+// Set as cookie. authenticateRequest sees no Bearer, falls into the
+// Scenario 5 cookie branch → verifyPhase2SessionCookie → service-account
+// branch → DB lookup → revoked_at IS NULL → success.
+```
+
+**Le chemin Bearer des service tokens n'a aucune couverture.** Conséquence pour cette fiche : §4
+écrit que « le porteur peut appeler `mqtt_publish` et `approve_resolution` » — c'est vrai **en
+cookie**, et faux **en Bearer**, où il ne peut rien appeler du tout.
+
+#### (C) K5 — La demande utilisateur
+
+```
+scope -> 15     read-only -> 5     service token -> 3     step-up -> 1     lazy -> 1
+```
+
+Les 15 de « scope » sont dominés par le vocabulaire de périmètre (« hors scope »), pas par des
+demandes d'autorisation fine. **K5 ne se déclenche pas** au sens strict — il y a du signal — mais
+aucune issue ne demande le step-up ni la lazy auth.
+
+#### (C bis) Ce que la passe adversariale a mesuré à ma place, et qui me contredit
+
+**(1) K3 est mesuré, et il ne se déclenche pas.** J'avais refusé la bufférisation sans écrire le
+PoC, en m'appuyant sur §6.5 (« rejouer un `IncomingMessage` synthétique », « code de plomberie
+fragile »). **C'est faux depuis la migration SDK v2**, arrivée sur `main` pendant cette session :
+
+```
+// node_modules/@modelcontextprotocol/node/dist/index.d.mts:169-173
+ * @param parsedBody - Optional pre-parsed body from body-parser middleware
+handleRequest(req: IncomingMessage & { auth?: AuthInfo }, res: ServerResponse,
+              parsedBody?: unknown): Promise<void>;
+// :110  exemple documenté :  transport.handleRequest(req, res, req.body);
+```
+
+Patch jetable posé dans la branche `/mcp`, puis reverti :
+
+```
+Baseline (sans patch) :  7/7 passed
+Avec bufférisation    :  149/149 passed   (tests/integration/ entier)
+
+[B04-POC] method=initialize        tool=-              bytes=164
+[B04-POC] method=tools/list        tool=-              bytes=46
+[B04-POC] method=tools/call        tool=register_agent bytes=151
+[B04-POC] method=ping              tool=-              bytes=50
+```
+
+`initialize`, `tools/list`, `tools/call` et les flux SSE survivent. **Aucun `IncomingMessage`
+synthétique n'est nécessaire. §6.5 doit être barré sur ce point.**
+
+**(2) La prémisse de coût de §6.1 est périmée.** §5 appelle la PRM « **le livrable manquant
+n°1** ». Or `@modelcontextprotocol/server@2.0.0` — **déjà installé** — l'exporte :
+
+```
+buildOAuthProtectedResourceMetadata   getOAuthProtectedResourceMetadataUrl
+oauthMetadataResponse                 bearerAuthChallengeResponse    requiredScopes
+```
+
+`bearerAuthChallengeResponse` produit `401 invalid_token` / `403 insufficient_scope` avec le
+`WWW-Authenticate` et le `resource_metadata`. Le câblage manque ; le code, non.
+
+**(3) Le refus ne peut PAS vivre dans la couche outils — et ça fusionne les deux termes de §6.1.**
+Le SDK convertit tout `throw` de handler en `{ content: […], isError: true }`
+(`@modelcontextprotocol/server`, `dist/mcp-*.mjs`, `createToolError`). C'est **exactement**
+l'anti-motif que §4 condamne — un refus que Claude raconte au modèle sans jamais déclencher
+d'OAuth. Le seul point d'application donnant la forme correcte est le **gate HTTP**, c'est-à-dire
+la bufférisation que je voulais refuser. **Le noyau retenu et le volet refusé sont le même
+mécanisme.**
+
+**(4) K2, que j'avais escamoté, dépend d'une décision d'architecture que je n'avais pas prise :**
+`AuthClaims` n'a pas de goulot unique côté outils — le motif `getSessionClaims(...)` est dupliqué
+**26 fois sur 6 fichiers**. D'où **8 fichiers** par la voie couche-outils (K2 **déclenché**) contre
+**3** par la voie point unique (K2 **non déclenché**). Et la voie à 3 fichiers est la seule
+correcte, par (3).
+
+**(5) La demande utilisateur est plus faible que je ne l'ai écrit — mais la promesse produit est
+plus forte.** Les 15 « scope » sont du périmètre projet, pas de l'autorisation ; `RBAC` → 0,
+`least privilege` → 0. En revanche `docs/onboarding-self-host.md:448-457` **publie déjà** la
+promesse :
+
+```
+## Service tokens for CI
+For non-interactive callers (CI, deploy bots, monitoring), issue a long-lived
+service token instead of using OAuth:
+  mcp-coordinator service-token issue … --scope read --ttl 30d …
+```
+
+**Les deux promesses de cette section sont cassées, en sens opposés** : un appelant CI, qui n'a pas
+de cookie de navigateur, est **rejeté en Bearer** (B) ; et s'il passait par cookie, son `read`
+**écrirait** (A).
+
+#### (D) Ce qui n'a PAS été exécuté
+
+- **K3, le PoC de bufferisation** du corps JSON-RPC avant `transport.handleRequest` : non écrit.
+  Je ne peux donc **pas** dire si `initialize`, `tools/list` et une session SSE longue durée y
+  survivent. C'est le point dur de la lazy auth, et il reste non mesuré.
+- **K4, le comportement client** : qu'un client relance une autorisation sur `403
+  insufficient_scope` exige un connecteur atteignable depuis l'infra Anthropic (tunnel HTTPS
+  public). **Non testé** — donc `adopter` est interdit sur ce volet par le protocole.
+- **Les fenêtres de cache** (≈5 min discovery, 15 min scope) : mêmes raisons.
+- **La PRM** n'a pas été servie ni sondée.
 
 ### 6.5 Contre-arguments
 
-- **La bufferisation du corps `/mcp` est intrusive.** Aujourd'hui `transport.handleRequest(req, res)` reçoit le stream brut. Intercaler un parse JSON-RPC signifie lire, parser, puis rejouer un `IncomingMessage` synthétique — sur un chemin qui gère aussi les sessions SSE et l'`enableDnsRebindingProtection` du SDK. C'est du code de plomberie fragile pour un bénéfice qui n'est pas fonctionnel.
+- ❌ ~~**La bufferisation du corps `/mcp` est intrusive.** Aujourd'hui `transport.handleRequest(req, res)` reçoit le stream brut. Intercaler un parse JSON-RPC signifie lire, parser, puis rejouer un `IncomingMessage` synthétique — sur un chemin qui gère aussi les sessions SSE et l'`enableDnsRebindingProtection` du SDK. C'est du code de plomberie fragile pour un bénéfice qui n'est pas fonctionnel.~~ — **barré le 2026-08-15.** Mesuré **149/149** avec la bufferisation, et le SDK v2 accepte un corps pré-parsé en 3ᵉ argument (`handleRequest(req, res, parsedBody?)`, exemple documenté `transport.handleRequest(req, res, req.body)`). **Aucun `IncomingMessage` synthétique n'est nécessaire.** Voir §6.4 (C bis)(1).
 - **YAGNI sur le profil de déploiement dominant.** Le coordinateur tourne majoritairement en local, mono-utilisateur, `AUTH_ENABLED=false` (le mode « open-coordinator » a son propre chemin dans `authenticateMcpRequest`). Le lazy auth n'apporte rien à ce profil : il n'y a personne à challenger.
 - **Portabilité.** Le comportement décrit (carte Connect, échange silencieux en Enterprise Managed Auth, caches 5 min / 15 min) est spécifique à Claude/Claude Code. Un client MCP tiers, ou `cli/channel.ts` en stdio, ne verra rien de tout ça. On ajoute une complexité que seul un client sait exploiter.
 - **Complexité pour l'auto-hébergeur.** Aujourd'hui il choisit entre « auth » et « pas d'auth ». Demain il devra comprendre PRM, `scopes_supported`, hiérarchie de scopes et table outil→scope. C'est une nouvelle surface de mauvaise configuration, et une mauvaise configuration ici est une faille.
@@ -165,15 +369,104 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 
 ---
 
+### 6.4 ter — Bilan des six critères
+
+| # | Statut | Ce qui l'établit |
+|---|---|---|
+| **K1** | ❌ non déclenché · ⚠️ **acquis d'avance** | Le token `read` écrit (A). Mais §4 l'affirmait déjà le 2026-08-14, et §6.2 admet avoir lu le code avant. **Confirmation, pas découverte.** |
+| **K2** | ⚠️ **escamoté, puis mesuré par la passe** | **8 fichiers** par la couche outils (déclenché) · **3** par le point unique (non déclenché). Je n'avais pas tranché la voie — c'était pourtant la décision. |
+| **K3** | ❌ **mesuré, non déclenché** | 149/149 avec la bufférisation. Je l'avais refusé **sans le mesurer**, sur une prémisse fausse. |
+| **K4** | ✅ déclenché · ⚠️ **acquis d'avance** | La §0 du 2026-08-14 déclarait déjà la moitié cliente non testable. K4 la recopie. |
+| **K5** | ❌ non déclenché | 15 « scope » = périmètre projet ; `RBAC` → 0. Aucune demande. |
+| **K6** | ✅ **pleinement déclenché sur `/mcp`** | Les service tokens visent CI/bots (doc), donc Bearer, donc **rejetés**. Le garde-fou fantôme n'est atteignable par aucun porteur réaliste du cas documenté. |
+
+**Sur six critères, deux étaient décoratifs (K1, K4), un escamoté (K2), un refusé sans mesure et
+faux une fois mesuré (K3). Un seul a porté de l'information neuve : K6.**
+
+---
+
 ## 7. Décision
 
 | | |
 |---|---|
-| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ⬜ refuser |
-| **Date** | |
-| **Justification** | |
-| **Issue / PR** | |
-| **Jalon visé** | |
+| **Verdict** | ⬜ adopter · ✅ **adopter partiellement** · ⬜ reporter · ⬜ refuser |
+| **Date** | 2026-08-15 |
+| **Justification** | **Le challenge trouve un défaut qui dépasse la fiche : tout token Phase 2 est rejeté en `Authorization: Bearer` dès que `AUTH_ENABLED=true`.** `verifyTokenStrict` détecte la « v0.7 » par `user_id` **et** `org` ; `mintAccessJWT` produit `sub` + `active_org_id`. Le repli Phase 2 n'est jamais atteint car la signature est valide — Phase 1 et Phase 2 dérivent du **même** `COORDINATOR_JWT_SECRET`. Le SDK maison (`sdk/src/client.ts:266`) et la CLI envoient du Bearer : **ils ne peuvent pas s'authentifier**. Et le test censé couvrir ce chemin est **vert pour la mauvaise raison** — le banc utilise deux secrets distincts, ce qui fait *lever* la vérification et ouvre un repli que la production n'atteint jamais. À côté, le garde-fou fantôme de §4 est réel (un token `read` publie) mais **inatteignable par le cas d'usage documenté**, qui est du CI en Bearer. |
+| **Issue / PR** | Aucune créée. Trois périmètres en §7.2, **à confirmer avec le mainteneur**. |
+| **Jalon visé** | prochaine mineure pour (1) ; le reste ensuite |
+
+### 7.1 La réponse à la question de §6.1
+
+**§6.1 oppose un terme « bon marché » à un terme « cher ». Les deux prémisses sont fausses, et les
+deux termes fusionnent.**
+
+*Terme 1 — « réutiliser `ServiceTokenScope` en le propageant enfin dans `AuthClaims` ».* Tenable
+sur le vocabulaire, **mais pas sur le point d'application** : un refus posé dans la couche outils
+devient `{ isError: true }` par construction du SDK — précisément l'anti-motif que §4 condamne.
+Le seul endroit qui produit un `403 + WWW-Authenticate` correct est le **gate HTTP**.
+
+*Terme 2 — « un vocabulaire MCP dédié publié dans une PRM », réputé cher parce qu'il « impose de
+créer `/.well-known/oauth-protected-resource` et de bufériser le corps ».* **Les deux coûts ont
+disparu avec la migration `A02`** : le SDK v2 exporte `buildOAuthProtectedResourceMetadata`,
+`bearerAuthChallengeResponse` et `requiredScopes`, et `handleRequest(req, res, parsedBody)` rend la
+bufférisation native — mesurée à **149/149**.
+
+**Réponse : le dilemme n'existe plus.** Le terme 1 a besoin du mécanisme du terme 2, et le terme 2
+ne coûte plus ce que §6.1 lui prête. La vraie décision n'est pas « quel vocabulaire », c'est **où
+poser le gate** — et la réponse est : au niveau HTTP, une fois.
+
+### 7.2 Périmètre retenu, dans cet ordre
+
+**(1) Priorité absolue — réparer le rejet Bearer.** C'est le défaut qui casse le cas d'usage
+**documenté** (`docs/onboarding-self-host.md:448` : « For non-interactive callers (CI, deploy bots,
+monitoring) »). Il touche **tous** les tokens Phase 2, pas seulement les service tokens. Le
+correctif porte sur la détection de `verifyTokenStrict` (`auth.ts:141`) ou sur l'ordre d'essai des
+vérificateurs dans `authenticateRequest`. **Et il faut corriger le banc** :
+`tests/integration/d1-d10-matrix.test.ts:56-57` utilise `PHASE1_SECRET` ≠ `SIGNING_SECRET`, ce qui
+rend le test vert alors que la production est cassée. Un test qui ment est pire qu'un test absent.
+
+**(2) Ensuite — le garde-fou de scope, au gate HTTP.** Propager `scope` dans `AuthClaims` et
+refuser les outils d'écriture aux porteurs `read`, **via le gate HTTP** (voie « point unique »,
+3 fichiers), en utilisant `requiredScopes` / `bearerAuthChallengeResponse` du SDK v2 pour obtenir
+la forme `403 insufficient_scope` correcte. **Surtout pas dans `src/tools/*.ts`.**
+
+**(3) Corriger la doc, ou le code, mais pas ni l'un ni l'autre.**
+`docs/onboarding-self-host.md:457` publie `--scope read` : tant que (2) n'est pas fait, cette ligne
+promet une garantie qui n'existe pas.
+
+### 7.3 Ce qui est reporté
+
+**Le step-up côté client et la surface produit de la lazy auth.** K4 tient : vérifier qu'un client
+relance une autorisation sur `403 insufficient_scope` exige un connecteur atteignable depuis
+l'infra Anthropic. **Non testé ici → `adopter` interdit par le protocole.** Les arguments de §6.5
+qui survivent sont **YAGNI** (profil local mono-utilisateur, personne à challenger) et
+**portabilité** (carte Connect, caches 5/15 min : spécifiques à Claude). Ceux qui ne survivent pas
+sont ceux que j'invoquais : « bufférisation intrusive » et « point dur de l'implémentation ».
+
+**Condition de réveil :** le jour où un client MCP tiers se connecte réellement au coordinateur —
+ce que [`B01`](B01-cimd-dcr-deprecated.md) a montré impossible aujourd'hui sans header statique.
+
+### 7.4 Corrections à porter dans les sections 1 à 5
+
+1. **§5 — « la PRM est le livrable manquant n°1 » est périmé** depuis `A02`. Le SDK v2 exporte
+   `buildOAuthProtectedResourceMetadata`, `getOAuthProtectedResourceMetadataUrl`,
+   `oauthMetadataResponse`, `bearerAuthChallengeResponse` et `requiredScopes`.
+2. **§5 — « bufériser […] le point dur de l'implémentation »** : faux sous SDK v2, `handleRequest`
+   prend un `parsedBody`.
+3. **§4 — « le porteur peut appeler `mqtt_publish` et `approve_resolution` »** : vrai **en cookie**,
+   faux **en Bearer**, où il est rejeté avant d'atteindre le moindre outil.
+4. **§6.5 — barrer** le contre-argument sur l'`IncomingMessage` synthétique.
+
+### 7.5 Ce que ce challenge a corrigé chez moi
+
+- **J'ai refusé un volet sans le mesurer** (K3), sur une prémisse technique périmée par une
+  migration que ma propre §6.4 signalait en note d'environnement — sans aller regarder ce qu'elle
+  apportait.
+- **J'ai escamoté K2** : il n'apparaissait ni comme mesuré ni comme non mesuré. C'était pourtant la
+  décision d'architecture centrale.
+- **J'ai sous-déclenché K6** et priorisé le mauvais des deux défauts : le garde-fou fantôme est
+  spectaculaire, le rejet Bearer est celui qui casse un usage documenté.
+- **J'ai présenté K1 comme une découverte** alors que §4 l'affirmait depuis le 2026-08-14.
 
 ## 8. Journal
 
@@ -181,3 +474,4 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 |---|---|
 | 2026-08-14 | Fiche créée par la veille plateforme. |
 | 2026-08-14 | Vérification des faits : API et lignes repo exactes ; step-up daté 2025-11-25, MUST/SHOULD et bornes doctor corrigés. |
+| 2026-08-15 | Challenge, premier de la série sur **SDK v2** (`main` a intégré `A02` en cours de session). **Verdict : `adopter partiellement`.** Mesuré : un service token `scope:"read"` **publie** via `mqtt_publish` en session cookie — garde-fou fantôme confirmé, le `scope` est jeté à la vérification. **Mais le défaut qui compte est ailleurs et dépasse la fiche** : tout token Phase 2 est **rejeté en `Authorization: Bearer`** (`401 v0.6 token rejected`) dès `AUTH_ENABLED=true`, SDK maison et CLI compris — et le test censé le couvrir est **vert pour la mauvaise raison** (`d1-d10-matrix.test.ts:56-57` utilise deux secrets distincts, ce qui ouvre un repli que la production n'atteint jamais). **Quatre corrections imposées par la passe adversariale :** (1) K3 refusé sans mesure et **faux une fois mesuré** — la bufférisation passe 149/149, `handleRequest(req,res,parsedBody)` est natif au SDK v2 ; (2) K2 escamoté — 8 fichiers par la couche outils, 3 par le point unique, et seule cette dernière est correcte car un `throw` de handler devient `{isError:true}`, l'anti-motif que §4 condamne ; (3) K6 sous-déclenché — les service tokens visent le CI, donc Bearer, donc le garde-fou fantôme est inatteignable par le cas documenté ; (4) K1 présenté comme une découverte alors que §4 l'affirmait déjà. **§6.1 est dissoute** : ses deux termes fusionnent, et la prémisse de coût du second est périmée — le SDK v2 exporte déjà la PRM et le challenge bearer. Corrections : §5 (« PRM = livrable manquant n°1 » et « bufériser = point dur ») périmées ; §4 (« le porteur peut appeler `mqtt_publish` ») vraie en cookie, fausse en Bearer. |
