@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import crypto from "node:crypto";
 import type { AuthHandlerContext } from "./context.js";
 import { generateVerifier, computeChallenge } from "./pkce.js";
+import { auditUnknownProvider } from "./audit-helpers.js";
 import { createOAuthStateWithVerifier } from "./oauth-state.js";
 import { hostCookie, setCookies } from "./cookies.js";
 import { sendHtml } from "./html.js";
@@ -90,6 +91,16 @@ export async function handleAuthLogin(
   if (requestedProvider !== null) {
     provider = ctx.providers.get(requestedProvider);
     if (!provider) {
+      // #320: the other path where a third party picks the provider name.
+      // #305 audited the token endpoint and left this one, because auditing it
+      // meant reworking this file's test database. Same event, same shape, so
+      // an enumeration probe cannot just move one endpoint over.
+      auditUnknownProvider({
+        observedProvider: requestedProvider,
+        registeredProviders: ctx.providers.names(),
+        phase: "login_redirect",
+        clientIp: req.socket?.remoteAddress ?? null,
+      });
       res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
       res.end(
         JSON.stringify(appError("UNKNOWN_PROVIDER", `Unknown provider: ${requestedProvider}`)),

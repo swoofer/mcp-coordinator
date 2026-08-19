@@ -19,7 +19,9 @@ export function hashIdpUserId(idpUserId: string): string {
 const MAX_OBSERVED_PROVIDER_CHARS = 64;
 
 /** Where the unknown provider name was submitted from. */
-export type UnknownProviderPhase = "auth_code_grant";
+//   auth_code_grant  - body.provider at the token endpoint
+//   login_redirect   - ?provider= at /auth/login (#320)
+export type UnknownProviderPhase = "auth_code_grant" | "login_redirect";
 
 /**
  * Record that a caller asked for an IdP provider that is not registered

@@ -2,6 +2,11 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import crypto from "node:crypto";
 import Database from "better-sqlite3";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import nodePath from "node:path";
+import { initDatabase, getDb, closeDb } from "../../src/database.js";
+import { findAuditRows } from "../helpers/audit.js";
 import { handleAuthLogin } from "../../src/auth/oauth-login.js";
 import type { AuthHandlerContext } from "../../src/auth/context.js";
 import { FakeClock } from "../helpers/clock.js";
@@ -135,7 +140,15 @@ function makeCtx(overrides: Partial<AuthHandlerContext> = {}): AuthHandlerContex
   };
 }
 
+// #320: audit() writes through the module-level getDb(), which this file never
+// initialised -- ctx.db is a bare in-memory handle carrying only oauth_state.
+// A real database is opened alongside it so the audit rows have somewhere to
+// land; the handler keeps using ctx.db for state, exactly as before.
+let auditDir: string;
+
 beforeEach(() => {
+  auditDir = mkdtempSync(nodePath.join(tmpdir(), "oauth-login-audit-"));
+  initDatabase(auditDir);
   db = new Database(":memory:");
   db.exec(`
     CREATE TABLE oauth_state (
@@ -156,6 +169,12 @@ beforeEach(() => {
 
 afterEach(() => {
   db.close();
+  closeDb();
+  try {
+    rmSync(auditDir, { recursive: true, force: true });
+  } catch {
+    // Windows keeps the SQLite handle a moment after close.
+  }
 });
 
 describe("handleAuthLogin — happy path", () => {
@@ -472,6 +491,44 @@ describe("handleAuthLogin — picker (multi-provider)", () => {
     const body = JSON.parse(res.body!);
     expect(body.code).toBe("UNKNOWN_PROVIDER");
     expect(body.message).toContain("evil");
+  });
+
+  // #320: this 400 used to be silent. It is one of exactly two paths where a
+  // third party chooses the provider name -- #305 audited the other one (the
+  // token endpoint) and left this, so an enumeration probe could simply move
+  // across. Same event, same Tier 2, same metadata shape.
+  it("?provider= with unknown name emits auth.provider.unknown", async () => {
+    const sharedCtx = makeCtx({
+      providers: multiProviderRegistry("github", "google"),
+    });
+    await handleAuthLogin(
+      mockReq("198.51.100.4", "/auth/login?provider=evil"),
+      mockResponse() as unknown as ServerResponse,
+      sharedCtx,
+    );
+
+    const rows = findAuditRows("auth.provider.unknown");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].outcome).toBe("denied");
+    expect(JSON.parse(rows[0].metadata_json as string)).toEqual({
+      observed_provider: "evil",
+      registered_providers: ["github", "google"],
+      phase: "login_redirect",
+      client_ip: "198.51.100.4",
+    });
+  });
+
+  // The picker path is not a probe: no name was submitted, so nothing to audit.
+  it("no ?provider= with several registered emits nothing", async () => {
+    const sharedCtx = makeCtx({
+      providers: multiProviderRegistry("github", "google"),
+    });
+    await handleAuthLogin(
+      mockReq("198.51.100.4", "/auth/login"),
+      mockResponse() as unknown as ServerResponse,
+      sharedCtx,
+    );
+    expect(findAuditRows("auth.provider.unknown")).toHaveLength(0);
   });
 
   it("?provider= with unknown name on single-provider setup: still 400 (not silent fallback)", async () => {
