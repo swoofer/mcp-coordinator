@@ -934,34 +934,58 @@ async function wireMqtt(opts: MqttWiring): Promise<{
   // Only install the verifier (and therefore the ACL hooks) when auth is enabled.
   // Without this guard, AUTH_ENABLED=false would still reject anonymous v0.6
   // MQTT clients at the authenticate hook, breaking backward compatibility.
-  const broker = MQTT_EMBEDDED
-    ? await startEmbeddedMqttBroker({
-        tcpPort: mqttTcpPort,
-        httpServer,
-        wsPath: mqttWsPath,
-        logger: log.child({ component: "mqtt-broker" }),
-        ...(AUTH_ENABLED
-          ? {
-              authenticate: async (
-                _username: string | undefined,
-                password: Buffer | undefined,
-              ): Promise<MqttAuthResult> => {
-                if (!password) return { ok: false };
-                try {
-                  const { verifyTokenStrict } = await import("./auth.js");
-                  const { claims } = await verifyTokenStrict(password.toString("utf-8"));
-                  // Thread the role through so mqtt-broker.ts's ACL hooks can
-                  // recognize and exempt the internal bridge (role "internal",
-                  // minted below) from the org-prefix check.
-                  return { ok: true as const, org: claims.org, role: claims.role };
-                } catch {
-                  return { ok: false };
-                }
-              },
-            }
-          : {}),
-      })
-    : undefined;
+  // #280: an occupied 1883 -- a previous daemon still alive, or any other
+  // broker on the box -- used to take the entire HTTP server down with it.
+  // wireMqtt was unguarded and mqtt-broker.ts rejects on the listener's error
+  // event, so the rejection reached startServer and killed the boot.
+  //
+  // Everything else in the tree already treats the broker as optional: the
+  // three MQTT tools return an explicit isError when the bridge is absent,
+  // every publisher in mqtt-bridge.ts opens with an `if (!this.client ...)`
+  // guard, stdio mode runs all 26 tools with no broker at all, and the
+  // dashboard reads /api/events over SSE rather than MQTT. Startup was the
+  // only place treating it as mandatory.
+  //
+  // Set COORDINATOR_MQTT_REQUIRED=true to keep the strict behaviour.
+  const mqttRequired = process.env.COORDINATOR_MQTT_REQUIRED === "true";
+  let broker: Awaited<ReturnType<typeof startEmbeddedMqttBroker>> | undefined;
+  try {
+    broker = MQTT_EMBEDDED
+      ? await startEmbeddedMqttBroker({
+          tcpPort: mqttTcpPort,
+          httpServer,
+          wsPath: mqttWsPath,
+          logger: log.child({ component: "mqtt-broker" }),
+          ...(AUTH_ENABLED
+            ? {
+                authenticate: async (
+                  _username: string | undefined,
+                  password: Buffer | undefined,
+                ): Promise<MqttAuthResult> => {
+                  if (!password) return { ok: false };
+                  try {
+                    const { verifyTokenStrict } = await import("./auth.js");
+                    const { claims } = await verifyTokenStrict(password.toString("utf-8"));
+                    // Thread the role through so mqtt-broker.ts's ACL hooks can
+                    // recognize and exempt the internal bridge (role "internal",
+                    // minted below) from the org-prefix check.
+                    return { ok: true as const, org: claims.org, role: claims.role };
+                  } catch {
+                    return { ok: false };
+                  }
+                },
+              }
+            : {}),
+        })
+      : undefined;
+  } catch (err) {
+    if (mqttRequired) throw err;
+    log.warn(
+      { err, tcpPort: mqttTcpPort },
+      "MQTT broker failed to start - continuing without MQTT. The 3 MQTT tools will report unavailable; everything else is unaffected. Set COORDINATOR_MQTT_REQUIRED=true to fail startup instead.",
+    );
+    return { broker: undefined, resolvedMqttTcpPort: mqttTcpPort };
+  }
 
   // B3: when AUTH_ENABLED, the internal coordinator client must authenticate
   // too. Mint a short-lived internal-role token for the bridge: "internal"
@@ -975,14 +999,31 @@ async function wireMqtt(opts: MqttWiring): Promise<{
   // 0 sentinel meaning "OS, pick one". Connecting the bridge to `:0` would
   // send mqtt.js to its 1883 default and fail with ECONNREFUSED.
   const resolvedMqttTcpPort = broker?.tcpPort ?? mqttTcpPort;
-  await services.mqttBridge.connect({
-    url: MQTT_URL || `mqtt://127.0.0.1:${resolvedMqttTcpPort}`,
-    username: AUTH_ENABLED ? "coordinator-internal" : MQTT_USERNAME,
-    password: AUTH_ENABLED ? internalToken : MQTT_PASSWORD,
-    // P1 fix: stable agent identity for LWT topic
-    // (`coordinator/agents/coordinator-internal/status`).
-    agentId: "coordinator-internal",
-  });
+  try {
+    await services.mqttBridge.connect({
+      url: MQTT_URL || `mqtt://127.0.0.1:${resolvedMqttTcpPort}`,
+      username: AUTH_ENABLED ? "coordinator-internal" : MQTT_USERNAME,
+      password: AUTH_ENABLED ? internalToken : MQTT_PASSWORD,
+      // P1 fix: stable agent identity for LWT topic
+      // (`coordinator/agents/coordinator-internal/status`).
+      agentId: "coordinator-internal",
+    });
+  } catch (err) {
+    if (mqttRequired) throw err;
+    // The broker may have bound before the bridge failed to reach it; close
+    // it rather than leaving a listener nothing will ever shut down -- the
+    // teardown path only closes the handle we return.
+    try {
+      await broker?.close();
+    } catch {
+      // best effort: we are already degrading
+    }
+    log.warn(
+      { err },
+      "MQTT bridge failed to connect - continuing without MQTT. Set COORDINATOR_MQTT_REQUIRED=true to fail startup instead.",
+    );
+    return { broker: undefined, resolvedMqttTcpPort };
+  }
   // issue #236: surface discarded messages as a counter alongside the warn
   // line the bridge already emits, so a steady drip of drops is visible on
   // /metrics rather than only in the log.
