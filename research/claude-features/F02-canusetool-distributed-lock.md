@@ -13,7 +13,7 @@
 | **Vérification** | CONFIRMED |
 | **Vérifiée le** | 2026-08-14 |
 | **Testabilité** | ✅ testable — tout tourne en local, aucun header beta requis |
-| **Statut du challenge** | ⬜ à faire |
+| **Statut du challenge** | ✅ **tranché** (2026-08-17) — adopter partiellement ; (A) bloquee sur le prealable d'identite, livrable #371 |
 
 ---
 
@@ -155,7 +155,31 @@ Faible sur le plan fonctionnel — le modèle consultatif reste défendable. Le 
 
 ### 6.2 Hypothèse
 
-<Ce qu'on pense avant de tester.>
+**Ce que je pense avant de mesurer.** §6.5 porte déjà l'argument le plus lourd — le verrou dur n'est pas un mécanisme de sécurité, puisque `bypassPermissions` et `allowedTools` sautent le callback, et que la doc d'Anthropic **recommande explicitement** le wildcard pour les serveurs MCP. Un garde-fou qui se désarme **dans la configuration recommandée** est le motif « garde-fou fantôme » que l'audit de juillet a nommé.
+
+Mais §2 donne une échappatoire apparente, et c'est elle qu'il faut tester : trois cas atteignent le callback **même sous `bypassPermissions`**, dont un outil MCP annoté `_meta["anthropic/requiresUserInteraction"]`. `F01` vient d'établir que le dépôt n'utilise **jamais** `_meta` — donc le coordinateur *pourrait* forcer son propre passage par le gate.
+
+**Mon hypothèse est que cette échappatoire ne s'applique pas au cas qui compte, et que c'est là que la fiche se referme.** L'annotation force le gate **pour l'outil annoté**. Or ce que le verrou doit intercepter, c'est `Write` et `Edit` — des outils **intégrés**, pas les nôtres. Annoter les 26 outils du coordinateur ne fait donc rien pour gater une écriture de fichier. Le seul chemin resterait un `canUseTool` que l'hôte peut désactiver, dans la configuration que la doc recommande.
+
+Second point à vérifier avant tout le reste, et il est local : §5 affirme que `handleWorkingFilesStart` renvoie `{ ok: true }` **inconditionnellement**. Si c'est vrai, l'endpoint sur lequel le verrou s'ancrerait **ne sait pas refuser** — il n'y a pas de fondation, et le chantier est plus gros que §6.1 ne le laisse croire.
+
+Troisième point : le bénéfice documentaire de §4 est réel et **décorrélé** de toute adoption. C'est probablement le seul livrable de cette fiche.
+
+### 6.2b Critères de mort — pré-enregistrés avant toute mesure
+
+Trois volets adjugés séparément — leçon d'`E11`, `E14` et `E15` : (A) livrer un orchestrateur de référence à verrou dur, (B) piloter `permission_policy` par outil, (C) corriger la documentation.
+
+| # | Volet | Critère de mort | Seuil chiffré |
+|---|---|---|---|
+| **K1** | (A) | **Le garde-fou se désarme dans la configuration recommandée.** Si `allowedTools` avec wildcard — que la doc Anthropic recommande pour MCP — saute le callback, le verrou n'est pas un mécanisme de sécurité. | `allowedTools`/`bypassPermissions` sautent le callback, **et** l'exception `requiresUserInteraction` ne couvre pas les outils **intégrés** `Write`/`Edit` |
+| **K2** | (A) | **Il n'y a pas de fondation.** L'endpoint sur lequel le verrou s'ancre ne sait pas refuser. | `handleWorkingFilesStart` renvoie `{ ok: true }` **inconditionnellement** |
+| **K3** | (A) | **Le TTL fait du deadlock une conséquence normale.** Aujourd'hui une claim mal libérée coûte un avertissement ; avec un verrou dur, c'est un agent figé. | TTL par défaut ≥ **30 min** et aucun `force_release` |
+| **K4** | (A) | **Trois implémentations d'une même sémantique.** `canUseTool` (SDK), `PreToolUse` (C01), relais de permission des channels (C04) — à garder cohérentes. | ≥ **2** autres chemins déjà instruits par la veille |
+| **K5** | (A)(B) | **Dépendance fournisseur nouvelle, à rythme rapide.** | `@anthropic-ai/claude-agent-sdk` absent de `package.json`, et ≥ **3** versions distinctes citées pour cette seule feature |
+| **K6** | (B) | **`permission_policy` ne couvre pas nos transports.** | limité aux entrées de serveur **distant (http/sse)**, valeurs admises **non documentées** |
+| **K7** | (C) | **Le bénéfice documentaire n'existe pas.** | ≥ **1** mention de `permissionMode`/`acceptEdits`/`allowedTools` déjà présente dans `README.md` ou `docs/` |
+
+**Règle que je m'impose :** §0 classe la fiche ✅ **testable**, mais les PoC à deux agents exigent d'installer le SDK et une session authentifiée. Je mesure d'abord tout ce qui est local et décisif ; si l'installation devient nécessaire pour trancher, je le fais — et si je ne la fais pas, je le dis, sans conclure sur du raisonnement là où une exécution était possible. J'applique aussi les leçons : grepper la doc du dépôt avant de parler de manque (`E09`), vérifier une absence plutôt que la supposer (`E08`, `E10`, `E12`, `F01`), distinguer dérive de dépendance et défaut de vérification (`E13`, `E14`), et **réduire le périmètre plutôt que d'argumenter un seuil atteint** (`E15`).
 
 ### 6.3 Protocole de vérification
 
@@ -171,7 +195,77 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 
 ### 6.4 Résultat observé
 
-<Ce qu'on a réellement mesuré/vu. Coller les sorties, pas les paraphraser.>
+#### A. Le critère de mort que je n'avais pas pré-enregistré, et il est décisif
+
+**`AuthClaims` ne porte aucun `agent_id`.** Mesuré (`src/auth.ts:39-51`) :
+
+```ts
+export interface AuthClaims {
+  sub: string; user_id: string; org: string; role: AuthRole; jti: string;
+  active_org_id?: string; family_id?: string; service_account?: boolean;
+}
+```
+
+Et les deux endpoints l'exigent dans le **corps** de la requête (`rest-handlers.ts:1001`, `:1025`) : rien ne lie une session MCP à un agent enregistré. **Un gate `canUseTool` n'a donc aucune identité avec laquelle réclamer un verrou.** C'est local, mesuré, et ça bloque le volet (A) avant que K1 à K5 n'aient à se prononcer.
+
+Ce préalable n'est pas une découverte de ma part : **`C01` l'a identifié le 2026-08-15 et l'a explicitement remis à F02.** Son §7 : *« Jalon visé | après résolution du **préalable d'identité** (§7.3), **partagé avec `F02`** »*, et son journal : *« Préalable identifié et **sorti du périmètre** : d'où vient l'`agent_id`, question partagée avec `F02`. »*
+
+#### B. Mon K4 inversait le texte de C01 — correction
+
+J'allais écrire que « `C01` a déjà adopté un chemin de gate, donc F02 serait une deuxième implémentation ». **C'est l'inverse de ce que C01 dit.** Son §7.3 désigne F02 comme le **successeur** et nomme `working_files` comme son magasin :
+
+> « Le successeur, une fois l'identité résolue : un outil **dédié** (`gate_file_write`) qui renvoie un `hookSpecificOutput` conforme, adossé à **`working_files`** — qui a un propriétaire et un TTL. »
+
+F02 n'est donc pas un doublon : c'est le successeur désigné, **bloqué sur le même préalable**. Le seuil de K4 est littéralement atteint (deux autres chemins instruits : `C01` tranchée, `C04` encore ⬜) mais **la justification que j'allais publier était fausse**.
+
+#### C. K2 : ma conclusion tient, mon mécanisme était un homme de paille
+
+J'allais écrire que « l'endpoint ne sait pas refuser » et en conclure qu'il n'y a pas de fondation. **Deux erreurs.**
+
+D'abord, `{ ok: true }` **est le contrat voulu**, pas un défaut : `docs/superpowers/specs/2026-05-10-v0.6-semantic-conflict-design.md:87-88` le spécifie tel quel, et l. 84 précise « **no new MCP tool** — keeps surface small ». Décrire une spécification comme un bug est exactement la faute que la leçon d'`E09` vise.
+
+Ensuite, **« donc une migration de schéma » est faux.** `withTransaction` existe déjà (`src/db-adapter.ts:49`), documenté pour « any read-modify-write block where multiple statements must be atomic », et le coordinateur est mono-process par contrat. Un `start()` capable de refuser est un INSERT conditionnel dans une transaction plus un changement de type de retour `void → résultat`. J'aurais surestimé le coût.
+
+**Ce qui reste vrai, et c'est plus dur que ce que j'avais trouvé** : le manque n'est pas le refus, c'est la **lecture**. `getIndex()` (`working-files-tracker.ts:125`) a **un seul appelant en production** — `src/impact-scorer.ts:86` — et **aucune surface de lecture n'existe** : la table de routage (`src/http/handle-rest.ts:63-140`) ne comporte aucune route lisant `working_files`. Pire, `check_file_conflict` (`files-tools.ts:59`) et `/api/check-conflict` lisent **`file_activity`**, pas `working_files` — le même piège que `C01` §7.2 avait déjà documenté. **Un gate ne peut donc pas décider seul : il lui faut un endpoint de lecture qui n'existe pas.**
+
+Défaut annexe relevé au passage : `start()` fait un SELECT (l. 33-35) puis un INSERT (l. 36-42) **hors de toute transaction**, alors que la spec elle-même dit « Wrapped in `withTransaction` » (l. 110-111). Aujourd'hui la seule conséquence est une métrique mal étiquetée (l. 43).
+
+#### D. Une erreur factuelle de la fiche que je n'avais pas vue
+
+§4 affirme que le gate tiendrait le `requestId` jusqu'à la libération « signalée par le SSE ou MQTT que le serveur **émet déjà** ». **Faux.** `handleWorkingFilesStop` (`rest-handlers.ts:1018-1038`) appelle `stop()` puis renvoie `{ ok: true }` — **il n'émet rien**. Et aucun des types d'événements déclarés ne correspond à une libération de claim (le seul `*_claimed` est `task_claimed`, sans rapport). §5 porte la même faille sur sa ligne `sse-emitter.ts` / `mqtt-bridge.ts` : **les canaux existent, l'événement n'existe pas.**
+
+#### E. K1 tient, mais il ne discrimine pas entre les deux chemins
+
+Vérifié : **aucun des 26 outils n'écrit de fichier.** Les annoter `_meta["anthropic/requiresUserInteraction"]` ne peut donc pas gater une écriture — et « exiger un `announce_work` avant `post_to_thread` » est un ordonnancement de workflow, pas un verrou : ça n'empêche pas B d'écrire.
+
+Donc K1 se déclenche : `bypassPermissions` et `allowedTools` sautent le callback, la doc recommande le wildcard pour MCP, et l'échappatoire ne couvre pas les outils intégrés.
+
+**Mais je dois noter une asymétrie non mesurée.** `C01`, déjà adoptée, gate par `PreToolUse` — et son journal dit : *« **Fail-open confirmé à l'exécution** (erreur de validation et serveur arrêté : l'écriture passe) — donc la garantie est **molle**, contrairement à ce que promet §4. »* La garantie est donc molle **des deux côtés**. K1 ne départage pas `canUseTool` de `PreToolUse` : il condamne l'idée de « verrou dur » sur **les deux** chemins.
+
+#### F. Le volet documentaire est le seul livrable, et il est double
+
+**K7 ne se déclenche pas** — dans le bon sens : **0** mention de `permissionMode`, `acceptEdits` ou `allowedTools` dans `README.md` et tout `docs/`. Le piège est donc réel et non documenté.
+
+Et la passe adversariale en a trouvé une seconde moitié : **le caractère consultatif des claims n'est documenté nulle part côté utilisateur.** Recherche de « advisory », « not a lock », « does not prevent » : aucun résultat pertinent, et `working_files` n'apparaît dans **aucune** doc utilisateur — seulement dans des specs internes. Or `README.md` parle de « coordination » aux lignes 76, 108 et 162 sans jamais dire que les claims n'empêchent rien. → **#371**
+
+#### G. §0 était exacte — et mon commit de référence était le mauvais
+
+J'avais relevé `handleWorkingFilesStart` en **994** contre 863 en §0, et j'allais parler de dérive. C'est de la dérive, mais **j'avais choisi le mauvais point de comparaison** : `605c082` est **deux commits après** l'arbre que §0 a réellement vérifié. À `5010c1a` (2026-08-14 13:24), **chaque citation est exacte** — `handleWorkingFilesStart` @863, `handleWorkingFilesStop` @887, `mqtt-tools.ts` @52, `files-tools.ts` @49, `handle-rest.ts` 116-117, `cli/channel.ts` 311-313. Trajectoire : `7d0224d`(860) → **`5010c1a`(863)** → `293a1a7`(953) → `db8cb27`(994).
+
+**Zéro défaut de vérification. Quatrième fiche propre d'affilée** après `E14`, `E15` et `F01`. Seule dérive cosmétique : l'API est aujourd'hui `server.registerTool(` — `server.tool(` a 0 occurrence depuis la migration `4f62056`.
+
+#### H. Adjudication
+
+| # | Volet | Seuil | Mesure | Verdict |
+|---|---|---|---|---|
+| **K0** *(non pré-enregistré)* | (A) | — | **`AuthClaims` n'a pas d'`agent_id`** ; rien ne lie une session MCP à un agent | **BLOQUANT** — et déjà nommé par `C01`, qui l'a remis à F02 |
+| **K1** | (A) | callback sautable + exception hors périmètre | confirmé ; aucun des 26 outils n'écrit de fichier | **SE DÉCLENCHE** — mais ne discrimine pas : `C01` a mesuré un **fail-open** sur son propre chemin |
+| **K2** | (A) | endpoint inconditionnel | **conclusion juste, mécanisme faux** : `{ ok: true }` est la **spec** ; le vrai manque est l'**absence de surface de lecture** (`getIndex()` = 1 appelant, 0 route) ; et « migration de schéma » était **surestimé** (`withTransaction` existe) | **SE DÉCLENCHE, reformulé** |
+| **K3** | (A) | TTL ≥ 30 min, aucun `force_release` | TTL `"30"` par défaut ; **0** occurrence de `force_release` dans `src/`, `cli/`, `sdk/`, `docs/`, `README` | **SE DÉCLENCHE** |
+| **K4** | (A) | ≥ 2 autres chemins instruits | `C01` tranchée, `C04` ⬜ — **mais C01 délègue à F02**, elle ne le préempte pas | **SE DÉCLENCHE au seuil, justification corrigée** |
+| **K5** | (A)(B) | SDK absent, ≥ 3 versions | absent de `package.json` et `sdk/package.json` ; 0.2.111 / 0.3.199 / 0.3.223 | **SE DÉCLENCHE** |
+| **K6** | (B) | limité à http/sse, valeurs non documentées | confirmé par §0 contre le CHANGELOG | **SE DÉCLENCHE** |
+| **K7** | (C) | ≥ 1 mention existante | **0** mention | **NE SE DÉCLENCHE PAS** — le bénéfice documentaire est réel |
 
 ### 6.5 Contre-arguments
 
@@ -188,11 +282,11 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 
 | | |
 |---|---|
-| **Verdict** | ⬜ adopter · ⬜ adopter partiellement · ⬜ reporter · ⬜ refuser |
-| **Date** | |
-| **Justification** | |
-| **Issue / PR** | |
-| **Jalon visé** | |
+| **Verdict** | ⬜ adopter · ✅ **adopter partiellement** · ⬜ reporter · ⬜ refuser |
+| **Date** | 2026-08-17 |
+| **Justification** | Trois volets adjugés séparément. ⭑ **(A) l'orchestrateur de référence à verrou dur : `reporter`, sur un préalable que je n'avais pas pré-enregistré et qui est décisif.** **`AuthClaims` ne porte aucun `agent_id`** (`src/auth.ts:39-51`) et les deux endpoints l'exigent dans le corps de la requête : rien ne lie une session MCP à un agent enregistré, donc **un gate `canUseTool` n'a aucune identité avec laquelle réclamer un verrou**. Ce préalable n'est pas ma trouvaille — **`C01` l'a identifié le 2026-08-15 et l'a explicitement remis à F02** (« préalable d'identité … partagé avec `F02` », « sorti du périmètre »). D'où `reporter` et non `refuser` : le mécanisme est prouvé (C01 a mesuré qu'un `permissionDecision: "deny"` **bloque** l'écriture) et le successeur est nommé (`gate_file_write`, adossé à `working_files`). Ce qui manque est nommé et hors périmètre. ⭑ **Mais « verrou dur » doit être abandonné comme promesse, sur les deux chemins.** K1 se déclenche — `bypassPermissions` et `allowedTools` sautent le callback, la doc Anthropic **recommande** le wildcard pour MCP, et l'échappatoire `requiresUserInteraction` ne couvre pas `Write`/`Edit` puisque **aucun des 26 outils n'écrit de fichier**. Et il ne discrimine pas : `C01` a mesuré un **fail-open** sur son propre chemin. La garantie est molle des deux côtés. ⭑ **(B) `permission_policy` par outil : `refuser`.** Limité aux entrées de serveur **distant (http/sse)**, valeurs admises **non documentées**. ⭑ **(C) la correction documentaire : `adopter`.** **0** mention de `permissionMode`/`acceptEdits`/`allowedTools` dans `README.md` et tout `docs/` — et la passe adversariale a trouvé une seconde moitié : **le caractère consultatif des claims n'est documenté nulle part côté utilisateur**, alors que `README.md` parle de « coordination » trois fois. → **#371** **Corrections de méthode — la passe adversariale a démoli quatre de mes justifications.** **Mon K4 inversait le texte de C01** : j'allais écrire qu'elle « a déjà un propriétaire, donc F02 serait un doublon », alors que son §7.3 **désigne F02 comme le successeur**. **Mon K2 attaquait un homme de paille** : `{ ok: true }` **est le contrat spécifié** (`design-spec:87-88`), pas un défaut — décrire une spec comme un bug est la faute que la leçon d'`E09` vise ; et « donc une migration de schéma » était **surestimé**, `withTransaction` existant déjà. Le vrai manque est l'**absence de surface de lecture** : `getIndex()` a **un seul** appelant en production et **aucune route** ne lit `working_files` — tandis que `check_file_conflict` lit `file_activity`, le piège que `C01` §7.2 avait déjà documenté. **Et mon commit de référence était le mauvais** : `605c082` est deux commits après l'arbre que §0 a vérifié ; à **`5010c1a`** chaque citation est exacte. **Zéro défaut de vérification — quatrième fiche propre d'affilée** après `E14`, `E15` et `F01`. ⭑ **Erreur factuelle de la fiche, que je n'avais pas vue :** §4 affirme que la libération est « signalée par le SSE ou MQTT que le serveur émet déjà ». **Faux** — `handleWorkingFilesStop` n'émet **rien**, et aucun type d'événement ne correspond à une libération de claim. Les canaux existent, l'événement n'existe pas. |
+| **Issue / PR** | **#371** — deux silences de la doc, mesurés et corrigeables en deux paragraphes : `acceptEdits` n'auto-approuve **pas** les outils MCP (0 mention dans le dépôt, wildcard `allowedTools` recommandé par Anthropic), et les claims `working_files` **n'empêchent rien** (`PRIMARY KEY (agent_id, file_path)` donc multi-détenteur assumé, `start(): void`, TTL 30 min, aucun `force_release`) sans que ce soit écrit dans aucune doc utilisateur. |
+| **Jalon visé** | **#371** immédiatement : décorrélé de toute adoption, coût quasi nul, et il ferme deux surprises utilisateur symétriques. **(A) est en attente du préalable d'identité**, partagé avec `C01` — c'est lui qu'il faut instruire, pas F02. Deux prérequis à ajouter au périmètre du successeur quand il viendra : une **surface de lecture** de `working_files` (aucune route n'en lit aujourd'hui) et un **événement de libération** (aucun n'existe). Aucun jalon pour (B). |
 
 ## 8. Journal
 
@@ -200,3 +294,4 @@ Le principe maison : on teste le vrai chemin de code, on ne théorise pas.>
 |---|---|
 | 2026-08-14 | Fiche créée par la veille plateforme. |
 | 2026-08-14 | Vérification des faits : signature à 3 args, `permission_policy` limité aux serveurs http/sse, `requestId`/`null` hors doc publique. |
+| 2026-08-17 | **Challenge — verdict `adopter partiellement` ; le critère décisif n'était pas dans mes critères.** **`AuthClaims` ne porte aucun `agent_id`** (`src/auth.ts:39-51`), et les deux endpoints l'exigent dans le corps : rien ne lie une session MCP à un agent enregistré, donc **un gate `canUseTool` n'a aucune identité avec laquelle réclamer un verrou**. Ce préalable n'est pas ma trouvaille — **`C01` l'a identifié le 2026-08-15 et remis à F02** (« préalable d'identité … partagé avec `F02` », « sorti du périmètre »). D'où **`reporter` sur (A)** et non `refuser` : le mécanisme est prouvé (C01 a mesuré qu'un `permissionDecision: "deny"` bloque l'écriture) et le successeur est nommé (`gate_file_write`). **Mais « verrou dur » doit être abandonné comme promesse sur les deux chemins** : K1 se déclenche — callback sautable par `bypassPermissions`/`allowedTools`, wildcard **recommandé** par Anthropic pour MCP, et l'échappatoire `requiresUserInteraction` ne couvre pas `Write`/`Edit` puisque **aucun des 26 outils n'écrit de fichier** — et il ne discrimine pas, `C01` ayant mesuré un **fail-open** sur son propre chemin. **(B) refusé** : `permission_policy` limité aux serveurs http/sse, valeurs non documentées. **(C) adopté** : **0** mention de `permissionMode`/`acceptEdits`/`allowedTools` dans `README.md` et `docs/`, plus une seconde moitié trouvée par la passe adversariale — **le caractère consultatif des claims n'est documenté nulle part côté utilisateur**, alors que `README.md` parle de « coordination » trois fois. → **#371**. **La passe adversariale a démoli quatre de mes justifications.** **Mon K4 inversait le texte de C01** : son §7.3 **désigne F02 comme le successeur**, elle ne le préempte pas. **Mon K2 attaquait un homme de paille** : `{ ok: true }` **est le contrat spécifié** (`design-spec:87-88`, « no new MCP tool — keeps surface small »), donc décrire une spec comme un bug ; et « donc une migration de schéma » était **surestimé** puisque `withTransaction` existe déjà (`db-adapter.ts:49`) et que le coordinateur est mono-process. Le vrai manque est l'**absence de surface de lecture** : `getIndex()` a **un seul** appelant en production (`impact-scorer.ts:86`) et **aucune route** de `handle-rest.ts` ne lit `working_files`, tandis que `check_file_conflict` lit `file_activity` — le piège que `C01` §7.2 avait déjà documenté. **Et mon commit de référence était le mauvais** : `605c082` est deux commits après l'arbre vérifié par §0 ; à **`5010c1a`** (2026-08-14 13:24) chaque citation est exacte (start@863, stop@887, mqtt@52, files@49). **Zéro défaut de vérification — quatrième fiche propre d'affilée** après `E14`, `E15`, `F01`. **Erreur factuelle de la fiche que je n'avais pas vue** : §4 dit la libération « signalée par le SSE ou MQTT que le serveur émet déjà » — **faux**, `handleWorkingFilesStop` n'émet **rien** et aucun type d'événement ne correspond ; les canaux existent, l'événement non. Défaut annexe : `start()` fait SELECT puis INSERT **hors transaction**, alors que la spec dit « Wrapped in `withTransaction` ». |
