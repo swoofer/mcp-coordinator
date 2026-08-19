@@ -60,7 +60,7 @@ Le détail par fiche est dans sa **section 0**.
 | `B01` | [CIMD : la fin du Dynamic Client Registration](B01-cimd-dcr-deprecated.md) | ~~🔴 T1~~ 🟡 T3 | GA | intégration | ~~M~~ — | 🟡 | ⚠️ | ✅ |
 | `B02` | [Enterprise-Managed Authorization (ID-JAG) et OAuth Client Credentials](B02-enterprise-managed-auth-idjag.md) | ~~🟠 T2~~ 🟡 T3 | mixte | opportunité | L | 🟡 | ⚠️ | ✅ |
 | `B03` | [Durcissement auth 2026 : RFC 9207, application_type, SSRF sur la découverte](B03-auth-hardening-ssrf.md) | 🔴 T1 | GA | menace | ~~S~~ XS | 🟡 | ⚠️ | ✅ |
-| `B04` | [Scope minimal, step-up 403 et lazy authentication par outil](B04-scope-step-up-lazy-auth.md) | 🔴 T1 | GA | opportunité | M | 🟡 | ⚠️ | ⬜ |
+| `B04` | [Scope minimal, step-up 403 et lazy authentication par outil](B04-scope-step-up-lazy-auth.md) | 🔴 T1 | GA | opportunité | ~~M~~ S | 🟡 | ⚠️ | ✅ |
 | `B05` | [Token passthrough interdit, binding RFC 8707 et state handle hijacking](B05-token-passthrough-state-handles.md) | 🔴 T1 | GA | menace | M | ✅ | ⚠️ | ⬜ |
 
 ## C. Claude Code (integration)
@@ -68,9 +68,9 @@ Le détail par fiche est dans sa **section 0**.
 | # | Dossier | Tier | Statut | Nature | Effort | Fiche | Testable | Challenge |
 |---|---|---|---|---|---|---|---|---|
 | `C01` | [Hooks de type `mcp_tool` : rendre l'annonce obligatoire au lieu de l'espérer](C01-hook-mcp-tool-gate.md) | 🔴 T1 | GA | opportunité | ~~S~~ L | 🟡 | ✅ | ✅ |
-| `C02` | [Les 31 hook events de Claude Code et le pack @mcp-coordinator/hooks](C02-hooks-coordination-events.md) | 🔴 T1 | mixte | intégration | M | 🟡 | ✅ | ⬜ |
-| `C03` | [Channels : aligner `cli/channel.ts` sur le contrat officiel `claude/channel`](C03-channels-official-contract.md) | 🔴 T1 | research-preview | remplace du code maison | M | 🟡 | ⚠️ | ⬜ |
-| `C04` | [Relais de permission : le dashboard devient console d'approbation](C04-channel-permission-relay.md) | 🔴 T1 | research-preview | opportunité | M | 🟡 | ⚠️ | ⬜ |
+| `C02` | [Les 31 hook events de Claude Code et le pack @mcp-coordinator/hooks](C02-hooks-coordination-events.md) | 🔴 T1 | mixte | intégration | ~~M~~ L | 🟡 | ✅ | ✅ |
+| `C03` | [Channels : aligner `cli/channel.ts` sur le contrat officiel `claude/channel`](C03-channels-official-contract.md) | 🔴 T1 | research-preview | remplace du code maison | M | 🟡 | ⚠️ | ✅ |
+| `C04` | [Relais de permission : le dashboard devient console d'approbation](C04-channel-permission-relay.md) | 🔴 T1 | research-preview | opportunité | ~~M~~ XL | 🟡 | ⚠️ | ✅ |
 | `C05` | [Outil `Monitor` et transport MCP `ws` : le plan B du push, sans allowlist](C05-monitor-websocket-push.md) | ~~🔴 T1~~ 🟡 T3 | mixte | opportunité | ~~M~~ XL | 🟡 | ⚠️ | ✅ |
 | `C06` | [Tool search et defer_loading : que faire des 26 outils MCP](C06-tool-search-defer-loading.md) | 🔴 T1 | GA | ~~menace~~ opportunité | S | 🟡 | ✅ | ✅ |
 | `C07` | [Distribution : plugin Claude Code, marketplace et bundles .mcpb](C07-plugin-marketplace-mcpb.md) | 🔴 T1 | GA | opportunité | M | 🟡 | ⚠️ | ⬜ |
