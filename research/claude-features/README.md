@@ -60,74 +60,74 @@ Le détail par fiche est dans sa **section 0**.
 | `B01` | [CIMD : la fin du Dynamic Client Registration](B01-cimd-dcr-deprecated.md) | ~~🔴 T1~~ 🟡 T3 | GA | intégration | ~~M~~ — | 🟡 | ⚠️ | ✅ |
 | `B02` | [Enterprise-Managed Authorization (ID-JAG) et OAuth Client Credentials](B02-enterprise-managed-auth-idjag.md) | ~~🟠 T2~~ 🟡 T3 | mixte | opportunité | L | 🟡 | ⚠️ | ✅ |
 | `B03` | [Durcissement auth 2026 : RFC 9207, application_type, SSRF sur la découverte](B03-auth-hardening-ssrf.md) | 🔴 T1 | GA | menace | ~~S~~ XS | 🟡 | ⚠️ | ✅ |
-| `B04` | [Scope minimal, step-up 403 et lazy authentication par outil](B04-scope-step-up-lazy-auth.md) | 🔴 T1 | GA | opportunité | M | 🟡 | ⚠️ | ⬜ |
-| `B05` | [Token passthrough interdit, binding RFC 8707 et state handle hijacking](B05-token-passthrough-state-handles.md) | 🔴 T1 | GA | menace | M | ✅ | ⚠️ | ⬜ |
+| `B04` | [Scope minimal, step-up 403 et lazy authentication par outil](B04-scope-step-up-lazy-auth.md) | 🔴 T1 | GA | opportunité | ~~M~~ S | 🟡 | ⚠️ | ✅ |
+| `B05` | [Token passthrough interdit, binding RFC 8707 et state handle hijacking](B05-token-passthrough-state-handles.md) | 🔴 T1 | GA | menace | M | ✅ | ⚠️ | ✅ |
 
 ## C. Claude Code (integration)
 
 | # | Dossier | Tier | Statut | Nature | Effort | Fiche | Testable | Challenge |
 |---|---|---|---|---|---|---|---|---|
 | `C01` | [Hooks de type `mcp_tool` : rendre l'annonce obligatoire au lieu de l'espérer](C01-hook-mcp-tool-gate.md) | 🔴 T1 | GA | opportunité | ~~S~~ L | 🟡 | ✅ | ✅ |
-| `C02` | [Les 31 hook events de Claude Code et le pack @mcp-coordinator/hooks](C02-hooks-coordination-events.md) | 🔴 T1 | mixte | intégration | M | 🟡 | ✅ | ⬜ |
-| `C03` | [Channels : aligner `cli/channel.ts` sur le contrat officiel `claude/channel`](C03-channels-official-contract.md) | 🔴 T1 | research-preview | remplace du code maison | M | 🟡 | ⚠️ | ⬜ |
-| `C04` | [Relais de permission : le dashboard devient console d'approbation](C04-channel-permission-relay.md) | 🔴 T1 | research-preview | opportunité | M | 🟡 | ⚠️ | ⬜ |
-| `C05` | [Outil `Monitor` et transport MCP `ws` : le plan B du push, sans allowlist](C05-monitor-websocket-push.md) | 🔴 T1 | mixte | opportunité | M | 🟡 | ⚠️ | ⬜ |
+| `C02` | [Les 31 hook events de Claude Code et le pack @mcp-coordinator/hooks](C02-hooks-coordination-events.md) | 🔴 T1 | mixte | intégration | ~~M~~ L | 🟡 | ✅ | ✅ |
+| `C03` | [Channels : aligner `cli/channel.ts` sur le contrat officiel `claude/channel`](C03-channels-official-contract.md) | 🔴 T1 | research-preview | remplace du code maison | M | 🟡 | ⚠️ | ✅ |
+| `C04` | [Relais de permission : le dashboard devient console d'approbation](C04-channel-permission-relay.md) | 🔴 T1 | research-preview | opportunité | ~~M~~ XL | 🟡 | ⚠️ | ✅ |
+| `C05` | [Outil `Monitor` et transport MCP `ws` : le plan B du push, sans allowlist](C05-monitor-websocket-push.md) | ~~🔴 T1~~ 🟡 T3 | mixte | opportunité | ~~M~~ XL | 🟡 | ⚠️ | ✅ |
 | `C06` | [Tool search et defer_loading : que faire des 26 outils MCP](C06-tool-search-defer-loading.md) | 🔴 T1 | GA | ~~menace~~ opportunité | S | 🟡 | ✅ | ✅ |
-| `C07` | [Distribution : plugin Claude Code, marketplace et bundles .mcpb](C07-plugin-marketplace-mcpb.md) | 🔴 T1 | GA | opportunité | M | 🟡 | ⚠️ | ⬜ |
+| `C07` | [Distribution : plugin Claude Code, marketplace et bundles .mcpb](C07-plugin-marketplace-mcpb.md) | ~~🔴 T1~~ 🟠 T2 | GA | opportunité | ~~M~~ L | 🟡 | ⚠️ | ✅ |
 | `C08` | [Status line : trois autres agents sur ce repo, un conflit, à zéro token](C08-statusline.md) | ~~🔴 T1~~ 🟡 T3 | GA | opportunité | S | ✅ | ✅ | ✅ |
 | `C09` | [Sandbox Bash et egress : l'échec d'onboarding silencieux à corriger](C09-bash-sandbox-egress.md) | 🔴 T1 | GA | menace | ~~S~~ M | 🟡 | ⚠️ | ✅ |
-| `C10` | [Déploiement entreprise : managed-mcp.json, gateway, self-hosted runners](C10-enterprise-deployment.md) | 🟠 T2 | mixte | intégration | M | 🟡 | ⚠️ | ⬜ |
-| `C11` | [Observabilité : traceparent, OTel multi-agents, APIs Analytics](C11-otel-traceparent-analytics.md) | 🟠 T2 | mixte | remplace du code maison | M | 🟡 | ⚠️ | ⬜ |
-| `C12` | [Matrice de portabilité : ce que le natif ne couvre pas (Windows, Bedrock, conteneurs)](C12-portability-matrix.md) | 🔴 T1 | GA | opportunité | S | 🟡 | ⚠️ | ⬜ |
-| `C13` | [Réconcilier l'agent-registry avec le réel : roster.json, Remote Control, /rewind](C13-agent-roster-reconciliation.md) | 🟠 T2 | mixte | intégration | M | 🟡 | ⚠️ | ⬜ |
+| `C10` | [Déploiement entreprise : managed-mcp.json, gateway, self-hosted runners](C10-enterprise-deployment.md) | 🟠 T2 | mixte | intégration | ~~M~~ XS | 🟡 | ⚠️ | ✅ |
+| `C11` | [Observabilité : traceparent, OTel multi-agents, APIs Analytics](C11-otel-traceparent-analytics.md) | ~~🟠 T2~~ 🟡 T3 | mixte | ~~remplace du code maison~~ opportunité | M | 🟡 | ⚠️ | ✅ |
+| `C12` | [Matrice de portabilité : ce que le natif ne couvre pas (Windows, Bedrock, conteneurs)](C12-portability-matrix.md) | ~~🔴 T1~~ 🟡 T3 | GA | opportunité | ~~S~~ XS | ~~🟡~~ 🔴 | ⚠️ | ✅ |
+| `C13` | [Réconcilier l'agent-registry avec le réel : roster.json, Remote Control, /rewind](C13-agent-roster-reconciliation.md) | ~~🟠 T2~~ 🟡 T3 | mixte | intégration | ~~M~~ L | ~~🟡~~ 🔴 | ⚠️ | ✅ |
 
 ## D. Menaces Claude Code
 
 | # | Dossier | Tier | Statut | Nature | Effort | Fiche | Testable | Challenge |
 |---|---|---|---|---|---|---|---|---|
-| `D01` | [MENACE : cross-session messaging natif (SendMessage / ListAgents)](D01-threat-cross-session-messaging.md) | 🔴 T1 | GA | menace | M | 🟡 | ⚠️ | ⬜ |
-| `D02` | [MENACE : Agent Teams (task list partagée, mailbox, file locking)](D02-threat-agent-teams.md) | 🔴 T1 | experimental | menace | L | 🟡 | ⚠️ | ⬜ |
+| `D01` | [MENACE : cross-session messaging natif (SendMessage / ListAgents)](D01-threat-cross-session-messaging.md) | 🔴 T1 | GA | menace | M | 🟡 | ⚠️ | ✅ |
+| `D02` | [MENACE : Agent Teams (task list partagée, mailbox, file locking)](D02-threat-agent-teams.md) | 🔴 T1 | experimental | menace | L | 🟡 | ⚠️ | ✅ |
 | `D03` | [MENACE : worktrees natifs, le conflit d'écriture disparaît-il ?](D03-threat-native-worktrees.md) | 🔴 T1 | GA | menace | M | 🟡 | ✅ | ✅ |
-| `D04` | [Dynamic workflows, `ultracode` et `/batch` : l'orchestration parallèle native](D04-threat-dynamic-workflows.md) | 🔴 T1 | GA | menace | M | ✅ | ✅ | ⬜ |
-| `D05` | [MENACE : agent view, le dashboard natif dans le terminal](D05-threat-agent-view.md) | 🟠 T2 | research-preview | menace | M | 🟡 | ✅ | ⬜ |
+| `D04` | [Dynamic workflows, `ultracode` et `/batch` : l'orchestration parallèle native](D04-threat-dynamic-workflows.md) | 🔴 T1 | GA | menace | M | ✅ | ✅ | ✅ |
+| `D05` | [MENACE : agent view, le dashboard natif dans le terminal](D05-threat-agent-view.md) | 🟠 T2 | research-preview | menace | M | 🟡 | ✅ | ✅ |
 
 ## E. Claude API et Managed Agents
 
 | # | Dossier | Tier | Statut | Nature | Effort | Fiche | Testable | Challenge |
 |---|---|---|---|---|---|---|---|---|
-| `E01` | [MENACE : Claude Managed Agents et l'orchestration multi-agents hébergée](E01-cma-competitive-frontier.md) | 🔴 T1 | research-preview | menace | L | 🟡 | ⚠️ | ⬜ |
-| `E02` | [MCP tunnels : rendre le daemon privé joignable par les agents hébergés](E02-mcp-tunnels.md) | 🟠 T2 | research-preview | opportunité | M | 🟡 | ⚠️ | ⬜ |
-| `E03` | [Brancher mcp-coordinator sur CMA : mcp_toolset, custom tools, worker self-hosted](E03-cma-integration-paths.md) | 🟠 T2 | beta | intégration | S | 🟡 | ⚠️ | ⬜ |
-| `E04` | [Modèle d'API à copier : session threads et sémantique de reconnexion SSE](E04-cma-session-threads-sse.md) | 🟠 T2 | beta | opportunité | M | ✅ | ✅ | ⬜ |
+| `E01` | [MENACE : Claude Managed Agents et l'orchestration multi-agents hébergée](E01-cma-competitive-frontier.md) | 🔴 T1 | research-preview | menace | L | 🟡 | ⚠️ | ✅ |
+| `E02` | [MCP tunnels : rendre le daemon privé joignable par les agents hébergés](E02-mcp-tunnels.md) | 🟠 T2 | research-preview | opportunité | M | 🟡 | ⚠️ | ✅ |
+| `E03` | [Brancher mcp-coordinator sur CMA : mcp_toolset, custom tools, worker self-hosted](E03-cma-integration-paths.md) | 🟠 T2 | beta | intégration | S | 🟡 | ⚠️ | ✅ |
+| `E04` | [Modèle d'API à copier : session threads et sémantique de reconnexion SSE](E04-cma-session-threads-sse.md) | 🟠 T2 | beta | opportunité | M | ✅ | ✅ | ✅ |
 | `E05` | [Memory stores : modèle pour la chaîne d'audit et la mémoire de repo partagée](E05-cma-memory-stores-audit.md) | 🟠 T2 | beta | remplace du code maison | L | 🟡 | ⚠️ | ✅ |
-| `E06` | [Outcomes et rubriques : remplacer le score opaque de plan-quality](E06-cma-outcomes-rubrics.md) | 🟡 T3 | beta | remplace du code maison | M | ✅ | ⚠️ | ⬜ |
-| `E07` | [Webhooks sortants signés : pousser vers CI, Slack et dashboards tiers](E07-cma-webhooks.md) | 🟠 T2 | beta | opportunité | M | 🟡 | ✅ | ⬜ |
-| `E08` | [Push et outils conditionnels côté Messages API (system messages, tool_addition)](E08-mid-conversation-system-and-tools.md) | 🟠 T2 | mixte | opportunité | M | 🟡 | ⚠️ | ⬜ |
-| `E09` | [MENACE : le MCP connector ne voit que les tool calls, tout le temps réel est invisible](E09-threat-mcp-connector-tools-only.md) | 🔴 T1 | beta | menace | M | ✅ | ⚠️ | ⬜ |
-| `E10` | [Memory tool : le daemon comme backend de mémoire partagée entre agents](E10-memory-tool-shared-repo-memory.md) | 🟠 T2 | GA | opportunité | L | ✅ | ⚠️ | ⬜ |
-| `E11` | [Discipline de contexte : exclude_tools, PTC, compaction, task budgets, cache](E11-context-discipline.md) | 🔴 T1 | mixte | intégration | M | 🟡 | ⚠️ | ⬜ |
-| `E12` | [Qualité des payloads : strict tools, structured outputs, blocs search_result](E12-structured-outputs-citations.md) | 🟠 T2 | GA | intégration | M | 🟡 | ⚠️ | ⬜ |
-| `E13` | [Publier une skill de coordination plutôt que d'alourdir les descriptions d'outils](E13-agent-skills-coordination.md) | 🟠 T2 | beta | opportunité | M | 🟡 | ⚠️ | ⬜ |
-| `E14` | [Entreprise : inference hooks, Compliance API, annuaire de connecteurs](E14-enterprise-audit-directory.md) | 🟡 T3 | mixte | menace | M | 🟡 | ⚠️ | ⬜ |
-| `E15` | [Emprunts de design mineurs : budgets de session, advisor, dreams, deployments](E15-cma-design-borrowings.md) | 🟡 T3 | mixte | opportunité | M | 🟡 | ⚠️ | ⬜ |
+| `E06` | [Outcomes et rubriques : remplacer le score opaque de plan-quality](E06-cma-outcomes-rubrics.md) | 🟡 T3 | beta | remplace du code maison | M | ✅ | ⚠️ | ✅ |
+| `E07` | [Webhooks sortants signés : pousser vers CI, Slack et dashboards tiers](E07-cma-webhooks.md) | 🟠 T2 | beta | opportunité | M | 🟡 | ✅ | ✅ |
+| `E08` | [Push et outils conditionnels côté Messages API (system messages, tool_addition)](E08-mid-conversation-system-and-tools.md) | 🟠 T2 | mixte | opportunité | M | 🟡 | ⚠️ | ✅ |
+| `E09` | [MENACE : le MCP connector ne voit que les tool calls, tout le temps réel est invisible](E09-threat-mcp-connector-tools-only.md) | 🔴 T1 | beta | menace | M | ✅ | ⚠️ | ✅ |
+| `E10` | [Memory tool : le daemon comme backend de mémoire partagée entre agents](E10-memory-tool-shared-repo-memory.md) | 🟠 T2 | GA | opportunité | L | ✅ | ⚠️ | ✅ |
+| `E11` | [Discipline de contexte : exclude_tools, PTC, compaction, task budgets, cache](E11-context-discipline.md) | 🔴 T1 | mixte | intégration | M | 🟡 | ⚠️ | ✅ |
+| `E12` | [Qualité des payloads : strict tools, structured outputs, blocs search_result](E12-structured-outputs-citations.md) | 🟠 T2 | GA | intégration | M | 🟡 | ⚠️ | ✅ |
+| `E13` | [Publier une skill de coordination plutôt que d'alourdir les descriptions d'outils](E13-agent-skills-coordination.md) | 🟠 T2 | beta | opportunité | M | 🟡 | ⚠️ | ✅ |
+| `E14` | [Entreprise : inference hooks, Compliance API, annuaire de connecteurs](E14-enterprise-audit-directory.md) | 🟡 T3 | mixte | menace | M | 🟡 | ⚠️ | ✅ |
+| `E15` | [Emprunts de design mineurs : budgets de session, advisor, dreams, deployments](E15-cma-design-borrowings.md) | 🟡 T3 | mixte | opportunité | M | 🟡 | ⚠️ | ✅ |
 
 ## F. Claude Agent SDK
 
 | # | Dossier | Tier | Statut | Nature | Effort | Fiche | Testable | Challenge |
 |---|---|---|---|---|---|---|---|---|
-| `F01` | [Serveur MCP in-process : le paquet @mcp-coordinator/agent-sdk](F01-sdk-in-process-mcp-server.md) | 🔴 T1 | GA | intégration | M | 🟡 | ✅ | ⬜ |
-| `F02` | [`canUseTool` et `requestId` : la primitive exacte du verrou distribué](F02-canusetool-distributed-lock.md) | 🔴 T1 | GA | opportunité | M | 🟡 | ✅ | ⬜ |
-| `F03` | [Subagents programmatiques et SessionStore : voir les transcripts, pas que les annonces](F03-sdk-subagents-sessionstore.md) | 🟠 T2 | GA | opportunité | M | 🟡 | ✅ | ⬜ |
+| `F01` | [Serveur MCP in-process : le paquet @mcp-coordinator/agent-sdk](F01-sdk-in-process-mcp-server.md) | 🔴 T1 | GA | intégration | M | 🟡 | ✅ | ✅ |
+| `F02` | [`canUseTool` et `requestId` : la primitive exacte du verrou distribué](F02-canusetool-distributed-lock.md) | 🔴 T1 | GA | opportunité | M | 🟡 | ✅ | ✅ |
+| `F03` | [Subagents programmatiques et SessionStore : voir les transcripts, pas que les annonces](F03-sdk-subagents-sessionstore.md) | 🟠 T2 | GA | opportunité | M | 🟡 | ✅ | ✅ |
 
 ## G. Ecosysteme
 
 | # | Dossier | Tier | Statut | Nature | Effort | Fiche | Testable | Challenge |
 |---|---|---|---|---|---|---|---|---|
-| `G01` | [MCP Agent Mail : le concurrent open source le plus proche](G01-threat-mcp-agent-mail.md) | 🔴 T1 | experimental | menace | S | ✅ | ✅ | ⬜ |
-| `G02` | [Orchestrateurs worktree-par-tâche (Conductor, Nimbalyst, Vibe Kanban, Claude Squad)](G02-worktree-orchestrators.md) | 🟠 T2 | mixte | menace | S | ✅ | ⚠️ | ⬜ |
-| `G03` | [MCP Interceptors WG (SEP-1763) : la détection de conflit comme primitive standard](G03-mcp-interceptors-wg.md) | 🔴 T1 | experimental | menace | L | 🟡 | ⚠️ | ⬜ |
-| `G04` | [MCP Triggers & Events WG : le pub/sub entre-t-il dans la spec ?](G04-mcp-triggers-events-wg.md) | 🔴 T1 | experimental | menace | S | 🟡 | ✅ | ⬜ |
-| `G05` | [Signaux faibles : A2A/AGNTCY et Claude Cowork](G05-weak-signals.md) | 🟡 T3 | GA | opportunité | XL | 🟡 | ⚠️ | ⬜ |
+| `G01` | [MCP Agent Mail : le concurrent open source le plus proche](G01-threat-mcp-agent-mail.md) | 🔴 T1 | experimental | menace | S | ✅ | ✅ | ✅ |
+| `G02` | [Orchestrateurs worktree-par-tâche (Conductor, Nimbalyst, Vibe Kanban, Claude Squad)](G02-worktree-orchestrators.md) | 🟠 T2 | mixte | menace | S | ✅ | ⚠️ | ✅ |
+| `G03` | [MCP Interceptors WG (SEP-1763) : la détection de conflit comme primitive standard](G03-mcp-interceptors-wg.md) | 🔴 T1 | experimental | menace | L | 🟡 | ⚠️ | ✅ |
+| `G04` | [MCP Triggers & Events WG : le pub/sub entre-t-il dans la spec ?](G04-mcp-triggers-events-wg.md) | 🔴 T1 | experimental | menace | S | 🟡 | ✅ | ✅ |
+| `G05` | [Signaux faibles : A2A/AGNTCY et Claude Cowork](G05-weak-signals.md) | 🟡 T3 | GA | opportunité | XL | 🟡 | ⚠️ | ✅ |
 
 ---
 
