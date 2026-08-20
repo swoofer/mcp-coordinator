@@ -20,6 +20,22 @@ rest (v0.10.5 ships column-level encryption for IdP tokens only; other
 columns rely on OS-level encryption), Postgres back-end for regulated
 workloads (Phase 4), multi-instance HA (Phase 5).
 
+One consequence of that first deferral is worth stating explicitly, because
+it is not the same as the self-asserted-identity caveat below. An agent
+impersonating another is a *confidentiality and attribution* problem. But a
+status message on `coordinator/<org>/agents/<id>/status` is a **destructive**
+operation: it marks the agent offline and deletes its `working_files` claims
+-- the state the announce-before-you-write contract rests on. So a third
+party does not merely speak as another agent, it **destroys that agent's
+state**, and in the default profile it needs no credential to do it.
+
+Enabling auth narrows this to org members rather than closing it: the publish
+ACL matches an org prefix and nothing finer, and every coordinator topic lives
+under the single hardcoded org `default`. See
+[#330](https://github.com/swoofer/mcp-coordinator/issues/330) and
+`docs/mqtt-topics.md`. The practical rule: this bus can report a decision, it
+cannot enforce one.
+
 ## Trust boundaries
 
 ```
