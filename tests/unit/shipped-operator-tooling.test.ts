@@ -58,6 +58,15 @@ describe("the verifier reaches the people told to run it (#348)", () => {
     expect(cronLine).toContain("node dist/scripts/verify-audit-chain.js");
   });
 
+  it("the prettier glob covers scripts/, now that it is shipped code", () => {
+    // scripts/ sat outside {src,cli,tests,sdk/src} for as long as it was
+    // repo-only. It is published now, so it gets linted like the rest.
+    const pkg = JSON.parse(read("package.json")) as { scripts: Record<string, string> };
+    for (const key of ["format", "format:check"]) {
+      expect(pkg.scripts[key], key + " no longer covers scripts/").toContain("scripts,");
+    }
+  });
+
   it("the script's own usage string offers both invocations", () => {
     // It is printed on a bad flag, which is exactly when someone is lost.
     const script = read("scripts/verify-audit-chain.ts");

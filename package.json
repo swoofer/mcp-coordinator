@@ -61,8 +61,8 @@
     "perf:token-epoch": "tsx tests/perf/bench-token-epoch.ts",
     "chaos:idp": "tsx tests/perf/chaos/idp-failure-injection.ts",
     "chaos:audit": "tsx tests/perf/chaos/audit-queue-overflow.ts",
-    "format": "prettier --write \"{src,cli,tests,sdk/src}/**/*.{ts,tsx}\"",
-    "format:check": "prettier --check \"{src,cli,tests,sdk/src}/**/*.{ts,tsx}\"",
+    "format": "prettier --write \"{src,cli,scripts,tests,sdk/src}/**/*.{ts,tsx}\"",
+    "format:check": "prettier --check \"{src,cli,scripts,tests,sdk/src}/**/*.{ts,tsx}\"",
     "prepublishOnly": "pnpm build && pnpm test"
   },
   "packageManager": "pnpm@10.34.5",
