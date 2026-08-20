@@ -14,6 +14,13 @@ row in the middle breaks the next row's `prev_hash` linkage. The
 `scripts/verify-audit-chain.ts` script walks the chain and reports
 every break it finds.
 
+> **The script is not in the published package.** `package.json`'s `files`
+> ships `dist/src/`, `dist/cli/`, `dashboard/`, LICENSE and README; the
+> Dockerfile copies the same set. `scripts/` is in neither, so only someone
+> who cloned the repository has this tool. Every command below assumes a
+> checkout. Tracked in
+> [#348](https://github.com/swoofer/mcp-coordinator/issues/348).
+
 What this gives you:
 
 - **In-place tamper detection.** Any database-level edit of row content
@@ -79,6 +86,23 @@ Exit codes:
   immediately previous row's `row_hash`. Either a row was inserted
   in the middle, a middle row was deleted, or the prev_hash field
   was rewritten.
+
+  > ⚠️ **On a two-tier deployment this fires on a healthy database, and
+  > it is not rare.** The sweeper runs two DELETEs on `audit_log` with two
+  > TTLs (Tier 1 at 365 days, Tier 2 at 90), discriminated by action name.
+  > It therefore removes rows from the **middle** of the chain, not a
+  > prefix. Measured: purging 25 Tier-2 rows out of 50 produces 24
+  > `wrong_prev_hash` findings — roughly one per surviving row.
+  >
+  > Past day 91, a two-tier deployment's verification is noise. Do NOT
+  > wire the cron below to a pager until
+  > [#348](https://github.com/swoofer/mcp-coordinator/issues/348) is fixed;
+  > a detector that pages hourly on routine retention trains the operator
+  > to ignore the only audit-tampering signal there is.
+  >
+  > Phase-1 mono-tenant escapes it: that profile writes a single tier, so
+  > the purge is a strict prefix. One row of another tier — a single
+  > `migration.audit_backfill` from an upgrade — is enough to break it.
 - `id_gap_before`: the `id` sequence skips at least one value
   before this row. Informational only -- legitimate sweeper
   deletions look the same. Pair with the tip-attestation workflow
@@ -111,6 +135,15 @@ record the tip externally on a schedule:
    advance occurred -- either rows were added and then deleted
    (consistent with sweeper retention crossing the attestation
    window), or someone rewrote the chain.
+
+   > ⚠️ **This check does not distinguish a legitimate purge from
+   > tampering in the middle of the chain**, which is what
+   > [#348](https://github.com/swoofer/mcp-coordinator/issues/348) is about.
+   > It compares the FIRST row's `prev_hash` to the previous tip. Deleting a
+   > row from the middle changes neither of those, so the comparison passes
+   > either way. It catches front-truncation and rewrites, not middle
+   > deletion — and middle deletion is exactly what the two-tier sweeper
+   > does on every pass.
 
    The match check is a single `jq`-or-grep comparison against the
    prior attestation's signed JSON:

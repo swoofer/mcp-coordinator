@@ -402,7 +402,7 @@ OAuth mode adds: 4 IdP providers (GitHub OAuth App, GitHub App, Google, generic 
 | [`docs/gdpr.md`](./docs/gdpr.md) | GDPR Art. 17 procedures |
 | [`sdk/README.md`](./sdk/README.md) | TypeScript SDK reference |
 
-Operational tooling: `mcp-coordinator init phase2` (interactive wizard), `mcp-coordinator doctor --phase2` (8 health probes), `mcp-coordinator service-token {issue,list,revoke}`, `mcp-coordinator rotate-jwt-secret`, `tsx scripts/verify-audit-chain.ts`.
+Operational tooling: `mcp-coordinator init phase2` (interactive wizard), `mcp-coordinator doctor --phase2` (8 health probes), `mcp-coordinator service-token {issue,list,revoke}`, `mcp-coordinator rotate-jwt-secret`, and `tsx scripts/verify-audit-chain.ts` — the last of which runs from a **repository checkout only**, as `scripts/` is not in the published package.
 
 ---
 
