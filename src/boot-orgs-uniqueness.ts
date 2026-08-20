@@ -1,4 +1,5 @@
 import type { DatabaseAdapter } from "./db-adapter.js";
+import { withTransaction } from "./db-adapter.js";
 import { BootValidationError, loadEncryptionKey } from "./boot-encryption.js";
 import { createLogger } from "./observability/logger.js";
 import {
@@ -264,53 +265,63 @@ export function emitDuplicatesAcceptedAudit(
   db: DatabaseAdapter,
   payload: { duplicates: OrgDuplicateRow[]; totalDuplicateRows: number },
 ): void {
-  const tip = db
-    .prepare("SELECT row_hash FROM audit_log WHERE row_hash IS NOT NULL ORDER BY id DESC LIMIT 1")
-    .get() as { row_hash: string } | undefined;
-  const prevHash = tip?.row_hash ?? GENESIS_HASH;
+  // #317 made the Tier 1 chained insert atomic because a read-then-write
+  // split across two implicit transactions lets a second writer observe the
+  // same tip and fork the chain. This site was missed. It runs at boot, from
+  // initDatabase, which is precisely when a second process (a migration, a
+  // second coordinator racing to start) is most likely to be writing too.
+  //
+  // withTransaction nests through the driver's savepoints, so this stays
+  // correct if a caller has already opened one.
+  withTransaction(db, () => {
+    const tip = db
+      .prepare("SELECT row_hash FROM audit_log WHERE row_hash IS NOT NULL ORDER BY id DESC LIMIT 1")
+      .get() as { row_hash: string } | undefined;
+    const prevHash = tip?.row_hash ?? GENESIS_HASH;
 
-  const metadata = {
-    duplicate_groups: payload.duplicates.length,
-    total_rows: payload.totalDuplicateRows,
-    // Full duplicate manifest — keeps the forensic trail in the audit chain
-    // even after the operator renames rows post-boot.
-    duplicates: payload.duplicates.map((d) => ({
-      name: d.name,
-      n: d.n,
-      ids: d.ids.split(","),
-    })),
-  };
+    const metadata = {
+      duplicate_groups: payload.duplicates.length,
+      total_rows: payload.totalDuplicateRows,
+      // Full duplicate manifest — keeps the forensic trail in the audit chain
+      // even after the operator renames rows post-boot.
+      duplicates: payload.duplicates.map((d) => ({
+        name: d.name,
+        n: d.n,
+        ids: d.ids.split(","),
+      })),
+    };
 
-  const chainRow: AuditChainFields = {
-    action: "admin.orgs.duplicate_names_accepted",
-    actor_org_id: null,
-    actor_ip: null,
-    actor_user_agent: null,
-    actor_user_id: null,
-    metadata_json: JSON.stringify(metadata),
-    outcome: "success",
-    request_id: null,
-    target: null,
-  };
-  const rowHash = computeRowHash(prevHash, chainRow, getAuditChainKey());
+    const chainRow: AuditChainFields = {
+      action: "admin.orgs.duplicate_names_accepted",
+      actor_org_id: null,
+      actor_ip: null,
+      actor_user_agent: null,
+      actor_user_id: null,
+      metadata_json: JSON.stringify(metadata),
+      outcome: "success",
+      request_id: null,
+      target: null,
+    };
+    const rowHash = computeRowHash(prevHash, chainRow, getAuditChainKey());
 
-  db.prepare(
-    `INSERT INTO audit_log
-       (actor_user_id, actor_org_id, action, target,
-        actor_ip, actor_user_agent, request_id, outcome, metadata_json,
-        prev_hash, row_hash)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(
-    null,
-    null,
-    chainRow.action,
-    null,
-    null,
-    null,
-    null,
-    chainRow.outcome,
-    chainRow.metadata_json,
-    prevHash,
-    rowHash,
-  );
+    db.prepare(
+      `INSERT INTO audit_log
+         (actor_user_id, actor_org_id, action, target,
+          actor_ip, actor_user_agent, request_id, outcome, metadata_json,
+          prev_hash, row_hash)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      null,
+      null,
+      chainRow.action,
+      null,
+      null,
+      null,
+      null,
+      chainRow.outcome,
+      chainRow.metadata_json,
+      prevHash,
+      rowHash,
+    );
+  });
 }

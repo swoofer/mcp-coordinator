@@ -134,25 +134,44 @@ export class AuditQueue {
     this.closed = true;
     if (this._dropped > 0) {
       try {
-        const tip = this.tipStmt.get() as { row_hash: string } | undefined;
-        const prevHash = tip?.row_hash ?? GENESIS_HASH;
-        const metadata = JSON.stringify({ dropped_count: this._dropped });
-        const rowHash = computeRowHash(
-          prevHash,
-          {
-            action: "system.shutdown.audit_loss",
-            actor_org_id: null,
-            actor_ip: null,
-            actor_user_agent: null,
-            actor_user_id: null,
-            metadata_json: metadata,
-            outcome: "failure",
-            request_id: null,
-            target: null,
-          },
-          getAuditChainKey(),
-        );
-        this.shutdownStmt.run("system.shutdown.audit_loss", "failure", metadata, prevHash, rowHash);
+        // The tip read and the INSERT are one transaction. #317 made the
+        // Tier 1 path atomic for exactly this reason and this site was
+        // missed: read-then-write as two implicit transactions lets a second
+        // writer observe the same tip and fork the chain that audit-chain.ts
+        // exists to make verifiable. Within one process the synchronous
+        // driver hides it; a second PROCESS reaches it — cli/encryption/
+        // migrate.ts opens the same database and emits its own rows, and this
+        // row is written during shutdown, when a migration is plausible.
+        //
+        // The batch path below (flush) has always been transactional; only
+        // this shutdown row was not.
+        this.db.transaction(() => {
+          const tip = this.tipStmt.get() as { row_hash: string } | undefined;
+          const prevHash = tip?.row_hash ?? GENESIS_HASH;
+          const metadata = JSON.stringify({ dropped_count: this._dropped });
+          const rowHash = computeRowHash(
+            prevHash,
+            {
+              action: "system.shutdown.audit_loss",
+              actor_org_id: null,
+              actor_ip: null,
+              actor_user_agent: null,
+              actor_user_id: null,
+              metadata_json: metadata,
+              outcome: "failure",
+              request_id: null,
+              target: null,
+            },
+            getAuditChainKey(),
+          );
+          this.shutdownStmt.run(
+            "system.shutdown.audit_loss",
+            "failure",
+            metadata,
+            prevHash,
+            rowHash,
+          );
+        })();
       } catch (err) {
         // Final-row write failure is itself unrecoverable telemetry loss;
         // log path will be added by T36 logger. For now, swallow — the
