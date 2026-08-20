@@ -21,8 +21,6 @@
       threadActivity: {},       // id → { messageCount, lastMessageAt, lastMessageText, lastMessageType, lastAgentName, tokens }
       threadPrevStatus: {},     // id → last-known status (for flash detection)
       filters: new Set(loadFilters()),
-      // Per-agent token accounting, aggregated from token_usage SSE events
-      tokens: {},               // agentId → { name, totalCost, totalInput, totalOutput, cacheRead, cacheCreation, byPhase: {phase: {cost, input, output, cacheRead, cacheCreation, turns}}, byModel: {model: cost} }
     };
 
     function loadFilters() {
@@ -283,14 +281,6 @@
       else if (type === 'introspection_completed') {
         const result = p.concerned ? '<span style="color:#4ade80;">CONCERN\u00c9</span>' : '<span style="color:#64748b;">PASSE</span>';
         detail = `introspection: "${p.reason}" \u2192 ${result}`;
-      }
-      else if (type === 'run_config') {
-        renderRunConfig(p);
-        return; // don't add to timeline
-      }
-      else if (type === 'token_usage') {
-        trackTokenUsage(p);
-        return; // telemetry, not a timeline event
       }
       else if (type === 'quota_update') {
         // Quota refresh event — hidden by default (verbose-only) since the
@@ -658,7 +648,7 @@
       es.onopen = () => { dot.className = 'status-dot online'; status.innerHTML = '<span class="status-dot online" id="conn-dot"></span> Connecté'; };
       es.onerror = () => { dot.className = 'status-dot offline'; status.innerHTML = '<span class="status-dot offline" id="conn-dot"></span> Déconnecté'; };
 
-      const eventTypes = ['agent_online','agent_offline','agent_activity','thread_opened','message_posted','resolution_proposed','thread_resolved','thread_cancelled','file_edited','action_summary','impact_scored','introspection_requested','introspection_completed','run_config','token_usage','quota_update'];
+      const eventTypes = ['agent_online','agent_offline','agent_activity','thread_opened','message_posted','resolution_proposed','thread_resolved','thread_cancelled','file_edited','action_summary','impact_scored','introspection_requested','introspection_completed','quota_update'];
       for (const type of eventTypes) {
         es.addEventListener(type, (e) => addEvent(type, e.data, e.lastEventId));
       }
@@ -725,7 +715,18 @@
         </div>`;
       }).join('')}</div>`;
     }
+    function hideQuotaSection() {
+      // The credential reader is implemented on macOS only, so on Windows and
+      // on any Linux server this widget could never show anything. A standing
+      // "Quota indisponible" the operator cannot act on is worse than no
+      // widget: hide the panel entirely rather than report a permanent fault.
+      for (const id of ['quota-header', 'quota-widget']) {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+      }
+    }
     function render503(body) {
+      if (body?.unsupported_platform) { hideQuotaSection(); return; }
       const reason = body?.reason || 'raison inconnue';
       let extra = '';
       if (body?.cooldown_until) {
@@ -791,10 +792,8 @@
       state.metrics = { threads: 0, conflicts: 0, resolved: 0, totalTime: 0, totalTokens: 0, auto_resolved: 0, timeout: 0, consensus: 0 };
       state.agents = {};
       state.seenIds.clear();
-      state.tokens = {};
       updateMetrics();
       updateAgents();
-      renderTokenBudget();
     }
 
     function resetServer() {
@@ -815,172 +814,6 @@
         })
         .catch(err => alert(`Reset failed: ${err.message}`));
     }
-
-    // ── Token usage tracking + rendering ──────────────────────────────
-    function trackTokenUsage(p) {
-      const agentId = p.agent_id;
-      if (!agentId) return;
-      const agent = state.tokens[agentId] ||= {
-        name: p.agent_name || agentId,
-        totalCost: 0, totalInput: 0, totalOutput: 0, cacheRead: 0, cacheCreation: 0, turns: 0,
-        byPhase: {},
-        byModel: {},
-      };
-      agent.name = p.agent_name || agent.name;
-      agent.totalCost += Number(p.cost_usd) || 0;
-      agent.totalInput += Number(p.input_tokens) || 0;
-      agent.totalOutput += Number(p.output_tokens) || 0;
-      agent.cacheRead += Number(p.cache_read_tokens) || 0;
-      agent.cacheCreation += Number(p.cache_creation_tokens) || 0;
-      agent.turns += 1;
-
-      const phase = p.phase || 'unknown';
-      const pb = agent.byPhase[phase] ||= { cost: 0, input: 0, output: 0, cacheRead: 0, cacheCreation: 0, turns: 0 };
-      pb.cost += Number(p.cost_usd) || 0;
-      pb.input += Number(p.input_tokens) || 0;
-      pb.output += Number(p.output_tokens) || 0;
-      pb.cacheRead += Number(p.cache_read_tokens) || 0;
-      pb.cacheCreation += Number(p.cache_creation_tokens) || 0;
-      pb.turns += 1;
-
-      const model = (p.model || 'unknown').toString();
-      agent.byModel[model] = (agent.byModel[model] || 0) + (Number(p.cost_usd) || 0);
-
-      renderTokenBudget();
-    }
-
-    function fmtTokens(n) {
-      if (!n) return '0';
-      if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-      if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-      return String(n);
-    }
-    function fmtCost(n) {
-      if (!n) return '$0.00';
-      if (n < 0.01) return `$${n.toFixed(4)}`;
-      return `$${n.toFixed(2)}`;
-    }
-    function cacheClass(pct) {
-      if (pct >= 70) return 'cache-good';
-      if (pct >= 40) return 'cache-meh';
-      return 'cache-bad';
-    }
-    function modelShort(m) {
-      if (!m) return '?';
-      if (m.includes('haiku')) return 'haiku';
-      if (m.includes('sonnet')) return 'sonnet';
-      if (m.includes('opus')) return 'opus';
-      return m.slice(0, 12);
-    }
-
-    function renderTokenBudget() {
-      const agents = Object.entries(state.tokens);
-      const totalEl = document.getElementById('token-total');
-      const agentsEl = document.getElementById('token-agents');
-
-      if (agents.length === 0) {
-        totalEl.innerHTML = '<div style="color:#64748b;font-size:12px;">Pas encore de turns LLM</div>';
-        agentsEl.innerHTML = '';
-        return;
-      }
-
-      // Global totals
-      const sum = agents.reduce((acc, [, a]) => {
-        acc.cost += a.totalCost;
-        acc.input += a.totalInput;
-        acc.output += a.totalOutput;
-        acc.cacheRead += a.cacheRead;
-        acc.cacheCreation += a.cacheCreation;
-        acc.turns += a.turns;
-        return acc;
-      }, { cost: 0, input: 0, output: 0, cacheRead: 0, cacheCreation: 0, turns: 0 });
-      const totalInputAll = sum.input + sum.cacheRead + sum.cacheCreation;
-      const hitPct = totalInputAll > 0 ? Math.round((sum.cacheRead / totalInputAll) * 100) : 0;
-
-      // Bar segments by input token source
-      const barTotal = Math.max(1, sum.input + sum.output + sum.cacheRead + sum.cacheCreation);
-      const pct = (n) => (n / barTotal) * 100;
-
-      totalEl.innerHTML = `
-        <div class="token-total">
-          <div class="token-total-row big">
-            <span>Total</span><span>${fmtCost(sum.cost)}</span>
-          </div>
-          <div class="token-total-row"><span>Turns</span><span>${sum.turns}</span></div>
-          <div class="token-total-row"><span>Input (fresh)</span><span>${fmtTokens(sum.input)}</span></div>
-          <div class="token-total-row"><span>Output</span><span>${fmtTokens(sum.output)}</span></div>
-          <div class="token-total-row"><span>Cache read</span><span>${fmtTokens(sum.cacheRead)}</span></div>
-          <div class="token-total-row"><span>Cache write</span><span>${fmtTokens(sum.cacheCreation)}</span></div>
-          <div class="token-total-row"><span>Cache hit</span><span class="${cacheClass(hitPct)}">${hitPct}%</span></div>
-          <div class="token-bar">
-            <div class="token-bar-input" style="width:${pct(sum.input)}%" title="fresh input"></div>
-            <div class="token-bar-cache-r" style="width:${pct(sum.cacheRead)}%" title="cache read"></div>
-            <div class="token-bar-cache-w" style="width:${pct(sum.cacheCreation)}%" title="cache write"></div>
-            <div class="token-bar-output" style="width:${pct(sum.output)}%" title="output"></div>
-          </div>
-        </div>
-      `;
-
-      // Sort agents by cost desc
-      agents.sort(([, a], [, b]) => b.totalCost - a.totalCost);
-      agentsEl.innerHTML = agents.map(([id, a]) => {
-        const totalIn = a.totalInput + a.cacheRead + a.cacheCreation;
-        const agentHit = totalIn > 0 ? Math.round((a.cacheRead / totalIn) * 100) : 0;
-        const phases = Object.entries(a.byPhase).sort(([, x], [, y]) => y.cost - x.cost);
-        const phaseChips = phases.map(([ph, p]) =>
-          `<span class="token-phase-chip">${ph}<span class="cost">${fmtCost(p.cost)}</span></span>`
-        ).join('');
-        const models = Object.entries(a.byModel).sort(([, x], [, y]) => y - x);
-        const modelChips = models.map(([m, c]) =>
-          `<span class="token-phase-chip" style="background:#2a1a3a;">${modelShort(m)}<span class="cost">${fmtCost(c)}</span></span>`
-        ).join('');
-        return `
-          <div class="token-agent">
-            <div class="token-agent-name">${a.name} <span style="color:#94a3b8;font-weight:400;font-size:10px;">${fmtCost(a.totalCost)} · ${a.turns} turns</span></div>
-            <div class="token-agent-row">
-              <span>in ${fmtTokens(a.totalInput)} · out ${fmtTokens(a.totalOutput)}</span>
-              <span class="${cacheClass(agentHit)}">cache ${agentHit}%</span>
-            </div>
-            <div style="margin-top:4px;">${phaseChips}</div>
-            <div style="margin-top:2px;">${modelChips}</div>
-          </div>
-        `;
-      }).join('');
-    }
-
-    // Initial render — empty state
-    renderTokenBudget();
-
-    function renderRunConfig(config) {
-      const el = document.getElementById('run-config');
-      if (!config || !config.name) {
-        el.innerHTML = '<div style="color:#64748b;font-size:12px;">Aucun run actif</div>';
-        return;
-      }
-      const profiles = (config.agents || []).reduce((acc, a) => {
-        acc[a.profile] = (acc[a.profile] || 0) + 1;
-        return acc;
-      }, {});
-      const profileStr = Object.entries(profiles).map(([k, v]) => `${v} ${k}`).join(', ');
-      const staggerStr = config.stagger ? `${config.stagger.mode}${config.stagger.delay ? ` (${config.stagger.delay[0]}-${config.stagger.delay[1]}s)` : ''}` : '-';
-
-      el.innerHTML = `<div class="config-section">
-        <div class="config-title">${config.name}</div>
-        <div style="font-size:10px;color:#94a3b8;margin-bottom:8px;">${config.description || ''}</div>
-        <div class="config-row"><span class="config-key">Phase</span><span class="config-val">${config.phase || '-'}</span></div>
-        <div class="config-row"><span class="config-key">Agents</span><span class="config-val">${(config.agents || []).length} (${profileStr})</span></div>
-        <div class="config-row"><span class="config-key">Workspace</span><span class="config-val">${config.workspace?.type || '-'}</span></div>
-        <div class="config-row"><span class="config-key">Stagger</span><span class="config-val">${staggerStr}</span></div>
-        <div class="config-row"><span class="config-key">Timeout</span><span class="config-val">${config.timeout_minutes || 15} min</span></div>
-        <div class="config-row"><span class="config-key">Compare</span><span class="config-val">${config.compare_mode ? 'Oui' : 'Non'}</span></div>
-        <div class="config-agents">${(config.agents || []).map(a =>
-          `<span class="config-agent-tag">${a.name} <span style="color:#64748b;">(${a.profile})</span></span>`
-        ).join('')}</div>
-      </div>`;
-    }
-
-    // Fetch config on load
-    fetch(`${COORDINATOR_URL}/api/run-config`).then(r => r.json()).then(renderRunConfig).catch(() => {});
 
     async function refreshConflictSignals() {
       try {

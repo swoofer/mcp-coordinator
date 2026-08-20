@@ -62,7 +62,6 @@ function mockRes(): { res: ServerResponse; getStatus: () => number; getBody: () 
 }
 
 function makeCtx(): RestContext {
-  let runConfig: Record<string, unknown> | null = null;
   return {
     services,
     httpLog: { info: () => {}, debug: () => {}, warn: () => {}, error: () => {} } as never,
@@ -73,10 +72,6 @@ function makeCtx(): RestContext {
       org: "default",
       role: "admin",
       jti: "j-register-test",
-    },
-    getRunConfig: () => runConfig,
-    setRunConfig: (cfg) => {
-      runConfig = cfg;
     },
   };
 }

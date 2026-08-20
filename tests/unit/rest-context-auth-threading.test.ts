@@ -61,8 +61,6 @@ describe("RestContext claims threading", () => {
       httpLog: { info: () => {}, debug: () => {}, warn: () => {}, error: () => {} } as never,
       authEnabled: false,
       claims: { sub: "legacy", user_id: "legacy", org: "default", role: "admin", jti: "j-test" },
-      getRunConfig: () => null,
-      setRunConfig: () => {},
     };
 
     // The field must be accessible and correct.
@@ -79,8 +77,6 @@ describe("RestContext claims threading", () => {
       httpLog: { info: () => {}, debug: () => {}, warn: () => {}, error: () => {} } as never,
       authEnabled: false,
       claims: { sub: "legacy", user_id: "legacy", org: "default", role: "admin", jti: "j-legacy" },
-      getRunConfig: () => null,
-      setRunConfig: () => {},
     };
 
     expect(ctx.claims.org).toBe("default");
@@ -92,8 +88,6 @@ describe("RestContext claims threading", () => {
       httpLog: { info: () => {}, debug: () => {}, warn: () => {}, error: () => {} } as never,
       authEnabled: true,
       claims: { sub: "agent-a", user_id: "user-a", org: "org-acme", role: "agent", jti: "j-acme" },
-      getRunConfig: () => null,
-      setRunConfig: () => {},
     };
 
     expect(ctx.claims.org).toBe("org-acme");
@@ -119,8 +113,6 @@ describe("RestContext claims threading", () => {
       httpLog: { info: () => {}, debug: () => {}, warn: () => {}, error: () => {} } as never,
       authEnabled: false,
       claims: { sub: "legacy", user_id: "legacy", org: "default", role: "admin", jti: "j-status" },
-      getRunConfig: () => null,
-      setRunConfig: () => {},
     };
 
     const { res, getStatus } = mockRes();

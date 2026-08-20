@@ -121,8 +121,6 @@ function makeCtx(overrides?: Partial<RestContext>): RestContext {
     httpLog: { info: () => {}, debug: () => {}, warn: () => {}, error: () => {} } as never,
     authEnabled: false,
     claims: CLAIMS,
-    getRunConfig: () => null,
-    setRunConfig: () => {},
     ...overrides,
   };
 }
@@ -177,7 +175,6 @@ describe("handleRest — mutating endpoints reject non-POST methods (405)", () =
       url: "/api/post-to-thread",
       body: { thread_id: "t1", agent_id: "agent-a", type: "context", content: "hi" },
     },
-    { url: "/api/token-usage", body: { input_tokens: 1 } },
   ];
 
   for (const { url, body } of MUTATING_CASES) {

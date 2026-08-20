@@ -9,7 +9,6 @@ import {
   handleLogFile,
   handleAnnounce,
   handlePostToThread,
-  handleTokenUsage,
   handleUnclaimTask,
   handleClaimTask,
   handleProposeResolution,
@@ -21,7 +20,6 @@ import {
   handleQuotaRefresh,
   handleIntrospectionResponse,
   handlePendingIntrospections,
-  handleRunConfig,
   handleReset,
   handleCheckInterrupt,
   handleAgentStatus,
@@ -37,14 +35,11 @@ export type { RestContext, RestHandler };
 /**
  * S1: REST router extracted from serve-http.ts. Was a 382-line `handleRest`
  * function inside startServer's closure with module-scope captures for
- * services, httpLog, currentRunConfig, AUTH_ENABLED, etc.
+ * services, httpLog, AUTH_ENABLED, etc.
  *
  * The body is unchanged — only ambient closure references became explicit
  * fields on RestContext. parseBody/json moved to ./utils.js to share between
  * REST + SSE + auth handlers.
- *
- * The currentRunConfig mutable state stays in serve-http.ts (single source
- * of truth) and is exposed via getRunConfig/setRunConfig on the context.
  *
  * qualite-code-01 (1/3): the if/else chain of 24+ url branches was replaced
  * by a dispatch table. Each former branch is now a named handler in
@@ -68,7 +63,6 @@ const ROUTES: Record<string, RestHandler> = {
   "/api/log-file": handleLogFile,
   "/api/announce": handleAnnounce,
   "/api/post-to-thread": handlePostToThread,
-  "/api/token-usage": handleTokenUsage,
   "/api/unclaim-task": handleUnclaimTask,
   "/api/claim-task": handleClaimTask,
   "/api/propose-resolution": handleProposeResolution,
@@ -78,7 +72,6 @@ const ROUTES: Record<string, RestHandler> = {
   "/api/quota": handleQuota,
   "/api/quota/refresh": handleQuotaRefresh,
   "/api/introspection-response": handleIntrospectionResponse,
-  "/api/run-config": handleRunConfig,
   "/api/reset": handleReset,
   "/api/check-interrupt": handleCheckInterrupt,
   "/api/status": handleStatus,
@@ -89,16 +82,13 @@ const ROUTES: Record<string, RestHandler> = {
 // URLs) can't be used to trigger a mutation. Read-only routes (status,
 // quota, threads-active, hot-files, check-conflict, check-interrupt, ...)
 // are intentionally NOT in this set — they stay reachable via GET, matching
-// existing dashboard/CLI polling behavior. /api/run-config is also excluded:
-// its handler already branches on req.method internally (GET reads the
-// config, POST sets it), so no blanket restriction applies there.
+// existing dashboard/CLI polling behavior.
 const MUTATING_ROUTES = new Set<string>([
   "/api/register",
   "/api/session-stop",
   "/api/log-file",
   "/api/announce",
   "/api/post-to-thread",
-  "/api/token-usage",
   "/api/unclaim-task",
   "/api/claim-task",
   "/api/propose-resolution",

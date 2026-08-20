@@ -127,8 +127,7 @@ let services: CoordinatorServices;
 let httpLog: Logger;
 let mcpLog: Logger;
 let authLog: Logger;
-let currentRunConfig: Record<string, unknown> | null = null;
-// architecture-02: services/httpLog/currentRunConfig above are module-level
+// architecture-02: services/httpLog above are module-level
 // state, reassigned on every startServer() call — the request handler closes
 // over these module bindings, not over per-call locals. That means this
 // process supports exactly ONE live coordinator at a time: a second
@@ -155,8 +154,7 @@ const jsonAuthError = jsonAuthErrorShared;
 
 // S1: handleRest extracted to ./http/handle-rest.ts. Thin wrapper here keeps
 // startServer's call site stable while the 382-line REST router lives in its
-// own module. currentRunConfig stays here as the single mutable owner; the
-// extracted function reads/writes via getRunConfig/setRunConfig accessors.
+// own module.
 // claims: always populated by the caller (synthetic legacy claims when AUTH_ENABLED=false).
 async function handleRest(
   req: IncomingMessage,
@@ -168,10 +166,6 @@ async function handleRest(
     httpLog,
     authEnabled: AUTH_ENABLED,
     claims,
-    getRunConfig: () => currentRunConfig,
-    setRunConfig: (cfg) => {
-      currentRunConfig = cfg;
-    },
   };
   return handleRestExt(req, res, ctx);
 }
@@ -1243,7 +1237,7 @@ function wireShutdown(deps: ShutdownDeps): () => Promise<void> {
  * architecture-02: fail-closed guard for the mono-instance-per-process model
  * described above serverRunning. Rejects a 2nd concurrent startServer() call
  * outright rather than silently corrupting the 1st instance's module-level
- * state (services/httpLog/currentRunConfig). Sequential use — stop() then
+ * state (services/httpLog). Sequential use — stop() then
  * startServer() again — is unaffected: stop() resets serverRunning to false,
  * and a failed startup (thrown/rejected before returning a handle) resets it
  * too, so a caller can retry after an error without restarting the process.

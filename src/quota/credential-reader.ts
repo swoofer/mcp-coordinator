@@ -80,6 +80,19 @@ export class WindowsCredentialReader implements CredentialReader {
   }
 }
 
+/**
+ * Whether this platform has a real credential reader behind it. macOS is the
+ * only one; the Linux and Windows classes exist so the coordinator can boot,
+ * and throw NotImplementedError the moment they are used.
+ *
+ * #341: /api/quota answers 503 either way, but 'this machine cannot do it'
+ * and 'the fetch failed' are different facts, and only the first one means
+ * the dashboard should stop showing an error the operator cannot act on.
+ */
+export function isCredentialReaderSupported(platform: NodeJS.Platform = process.platform): boolean {
+  return platform === "darwin";
+}
+
 export function createCredentialReader(
   platform: NodeJS.Platform = process.platform,
 ): CredentialReader {
