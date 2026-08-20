@@ -35,6 +35,8 @@ export function setAuthLogger(logger: Logger): void {
  * renewable "member" credential. Only the MQTT authenticate hook
  * (mqtt-broker.ts) may act on this role.
  */
+import type { ServiceTokenScope } from "./auth/service-tokens.js";
+
 export type AuthRole = "agent" | "admin" | "member" | "service" | "internal";
 
 export interface AuthClaims {
@@ -49,6 +51,17 @@ export interface AuthClaims {
   family_id?: string;
   /** Phase 2 service-account marker (T25). */
   service_account?: boolean;
+  /**
+   * Service-token scope, as minted. #313: this is validated at minting
+   * (src/auth/service-tokens.ts:85) and signed into the JWT (:152), and the
+   * verifier used to drop it on the floor — so a `read` token wrote exactly
+   * like an `admin` one because nothing downstream could see the claim.
+   *
+   * Carrying it is NOT enforcement. Nothing reads this yet, and where
+   * enforcement should happen is the open half of #313: the tool name is not
+   * visible at the HTTP gate, which is where authentication runs.
+   */
+  scope?: ServiceTokenScope;
 }
 
 export interface CreateTokenOptions {
@@ -389,6 +402,7 @@ async function verifyPhase2SessionCookie(
       iat?: number;
       service_account?: boolean;
       typ?: string;
+      scope?: string;
     };
 
     // securite-auth-01: reject token-type confusion. A refresh-token
@@ -496,6 +510,11 @@ async function verifyPhase2SessionCookie(
         active_org_id: claims.active_org_id,
         family_id: claims.family_id,
         service_account: claims.service_account,
+        // #313: minted, signed, and previously discarded right here.
+        scope:
+          claims.scope === "read" || claims.scope === "write" || claims.scope === "admin"
+            ? claims.scope
+            : undefined,
       },
     };
   } catch (err) {
