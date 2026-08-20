@@ -121,13 +121,33 @@ export class ConflictDetector {
       // 2. File overlap
       const fileOverlap = params.target_files.filter((f) => threadFiles.includes(f));
       if (fileOverlap.length > 0) {
+        // #381: the one verdict this detector is willing to stand behind.
+        //
+        // The predicate is copied from handleClaimTask, deliberately and
+        // narrowly: open, claimed, by someone else. That is the case the
+        // coordinator ALREADY refuses — claim_task will not grant a thread
+        // whose files overlap one another agent is holding. Reporting it as
+        // `error` at announce time makes the two agree; it does not invent a
+        // refusal.
+        //
+        // The detector's own predicate is much wider — it also matches
+        // resolving threads, threads resolved in the last 30 minutes, and
+        // unclaimed open threads. Promoting all of that to `error` would
+        // refuse cases claim_task grants today, which is a policy change
+        // rather than a consistency fix, so those stay `warning`.
+        const heldByAnother =
+          thread.status === "open" &&
+          thread.claimed_by !== null &&
+          thread.claimed_by !== params.agent_id;
         conflicts.push({
           type: "file_overlap",
-          severity: "warning",
+          severity: heldByAnother ? "error" : "warning",
           agent_id: thread.initiator_id,
           agent_name: thread.subject,
           description: `File overlap on: ${fileOverlap.join(", ")}`,
-          details: `Thread "${thread.subject}" (${thread.initiator_id}) targets same files`,
+          details: heldByAnother
+            ? `Thread "${thread.subject}" is held by ${thread.claimed_by} and targets the same files. claim_task would refuse this overlap.`
+            : `Thread "${thread.subject}" (${thread.initiator_id}) targets same files`,
         });
       }
 
