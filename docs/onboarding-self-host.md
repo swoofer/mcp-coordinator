@@ -500,17 +500,36 @@ overriding the §9.5 trust-signature path).
 The token is presented as `Authorization: Bearer` -- see `docs/clients.md`
 for the client side.
 
-### `--scope` is not enforced yet
+### What `--scope` enforces
 
-The scope is validated when the token is minted and written into the JWT, and
-then **never read back on a request**. A `--scope read` token writes, deletes
-and publishes exactly like an `--scope admin` one; nothing in the request path
-consults the claim.
+The scope is checked on every MCP tool call. `read` reaches the twelve
+observation tools; `write` adds the fourteen that mutate coordination state;
+`admin` covers everything. A `--scope read` token calling `announce_work` gets
+an error naming the scope it holds, the scope the tool needs, and the command
+to mint a token that would work.
 
-Until [#313](https://github.com/swoofer/mcp-coordinator/issues/313) closes,
-treat every service token as full access. Bound it by what it can reach --
-a separate org, a short TTL, prompt revocation -- rather than by the flag,
-and do not hand one to a caller you would not trust with `admin`.
+Three tools are classified as `write` although they may not look like it:
+
+| Tool | Why it is a write |
+|------|-------------------|
+| `heartbeat`, `register_agent` | they update the agent registry |
+| `wait_for_message`, `get_queued_messages` | they **drain** the queue — there is no ack, so reading a message consumes it for every other subscriber |
+
+The refusal is a per-call JSON-RPC error, not an HTTP 403. `/mcp` is a single
+multiplexed endpoint, so refusing at the HTTP layer would take down the whole
+transport over one tool call; a read-scoped token stays usable for the tools it
+does cover.
+
+**The scope only binds service tokens.** Phase 1 agent tokens, Phase 2 browser
+sessions and stdio carry no scope claim and are unrestricted, exactly as
+before. `--scope` is a way to hand out a narrower service credential, not a
+permission system for every caller.
+
+Until [#313](https://github.com/swoofer/mcp-coordinator/issues/313) closed, the
+scope was validated at minting and then never read back — a `--scope read`
+token wrote and deleted like an `admin` one. If you issued tokens before that
+and relied on the flag, they now behave as labelled; re-issue anything whose
+label was wrong for its job.
 
 ## Backup
 
