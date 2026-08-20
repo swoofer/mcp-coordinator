@@ -43,7 +43,7 @@ export function registerAgentTools(
     },
     async ({ agent_id, name, modules }, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
-      if (!claims) throw missingClaimsError();
+      if (!claims) throw missingClaimsError(ctx.sessionId);
       mcpLog.info(
         { tool: "register_agent", agent_id, name, module_count: modules.length },
         "Tool called",
@@ -69,7 +69,7 @@ export function registerAgentTools(
     },
     async ({ online_only }, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
-      if (!claims) throw missingClaimsError();
+      if (!claims) throw missingClaimsError(ctx.sessionId);
       const agents = online_only ? registry.listOnline(claims.org) : registry.listAll(claims.org);
       return { content: [{ type: "text", text: JSON.stringify(agents) }] };
     },
@@ -99,7 +99,7 @@ export function registerAgentTools(
     },
     async ({ agent_id, current_file, current_thread }, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
-      if (!claims) throw missingClaimsError();
+      if (!claims) throw missingClaimsError(ctx.sessionId);
       registry.heartbeat(claims.org, agent_id);
       activityTracker.heartbeat(claims.org, agent_id, {
         currentFile: current_file || null,
@@ -129,7 +129,7 @@ export function registerAgentTools(
     },
     async (_args, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
-      if (!claims) throw missingClaimsError();
+      if (!claims) throw missingClaimsError(ctx.sessionId);
       const activities = activityTracker.listAll(claims.org, { idleAfterMinutes: 5 });
       return { content: [{ type: "text", text: JSON.stringify(activities) }] };
     },

@@ -40,7 +40,7 @@ export function registerStatusTools(
     },
     async (_args, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
-      if (!claims) throw missingClaimsError();
+      if (!claims) throw missingClaimsError(ctx.sessionId);
       const online = registry.listOnline(claims.org);
       const openThreads = consultation.listThreads(claims.org, { status: "open" });
       const resolvingThreads = consultation.listThreads(claims.org, { status: "resolving" });
@@ -98,7 +98,7 @@ export function registerStatusTools(
     },
     async ({ agent_id, min_peers, timeout_seconds }, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
-      if (!claims) throw missingClaimsError();
+      if (!claims) throw missingClaimsError(ctx.sessionId);
       const targetPeers = min_peers ?? 1;
       const cappedSeconds = Math.min(timeout_seconds ?? 30, MAX_WAIT_TIMEOUT_SECONDS);
       const timeoutMs = cappedSeconds * 1000;

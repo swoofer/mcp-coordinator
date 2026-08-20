@@ -84,7 +84,7 @@ export function registerMqttTools(
     },
     async ({ agent_id, timeout_seconds }, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
-      if (!claims) throw missingClaimsError();
+      if (!claims) throw missingClaimsError(ctx.sessionId);
       if (!mqttBridge.isConnected()) return mqttNotConnectedResult();
       const cappedSeconds = Math.min(timeout_seconds || 15, MAX_WAIT_TIMEOUT_SECONDS);
       const timeoutMs = cappedSeconds * 1000;
@@ -121,7 +121,7 @@ export function registerMqttTools(
     },
     async ({ agent_id }, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
-      if (!claims) throw missingClaimsError();
+      if (!claims) throw missingClaimsError(ctx.sessionId);
       if (!mqttBridge.isConnected()) return mqttNotConnectedResult();
       const messages = mqttBridge.getQueuedMessages(claims.org, agent_id);
       return { content: [{ type: "text", text: JSON.stringify(messages) }] };
@@ -153,7 +153,7 @@ export function registerMqttTools(
     },
     async ({ topic, payload }, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
-      if (!claims) throw missingClaimsError();
+      if (!claims) throw missingClaimsError(ctx.sessionId);
       if (!mqttBridge.isConnected()) return mqttNotConnectedResult();
       mqttBridge.mqttPublish(claims.org, topic, payload);
       return { content: [{ type: "text", text: "published" }] };
