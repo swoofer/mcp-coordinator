@@ -116,8 +116,6 @@ function makeCtx(overrides?: Partial<RestContext>): RestContext {
     httpLog: { info: () => {}, debug: () => {}, warn: () => {}, error: () => {} } as never,
     authEnabled: false,
     claims: CLAIMS,
-    getRunConfig: () => null,
-    setRunConfig: () => {},
     ...overrides,
   };
 }

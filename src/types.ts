@@ -106,7 +106,6 @@ export type EventType =
   | "introspection_completed"
   | "agent_activity"
   | "task_claimed"
-  | "token_usage"
   | "quota_update";
 
 export interface CoordinatorEvent {

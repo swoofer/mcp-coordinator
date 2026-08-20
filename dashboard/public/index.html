@@ -75,14 +75,6 @@
     .thread-status.resolved { color: #4ade80; }
     .connection-status { font-size: 12px; }
     #no-events { text-align: center; color: #64748b; padding: 40px; font-size: 13px; }
-    .config-section { background: #111122; border: 1px solid #1e293b; border-radius: 6px; padding: 10px; margin-top: 12px; }
-    .config-row { display: flex; justify-content: space-between; font-size: 11px; padding: 3px 0; border-bottom: 1px solid #1a1a2e; }
-    .config-row:last-child { border-bottom: none; }
-    .config-key { color: #64748b; }
-    .config-val { color: #e2e8f0; font-weight: 500; }
-    .config-title { font-size: 12px; font-weight: 600; color: #60a5fa; margin-bottom: 6px; }
-    .config-agents { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
-    .config-agent-tag { background: #1a2a3a; border-radius: 3px; padding: 2px 6px; font-size: 10px; color: #94a3b8; }
 
     /* ── Consultations actives (zones fixed + contextual) ─────────────── */
     .filter-bar { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
@@ -124,25 +116,6 @@
     .profile-badge.codeur { background: #0a2a2a; color: #5eead4; }
     .profile-badge.communicant { background: #2a0a2a; color: #f0abfc; }
 
-    /* ── Token Budget panel ────────────────────────────────────────── */
-    .token-total { background: #0f0f1a; border: 1px solid #1e293b; border-radius: 6px; padding: 10px; margin-bottom: 8px; }
-    .token-total-row { display: flex; justify-content: space-between; font-size: 11px; margin: 2px 0; }
-    .token-total-row.big { font-size: 14px; font-weight: 600; color: #fbbf24; margin-bottom: 6px; }
-    .token-bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; margin-top: 4px; background: #1a1a2e; }
-    .token-bar-input { background: #60a5fa; }
-    .token-bar-output { background: #f472b6; }
-    .token-bar-cache-r { background: #4ade80; }
-    .token-bar-cache-w { background: #fbbf24; }
-
-    .token-agent { background: #1a1a2e; border-radius: 6px; padding: 8px 10px; margin-bottom: 6px; }
-    .token-agent-name { font-size: 12px; font-weight: 600; color: #60a5fa; margin-bottom: 4px; }
-    .token-agent-row { display: flex; justify-content: space-between; font-size: 10px; color: #94a3b8; }
-    .token-phase-chip { display: inline-block; font-size: 9px; padding: 1px 4px; border-radius: 3px; background: #1e293b; color: #cbd5e1; margin-right: 3px; }
-    .token-phase-chip .cost { color: #fbbf24; margin-left: 2px; }
-    .cache-good { color: #4ade80; }
-    .cache-meh { color: #fbbf24; }
-    .cache-bad { color: #f87171; }
-
     /* Quota widget */
     .quota-panel { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
     .quota-bucket { background: #1a1a2e; border-radius: 6px; padding: 8px 10px; border: 1px solid #334155; }
@@ -172,7 +145,7 @@
       <div id="agents-list"></div>
       <div class="panel-title" style="margin-top:16px;">Hot Files</div>
       <div id="hot-files"></div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;">
+      <div id="quota-header" style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;">
         <div class="panel-title" style="margin-bottom:0;">Quota Anthropic</div>
         <button id="quota-refresh-btn" title="Force refresh from Anthropic (bypass cache)"
                 style="background:#1e293b;border:1px solid #334155;color:#94a3b8;font-size:11px;padding:3px 10px;border-radius:4px;cursor:pointer;">
@@ -214,10 +187,6 @@
         <div class="metric"><div class="metric-value" id="m-auto">0</div><div class="metric-label">Auto-résolu</div></div>
         <div class="metric"><div class="metric-value" id="m-timeout">0</div><div class="metric-label">Timeout</div></div>
       </div>
-      <div class="panel-title" style="margin-top:16px;">Token Budget</div>
-      <div id="token-total"></div>
-      <div id="token-agents"></div>
-
       <div class="panel-title" style="margin-top:16px;">Conflict signals (24h)</div>
       <div id="conflict-signals">
         <div class="metric"><span class="metric-label">L0 announced</span><span class="metric-value" data-layer="L0">—</span></div>
@@ -226,11 +195,6 @@
         <div class="metric"><span class="metric-label">L2 depends_on</span><span class="metric-value" data-layer="L2">—</span></div>
         <div class="metric"><span class="metric-label">L3 module</span><span class="metric-value" data-layer="L3">—</span></div>
         <div class="metric"><span class="metric-label">L4 co-change</span><span class="metric-value" data-layer="L4">—</span></div>
-      </div>
-
-      <div class="panel-title" style="margin-top:16px;">Configuration</div>
-      <div id="run-config">
-        <div style="color:#64748b;font-size:12px;">Aucun run actif</div>
       </div>
     </div>
   </div>

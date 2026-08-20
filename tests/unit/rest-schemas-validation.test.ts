@@ -64,8 +64,7 @@ function mockRes(): { res: ServerResponse; getStatus: () => number; getBody: () 
 }
 
 function makeCtx(): RestContext {
-  let runConfig: Record<string, unknown> | null = null;
-  return {
+    return {
     services,
     httpLog: { info: () => {}, debug: () => {}, warn: () => {}, error: () => {} } as never,
     authEnabled: false,
@@ -75,10 +74,6 @@ function makeCtx(): RestContext {
       org: "default",
       role: "admin",
       jti: "j-schema-test",
-    },
-    getRunConfig: () => runConfig,
-    setRunConfig: (cfg) => {
-      runConfig = cfg;
     },
   };
 }
@@ -182,23 +177,6 @@ describe("REST body validation (qualite-code-02 / architecture-15)", () => {
     expect(getStatus()).toBe(400);
   });
 
-  it("POST /api/token-usage with an array body -> 400 (must be a JSON object)", async () => {
-    const { res, getStatus, getBody } = mockRes();
-    await handleRest(mockReq([1, 2, 3], "/api/token-usage"), res, makeCtx());
-    expect(getStatus()).toBe(400);
-    expect(getBody().code).toBe("INVALID_REQUEST");
-  });
-
-  it("POST /api/token-usage with a free-form object body still succeeds (no fixed shape by design)", async () => {
-    const { res, getStatus, getBody } = mockRes();
-    await handleRest(
-      mockReq({ agent_id: "a1", tokens_in: 100, anything: { nested: true } }, "/api/token-usage"),
-      res,
-      makeCtx(),
-    );
-    expect(getStatus()).toBe(200);
-    expect(getBody().ok).toBe(true);
-  });
 
   it("POST /api/check-conflict with missing agent_id -> 400 structured", async () => {
     const { res, getStatus, getBody } = mockRes();

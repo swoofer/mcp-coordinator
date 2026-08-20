@@ -414,12 +414,11 @@ Orchestrators that spawn N agents at once can read `coordinator_status.quota` an
 
 ## Token Observability
 
-Every MCP tool call and agent turn is logged with token breakdown.
+**Consultation traffic only.** Each thread message carries a `token_estimate`, and the dashboard sums those into the *Tokens consultation* metric. That is the whole of it.
 
-- **Logs** — component logger `tokens` emits `input_tokens`, `output_tokens`, `cache_read`, `cache_creation`, `thinking`, model id, turn index.
-- **Dashboard** — live per-agent token gauge, cumulative session total, quota widget.
+There is no per-agent token accounting and no per-turn cost breakdown: the coordinator sits beside your agents, not between them and the model, so it never sees a turn. Anything richer is an orchestrator's job — it has the API responses, the coordinator does not.
 
-Aggregating across runs (e.g., `reports/YYYY-MM-DD-<run-id>.md`) is an orchestrator responsibility — the coordinator emits the events, the orchestrator consumes them.
+> This section previously described a `tokens` component logger emitting per-turn `input_tokens` / `cache_read` / model id, and a live per-agent dashboard gauge. Neither existed. The gauge had no producer and was removed in #341; the logger was never written.
 
 ---
 
@@ -430,8 +429,8 @@ Aggregating across runs (e.g., `reports/YYYY-MM-DD-<run-id>.md`) is an orchestra
 - **Timeline** — all threads + `quota_update` events with scores and resolution types
 - **Agent panel** — online/offline, working/idle/waiting, current file, thread being waited on
 - **Scoring breakdown** — which detection layer triggered each conflict
-- **Quota widget** — live utilization %, stacked buckets, manual refresh button
-- **Consensus metrics** — per session: consensus / timeout / auto-resolved split, token totals
+- **Quota widget** — live utilization %, stacked buckets, manual refresh button. **macOS only** — the credential reader has no Linux or Windows implementation, so the panel hides itself elsewhere rather than showing a fault you cannot fix.
+- **Consensus metrics** — per session: consensus / timeout / auto-resolved split, consultation token totals
 
 All events arrive via SSE on `/api/events`. No polling.
 
@@ -529,7 +528,7 @@ but it is worth knowing before you point one at a long-lived database.
 
 ## Structured Logging
 
-[Pino](https://getpino.io/) emits JSON per subsystem. Component loggers: `http`, `mcp`, `mqtt`, `consultation`, `conflict`, `auth`, `tokens`, `quota`.
+[Pino](https://getpino.io/) emits JSON per subsystem. Component loggers: `http`, `mcp`, `mqtt`, `consultation`, `conflict`, `auth`, `quota`, `sse`.
 
 ```json
 {"level":"info","time":1712345678901,"component":"http","msg":"Server started","port":3100}

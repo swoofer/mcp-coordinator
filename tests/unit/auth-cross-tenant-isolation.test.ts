@@ -153,8 +153,6 @@ async function callAs({
     } as never,
     authEnabled: true,
     claims: authResult.claims,
-    getRunConfig: () => null,
-    setRunConfig: () => {},
   };
 
   try {

@@ -96,11 +96,6 @@ export const PostToThreadBodySchema = z.object({
 });
 export type PostToThreadBody = z.infer<typeof PostToThreadBodySchema>;
 
-// POST /api/token-usage — agent telemetry forwarded as-is via SSE. No fixed
-// shape by design (free-form usage payload); only guarantee it's a JSON
-// object (not an array/primitive) so the SSE payload stays well-formed.
-export const TokenUsageBodySchema = z.record(z.string(), z.unknown());
-export type TokenUsageBody = z.infer<typeof TokenUsageBodySchema>;
 
 // POST /api/unclaim-task — thread_id/agent_id required (previously enforced
 // via `if (!thread_id || !agent_id)`, which also rejected empty strings —
@@ -155,9 +150,3 @@ export const IntrospectionResponseBodySchema = z.object({
 });
 export type IntrospectionResponseBody = z.infer<typeof IntrospectionResponseBodySchema>;
 
-// POST /api/run-config — free-form dashboard-set run configuration, stored
-// and echoed back verbatim (no fixed shape by design). Only guarantee it's a
-// JSON object so downstream consumers (getRunConfig callers, SSE payload)
-// keep getting an object.
-export const RunConfigBodySchema = z.record(z.string(), z.unknown());
-export type RunConfigBody = z.infer<typeof RunConfigBodySchema>;

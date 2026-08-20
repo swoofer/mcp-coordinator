@@ -8,6 +8,7 @@ import { getDb } from "../database.js";
 import { runCommonAnnounceFlow } from "../announce-workflow.js";
 import { runRegisterFlow } from "../register-workflow.js";
 import { canResetDb } from "../reset-guard.js";
+import { isCredentialReaderSupported } from "../quota/credential-reader.js";
 import { json } from "./utils.js";
 import { normalizePath, normalizeDeclaredPaths } from "../path-normalize.js";
 import { safeJsonParse } from "../json-utils.js";
@@ -19,7 +20,6 @@ import {
   LogFileBodySchema,
   AnnounceBodySchema,
   PostToThreadBodySchema,
-  TokenUsageBodySchema,
   UnclaimTaskBodySchema,
   ClaimTaskBodySchema,
   ProposeResolutionBodySchema,
@@ -27,7 +27,6 @@ import {
   HotFilesBodySchema,
   ThreadsActiveBodySchema,
   IntrospectionResponseBodySchema,
-  RunConfigBodySchema,
   CheckInterruptBodySchema,
 } from "./rest-schemas.js";
 
@@ -44,8 +43,6 @@ export interface RestContext {
   authEnabled: boolean;
   /** Authenticated identity for this request. Synthetic legacy claims when AUTH_ENABLED=false and no Bearer. */
   claims: AuthClaims;
-  getRunConfig: () => Record<string, unknown> | null;
-  setRunConfig: (cfg: Record<string, unknown> | null) => void;
 }
 
 export type RestHandler = (
@@ -382,25 +379,6 @@ export function handlePostToThread(
   json(res, msg);
 }
 
-export function handleTokenUsage(
-  req: IncomingMessage,
-  res: ServerResponse,
-  ctx: RestContext,
-  body: Record<string, unknown>,
-): void {
-  const { sseEmitter } = ctx.services;
-  // Agent → coordinator telemetry, emitted once per LLM turn so the dashboard
-  // and reports can pinpoint where tokens are being burned. Free-form shape
-  // by design — only validated as a JSON object (not array/primitive).
-  const parsed = TokenUsageBodySchema.safeParse(body);
-  if (!parsed.success) {
-    sendValidationError(res, parsed.error);
-    return;
-  }
-  sseEmitter.emit("token_usage", parsed.data, { org_id: ctx.claims.org });
-  json(res, { ok: true });
-}
-
 export function handleUnclaimTask(
   req: IncomingMessage,
   res: ServerResponse,
@@ -707,6 +685,10 @@ export async function handleQuota(
         error: "quota unavailable",
         reason: status.lastError,
         cooldown_until: status.cooldownUntil,
+        // #341: distinguishes 'this platform has no credential reader' from
+        // 'the fetch failed'. The first is permanent and not actionable, so
+        // the dashboard hides the widget instead of showing a standing error.
+        unsupported_platform: !isCredentialReaderSupported(),
       },
       503,
     );
@@ -823,39 +805,13 @@ export function handlePendingIntrospections(
   json(res, pending);
 }
 
-export function handleRunConfig(
-  req: IncomingMessage,
-  res: ServerResponse,
-  ctx: RestContext,
-  body: Record<string, unknown>,
-): void {
-  const { getRunConfig, setRunConfig } = ctx;
-  const { sseEmitter } = ctx.services;
-  if (req.method === "POST") {
-    const parsed = RunConfigBodySchema.safeParse(body);
-    if (!parsed.success) {
-      sendValidationError(res, parsed.error);
-      return;
-    }
-    setRunConfig(parsed.data);
-    sseEmitter.emit(
-      "run_config" as Parameters<typeof sseEmitter.emit>[0],
-      getRunConfig() as Record<string, unknown>,
-      { org_id: ctx.claims.org },
-    );
-    json(res, { ok: true });
-  } else {
-    json(res, getRunConfig() || { active: false });
-  }
-}
-
 export function handleReset(
   req: IncomingMessage,
   res: ServerResponse,
   ctx: RestContext,
   body: Record<string, unknown>,
 ): void {
-  const { authEnabled, setRunConfig } = ctx;
+  const { authEnabled } = ctx;
   // B4 fix: gate destructive reset when AUTH is disabled.
   // When AUTH_ENABLED=true, ADMIN_ONLY_ROUTES already enforced upstream
   // by authenticateRequest (see auth.ts). This guard covers the AUTH off case.
@@ -884,7 +840,6 @@ export function handleReset(
   db.exec("DELETE FROM agents");
   db.exec("DELETE FROM revoked_agents");
   db.exec("PRAGMA foreign_keys = ON");
-  setRunConfig(null);
   json(res, { ok: true });
 }
 

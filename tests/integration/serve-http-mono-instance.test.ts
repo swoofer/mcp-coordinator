@@ -1,6 +1,6 @@
 /**
- * architecture-02: serve-http.ts holds module-level state (services, httpLog,
- * currentRunConfig) that every request handler closes over. A 2nd concurrent
+ * architecture-02: serve-http.ts holds module-level state (services, httpLog)
+ * that every request handler closes over. A 2nd concurrent
  * startServer() in the same process would silently reassign that state out
  * from under the 1st instance's in-flight request handlers, corrupting it —
  * despite ServerOptions previously (incorrectly) documenting multi-instance
