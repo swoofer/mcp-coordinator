@@ -30,7 +30,17 @@ export function normalizePath(repoRoot: string | null, input: string): string {
       const lowerP = isWindowsStyle ? p.toLowerCase() : p;
       const lowerRoot = isWindowsStyle ? root.toLowerCase() : root;
       if (!lowerP.startsWith(lowerRoot + "/") && lowerP !== lowerRoot) {
-        throw new Error(`path is outside repoRoot: ${input}`);
+        // #379: the old message was `path is outside repoRoot: <input>`. It
+        // named the rule but not the way out, so a reader had to go find
+        // COORDINATOR_REPO_ROOT themselves to learn what "outside" meant here
+        // — and if they were in a second worktree, that they could not comply
+        // at all. The rejection is unchanged; only the diagnostic is.
+        throw new Error(
+          `path is outside repoRoot: ${input} (configured root: ${repoRoot}). ` +
+            `Pass a repo-relative forward-slash path, or an absolute path under that root. ` +
+            `Paths in another checkout or worktree cannot be expressed today: ` +
+            `COORDINATOR_REPO_ROOT is a single global value — see issue #379.`,
+        );
       }
       p = p.slice(root.length).replace(/^\/+/, "");
     }
