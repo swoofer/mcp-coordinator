@@ -90,6 +90,21 @@ describe("a stopped sweeper says why it stopped", () => {
     expect(sweeper.metrics.circuitOpen).toBe(false);
   });
 
+  it("stringifies a non-Error throw rather than losing it", () => {
+    // better-sqlite3 throws Errors, but a driver swap or a bare
+    // anywhere in the pass must not come back as undefined — the point of
+    // keeping the reason is that it is always there.
+    const db = {
+      prepare() {
+        throw "database is locked";
+      },
+      transaction: (fn: () => unknown) => fn,
+    } as unknown as Database.Database;
+    const sweeper = new Sweeper(db, clock);
+    sweeper.runPass();
+    expect(sweeper.metrics.lastError).toBe("database is locked");
+  });
+
   it("still trips the breaker after five, now with a reason attached", () => {
     const sweeper = new Sweeper(brokenDb(), clock);
     for (let i = 0; i < 5; i++) sweeper.runPass();
