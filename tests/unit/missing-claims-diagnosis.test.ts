@@ -90,4 +90,29 @@ describe("the two claim failures are told apart (#325)", () => {
       expect(read(file), file + " now populates authInfo").not.toContain("authInfo");
     }
   });
+
+  it("the transport still mints session ids, which is what keeps the lookup working", () => {
+    // #325's phrasing is that the outage is one word away, and it is literally
+    // one word: sessionIdGenerator. Set it to `undefined` -- the SDK's own
+    // stateless idiom, and the default for 2025 traffic in createMcpHandler --
+    // and ctx.sessionId is undefined on every call, getSessionClaims("")
+    // returns null, and all 26 tools throw. Total outage, not degradation.
+    //
+    // This assertion is not style policing. It marks the coupling so the change
+    // cannot be made silently: claims have to stop being keyed on the session
+    // BEFORE the transport stops minting one. Whoever makes that change should
+    // delete this test as part of it, having read why it was here.
+    expect(read("src/serve-http.ts")).toContain("sessionIdGenerator: () => randomUUID()");
+  });
+
+  it("and the runbook lists the session map among what breaks on a second instance", () => {
+    // The other half of #325 is live rather than prospective: sessionClaims is
+    // an in-process Map and COORDINATOR_REDIS_URL has shipped. The
+    // single-instance runbook enumerated the in-memory state that breaks under
+    // multi-instance and omitted the one that fails hardest -- so an operator
+    // reading it would not have found the cause of a total tool outage.
+    const runbook = read("docs/ops/single-instance-constraints.md");
+    expect(runbook).toContain("sessionClaims");
+    expect(runbook).toContain("issues/325");
+  });
 });

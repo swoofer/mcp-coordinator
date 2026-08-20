@@ -20,12 +20,14 @@ References:
 
 ## TL;DR
 
-The Phase 2 coordinator keeps four pieces of correctness-critical state
-in memory: the rate-limit token buckets, the IdP membership cache, the
-Tier 2 audit queue, and the sweeper's circuit-breaker counter. Running
-two coordinator processes against the same SQLite database breaks
-rate-limit and lockout guarantees, doubles IdP API call volume, races
-on token-epoch reads, and produces unpredictable audit drop behaviour.
+The Phase 2 coordinator keeps six pieces of correctness-critical state in
+memory: the rate-limit token buckets, the login-lockout buckets, the IdP
+membership cache, the Tier 2 audit queue, the sweeper's circuit-breaker
+counter, and **the MCP session claims map**. Running two coordinator
+processes against the same SQLite database breaks rate-limit and lockout
+guarantees, doubles IdP API call volume, races on token-epoch reads,
+produces unpredictable audit drop behaviour, and makes every MCP tool call
+fail outright when it lands on the wrong instance.
 **Run exactly one coordinator process per data directory.** Phase 5
 introduces Redis-backed equivalents that lift this constraint.
 
@@ -44,6 +46,7 @@ correctness trade-offs at a single-tenant scale:
 | Audit queue      | `src/security/audit-queue.ts`     | Batched flush at 100ms decouples hot-path latency from disk write fsync.      |
 | Sweeper state    | `src/sweeper/index.ts:63-75`      | Circuit-breaker counter and per-table delete totals are operational telemetry, not authoritative state. |
 | Login lockout    | `src/auth/login-lockout.ts`       | High-rate read; per-IP and per-user-family buckets evolve on every login attempt. |
+| MCP session claims | `src/serve-http.ts` (`sessionClaims`) | Claims are verified once when a session opens and read on every subsequent tool call; the map is keyed by the `mcp-session-id` the transport minted in THIS process. |
 
 The trade-off: each piece is correct for a single process, but a
 second process running against the same DB has no visibility into the
@@ -119,7 +122,35 @@ it fails 5 times in a row (`CIRCUIT_BREAK_THRESHOLD = 5` at
 `/health/ready` may report 503. The surviving sweeper still trims
 rows, but you've lost the redundancy benefit and gained noisy alerts.
 
-### 7. Migration race at boot
+### 7. Every MCP tool call fails on the wrong instance
+
+This one is not a degraded guarantee. It is a hard failure, and it is the
+reason this runbook's rule is not merely advisory.
+
+`serve-http.ts` verifies a caller's JWT when an MCP session opens and stashes
+the resulting `AuthClaims` in `sessionClaims`, keyed by the `mcp-session-id`
+the transport minted **in that process**. Every one of the 26 MCP tools then
+begins the same way:
+
+```ts
+const claims = getSessionClaims(ctx.sessionId ?? "");
+if (!claims) throw missingClaimsError(ctx.sessionId);
+```
+
+Put a second instance behind a load balancer and the session id a client holds
+is meaningless to it: the lookup misses, and **all 26 tools throw**. Not a
+subset, not a degraded mode — the client's next call fails whichever tool it
+was. Sticky sessions hide it until the instance restarts or the balancer
+rebalances, at which point every connected client breaks at once.
+
+The error message already names this case, so an operator who hits it is not
+left guessing (`src/tools/tool-errors.ts`). That is diagnosis, not a fix:
+there is no cross-instance claims store today.
+
+Tracked as [#325](https://github.com/swoofer/mcp-coordinator/issues/325),
+which also covers the sessionless-transport variant of the same coupling.
+
+### 8. Migration race at boot
 
 Both instances run `initDatabase()` and try to apply schema migrations.
 The migration SQL is mostly idempotent (`IF NOT EXISTS` everywhere)
@@ -191,6 +222,28 @@ Use a Redis lock (`SET key NX EX`) with a 60s TTL to elect one
 sweeper across the cluster. Other instances skip their tick.
 Liveness: the lock auto-expires if the leader crashes.
 
+### MCP session claims
+
+The other six entries in this section have an obvious Redis shape. This one
+does not, and pretending otherwise would be the wrong plan.
+
+Moving the `sessionClaims` map to Redis would make the claims reachable from
+any instance, but the **transport** behind the session still lives in one
+process: `sessions` holds a live `StreamableHTTPServerTransport` with an open
+SSE stream, and that is not serialisable. Shared claims alone would turn a
+clean `missingClaimsError` into an authenticated call against a transport that
+does not exist here.
+
+The direction that actually works is to stop keying identity on the session at
+all — verify per request and carry the claims to the handler on the request,
+which the HTTP layer already computes before it stashes them. That is the same
+change the sessionless-transport half of
+[#325](https://github.com/swoofer/mcp-coordinator/issues/325) needs, and it is
+why the issue treats both as one decision rather than two fixes.
+
+Until then, sticky sessions are a mitigation, not a solution: they hold only
+while no instance restarts and the balancer does not rebalance.
+
 ## Verification (today)
 
 ### Confirm single-instance
@@ -231,6 +284,12 @@ lsof | grep coordinator.db      # cross-platform
   on the losing instance shortly after deploy. Fix the strategy and
   manually `resetCircuit()` (see
   `docs/ops/sweeper-circuit-recovery.md`).
+
+  The louder symptom usually arrives first: **every** MCP client starts
+  failing every tool call with a claims error the moment its requests reach
+  the new instance (§7). If that is what you are looking at, check the
+  instance count before you debug authentication -- the token is fine, the
+  session is on the other process.
 
 - **Shared NFS data directory**: two coordinators on different hosts
   both pointing at the same NFS-mounted `data/`. This is the worst
