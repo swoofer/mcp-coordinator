@@ -62,8 +62,16 @@ exposed directly -- terminate TLS at a reverse proxy
 ## Authentication -- opt-in
 
 The broker is **anonymous by default**. No username, no password, no
-token -- a fresh coordinator accepts any CONNECT. Auth is controlled by a
-single flag:
+token -- a fresh coordinator accepts any CONNECT.
+
+**Where "anonymous" is reachable from.** The TCP leg is pinned to
+`127.0.0.1` in code and ignores `COORDINATOR_BIND`. The WebSocket leg is
+attached to the HTTP server, so it follows `COORDINATOR_BIND` — and the
+upgrade handler checks only the path, not the origin and not a credential.
+A coordinator started with `COORDINATOR_BIND=0.0.0.0` therefore offers an
+anonymous broker at `ws://<host>:<port>/mqtt` to its whole network.
+
+Auth is controlled by a single flag:
 
 ```sh
 export COORDINATOR_AUTH_ENABLED=true
@@ -102,6 +110,38 @@ OAuth tokens (from the IdP login flow) are **not accepted** on the
 broker. If you have an OAuth session, you still need a Phase-1 token to
 authenticate against MQTT. (SSE at `/api/events` is the reverse -- it
 honors the real token org; see below.)
+
+## What authentication does NOT cover
+
+Turning `COORDINATOR_AUTH_ENABLED` on closes the *anonymous* door. It does
+not make the bus authoritative about who said what. Three limits, all
+measured, all worth knowing before you build a policy on top of this bus
+(see [#330](https://github.com/swoofer/mcp-coordinator/issues/330)):
+
+**1. The ACL is per-org, not per-identity.** `authorizePublish` exempts the
+internal bridge role, then checks `topic.startsWith("coordinator/<org>/")` and
+nothing else. There is no per-topic rule and no per-client rule. Since the
+coordinator publishes everything under the single hardcoded org `default`,
+**any authenticated agent can publish any message on behalf of any other**.
+Only cross-org is blocked.
+
+**2. A status message is a destructive operation.** Publishing
+`{status:"offline"}` on `coordinator/<org>/agents/<id>/status` marks that agent
+offline, runs its consultation departure, and **deletes its `working_files`
+claims**. Combined with (1), one authenticated agent can wipe another's claims;
+with the broker anonymous, so can anyone who can reach it.
+
+**3. Enabling auth breaks the channel sidecar.** `mcp-coordinator channel`
+subscribes with an org wildcard (`coordinator/+/agents/+/status`), and
+`authorizeSubscribe` tests `startsWith("coordinator/<org>/")` — which a `+`
+does not satisfy. Those subscriptions are refused.
+
+The consequence for anyone designing on top: this bus can **report** a
+decision, it cannot **enforce** one. A verdict travelling over it is publishable
+by the party it is meant to constrain. Note also that `mqtt_publish` is exposed
+as an MCP tool, so in the open profile an unauthenticated HTTP caller has the
+same reach without touching the broker at all — hardening the broker alone
+would not close it.
 
 ## Topic table
 

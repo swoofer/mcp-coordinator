@@ -42,10 +42,30 @@ Each Claude session now has access to all 26 coordination tools (`register_agent
 
 One person hosts the coordinator on a shared machine; teammates point their Claude at it.
 
+> ⚠️ **`COORDINATOR_BIND=0.0.0.0` without authentication exposes more than the
+> MCP surface.** The embedded MQTT broker's TCP leg stays pinned to
+> `127.0.0.1` regardless of this setting, but its **WebSocket leg rides on the
+> HTTP server** and therefore follows `COORDINATOR_BIND`. With the broker
+> anonymous by default, `ws://<host>:3100/mqtt` accepts any CONNECT from
+> anywhere on the LAN.
+>
+> Concretely, an unauthenticated client on the LAN can publish
+> `{status:"offline"}` on another agent's status topic, which marks that agent
+> offline **and deletes its `working_files` claims** — the state the
+> announce-before-you-write contract rests on. Measured; see
+> [#330](https://github.com/swoofer/mcp-coordinator/issues/330).
+>
+> **Use this recipe only on a network you would trust with an unauthenticated
+> database.** Otherwise go straight to
+> [Team setup with JWT](#team-setup-with-jwt-internet-facing) below — it is the
+> same recipe plus four environment variables — and read
+> [what enabling auth does and does not buy you](./mqtt-topics.md#what-authentication-does-not-cover)
+> first.
+
 Host:
 
 ```bash
-# Bind to all interfaces; default is 127.0.0.1
+# Bind to all interfaces; default is 127.0.0.1. See the warning above.
 COORDINATOR_BIND=0.0.0.0 mcp-coordinator server start --daemon
 ```
 
