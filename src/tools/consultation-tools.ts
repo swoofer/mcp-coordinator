@@ -9,6 +9,7 @@ import { runCommonAnnounceFlow } from "../announce-workflow.js";
 import type { AuthClaims } from "../auth.js";
 
 import { missingClaimsError } from "./tool-errors.js";
+import { requireScope } from "./tool-scopes.js";
 
 /**
  * S1 fix (partial): consultation domain tools extracted from server-setup.ts.
@@ -111,6 +112,7 @@ export function registerConsultationTools(
     ) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError(ctx.sessionId);
+      requireScope(claims, "announce_work");
       mcpLog.info(
         { tool: "announce_work", agent_id, subject, target_modules, target_files, assigned_to },
         "Tool called",
@@ -263,6 +265,7 @@ export function registerConsultationTools(
     ) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError(ctx.sessionId);
+      requireScope(claims, "post_to_thread");
       mcpLog.info({ tool: "post_to_thread", thread_id, agent_id, type }, "Tool called");
       // issue #233: posting to a thread proves the agent is alive, so it
       // refreshes last_seen_at the same way an explicit heartbeat would.
@@ -314,6 +317,7 @@ export function registerConsultationTools(
     async ({ thread_id, agent_id, summary }, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError(ctx.sessionId);
+      requireScope(claims, "propose_resolution");
       mcpLog.info({ tool: "propose_resolution", thread_id, agent_id }, "Tool called");
       consultation.proposeResolution(claims.org, thread_id, agent_id, summary);
       sseEmitter.emit(
@@ -340,6 +344,7 @@ export function registerConsultationTools(
     async ({ thread_id, agent_id }, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError(ctx.sessionId);
+      requireScope(claims, "approve_resolution");
       mcpLog.info({ tool: "approve_resolution", thread_id, agent_id }, "Tool called");
       const agentInfo = registry.get(claims.org, agent_id);
       consultation.approveResolution(claims.org, thread_id, agent_id, agentInfo?.name ?? undefined);
@@ -362,6 +367,7 @@ export function registerConsultationTools(
     async ({ thread_id, agent_id, reason }, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError(ctx.sessionId);
+      requireScope(claims, "contest_resolution");
       mcpLog.info({ tool: "contest_resolution", thread_id, agent_id }, "Tool called");
       consultation.contestResolution(claims.org, thread_id, agent_id, reason);
       const thread = consultation.getThread(claims.org, thread_id);
@@ -385,6 +391,7 @@ export function registerConsultationTools(
     async ({ thread_id, agent_id, summary }, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError(ctx.sessionId);
+      requireScope(claims, "close_thread");
       mcpLog.info({ tool: "close_thread", thread_id, agent_id }, "Tool called");
       consultation.closeThread(claims.org, thread_id, agent_id, summary);
       return { content: [{ type: "text", text: "closed" }] };
@@ -405,6 +412,7 @@ export function registerConsultationTools(
     async ({ thread_id, agent_id, reason }, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError(ctx.sessionId);
+      requireScope(claims, "cancel_thread");
       mcpLog.info({ tool: "cancel_thread", thread_id, agent_id }, "Tool called");
       consultation.cancelThread(claims.org, thread_id, agent_id, reason ?? undefined);
       sseEmitter.emit("thread_cancelled", { thread_id, reason }, { org_id: claims.org });
@@ -424,6 +432,7 @@ export function registerConsultationTools(
     async ({ thread_id }, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError(ctx.sessionId);
+      requireScope(claims, "get_thread");
       const result = consultation.getThreadWithMessages(claims.org, thread_id);
       mcpLog.debug(
         { tool: "get_thread", thread_id, message_count: result?.messages.length },
@@ -457,6 +466,7 @@ export function registerConsultationTools(
     async ({ agent_id, since }, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError(ctx.sessionId);
+      requireScope(claims, "get_thread_updates");
       const updates = consultation.getThreadUpdates(claims.org, agent_id, since ?? undefined);
       return { content: [{ type: "text", text: JSON.stringify(updates) }] };
     },
@@ -485,6 +495,7 @@ export function registerConsultationTools(
     async ({ status, agent_id, module, assigned_to_me }, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError(ctx.sessionId);
+      requireScope(claims, "list_threads");
       const threads = consultation.listThreads(claims.org, {
         status,
         agent_id,
@@ -521,6 +532,7 @@ export function registerConsultationTools(
     async ({ session_id, agent_id, file_path, summary }, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError(ctx.sessionId);
+      requireScope(claims, "log_action_summary");
       const result = consultation.logActionSummary(claims.org, {
         session_id,
         agent_id,
