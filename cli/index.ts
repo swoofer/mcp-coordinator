@@ -2,6 +2,7 @@
 import { Command } from "commander";
 import { getVersion } from "./version.js";
 import { explainDependencyFailure } from "./dependency-error.js";
+import { SUBCOMMANDS, subcommandsFor } from "./subcommands.js";
 
 const program = new Command();
 program
@@ -9,60 +10,22 @@ program
   .description("Embedded MQTT broker + MCP server for multi-agent coordination")
   .version(getVersion());
 
-// issue #282: `doctor` has to stay usable when the dependency tree is broken —
-// diagnosing exactly that is its job. Registering every subcommand imports them
-// all eagerly, and `channel.ts` pulls `mqtt`, which is the chain that goes
-// missing (mqtt -> worker-timers -> worker-timers-broker -> broker-factory ->
-// @babel/runtime). Without this fast path, doctor dies on the same raw
-// cjs/loader stack trace it exists to explain — verified by reproducing the
-// incident.
-//
-// Scoped deliberately to `doctor`. Making every subcommand lazy is issue #278
-// (the CLI pays ~700 ms of server graph on every invocation); this is not that
-// change, and does not pretend to be.
 // issue #282: when node_modules loses a link, this is where it surfaces — as a
 // raw cjs/loader stack naming a transitive package nobody declared. The
-// registration block below is the usual point of failure, not the dispatch:
+// registration below is the usual point of failure, not the dispatch:
 // `channel.ts` pulls mqtt, and mqtt -> worker-timers -> worker-timers-broker
 // -> broker-factory -> @babel/runtime is the chain that goes missing. So the
 // guard has to cover the imports, not just parseAsync.
+//
+// issue #278: and now it imports only what this invocation needs. `doctor` had
+// a hand-written fast path here for the same reason — diagnosing a broken
+// dependency tree is its job, so it cannot be taken out by loading
+// everyone else's dependencies first. That special case is gone: every
+// subcommand gets the property it had.
 try {
-  if (process.argv[2] === "doctor") {
-    const { createDoctorCommand } = await import("./doctor.js");
-    program.addCommand(createDoctorCommand());
-  } else {
-    const [
-      { createInitCommand },
-      { createServerProgram },
-      { createChannelCommand },
-      { createDashboardCommand },
-      { createDoctorCommand },
-      { createUninstallCommand },
-      { createServiceTokensCommand },
-      { createRotateJwtSecretCommand },
-      { createEncryptionCommand },
-    ] = await Promise.all([
-      import("./init.js"),
-      import("./server/index.js"),
-      import("./channel.js"),
-      import("./dashboard.js"),
-      import("./doctor.js"),
-      import("./uninstall.js"),
-      import("./service-tokens.js"),
-      import("./rotate-jwt-secret.js"),
-      import("./encryption/index.js"),
-    ]);
-
-    program.addCommand(createInitCommand());
-    program.addCommand(createServerProgram());
-    program.addCommand(createChannelCommand());
-    program.addCommand(createDashboardCommand());
-    program.addCommand(createDoctorCommand());
-    program.addCommand(createUninstallCommand());
-    program.addCommand(createServiceTokensCommand());
-    program.addCommand(createRotateJwtSecretCommand());
-    program.addCommand(createEncryptionCommand());
-  }
+  const wanted = subcommandsFor(process.argv);
+  const commands = await Promise.all(wanted.map((name) => SUBCOMMANDS[name]()));
+  for (const command of commands) program.addCommand(command);
 
   await program.parseAsync();
 } catch (err) {
