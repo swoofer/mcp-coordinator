@@ -237,7 +237,10 @@ function loadChainKey(env: NodeJS.ProcessEnv): Buffer | null {
 function loadRows(dbPath: string): AuditRow[] {
   const absolute = path.resolve(dbPath);
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const Database = require("better-sqlite3") as new (p: string, opts?: { readonly?: boolean }) => {
+  const Database = require("better-sqlite3") as new (
+    p: string,
+    opts?: { readonly?: boolean },
+  ) => {
     prepare: (sql: string) => { all: () => unknown[] };
     close: () => void;
   };
@@ -273,14 +276,10 @@ function printHuman(report: Report): void {
           out.push(`  id=${f.id}  missing prev_hash or row_hash (NULL)`);
           break;
         case "wrong_row_hash":
-          out.push(
-            `  id=${f.id}  row_hash mismatch -- expected ${f.expected}, got ${f.actual}`,
-          );
+          out.push(`  id=${f.id}  row_hash mismatch -- expected ${f.expected}, got ${f.actual}`);
           break;
         case "wrong_prev_hash":
-          out.push(
-            `  id=${f.id}  prev_hash mismatch -- expected ${f.expected}, got ${f.actual}`,
-          );
+          out.push(`  id=${f.id}  prev_hash mismatch -- expected ${f.expected}, got ${f.actual}`);
           break;
         case "id_gap_before":
           out.push(
@@ -334,9 +333,7 @@ function main(): void {
   // Findings of reason "id_gap_before" alone do NOT fail verification
   // -- legitimate sweeper deletions look the same. Real failures are
   // missing_hash, wrong_row_hash, wrong_prev_hash.
-  const verificationFailures = findings.filter(
-    (f) => f.reason !== "id_gap_before",
-  );
+  const verificationFailures = findings.filter((f) => f.reason !== "id_gap_before");
   const report: Report = {
     db_path: args.dbPath,
     total_rows: rows.length,
