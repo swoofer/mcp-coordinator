@@ -282,10 +282,8 @@ export function handleAnnounce(
   // S2 fix: shared workflow (impact scoring, override respondents, auto-resolve,
   // impact_scored + introspection SSE, plan-quality downgrade event). Same
   // function used by the MCP announce_work tool path.
-  const { updated, categorized, respondents, planQuality } = runCommonAnnounceFlow(
-    services,
-    thread.id,
-    {
+  const { updated, categorized, respondents, planQuality, planDowngradeReason } =
+    runCommonAnnounceFlow(services, thread.id, {
       org_id: ctx.claims.org,
       agent_id,
       subject,
@@ -296,8 +294,7 @@ export function handleAnnounce(
       exports_affected: normExports,
       keep_open,
       target_symbols,
-    },
-  );
+    });
 
   // REST-specific thread_opened SSE shape (different field set than MCP — kept
   // divergent because consumers may depend on this exact contract).
@@ -324,7 +321,15 @@ export function handleAnnounce(
     },
     { org_id: ctx.claims.org },
   );
-  json(res, { thread_id: thread.id, status: updated.status, impact: categorized });
+  // #351: plan_quality reached the SSE stream (the dashboard) but never the
+  // announcing agent. Additive -- no existing key changes.
+  json(res, {
+    thread_id: thread.id,
+    status: updated.status,
+    impact: categorized,
+    plan_quality: planQuality,
+    plan_downgrade_reason: planDowngradeReason,
+  });
 }
 
 export function handlePostToThread(

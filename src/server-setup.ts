@@ -18,7 +18,6 @@ import { SummaryContextProvider } from "./context-provider.js";
 import { IntrospectionManager } from "./introspection.js";
 import { SseEmitter } from "./sse-emitter.js";
 import { MqttBridge } from "./mqtt-bridge.js";
-import { assessPlanQuality } from "./plan-quality.js";
 import { AgentActivityTracker } from "./agent-activity.js";
 import { QuotaCache } from "./quota/quota-cache.js";
 import { WorkingFilesTracker } from "./working-files-tracker.js";

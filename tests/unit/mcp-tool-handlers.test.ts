@@ -783,3 +783,67 @@ describe("consultation-tools: log_action_summary", () => {
     expect(services.consultation.getActionSummariesBySession("org-cons", "s1")).toEqual([]);
   });
 });
+
+// ── #351: the plan-quality verdict reaches the agent ────────────────────
+
+describe("consultation-tools: announce_work returns its plan verdict", () => {
+  function announceHandler(server: McpServer) {
+    const claims: AuthClaims = {
+      sub: "init-1",
+      user_id: "u1",
+      org: "org-cons",
+      role: "agent",
+      jti: "j-plan",
+    };
+    registerConsultationTools(server, services, silentLogger, (sid) =>
+      sid === "sess-a" ? claims : null,
+    );
+    return getHandler(server, "announce_work");
+  }
+
+  async function announce(plan?: string) {
+    const handler = announceHandler(new McpServer({ name: "test", version: "0" }));
+    const result = await handler(
+      {
+        agent_id: "init-1",
+        subject: "Refactor foo",
+        target_modules: ["mod-a"],
+        target_files: ["src/foo.ts"],
+        ...(plan === undefined ? {} : { plan }),
+      },
+      fakeExtra("sess-a"),
+    );
+    return JSON.parse(result.content[0].text) as {
+      plan_quality: { mode: string; score: number; checks: Record<string, boolean> };
+      plan_downgrade_reason: string | null;
+    };
+  }
+
+  // Before this, the verdict went only to the SSE stream — i.e. to the
+  // dashboard. The agent whose plan was scored down had no way to learn it,
+  // which is the whole reason the signal existed.
+  it("tells the agent when its plan was scored down, and why", async () => {
+    const payload = await announce("Fix stuff");
+    expect(payload.plan_quality.mode).toBe("discovery");
+    expect(payload.plan_downgrade_reason).toContain("plan downgraded");
+    // The reason has to be actionable: it names the checks that failed.
+    expect(payload.plan_downgrade_reason).toContain("no files");
+    expect(payload.plan_downgrade_reason).toContain("too short");
+  });
+
+  it("reports the verdict on a good plan too, with no downgrade reason", async () => {
+    const payload = await announce(
+      "Ajouter un champ optionnel role_permissions dans src/shared/types.ts à l'interface User, puis créer un type UserPublic sans ce champ pour les routes API dans src/api/routes.ts.",
+    );
+    expect(payload.plan_quality.mode).toBe("with_plan");
+    expect(payload.plan_downgrade_reason).toBeNull();
+  });
+
+  it("does not manufacture a downgrade when no plan was supplied", async () => {
+    // discovery is the honest mode for a planless announce, not a demotion —
+    // there is nothing for the agent to revise.
+    const payload = await announce(undefined);
+    expect(payload.plan_quality.mode).toBe("discovery");
+    expect(payload.plan_downgrade_reason).toBeNull();
+  });
+});

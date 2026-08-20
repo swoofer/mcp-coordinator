@@ -160,10 +160,8 @@ export function registerConsultationTools(
           .run(JSON.stringify(conflicts), thread.id);
       }
 
-      const { updated, categorized, respondents, planQuality } = runCommonAnnounceFlow(
-        services,
-        thread.id,
-        {
+      const { updated, categorized, respondents, planQuality, planDowngradeReason } =
+        runCommonAnnounceFlow(services, thread.id, {
           org_id: claims.org,
           agent_id,
           subject,
@@ -174,8 +172,7 @@ export function registerConsultationTools(
           exports_affected,
           keep_open,
           target_symbols,
-        },
-      );
+        });
 
       sseEmitter.emit(
         "thread_opened",
@@ -214,6 +211,11 @@ export function registerConsultationTools(
               conflicts,
               context: contextForInitiator,
               impact: categorized,
+              // #351: the verdict used to go only to the dashboard. An agent
+              // whose plan was scored down could not learn it, which made the
+              // signal decorative. Additive: no existing key changes.
+              plan_quality: planQuality,
+              plan_downgrade_reason: planDowngradeReason,
             }),
           },
         ],
