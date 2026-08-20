@@ -33,7 +33,7 @@ export function registerFilesTools(
     },
     async ({ since_minutes }, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
-      if (!claims) throw missingClaimsError();
+      if (!claims) throw missingClaimsError(ctx.sessionId);
       const files = fileTracker.getHotFiles(claims.org, since_minutes || 30);
       return { content: [{ type: "text", text: JSON.stringify(files) }] };
     },
@@ -50,7 +50,7 @@ export function registerFilesTools(
     },
     async ({ session_id }, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
-      if (!claims) throw missingClaimsError();
+      if (!claims) throw missingClaimsError(ctx.sessionId);
       const files = fileTracker.getBySession(claims.org, session_id);
       return { content: [{ type: "text", text: JSON.stringify(files) }] };
     },
@@ -78,7 +78,7 @@ export function registerFilesTools(
     },
     async ({ file_path, agent_id, within_minutes }, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
-      if (!claims) throw missingClaimsError();
+      if (!claims) throw missingClaimsError(ctx.sessionId);
       // issue #275: same canonical form as the observed side, or the lookup
       // compares a raw string against a normalized column and finds nothing.
       const declared = normalizeDeclaredPaths(process.env.COORDINATOR_REPO_ROOT || null, [

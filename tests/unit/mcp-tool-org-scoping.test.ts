@@ -181,7 +181,7 @@ describe("agents-tools: register_agent", () => {
     const handler = getHandler(server, "register_agent");
     await expect(
       handler({ agent_id: "a1", name: "Agent1", modules: [] }, fakeExtra("sess-42")),
-    ).rejects.toThrow(missingClaimsError().message);
+    ).rejects.toThrow(missingClaimsError("sess-42").message);
   });
 
   it("registers agent under claims.org (not 'default')", async () => {
@@ -254,7 +254,7 @@ describe("files-tools: hot_files", () => {
     registerFilesTools(server, services, silentLogger, () => null);
     const handler = getHandler(server, "hot_files");
     await expect(handler({ since_minutes: 30 }, fakeExtra("sess-x"))).rejects.toThrow(
-      missingClaimsError().message,
+      missingClaimsError("sess-x").message,
     );
   });
 

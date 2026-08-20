@@ -36,7 +36,7 @@ export function registerDependenciesTools(
     },
     async ({ modules }, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
-      if (!claims) throw missingClaimsError();
+      if (!claims) throw missingClaimsError(ctx.sessionId);
 
       let parsed: unknown;
       try {
@@ -87,7 +87,7 @@ export function registerDependenciesTools(
     },
     async ({ module_id }, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
-      if (!claims) throw missingClaimsError();
+      if (!claims) throw missingClaimsError(ctx.sessionId);
       const radius = depMap.getBlastRadius(claims.org, module_id);
       return { content: [{ type: "text", text: JSON.stringify(radius) }] };
     },
@@ -104,7 +104,7 @@ export function registerDependenciesTools(
     },
     async ({ module_id }, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
-      if (!claims) throw missingClaimsError();
+      if (!claims) throw missingClaimsError(ctx.sessionId);
       const info = depMap.getModuleInfo(claims.org, module_id);
       return { content: [{ type: "text", text: JSON.stringify(info) }] };
     },

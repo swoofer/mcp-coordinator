@@ -8,9 +8,14 @@ import { missingClaimsError } from "../../src/tools/tool-errors.js";
  *
  * These assert on the PROPERTIES the message must have, not its exact prose,
  * so the wording stays free to improve.
+ *
+ * #325 split the function in two: called WITHOUT a session id it now describes
+ * a sessionless transport, where reconnecting cannot help. These #99 assertions
+ * are about the closed-or-swept session, so they pass the id that case has.
+ * The sessionless half is covered in missing-claims-diagnosis.test.ts.
  */
 describe("missingClaimsError (#99)", () => {
-  const msg = missingClaimsError().message;
+  const msg = missingClaimsError("sess-99").message;
 
   it("does not leak the old internal jargon", () => {
     expect(msg).not.toMatch(/auth bug/i);
@@ -36,7 +41,7 @@ describe("missingClaimsError (#99)", () => {
   });
 
   it("returns a fresh Error each call, so stack traces point at the real site", () => {
-    expect(missingClaimsError()).not.toBe(missingClaimsError());
-    expect(missingClaimsError()).toBeInstanceOf(Error);
+    expect(missingClaimsError("sess-99")).not.toBe(missingClaimsError("sess-99"));
+    expect(missingClaimsError("sess-99")).toBeInstanceOf(Error);
   });
 });
