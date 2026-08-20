@@ -324,17 +324,38 @@ elapses.
 
 ### Sweeper retention bucket choice
 
-The sweeper has 6 retention buckets:
+The sweeper runs **11 DELETE passes over 9 tables** every 60 s, at most
+1000 rows per table per pass and at most 3 chained passes per tick. Six of
+the buckets are the Phase 2 auth tables this guide is about; the other five
+hold coordination data and apply to **every** deployment, Phase 2 or not:
 
-| Bucket                       | Default | Env var                              |
-|------------------------------|---------|--------------------------------------|
-| oauth_state                  | 10m     | (hardcoded, RFC 6749 §10.5 ceiling)  |
-| device_auth_requests         | 24h     | (hardcoded)                          |
-| refresh_tokens (long)        | 180d    | `COORDINATOR_REFRESH_RETENTION_DAYS` |
-| refresh_tokens (short-lived) | 30d     | (derived from `_JWT_REFRESH_TTL`)    |
-| audit_log Tier 1             | 365d    | `COORDINATOR_AUDIT_RETENTION_DAYS`   |
-| audit_log Tier 2             | 90d     | `COORDINATOR_AUDIT_TIER2_RETENTION_DAYS` |
+| # | Bucket                       | Default | Env var                              |
+|---|------------------------------|---------|--------------------------------------|
+| 1 | oauth_state                  | `expires_at` + 60 s | (hardcoded, RFC 6749 §10.5 ceiling) |
+| 2 | device_auth_requests         | `expires_at` + 60 s | (hardcoded)                 |
+| 3 | refresh_tokens (revoked)     | 180d    | `COORDINATOR_REFRESH_RETENTION_DAYS` |
+| 4 | refresh_tokens (expired, never revoked) | 30d | (hardcoded, orphan-row cap) |
+| 5 | audit_log Tier 1             | 365d    | `COORDINATOR_AUDIT_RETENTION_DAYS`   |
+| 6 | audit_log Tier 2             | 90d     | `COORDINATOR_AUDIT_TIER2_RETENTION_DAYS` |
+| 7 | file_activity                | 7d      | `COORDINATOR_FILE_ACTIVITY_RETENTION_DAYS` |
+| 8 | events                       | 7d      | `COORDINATOR_EVENTS_RETENTION_DAYS`  |
+| 9 | thread_messages              | 30d     | `COORDINATOR_THREAD_MESSAGES_RETENTION_DAYS` |
+| 10 | action_summaries            | 30d     | `COORDINATOR_ACTION_SUMMARIES_RETENTION_DAYS` |
+| 11 | layer_firings               | 30d     | `COORDINATOR_LAYER_FIRINGS_RETENTION_DAYS` |
 
 For regulated workloads consider raising the Tier 1 audit window to match
 your retention policy. See `docs/gdpr.md` for the GDPR / SOC 2 tension
 around audit-log immutability.
+
+Two properties of the audit buckets are worth knowing before you tune them.
+Both `audit_log` passes delete by **literal action-name membership** in the
+Tier 1 / Tier 2 lists in `src/security/audit-events.ts` -- an action in
+neither list is never swept at any age, which is deliberate (an unclassified
+event is kept rather than silently dropped) and means `audit_log` can grow
+past both windows. And sweeping audit rows breaks the hash chain by design;
+see `docs/ops/audit-integrity.md` before pointing `verify-audit-chain` at a
+swept database.
+
+See [Data retention](../../README.md#data-retention) in the README for what
+the five coordination buckets mean for a self-hoster, and for the tables
+that are **never** swept.
