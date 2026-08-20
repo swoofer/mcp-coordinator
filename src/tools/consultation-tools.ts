@@ -84,6 +84,12 @@ export function registerConsultationTools(
           .describe(
             "Qualified symbol names you intend to touch (e.g. 'UserService.getById'). Used by Layer 0.5 to annotate same-file overlaps.",
           ),
+        run_id: z
+          .string()
+          .optional()
+          .describe(
+            "Run this thread belongs to (e.g. an essaim swarm run). Omitted = un-scoped, visible to every run — the historical behaviour.",
+          ),
       }),
       annotations: { readOnlyHint: false, destructiveHint: false, title: "Announce work" },
     },
@@ -99,6 +105,7 @@ export function registerConsultationTools(
         keep_open,
         assigned_to,
         target_symbols,
+        run_id,
       },
       ctx,
     ) => {
@@ -153,6 +160,7 @@ export function registerConsultationTools(
         exports_affected,
         keep_open,
         assigned_to,
+        run_id,
       });
       if (conflicts.length > 0) {
         getDb()
