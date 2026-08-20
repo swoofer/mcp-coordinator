@@ -16,7 +16,13 @@ concurrency:
 jobs:
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # 10 minutes was the whole budget for install + browser + suite, and the
+    # cancellations in #396 were this timeout firing at 10:17-10:19 on the
+    # playwright step -- not a hang. Three unrelated PRs hit it on the same
+    # day and all three passed on rerun. A job that fails at random teaches
+    # people to rerun without reading, which is the habit that lets a real
+    # regression through.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v4
 
@@ -30,22 +36,40 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       # Cache the downloaded browser binaries (~130MB for Chromium) keyed on
-      # the lockfile hash, so `playwright install` is a no-op cache hit
-      # whenever @playwright/test's resolved version hasn't changed.
+      # the lockfile hash. restore-keys means a lockfile change that does NOT
+      # bump @playwright/test still restores the previous browsers, so an
+      # unrelated dependency bump no longer costs a cold 130MB download.
       - name: Cache Playwright browsers
         id: playwright-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
 
-      # --with-deps installs the Linux system libs Chromium needs (fonts,
-      # libnss, libdrm, etc.) so the headless browser actually launches.
-      # Still run on a cache hit: --with-deps also ensures OS packages are
-      # present, and playwright install is idempotent when browsers exist.
-      - run: pnpm exec playwright install --with-deps chromium
+      # Split from the browser download on purpose. `--with-deps` did both in
+      # one step, so a cache hit still paid for an apt-get run -- and when apt
+      # was slow the step ate the whole job budget with nothing to show for it
+      # (#396). Now the download is skipped when the cache served it, and each
+      # half carries its own timeout so a stall is attributed rather than
+      # swallowed by the job-level cancel.
+      - name: Install Chromium system dependencies
+        timeout-minutes: 5
+        run: pnpm exec playwright install-deps chromium
 
-      - run: pnpm exec playwright test
+      # Skipped only on an EXACT key hit, where the cached browsers were
+      # downloaded for this very lockfile. A restore-keys partial hit leaves
+      # cache-hit false, so this still runs and reconciles -- idempotent and
+      # fast when the right browser is already on disk.
+      - name: Install Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 6
+        run: pnpm exec playwright install chromium
+
+      - name: Run end-to-end tests
+        timeout-minutes: 10
+        run: pnpm exec playwright test
         env:
           CI: "true"
 
