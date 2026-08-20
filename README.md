@@ -116,7 +116,7 @@ claude --dangerously-load-development-channels server:mcp-coordinator-channel
 #    let Claude reply via post_to_thread when appropriate
 ```
 
-**Research preview** — requires `--dangerously-load-development-channels` in a Channels-capable Claude Code (v2.1.80+). Phase 3 (permission relay) intentionally deferred.
+**Research preview — and it does not currently load on a stock install.** Measured on Claude Code 2.1.233: no `<channel>` tag was injected in any of four configurations. `--dangerously-load-development-channels` is only parsed in an interactive session, and availability sits behind an Anthropic-side feature flag that defaults to off. Every refusal path in the client is silent — nothing is logged, and nothing reaches the MCP server, so there is no symptom to debug. Everything below the last hop works and is covered by tests; the last hop is not ours to fix. Phase 3 (permission relay) intentionally deferred.
 
 📖 **Choosing between polling and push?** See [`docs/operating-modes.md`](./docs/operating-modes.md) for a full comparison of the two modes, when to pick each, and how to run them side by side. Full setup walkthrough at [`examples/channels-quickstart/`](./examples/channels-quickstart/).
 

@@ -155,7 +155,7 @@ By default, a vanilla Claude Code session talks to mcp-coordinator over MCP (HTT
 
 If you want **real-time push** (every coordination event interrupting Claude between turns instead of waiting for a poll), there are two ways to get it:
 
-- **Claude Code Channels** (v0.12+, research preview, no orchestrator required) — run `mcp-coordinator channel` as a stdio sidecar; a Channels-capable Claude Code (v2.1.80+, launched with `--dangerously-load-development-channels`) streams MQTT events into the session as `<channel>` tags and can reply via the channel's own `post_to_thread` tool. See [`operating-modes.md`](./operating-modes.md) for the full setup and a side-by-side comparison with polling.
+- **Claude Code Channels** (v0.12+, research preview, no orchestrator required) — run `mcp-coordinator channel` as a stdio sidecar; a Channels-capable Claude Code (launched with `--dangerously-load-development-channels`) streams MQTT events into the session as `<channel>` tags and can reply via the channel's own `post_to_thread` tool. **This last hop does not work on a stock install today and fails silently** — see [`operating-modes.md`](./operating-modes.md) for the full setup, the measured limitation, and a side-by-side comparison with polling.
 - **An orchestrator with its own agent loop**, e.g. [essaim](https://github.com/swoofer/essaim), which subscribes to the MQTT broker itself and injects events into the turn flow.
 
 Polling alone (no Channels, no orchestrator) is sufficient for most use cases (2-3 Claude sessions on a small team) and is zero-config to set up.

@@ -242,7 +242,7 @@ describe("channel CLI — smoke (MQTT → notifications/claude/channel)", () => 
       reply,
       `expected post_to_thread in tools/list; got ${tools.tools.map((t) => t.name).join(",")}`,
     ).toBeDefined();
-    expect(reply!.description).toMatch(/consultation_opened/);
+    expect(reply!.description).toMatch(/consultation_new/);
 
     // Subscribe to the messages topic on the broker so we can observe the
     // publish triggered by the tools/call below.

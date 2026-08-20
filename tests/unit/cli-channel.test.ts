@@ -344,7 +344,7 @@ describe("buildChannelServer — post_to_thread tool registration", () => {
     expect(result.tools).toHaveLength(1);
     const tool = result.tools[0];
     expect(tool.name).toBe("post_to_thread");
-    expect(tool.description).toMatch(/consultation_opened/);
+    expect(tool.description).toMatch(/consultation_new/);
     expect(tool.inputSchema.required).toEqual(["thread_id", "content"]);
 
     // #363: the schema is derived from PostToThreadArgsSchema rather than

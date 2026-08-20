@@ -4,7 +4,7 @@
       "type": "http",
       "url": "http://localhost:3100/mcp"
     },
-    "coordinator-channel": {
+    "mcp-coordinator-channel": {
       "command": "mcp-coordinator",
       "args": ["channel"]
     }
