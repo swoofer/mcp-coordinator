@@ -49,6 +49,15 @@ export class Metrics {
    * while `mqtt_publish` still answered "published".
    */
   readonly mqttMessagesDropped: Counter<"reason">;
+  /**
+   * issue #353: SSE had the mirror-image of the #236 gap. mqtt-bridge logs
+   * and counts every dropped message; the SSE emitter refused listeners past
+   * MAX_SSE_CLIENTS and swallowed listener exceptions with neither. The
+   * clients-active gauge cannot show it: at the cap it reads exactly 100
+   * whether there are 100 healthy clients or 100 plus N refusals.
+   */
+  readonly sseListenersRejected: Counter<string>;
+  readonly sseListenerErrors: Counter<string>;
   readonly httpRequests: Counter<"route" | "status">;
   readonly authRejected: Counter<string>;
 
@@ -97,6 +106,18 @@ export class Metrics {
       name: "mcp_coordinator_mqtt_messages_dropped_total",
       help: "Inbound MQTT messages the bridge discarded, by reason",
       labelNames: ["reason"] as const,
+      registers: [this.registry],
+    });
+
+    this.sseListenersRejected = new Counter({
+      name: "mcp_coordinator_sse_listeners_rejected_total",
+      help: "SSE listener registrations refused because MAX_SSE_CLIENTS was reached",
+      registers: [this.registry],
+    });
+
+    this.sseListenerErrors = new Counter({
+      name: "mcp_coordinator_sse_listener_errors_total",
+      help: "SSE listener callbacks that threw during fan-out",
       registers: [this.registry],
     });
 

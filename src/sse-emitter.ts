@@ -1,5 +1,6 @@
 import { getDb } from "./database.js";
 import type { CoordinatorEvent, EventType } from "./types.js";
+import { silentLogger, type Logger } from "./logger.js";
 
 type EventListener = (event: CoordinatorEvent) => void;
 
@@ -30,11 +31,40 @@ export const MAX_SSE_CLIENTS = (() => {
 
 const NOOP = () => {};
 
+/**
+ * issue #353: a saturated cap or a listener that throws on every event would
+ * otherwise emit one line per attempt. The first occurrence is always logged,
+ * then one in every SAMPLE, so a systematic failure stays visible without
+ * drowning the log. The counters are exact regardless of sampling.
+ */
+const LOG_SAMPLE = 100;
+
 export class SseEmitter {
   private entries: ListenerEntry[] = [];
   // P3: track refusals so operators can see when the cap is being hit.
   // Also lets tests assert "we refused without throwing" without scraping logs.
   private rejectedCount = 0;
+  // #353: listener callbacks that threw during fan-out. The throw is still
+  // swallowed -- one bad listener must not take out its siblings -- but it is
+  // no longer invisible.
+  private listenerErrorCount = 0;
+  private readonly log: Logger;
+  private onRejected: () => void = () => {};
+  private onListenerError: () => void = () => {};
+
+  constructor(log: Logger = silentLogger) {
+    this.log = log;
+  }
+
+  /**
+   * #353: wire the Prometheus counters. Kept as setters rather than a
+   * constructor dependency so the emitter stays constructible in tests and in
+   * stdio mode without a metrics registry.
+   */
+  setMetricSinks(sinks: { onRejected?: () => void; onListenerError?: () => void }): void {
+    if (sinks.onRejected) this.onRejected = sinks.onRejected;
+    if (sinks.onListenerError) this.onListenerError = sinks.onListenerError;
+  }
 
   emit(type: EventType, payload: Record<string, unknown>, options: EmitOptions): void {
     const db = getDb();
@@ -64,10 +94,18 @@ export class SseEmitter {
       setImmediate(() => {
         try {
           entry.listener(event);
-        } catch {
+        } catch (err) {
           // Listener errors must not crash the emitter or affect siblings.
-          // Drop silently — the SSE response writers swallow their own
-          // socket errors via the unsubscribe path on req.on("close").
+          // Still swallowed -- but counted and sampled into the log, so a
+          // listener failing on every event is visible instead of silent.
+          this.listenerErrorCount++;
+          this.onListenerError();
+          if (this.listenerErrorCount === 1 || this.listenerErrorCount % LOG_SAMPLE === 0) {
+            this.log.warn(
+              { err, org_id: entry.orgId, total: this.listenerErrorCount },
+              "SSE listener threw during fan-out",
+            );
+          }
         }
       });
     }
@@ -119,6 +157,16 @@ export class SseEmitter {
     // upstream) while preventing the array from growing past MAX_SSE_CLIENTS.
     if (this.entries.length >= MAX_SSE_CLIENTS) {
       this.rejectedCount++;
+      this.onRejected();
+      if (this.rejectedCount === 1 || this.rejectedCount % LOG_SAMPLE === 0) {
+        // The clients-active gauge reads exactly MAX_SSE_CLIENTS here whether
+        // there are 100 healthy clients or 100 plus N refusals, so the refusal
+        // has to say so itself.
+        this.log.warn(
+          { org_id: orgId, cap: MAX_SSE_CLIENTS, total_rejected: this.rejectedCount },
+          "SSE listener refused: MAX_SSE_CLIENTS reached",
+        );
+      }
       return NOOP;
     }
     const entry: ListenerEntry = { orgId, listener };
@@ -140,5 +188,10 @@ export class SseEmitter {
   /** P3: count of addListener calls refused due to MAX_SSE_CLIENTS. */
   getRejectedCount(): number {
     return this.rejectedCount;
+  }
+
+  /** #353: count of listener callbacks that threw during fan-out. */
+  getListenerErrorCount(): number {
+    return this.listenerErrorCount;
   }
 }

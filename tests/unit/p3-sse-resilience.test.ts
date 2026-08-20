@@ -13,6 +13,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from "vitest";
 import { EventEmitter } from "events";
 import { initDatabase, closeDb, getDb } from "../../src/database.js";
+import { type Logger } from "../../src/logger.js";
 import { SseEmitter, MAX_SSE_CLIENTS } from "../../src/sse-emitter.js";
 import fs from "fs";
 
@@ -209,5 +210,76 @@ describe("P3 Fix 2 + Fix 4 — heartbeat + interval cleanup on close", () => {
     // Advance well past several would-be intervals. No further writes.
     vi.advanceTimersByTime(HEARTBEAT_MS * 5);
     expect(writes).toHaveLength(1);
+  });
+});
+
+// -- #353: the refusal and the swallowed throw must both be observable -------
+
+describe("SSE refusals and listener errors are no longer silent (#353)", () => {
+  function recordingLogger() {
+    const warns: Array<{ obj: unknown; msg: string }> = [];
+    const log = {
+      warn: (obj: unknown, msg: string) => warns.push({ obj, msg }),
+      info: () => {},
+      error: () => {},
+      debug: () => {},
+      child: () => log,
+    } as unknown as Logger;
+    return { log, warns };
+  }
+
+  it("logs and counts a listener refused at the cap", () => {
+    const { log, warns } = recordingLogger();
+    const emitter = new SseEmitter(log);
+    let rejected = 0;
+    emitter.setMetricSinks({ onRejected: () => rejected++ });
+
+    for (let i = 0; i < MAX_SSE_CLIENTS; i++) emitter.addListener("default", () => {});
+    const late = emitter.addListener("default", () => {});
+
+    // The refusal still returns a function, so the caller cannot tell -- which
+    // is exactly why the log and the counter have to exist.
+    expect(typeof late).toBe("function");
+    expect(emitter.getRejectedCount()).toBe(1);
+    expect(rejected).toBe(1);
+    expect(warns).toHaveLength(1);
+    expect(warns[0].msg).toMatch(/MAX_SSE_CLIENTS reached/);
+  });
+
+  it("counts and logs a listener that throws, without affecting siblings", async () => {
+    const { log, warns } = recordingLogger();
+    const emitter = new SseEmitter(log);
+    let errors = 0;
+    emitter.setMetricSinks({ onListenerError: () => errors++ });
+
+    const seen: string[] = [];
+    emitter.addListener("default", () => {
+      throw new Error("listener is broken");
+    });
+    emitter.addListener("default", () => seen.push("sibling"));
+    emitter.emit("agent_online", { agent_id: "a1" }, { org_id: "default" });
+    // Fan-out goes through setImmediate so a slow listener cannot block the
+    // emit() caller; assertions have to wait a turn for it.
+    await new Promise((r) => setImmediate(r));
+
+    expect(seen).toEqual(["sibling"]);
+    expect(emitter.getListenerErrorCount()).toBe(1);
+    expect(errors).toBe(1);
+    expect(warns[0]?.msg).toMatch(/threw during fan-out/);
+  });
+
+  // A listener failing on every event must not produce one line per event.
+  it("samples the log while keeping the counter exact", async () => {
+    const { log, warns } = recordingLogger();
+    const emitter = new SseEmitter(log);
+    emitter.addListener("default", () => {
+      throw new Error("always");
+    });
+    for (let i = 0; i < 40; i++) {
+      emitter.emit("agent_online", { agent_id: "a1" }, { org_id: "default" });
+    }
+    await new Promise((r) => setImmediate(r));
+    expect(emitter.getListenerErrorCount()).toBe(40);
+    expect(warns.length).toBeLessThan(5);
   });
 });
