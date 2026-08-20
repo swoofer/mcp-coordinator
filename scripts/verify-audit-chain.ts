@@ -154,6 +154,33 @@ function verify(rows: AuditRow[], chainKey: Buffer | null): RowFinding[] {
         reason: "id_gap_before",
         gap_size: row.id - prevId - 1,
       });
+      // #348: this row's prev_hash points at a row that is gone, so it cannot
+      // be checked against anything this verifier holds — the same situation
+      // as the first row of the chain, which is already accepted verbatim
+      // below. Clearing prevHash reuses that tolerance instead of adding a
+      // second code path: after a gap, the next row IS a new chain head.
+      //
+      // Why this is necessary and not laxity: the retention sweeper runs two
+      // DELETEs on audit_log with two TTLs (Tier 1 at 365 days, Tier 2 at 90)
+      // discriminated by action name, so it removes rows from the MIDDLE of
+      // the chain, not a prefix. Measured: purging 25 Tier-2 rows out of 50
+      // produced 24 wrong_prev_hash findings on a healthy database. Past day
+      // 91 a two-tier deployment's verification was noise — and
+      // docs/ops/audit-integrity.md calls exit 1 a Tier 1 security signal
+      // that should page the on-call, hourly. A detector that pages on
+      // routine retention teaches the operator to ignore the only
+      // audit-tampering signal there is.
+      //
+      // What is given up, stated plainly: a middle deletion no longer raises
+      // wrong_prev_hash, so a malicious one is not distinguishable from a
+      // swept one. That detection was already worth nothing — the
+      // tip-attestation workflow the runbook offers as the remedy compares
+      // the FIRST row's prev_hash against the previous tip, and removing a
+      // row from the middle changes neither, so it never caught this either.
+      // Content mutation (wrong_row_hash) and algorithm downgrade are
+      // unaffected: both check a row against itself, not against its
+      // predecessor.
+      prevHash = null;
     }
 
     if (row.row_hash === null || row.prev_hash === null) {

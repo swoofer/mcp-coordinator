@@ -45,10 +45,14 @@ What this does **not** give you on its own:
 - **Deletion detection.** The retention sweeper (`src/sweeper/`)
   legitimately deletes audit rows past their TTL bucket, and those
   deletions leave gaps in the `id` sequence that look identical to
-  malicious deletions of recent rows. The verifier reports
-  `id_gap_before` findings informationally; pairing the chain with
-  the **tip-attestation workflow** below distinguishes legitimate
-  from suspicious.
+  malicious deletions. The verifier reports `id_gap_before`
+  informationally and does not fail on it.
+  This section used to add "pairing the chain with the tip-attestation
+  workflow below distinguishes legitimate from suspicious". It does not:
+  that workflow compares the first row's `prev_hash` to the previous tip,
+  and a middle deletion changes neither. **Nothing in this system detects a
+  deleted audit row.** Treat the chain as protection against mutation and
+  insertion, not against removal.
 - **Pre-migration tampering.** The T50 backfill assumes rows that
   existed before the migration are pristine. Operators upgrading from
   v0.9.0 or earlier should run a one-time verification immediately
@@ -94,26 +98,28 @@ Exit codes:
   in the middle, a middle row was deleted, or the prev_hash field
   was rewritten.
 
-  > ⚠️ **On a two-tier deployment this fires on a healthy database, and
-  > it is not rare.** The sweeper runs two DELETEs on `audit_log` with two
-  > TTLs (Tier 1 at 365 days, Tier 2 at 90), discriminated by action name.
-  > It therefore removes rows from the **middle** of the chain, not a
-  > prefix. Measured: purging 25 Tier-2 rows out of 50 produces 24
-  > `wrong_prev_hash` findings — roughly one per surviving row.
+  > **Not raised across a gap.** The sweeper runs two DELETEs on `audit_log`
+  > with two TTLs (Tier 1 at 365 days, Tier 2 at 90) discriminated by action
+  > name, so it removes rows from the **middle** of the chain, not a prefix.
+  > Before #348 that produced roughly one `wrong_prev_hash` per surviving row
+  > — measured: 24 findings after purging 25 Tier-2 rows out of 50 — and past
+  > day 91 a two-tier deployment's verification was pure noise.
   >
-  > Past day 91, a two-tier deployment's verification is noise. Do NOT
-  > wire the cron below to a pager until
-  > [#348](https://github.com/swoofer/mcp-coordinator/issues/348) is fixed;
-  > a detector that pages hourly on routine retention trains the operator
-  > to ignore the only audit-tampering signal there is.
+  > The row after a gap is now treated as a new chain head, exactly as the
+  > first row of the chain always was: its `prev_hash` points at something
+  > this verifier cannot see, so it is accepted verbatim and verification
+  > continues forward from there.
   >
-  > Phase-1 mono-tenant escapes it: that profile writes a single tier, so
-  > the purge is a strict prefix. One row of another tier — a single
-  > `migration.audit_backfill` from an upgrade — is enough to break it.
+  > **What that costs:** a middle deletion no longer raises this finding, so a
+  > malicious one is not distinguishable from a swept one. That detection was
+  > already worth nothing — see the tip-attestation section, which never
+  > caught it either. Content mutation and algorithm downgrade are unaffected.
 - `id_gap_before`: the `id` sequence skips at least one value
   before this row. Informational only -- legitimate sweeper
-  deletions look the same. Pair with the tip-attestation workflow
-  to distinguish.
+  deletions look the same, and on a two-tier deployment past day 91 they
+  are the normal state. Correlate with the sweeper's own
+  `coordinator_sweeper_rows_deleted_total{table="audit_log_tier2"}` rather
+  than treating a gap as suspicious on its own.
 
 ## Tip-attestation workflow (recommended for SOC 2 Type II)
 
@@ -143,14 +149,22 @@ record the tip externally on a schedule:
    (consistent with sweeper retention crossing the attestation
    window), or someone rewrote the chain.
 
-   > ⚠️ **This check does not distinguish a legitimate purge from
-   > tampering in the middle of the chain**, which is what
-   > [#348](https://github.com/swoofer/mcp-coordinator/issues/348) is about.
-   > It compares the FIRST row's `prev_hash` to the previous tip. Deleting a
-   > row from the middle changes neither of those, so the comparison passes
-   > either way. It catches front-truncation and rewrites, not middle
-   > deletion — and middle deletion is exactly what the two-tier sweeper
-   > does on every pass.
+   > ⚠️ **This check does not distinguish a legitimate purge from tampering
+   > in the middle of the chain, and never did.** It compares the FIRST row's
+   > `prev_hash` to the previous tip. Deleting a row from the middle changes
+   > neither of those, so the comparison passes either way. It catches
+   > front-truncation and rewrites, not middle deletion.
+   >
+   > This matters for reading the section above: #348 made the verifier stop
+   > raising `wrong_prev_hash` across a gap, and the objection "but then
+   > middle deletion goes undetected" applies equally to the state before
+   > that change — the attestation was offered as the remedy and does not
+   > provide it. Nothing detects a middle deletion today. What changed is
+   > that routine retention no longer looks like one.
+   >
+   > If you need that detection, it needs building: the sweeper declaring its
+   > own purges into the chain is the option that would give it, at the cost
+   > of a third retention list and a keyed deployment. It is not implemented.
 
    The match check is a single `jq`-or-grep comparison against the
    prior attestation's signed JSON:
