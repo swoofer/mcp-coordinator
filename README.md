@@ -73,6 +73,8 @@ Requires Node.js 22+ (Node 20 reached EOL on 2026-04-30 and is no longer support
 
 After step 4, every Claude Code (or other MCP-compatible) session connected to this coordinator can call all 26 tools (`register_agent`, `announce_work`, `post_to_thread`, `coordinator_status`, ...). For the full multi-Claude or team setup, see the [usage guide](./docs/usage.md).
 
+> ⚠️ **Approving the tools:** `permissionMode: "acceptEdits"` does **not** auto-approve MCP tools — it covers file edits and filesystem Bash commands only. Use `allowedTools: ["mcp__coordinator__*"]` instead, or you will get a prompt on every `heartbeat`. See [approving the tools](./docs/usage.md#approving-the-tools-once-instead-of-every-call).
+
 > 🔀 **Two ways to consume coordination state** — agents can either *poll* the daemon's MCP tools (default, works since v0.6) or accept *push* events through the Channels sidecar (v0.12+, research preview). Most users start with polling and add Channels later when they want real-time reactivity. See [`docs/operating-modes.md`](./docs/operating-modes.md) for the side-by-side comparison and decision guide.
 
 ### Other install styles
@@ -275,6 +277,12 @@ Any MCP client can discover the full tool schema at runtime via the standard `to
 | `hot_files` | List files being edited by multiple agents |
 | `get_session_files` | Get all files edited by an agent in the current session |
 | `check_file_conflict` | Check whether another agent edited a given file recently |
+
+**File claims are advisory.** Two agents can hold the same file at once, a
+claim is never refused, and nothing in the coordinator blocks a write — the
+strongest verdict it produces is a warning. Claims make contention *visible*;
+acting on it is the agents' job. See
+[what a claim does and does not do](./docs/usage.md#what-a-working_files-claim-does--and-does-not-do).
 
 ### Dependency map
 

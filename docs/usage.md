@@ -145,6 +145,59 @@ If you'd rather embed the instructions yourself (or you're not using Claude Code
 
 The dashboard shows live who's doing what; the SQLite database persists threads across sessions; conflicts are detected before code is written.
 
+### Approving the tools once instead of every call
+
+Coordination tools are called in a loop — `heartbeat`, `coordinator_status`,
+`post_to_thread` — so an approval prompt per call makes the integration
+unusable. The setting people reach for first does not do it:
+
+> `permissionMode: "acceptEdits"` **does not auto-approve MCP tools.** It covers
+> file edits and filesystem Bash commands only.
+
+Use an `allowedTools` wildcard instead:
+
+```jsonc
+{ "allowedTools": ["mcp__coordinator__*"] }
+```
+
+The `coordinator` in the middle is **the key you registered the server under**
+in `.mcp.json` — the tool namespace is `mcp__<key>__<tool>`. Register it as
+`my-coord` and the wildcard is `mcp__my-coord__*`. The samples in this repo
+use `coordinator`.
+
+Narrow it if you would rather not blanket-approve: the tools that actually
+need to be silent are the polling ones, and nothing stops you listing them
+individually while leaving `announce_work` or `close_thread` to prompt.
+
+## What a `working_files` claim does — and does not do
+
+**A claim informs other agents. It does not stop them.**
+
+This is worth being explicit about because the word "coordination" invites the
+opposite reading. Three properties of the design, all deliberate:
+
+- **Two agents can hold the same file at the same time.** The row's primary key
+  is `(org_id, agent_id, file_path)`, so each holder gets their own row, and
+  `getIndex()` maps a path to a *set* of holders. Multi-holder is the intended
+  state, not a race.
+- **A claim cannot be refused.** `WorkingFilesTracker.start()` returns `void`
+  and `POST /api/working-files/start` answers `{ ok: true }` unconditionally.
+  There is no code path that says no, so there is no error for a client to
+  handle.
+- **Claims expire on their own and cannot be taken away.** The TTL defaults to
+  30 minutes (`COORDINATOR_WORKING_FILES_TTL_MIN`) and there is no
+  `force_release`: an abandoned claim ages out, it is not revoked.
+
+What the claim buys you is visibility — `hot_files` shows contested paths, and
+the conflict detector scores an overlap and can open a consultation thread.
+The strongest verdict that machinery produces is `warning`. Nothing in the
+system will block a write.
+
+If you need mutual exclusion, put it where mutual exclusion belongs: separate
+git worktrees, one agent per file, or a lock in your own toolchain. The
+coordinator tells agents what the others are doing; deciding what to do about
+it is the agents' job.
+
 ## Push vs polling
 
 By default, a vanilla Claude Code session talks to mcp-coordinator over MCP (HTTP request-response) and **does not subscribe to MQTT**. That means events the coordinator publishes on MQTT (`coordinator/consultations/new`, etc.) are not auto-delivered to that session — Claude has to **poll** the coordinator to discover new activity. The polling pattern is:
