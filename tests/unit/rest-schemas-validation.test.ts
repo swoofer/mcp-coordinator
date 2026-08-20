@@ -64,7 +64,7 @@ function mockRes(): { res: ServerResponse; getStatus: () => number; getBody: () 
 }
 
 function makeCtx(): RestContext {
-    return {
+  return {
     services,
     httpLog: { info: () => {}, debug: () => {}, warn: () => {}, error: () => {} } as never,
     authEnabled: false,
@@ -176,7 +176,6 @@ describe("REST body validation (qualite-code-02 / architecture-15)", () => {
     );
     expect(getStatus()).toBe(400);
   });
-
 
   it("POST /api/check-conflict with missing agent_id -> 400 structured", async () => {
     const { res, getStatus, getBody } = mockRes();

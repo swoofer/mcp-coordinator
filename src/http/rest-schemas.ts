@@ -96,7 +96,6 @@ export const PostToThreadBodySchema = z.object({
 });
 export type PostToThreadBody = z.infer<typeof PostToThreadBodySchema>;
 
-
 // POST /api/unclaim-task — thread_id/agent_id required (previously enforced
 // via `if (!thread_id || !agent_id)`, which also rejected empty strings —
 // min(1) preserves that).
@@ -149,4 +148,3 @@ export const IntrospectionResponseBodySchema = z.object({
   reason: z.string(),
 });
 export type IntrospectionResponseBody = z.infer<typeof IntrospectionResponseBodySchema>;
-

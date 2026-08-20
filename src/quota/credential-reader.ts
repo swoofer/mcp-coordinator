@@ -89,9 +89,7 @@ export class WindowsCredentialReader implements CredentialReader {
  * and 'the fetch failed' are different facts, and only the first one means
  * the dashboard should stop showing an error the operator cannot act on.
  */
-export function isCredentialReaderSupported(
-  platform: NodeJS.Platform = process.platform,
-): boolean {
+export function isCredentialReaderSupported(platform: NodeJS.Platform = process.platform): boolean {
   return platform === "darwin";
 }
 

@@ -62,7 +62,7 @@ function mockRes(): { res: ServerResponse; getStatus: () => number; getBody: () 
 }
 
 function makeCtx(): RestContext {
-    return {
+  return {
     services,
     httpLog: { info: () => {}, debug: () => {}, warn: () => {}, error: () => {} } as never,
     authEnabled: false,
