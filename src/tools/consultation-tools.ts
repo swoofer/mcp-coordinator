@@ -149,6 +149,7 @@ export function registerConsultationTools(
         agent_id,
         target_modules,
         target_files,
+        run_id,
       });
       const thread = consultation.announceWork(claims.org, {
         agent_id,

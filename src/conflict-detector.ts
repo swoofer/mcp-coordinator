@@ -45,6 +45,16 @@ export class ConflictDetector {
     agent_id: string;
     target_modules: string[];
     target_files: string[];
+    /**
+     * Run this announce belongs to (#374). When set, threads belonging to a
+     * DIFFERENT run are not considered — an aborted run stops leaking its
+     * stale threads into the next one.
+     *
+     * Fail-open by construction: undefined or null skips the filter inside
+     * listThreads, so an announce without a run behaves exactly as before
+     * and still sees every thread.
+     */
+    run_id?: string | null;
   }): ConflictReport[] {
     const conflicts: ConflictReport[] = [];
     // Open, resolving, and recently resolved (auto-quorum) threads — which is
@@ -53,12 +63,29 @@ export class ConflictDetector {
     // lets the resolved leg carry a recency bound; the previous shape could
     // not express one. Same three-query pattern the impact scorer uses on this
     // very call (src/impact-scorer.ts).
+    // #374: run_id reuses the filter listThreads has already shipped —
+    // `AND (run_id IS NULL OR run_id = ?)`, which keeps un-scoped threads and
+    // same-run threads and drops other runs. detect() runs on the same call
+    // and was simply never wired to it, exactly as it was never wired to
+    // since_minutes before #300.
+    //
+    // What this does NOT fix, and the issue's own measurement shows it: a
+    // parent and the sub-agents it spawned share ONE run, so run-scoping keeps
+    // every warning between them. Separating "parent vs its own child" from
+    // "sibling vs sibling" needs a lineage field, and none exists — `agents`
+    // has no parent or spawned_by column. What this fixes is the other half:
+    // an aborted run no longer leaks its stale threads into the next one.
+    const runScope = params.run_id ?? undefined;
     const activeThreads = [
-      ...this.consultation.listThreads(params.org_id, { status: "open" }),
-      ...this.consultation.listThreads(params.org_id, { status: "resolving" }),
+      ...this.consultation.listThreads(params.org_id, { status: "open", run_id: runScope }),
+      ...this.consultation.listThreads(params.org_id, {
+        status: "resolving",
+        run_id: runScope,
+      }),
       ...this.consultation.listThreads(params.org_id, {
         status: "resolved",
         since_minutes: RESOLVED_THREAD_CONFLICT_WINDOW_MINUTES,
+        run_id: runScope,
       }),
     ];
 
