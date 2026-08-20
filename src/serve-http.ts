@@ -45,7 +45,6 @@ import {
 } from "./http/utils.js";
 import { appError } from "./http/response-contract.js";
 import { isAllowedOrigin } from "./http/origin.js";
-import { assessPlanQuality } from "./plan-quality.js";
 import type { CoordinatorEvent } from "./types.js";
 import { getVersion } from "./version.js";
 const VERSION = getVersion();

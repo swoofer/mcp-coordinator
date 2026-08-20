@@ -36,6 +36,12 @@ export interface CommonFlowResult {
   respondents: string[];
   /** Plan quality assessment (callers may emit downgrade event). */
   planQuality: PlanQualityResult;
+  /**
+   * Why the plan was scored down, or null when it was not. #351: both
+   * transports now hand this back to the announcing agent, which is the only
+   * party that can act on it.
+   */
+  planDowngradeReason: string | null;
 }
 
 export interface CommonFlowParams {
@@ -159,7 +165,7 @@ export function runCommonAnnounceFlow(
   const planQuality = assessPlanQuality(params.plan);
   if (params.plan && planQuality.mode === "discovery") {
     sseEmitter.emit(
-      "impact_scored" as "impact_scored",
+      "impact_scored",
       {
         thread_id: threadId,
         agent_id: params.agent_id,
@@ -167,7 +173,7 @@ export function runCommonAnnounceFlow(
         score: planQuality.score,
         reasons: [planDowngradeReason(planQuality)],
         category: "plan_quality",
-      } as Parameters<typeof sseEmitter.emit>[1],
+      },
       { org_id: params.org_id },
     );
   }
@@ -180,7 +186,17 @@ export function runCommonAnnounceFlow(
     "announce-workflow.runCommonAnnounceFlow:expected_respondents",
   );
 
-  return { updated, categorized, respondents, planQuality };
+  return {
+    updated,
+    categorized,
+    respondents,
+    planQuality,
+    // Only set when a plan was supplied and scored down. Absent means
+    // either no plan (discovery is then the honest mode, not a demotion)
+    // or a plan that passed.
+    planDowngradeReason:
+      params.plan && planQuality.mode === "discovery" ? planDowngradeReason(planQuality) : null,
+  };
 }
 
 function inferLayerFromReasons(reasons: string[]): string {
@@ -207,7 +223,13 @@ function scoredCategory(s: ImpactScore): "concerned" | "gray_zone" | "pass" {
   return "pass";
 }
 
-function planDowngradeReason(pq: PlanQualityResult): string {
+/**
+ * Human-readable reason a plan was scored down. #351: this used to be
+ * private and reachable only through the SSE event, i.e. only the dashboard
+ * ever saw it -- the agent whose plan was downgraded was never told, so it
+ * could not revise. It is part of the flow's return value now.
+ */
+export function planDowngradeReason(pq: PlanQualityResult): string {
   const flags: string[] = [];
   if (!pq.checks.mentions_files) flags.push("no files");
   if (!pq.checks.concrete_approach) flags.push("vague approach");
