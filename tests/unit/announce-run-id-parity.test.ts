@@ -47,14 +47,14 @@ describe("announce_work reaches the run_id sink that already exists (#374)", () 
     }
   });
 
-  it("detect() is untouched — the semantics question stays open", () => {
-    // Guard against a later change quietly answering #374 by editing the
-    // detector while this parity fix is the stated scope.
-    const detector = read("src/conflict-detector.ts");
-    expect(
-      detector,
-      "conflict-detector now reads run_id — that is issue #374's open question, not this change",
-    ).not.toContain("run_id");
+  it("the value now reaches detect(), which is #374 step 2", () => {
+    // This assertion used to be its inverse: "conflict-detector contains no
+    // run_id", guarding against a later change quietly answering the
+    // semantics question while parity was the stated scope. It fired exactly
+    // as designed when step 2 landed — deliberately, not by accident — so it
+    // is inverted here rather than deleted, and the behaviour it now stands
+    // for is covered in conflict-detector-run-scope.test.ts.
+    expect(read("src/conflict-detector.ts")).toContain("run_id");
   });
 
   it("the sink it feeds is real", () => {
