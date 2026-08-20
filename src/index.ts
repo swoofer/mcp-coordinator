@@ -1,58 +1,24 @@
-import { StdioServerTransport } from "@modelcontextprotocol/server/stdio";
 import { pathToFileURL } from "url";
-import path from "path";
-import { createServices, createMcpServer } from "./server-setup.js";
+import { runStdioServer } from "./stdio-server.js";
 
 // Re-export the public package surface for npm consumers
 export { startServer, type ServerOptions } from "./serve-http.js";
 export { createServices, createMcpServer } from "./server-setup.js";
+export { runStdioServer, type StdioServerOptions } from "./stdio-server.js";
 
 // STDIO entry: only run when invoked directly (not when imported).
 // Uses pathToFileURL for cross-platform correctness (handles Windows drive letters
 // + the file:///C:/... vs file://C:/... slash-count mismatch). Guards against
 // process.argv[1] being undefined (REPL, some bundlers).
+//
+// #277 moved the body to src/stdio-server.ts so `mcp-coordinator stdio` can
+// start the same server. This entry point stays: docs/clients.md documents
+// `node dist/src/index.js`, and existing .mcp.json files point at it.
 const isMainModule =
   process.argv[1] != null && import.meta.url === pathToFileURL(process.argv[1]).href;
 
 if (isMainModule) {
-  const DATA_DIR = process.env.COORDINATOR_DATA_DIR || "./data";
-
-  async function main(): Promise<void> {
-    // stdio: true — stdout is reserved for JSON-RPC protocol messages (MCP
-    // stdio transport spec MUST NOT); route every log level to stderr.
-    const services = createServices({ dataDir: DATA_DIR, stdio: true });
-    const log = services.logger;
-
-    // architecture-06: same cwd-relative-./data fallback warning as
-    // src/serve-http.ts. `log` is stdio-safe (createServices({stdio: true})
-    // routes every level to stderr — see src/logger.ts), so this never
-    // touches stdout / the JSON-RPC stream (protocole-mcp-01).
-    if (!process.env.COORDINATOR_DATA_DIR) {
-      log.warn(
-        { resolvedDataDir: path.resolve(DATA_DIR) },
-        `COORDINATOR_DATA_DIR not set — using cwd-relative ./data (${path.resolve(DATA_DIR)}); set COORDINATOR_DATA_DIR or use the CLI for a stable location.`,
-      );
-    }
-
-    // STDIO mode is unauthenticated by contract — the trust boundary is "the
-    // user spawned this binary", same as any local stdio MCP server. We pass
-    // a getSessionClaims that returns synthetic legacy claims for every call
-    // (the empty-string sessionId is the stdio sentinel; see fix #133).
-    // Mirrors the AUTH_ENABLED=false synthetic-claims path in
-    // src/serve-http.ts:315-317.
-    const server = createMcpServer(services, () => ({
-      sub: "stdio-local",
-      user_id: "stdio-local",
-      org: "default",
-      role: "admin",
-      jti: "stdio-local",
-    }));
-    const transport = new StdioServerTransport();
-    await server.connect(transport);
-    log.info("mcp-coordinator running on stdio (no MQTT broker in stdio mode)");
-  }
-
-  main().catch((err) => {
+  runStdioServer().catch((err) => {
     console.error("FATAL:", err);
     process.exit(1);
   });
