@@ -18,6 +18,7 @@ import {
   ensureAuditChainKeyForBootAudit,
 } from "../../src/boot-orgs-uniqueness.js";
 import type { DatabaseAdapter } from "../../src/db-adapter.js";
+import { TIER1_EVENTS, TIER2_EVENTS } from "../../src/security/audit-events.js";
 
 // A high-entropy 32-byte master key (base64) accepted by decodeMasterKey.
 // The same string is handed to the spawned verifier via env so it derives
@@ -194,12 +195,15 @@ describe("verify-audit-chain script", () => {
     expect(report.findings.some((f: { reason: string }) => f.reason === "missing_hash")).toBe(true);
   });
 
-  it("front-deletion (sweeper retention) -> exit 0, no findings", () => {
-    // Sweeper deletes oldest rows first. After it removes row 1, the
-    // verifier sees the chain starting at row 2 and trusts row 2's
-    // prev_hash as the entry point (it claims to chain from a deleted
-    // row 1, which the verifier cannot reconstruct locally -- the
-    // tip-attestation workflow handles that).
+  it("front-deletion -> exit 0, no findings", () => {
+    // The verifier trusts the first surviving row's prev_hash as the entry
+    // point: it claims to chain from a deleted row the verifier cannot
+    // reconstruct locally.
+    //
+    // #348: the title used to say "(sweeper retention)", implying this is
+    // the shape a sweep leaves behind. It is not -- see the middle-deletion
+    // case below. A pure front-deletion is what a SINGLE-TIER chain leaves,
+    // which is the Phase-1 mono-tenant profile only.
     const h1 = insertRow("event.a", GENESIS_HASH);
     const h2 = insertRow("event.b", h1);
     insertRow("event.c", h2);
@@ -213,8 +217,20 @@ describe("verify-audit-chain script", () => {
   });
 
   it("middle-deletion -> exit 1 (id_gap + wrong_prev_hash)", () => {
-    // The retention sweeper never deletes middle rows -- it deletes
-    // by age, oldest first. A middle gap is an attacker signature.
+    // #348: this comment used to say "the retention sweeper never deletes
+    // middle rows -- it deletes by age, oldest first. A middle gap is an
+    // attacker signature." Both sentences are false.
+    //
+    // The sweeper runs TWO deletes on audit_log with two different TTLs,
+    // discriminated by `action IN (...)`: Tier 1 at 365 days, Tier 2 at 90.
+    // It therefore deletes by age AND by action -- middle rows, not a
+    // prefix. Measured: 25 Tier-2 rows purged out of 50 leaves 24
+    // wrong_prev_hash findings on a healthy database.
+    //
+    // So a middle gap is NOT an attacker signature; past day 91 it is the
+    // ordinary shape of a swept database. This test still pins what the
+    // verifier does today, which is exit 1 -- see the suite below for what
+    // that means in practice.
     const h1 = insertRow("event.a", GENESIS_HASH);
     const h2 = insertRow("event.b", h1);
     insertRow("event.c", h2);
@@ -452,5 +468,80 @@ describe("verify-audit-chain script: keyed (HMAC) rows", () => {
         true,
       );
     });
+  });
+});
+
+// ── #348: what the real sweeper actually leaves behind ──────────────────
+
+describe("the retention sweeper breaks the chain it is verified against (#348)", () => {
+  // Every other test in this file simulates a deletion by hand. This one
+  // reproduces the SHAPE the production sweeper produces, using the real
+  // tier lists, because the assumption the rest of the suite encoded — that
+  // the sweeper only ever removes a prefix — is false.
+  //
+  // src/sweeper/index.ts runs two DELETEs on audit_log with two TTLs
+  // (Tier 1 at 365 days, Tier 2 at 90), discriminated by `action IN (...)`.
+  // Past day 91 a two-tier deployment has had its Tier 2 rows removed from
+  // between its Tier 1 rows, which is a middle deletion however you look at
+  // it.
+  it("alternating tiers, Tier 2 purged: the verifier reports tampering on a healthy DB", () => {
+    const tier1 = TIER1_EVENTS[0];
+    const tier2 = TIER2_EVENTS[0];
+
+    // 20 rows, alternating tiers, chained exactly as audit() would.
+    let prev = GENESIS_HASH;
+    for (let i = 0; i < 20; i++) {
+      prev = insertRow(i % 2 === 0 ? tier1 : tier2, prev);
+    }
+
+    const clean = runVerifier(["--db", dbPath, "--json"], {
+      COORDINATOR_ENCRYPTION_KEY: RAW_MASTER_KEY,
+    });
+    expect(clean.status, "a freshly written chain must verify").toBe(0);
+
+    // The Tier 2 pass, in isolation: exactly what the sweeper does once the
+    // shorter TTL elapses, and nothing else.
+    const deleted = db.prepare("DELETE FROM audit_log WHERE action = ?").run(tier2).changes;
+    expect(deleted).toBe(10);
+
+    const swept = runVerifier(["--db", dbPath, "--json"], {
+      COORDINATOR_ENCRYPTION_KEY: RAW_MASTER_KEY,
+    });
+    const report = JSON.parse(swept.stdout) as {
+      ok: boolean;
+      findings: Array<{ reason: string }>;
+    };
+
+    // THIS IS THE BUG, pinned rather than fixed. docs/ops/audit-integrity.md
+    // calls exit 1 "a Tier 1 security signal" that "should page the on-call
+    // engineer immediately", on an hourly cron. Routine retention triggers it.
+    expect(swept.status).toBe(1);
+    expect(report.ok).toBe(false);
+    const wrongPrev = report.findings.filter((f) => f.reason === "wrong_prev_hash");
+    expect(wrongPrev.length).toBeGreaterThan(5);
+
+    // When #348 is fixed, this test should flip to expecting 0 — whichever
+    // option is taken (tolerate the gap, or have the sweeper declare its
+    // purge in the chain). Leaving it asserting the broken behaviour keeps
+    // the defect visible and makes the fix show up as a diff here.
+  });
+
+  it("a single-tier chain IS purged as a strict prefix — which is why this hid", () => {
+    // The Phase-1 mono-tenant profile writes one tier, so its purge really
+    // does remove a prefix and really does verify clean. That is the profile
+    // the suite was written against.
+    let prev = GENESIS_HASH;
+    const ids: number[] = [];
+    for (let i = 0; i < 6; i++) {
+      prev = insertRow(TIER1_EVENTS[0], prev);
+      ids.push(i + 1);
+    }
+    db.prepare("DELETE FROM audit_log WHERE id <= 2").run();
+
+    const result = runVerifier(["--db", dbPath, "--json"], {
+      COORDINATOR_ENCRYPTION_KEY: RAW_MASTER_KEY,
+    });
+    expect(result.status).toBe(0);
+    expect((JSON.parse(result.stdout) as { ok: boolean }).ok).toBe(true);
   });
 });
