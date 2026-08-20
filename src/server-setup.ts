@@ -79,7 +79,14 @@ export function createServices(config: CoordinatorConfig): CoordinatorServices {
     logger.child({ component: "conflict" }),
   );
   const contextProvider = new SummaryContextProvider(registry, consultation, fileTracker);
-  const sseEmitter = new SseEmitter();
+  const sseEmitter = new SseEmitter(logger.child({ component: "sse" }));
+  // #353: the refusal path and the swallowed listener exception were both
+  // invisible -- no log, no metric -- while the mqtt bridge next door logs and
+  // counts every drop. Same treatment here.
+  sseEmitter.setMetricSinks({
+    onRejected: () => metrics.sseListenersRejected.inc(),
+    onListenerError: () => metrics.sseListenerErrors.inc(),
+  });
   const mqttBridge = new MqttBridge("default", logger.child({ component: "mqtt" }));
 
   const treeSitter = new TreeSitterExtractor(metrics);
