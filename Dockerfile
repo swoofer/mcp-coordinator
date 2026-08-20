@@ -35,8 +35,12 @@ RUN pnpm install --frozen-lockfile
 COPY tsconfig.json ./
 COPY src ./src
 COPY cli ./cli
+# scripts/ holds verify-audit-chain, which docs/ops/audit-integrity.md wires
+# into an operator cron. It was absent from the image entirely (#348), so the
+# runbook named a file the container did not have.
+COPY scripts ./scripts
 
-# Produce dist/src and dist/cli per tsconfig "outDir".
+# Produce dist/src, dist/cli and dist/scripts per tsconfig "outDir".
 RUN pnpm build
 
 # Re-resolve node_modules with production-only deps via `pnpm prune`.

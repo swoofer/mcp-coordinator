@@ -118,8 +118,12 @@ function parseArgs(argv: string[]): CliArgs {
 }
 
 function printUsage(): void {
+  // Two audiences, two invocations (#348). From a repository checkout the
+  // TypeScript entry point is the one that exists; from an npm or Docker
+  // install only the compiled one does.
   process.stderr.write(
-    "Usage: tsx scripts/verify-audit-chain.ts [--db <path>] [--json]\n",
+    "Usage: node dist/scripts/verify-audit-chain.js [--db <path>] [--json]\n" +
+      "   or: tsx scripts/verify-audit-chain.ts [--db <path>] [--json]   (from a checkout)\n",
   );
 }
 
