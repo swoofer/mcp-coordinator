@@ -292,9 +292,13 @@ export const PostToThreadArgsSchema = z.object({
 
 export type PostToThreadArgs = z.infer<typeof PostToThreadArgsSchema>;
 
+// The event_type here has to be one this file actually emits: the model is
+// being told what to watch for. It said consultation_opened, which nothing
+// produces -- translateEvent emits consultation_new, consultation_message and
+// agent_status (#328).
 const POST_TO_THREAD_TOOL_DESCRIPTION =
   "Reply into a consultation thread when the channel surfaces a " +
-  '<channel event_type="consultation_opened" thread_id="...">. Use to add ' +
+  '<channel event_type="consultation_new" thread_id="...">. Use to add ' +
   "context, propose a resolution, or just acknowledge the thread.";
 
 /**

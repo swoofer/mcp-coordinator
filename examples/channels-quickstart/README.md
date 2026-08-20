@@ -6,7 +6,14 @@ as `<channel>` tags — no polling, no MCP tool call required to receive them.
 Claude can also reply into a consultation thread without leaving the channel
 surface via the `post_to_thread` tool the channel server exposes.
 
-> **Research preview.** Channels currently ships behind
+> **Read this before you follow the steps.** On a stock, up-to-date Claude
+> Code, the channel **does not load**, and the failure is completely silent —
+> no error, no log, nothing sent to the MCP server. Two host-side gates cause
+> it and neither is ours. [Does this actually work?](#does-this-actually-work)
+> has the detail. The walkthrough below is still correct and still worth
+> having; it just does not currently end with a tag in your session.
+
+> **Research preview.** Channels ships behind
 > `--dangerously-load-development-channels` in Claude Code. The API may change.
 > The `mcp-coordinator channel` subcommand documented here is push + reply:
 > Phase 1 (push) streams events from the daemon into the session, Phase 2
@@ -16,8 +23,8 @@ surface via the `post_to_thread` tool the channel server exposes.
 
 ## Prerequisites
 
-- Node.js 20+ (or use the Docker image)
-- Claude Code with channel support
+- Node.js 22+ (or use the Docker image)
+- Claude Code with channel support — see the caveat above
 - A running coordinator daemon (steps below)
 
 ## 1. Install the coordinator
@@ -51,13 +58,13 @@ The embedded MQTT broker now listens on `localhost:1883` and the dashboard at
 ## 3. Register the channel with Claude Code
 
 Copy [`.mcp.json.sample`](./.mcp.json.sample) into `~/.claude/.mcp.json`
-(merging with any existing config). The `mcpServers.coordinator-channel` entry
+(merging with any existing config). The `mcpServers.mcp-coordinator-channel` entry
 tells Claude Code how to spawn the channel subprocess:
 
 ```json
 {
   "mcpServers": {
-    "coordinator-channel": {
+    "mcp-coordinator-channel": {
       "command": "mcp-coordinator",
       "args": ["channel"]
     }
@@ -80,10 +87,15 @@ broker port (default `1883`) and subscribes to:
 claude --dangerously-load-development-channels server:mcp-coordinator-channel
 ```
 
-The `server:mcp-coordinator-channel` argument matches the MCP server name in
-`.mcp.json` (without the `mcp__` prefix). Claude Code spawns
-`mcp-coordinator channel` as a subprocess and begins streaming channel events
-into the session.
+The `server:mcp-coordinator-channel` argument matches **the key you registered
+the server under** in `.mcp.json` — not the server's own `serverInfo.name`,
+and without the `mcp__` prefix. The two happen to be identical here, which is
+why they must be kept identical: rename the key and the launch argument stops
+matching anything, silently.
+
+Claude Code then spawns `mcp-coordinator channel` as a subprocess. **On a stock
+install it will not stream anything — see [Does this actually work?]
+(#does-this-actually-work) below before you spend time on it.**
 
 ## 5. Trigger an event from another agent
 
@@ -105,11 +117,25 @@ docker run --rm --network host eclipse-mosquitto \
 
 Inside your Claude Code session you should now see something like:
 
-```text
-<channel name="coordinator-channel">
-{"topic":"coordinator/default/consultations/new","agent_id":"agent-beta","subject":"Refactor auth middleware","target_modules":["src/auth"],"thread_id":"demo-thread-1"}
-</channel>
+What the channel process sends is a `notifications/claude/channel` with a
+freeform `content` string and a `meta` bag:
+
+```jsonc
+{
+  "content": "New consultation from agent-beta (thread demo-thread-1): Refactor auth middleware",
+  "meta": {
+    "event_type": "consultation_new",
+    "org": "default",
+    "thread_id": "demo-thread-1",
+    "agent_id": "agent-beta"
+  }
+}
 ```
+
+How the client renders that into a `<channel>` tag is its business, and we
+have never observed it: no stock install has loaded the channel (below). The
+tag shape this document used to show here was inferred, not captured, so it
+has been removed rather than left to look like a measurement.
 
 Claude can now reason about the event and, if relevant, reply directly into
 the thread by calling the channel server's `post_to_thread` tool — no need
@@ -117,9 +143,9 @@ to leave the channel surface or use the daemon's main MCP toolbelt.
 
 ## 7. Reply into the thread from inside the session
 
-When Claude sees the `<channel event_type="consultation_opened">` tag above,
-it can post back into the thread by calling the `post_to_thread` tool that
-the channel server registers. A typical reply call looks like:
+When Claude sees a `consultation_new` event, it can post back into the thread
+by calling the `post_to_thread` tool that the channel server registers. A
+typical reply call looks like:
 
 ```jsonc
 // Claude → channel server (tools/call)
@@ -143,14 +169,44 @@ no extra server.
 Override `--org <slug>` on `mcp-coordinator channel` (or set
 `COORDINATOR_ORG`) when running against a non-default org.
 
+## Does this actually work?
+
+**Not on a stock, up-to-date install — and the failure is completely silent.**
+
+Measured on Claude Code 2.1.233 / Windows 11, across four configurations: no
+`<channel>` tag was ever injected. Two independent host-side gates explain it,
+both read out of the shipped client:
+
+1. **`--dangerously-load-development-channels` is not parsed outside an
+   interactive session.** The argument is read only on the interactive path;
+   its result feeds the onboarding UI.
+2. **Availability sits behind an Anthropic-side feature flag that defaults to
+   off.** Nothing you can set locally changes it.
+
+None of the client's refusal paths emits a message — not to you, not to the
+MCP server. Claude Code starts normally, the subprocess is spawned or not, and
+nothing says which. So there is no log to check and no symptom to search for.
+
+**What this means for you.** Everything below the daemon is testable and works:
+the broker, the topics, the `mcp-coordinator channel` process itself (it is
+covered by `tests/integration/channel-smoke.test.ts` against a real MCP
+client). What is not reachable today is the last hop — the client accepting
+the channel. If you are here to evaluate the feature, use polling mode; if you
+are here to develop against the channel process, the smoke test is the loop
+you want, not a live session.
+
+If you *do* see a tag in a real interactive session, that is news:
+[#328](https://github.com/swoofer/mcp-coordinator/issues/328) is the place to
+say so, and it unblocks the rest of the work.
+
 ## Troubleshooting
 
 | Symptom | Likely cause |
 |---|---|
-| Claude Code refuses to start | `--dangerously-load-development-channels` is gated on Channels-capable builds — verify with `claude --version`. |
-| No `<channel>` tags appear | `mcp-coordinator server status` — daemon may be down, or the broker port differs from `~/.mcp-coordinator/config.json`. |
+| No `<channel>` tags appear | Almost certainly the host gates above, not your setup. Rule out the daemon first (`mcp-coordinator server status`, and check the broker port against `~/.mcp-coordinator/config.json`), then stop — there is nothing further to fix on this side. |
+| The launch argument names a server that is not there | `server:<key>` must match the **key** in `.mcp.json`, which is `mcp-coordinator-channel`. A mismatch is silent. |
 | "command not found: mcp-coordinator" | Either `npm install -g mcp-coordinator` or prefix with `npx`. |
-| Events arrive on dashboard but not in session | Topic filter mismatch — check `mcp-coordinator channel --print-topics` (planned) or watch the daemon log at `~/.mcp-coordinator/logs/server.log`. |
+| Events arrive on the dashboard but not in the session | This is the expected outcome today, per the section above. The dashboard reads the daemon directly; the session hop is what is gated. |
 
 ## See also
 

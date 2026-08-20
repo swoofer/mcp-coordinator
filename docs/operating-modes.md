@@ -8,11 +8,22 @@ mcp-coordinator runs as a single long-lived daemon (HTTP MCP + embedded MQTT bro
 | Extra process per session | None | One `mcp-coordinator channel` stdio subprocess (spawned by Claude Code) |
 | How Claude learns about events | Calls `coordinator_status` / `list_threads` between turns | Events arrive as `<channel>` tags injected into the model's context the moment they happen |
 | Reply path | Existing MCP tools (`post_to_thread`, etc.) over HTTP | The channel's `post_to_thread` MCP tool, which publishes via MQTT |
-| Claude Code version | Any | v2.1.80+ (research preview) |
+| Claude Code version | Any | Research preview — **does not load on a stock install today**, see below |
 | Special flag | None | `--dangerously-load-development-channels` until the plugin is on Anthropic's curated allowlist |
 | Best for | Stable workflows, multi-team setups, anything that needs auth + dashboard | Real-time coordination where you want Claude to react between turns without you typing |
 
 Both modes can coexist — the daemon doesn't care which combination of clients is talking to it.
+
+> **Before you pick push mode.** On a stock, up-to-date Claude Code the channel
+> does not load at all, and the failure is silent. Measured on 2.1.233 across
+> four configurations: no tag was ever injected.
+> `--dangerously-load-development-channels` is only parsed in an interactive
+> session, and availability is behind an Anthropic-side feature flag defaulting
+> to off; none of the client's refusal paths logs anything or notifies the MCP
+> server. Push mode is therefore documented, tested up to the client boundary,
+> and **not currently usable end-to-end**. Polling mode is the working answer
+> today. See
+> [`examples/channels-quickstart`](../examples/channels-quickstart/#does-this-actually-work).
 
 ---
 
@@ -121,11 +132,26 @@ claude --dangerously-load-development-channels server:mcp-coordinator-channel
 
 When another agent calls `announce_work` and a consultation opens, Claude receives a tag like:
 
+```jsonc
+// notifications/claude/channel, as the channel process sends it
+{
+  "content": "New consultation from agent-alpha (thread abc123): Update auth docs",
+  "meta": {
+    "event_type": "consultation_new",
+    "org": "default",
+    "thread_id": "abc123",
+    "agent_id": "agent-alpha"
+  }
+}
 ```
-<channel source="mcp-coordinator" event_type="consultation_opened" thread_id="abc123" subject="Update auth docs" agent_id="agent-alpha">
-{ ...payload... }
-</channel>
-```
+
+This document previously showed a rendered `<channel …>` tag here. It was
+wrong in three ways at once — wrong `source`, an `event_type` the code never
+emits, and a `subject` attribute that is not in the `meta` bag — because it
+was written from the spec rather than captured from a session. Since no stock
+install has ever loaded the channel, no capture exists; what the process
+sends is shown instead, which is verifiable from
+`tests/integration/channel-smoke.test.ts`.
 
 Claude can act on it immediately (read files, propose changes, etc.) and reply via the `post_to_thread` tool:
 
