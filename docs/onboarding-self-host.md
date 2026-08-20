@@ -144,6 +144,23 @@ COORDINATOR_SESSION_IDLE_TIMEOUT=15m          # for regulated workloads
 COORDINATOR_METRICS_BEARER=<paste output of: openssl rand -hex 32>
 ```
 
+The sweeper also purges five **coordination** tables on much shorter
+windows. These are not Phase 2 settings -- they apply to any HTTP
+deployment -- and the defaults are short enough to surprise you:
+
+```
+COORDINATOR_FILE_ACTIVITY_RETENTION_DAYS=7        # file activity
+COORDINATOR_EVENTS_RETENTION_DAYS=7               # the replayable SSE feed
+COORDINATOR_THREAD_MESSAGES_RETENTION_DAYS=30     # consultation content
+COORDINATOR_ACTION_SUMMARIES_RETENTION_DAYS=30    # dashboard timeline
+COORDINATOR_LAYER_FIRINGS_RETENTION_DAYS=30       # layer firing history
+```
+
+Raise `COORDINATOR_THREAD_MESSAGES_RETENTION_DAYS` if you expect `get_thread`
+to return a consultation from last quarter: at the default, the messages are
+gone at 30 days while the thread's `plan` and `resolution_summary` stay
+forever. See [Data retention](../README.md#data-retention).
+
 ### Encryption (v0.10.5)
 
 Optionally encrypt the OAuth IdP tokens (`users.idp_access_token` and
@@ -245,7 +262,7 @@ On first boot the coordinator:
 4. **NR12 restore detection** -- if `audit_log` timestamps lag wall-clock
    by more than 5 minutes the boot refuses unless `COORDINATOR_ALLOW_RESTORE=true`
    (then bumps the global `token_epoch`)
-5. **Starts the sweeper** -- 60s cadence over 6 retention tables (T28)
+5. **Starts the sweeper** -- 60s cadence, 11 DELETE passes over 9 tables (T28)
 6. **Opens the HTTP server** -- on `PORT` (default 3100)
 7. **Logs `Phase 2 boot: enabled`** at INFO level
 

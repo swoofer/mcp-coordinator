@@ -491,6 +491,40 @@ Always set `COORDINATOR_DATA_DIR` explicitly (or use the CLI) for a stable, pred
 
 The complete annotated env reference (50+ variables including all Phase 2 OAuth / multi-IdP / hardening vars) lives in [`.env.example`](./.env.example) — copy-paste and fill in.
 
+### Data retention
+
+**Coordination history is deleted on a schedule.** A sweeper runs every 60 s
+in HTTP server mode and purges 9 tables. The five that hold coordination data:
+
+| What | Default | Env var |
+|------|---------|---------|
+| `file_activity` — per-file edit records | 7 days | `COORDINATOR_FILE_ACTIVITY_RETENTION_DAYS` |
+| `events` — the replayable SSE feed | 7 days | `COORDINATOR_EVENTS_RETENTION_DAYS` |
+| `thread_messages` — **consultation content** | 30 days | `COORDINATOR_THREAD_MESSAGES_RETENTION_DAYS` |
+| `action_summaries` — dashboard timeline | 30 days | `COORDINATOR_ACTION_SUMMARIES_RETENTION_DAYS` |
+| `layer_firings` — impact-scoring history | 30 days | `COORDINATOR_LAYER_FIRINGS_RETENTION_DAYS` |
+
+Set any of them to a larger number of days before you accumulate history you
+care about. Auth and audit tables have their own, longer windows — the full
+11-pass table is in
+[`docs/ops/upgrade-phase1-to-phase2.md`](./docs/ops/upgrade-phase1-to-phase2.md#sweeper-retention-bucket-choice).
+
+**What is never deleted.** `threads` is not swept at all. So a consultation's
+`plan` and `resolution_summary` — the decision — persist indefinitely, while
+`thread_messages` — the discussion that produced it — is gone at 30 days.
+`get_thread` on an old thread returns the decision with an empty message list.
+The asymmetry is deliberate: conclusions are cheap to keep and reasoning is
+not. If you want the reasoning too, raise the window; if you want the
+decisions long-term, `list_threads` already gives them to you at any age.
+
+`git_cochange`, `dependency_map` and the `agents` registry are likewise
+never swept — they are derived or live state, rebuilt rather than aged out.
+
+**In stdio mode nothing is swept.** The retention sweeper is started by the
+HTTP server; a stdio-only deployment keeps every row forever and grows
+without bound. That is usually what a single-developer local install wants,
+but it is worth knowing before you point one at a long-lived database.
+
 ---
 
 ## Structured Logging
