@@ -118,7 +118,22 @@ export interface CoordinatorEvent {
 // ── Conflict Detection ────────────────────────────────
 export interface ConflictReport {
   type: "module_overlap" | "api_contract" | "file_overlap" | "dependency_chain";
-  severity: "warning" | "info";
+  /**
+   * #381: "error" was added so the detector can state a verdict it is
+   * willing to stand behind. It is emitted for exactly one case — a declared
+   * file overlap with a thread that is open AND claimed by another agent —
+   * because that is the case the coordinator ALREADY refuses at claim time
+   * (handleClaimTask). Surfacing it at announce time is consistency, not a
+   * new policy.
+   *
+   * Nothing enforces this yet. No caller branches on severity; the field is
+   * written into the announce response and the SSE payload and read by
+   * humans and models. Turning "error" into a refusal is a separate
+   * decision, and it needs an authenticated agent identity first: agent_id
+   * arrives from tool arguments today, so a gate keyed on it is bypassable
+   * by announcing under a peer id.
+   */
+  severity: "error" | "warning" | "info";
   agent_id: string;
   agent_name: string;
   description: string;
