@@ -63,6 +63,26 @@ groups:
             Runbook: docs/ops/sweeper-circuit-recovery.md
           runbook_url: "docs/ops/sweeper-circuit-recovery.md"
 
+      # Warning rather than page: Layer 4 is opt-in and the other conflict
+      # layers keep working without it. But the refresh loop has stopped for
+      # good at this point, so nothing recovers it on its own.
+      - alert: GitCochangeSchedulerCircuitOpen
+        expr: mcp_coordinator_git_cochange_scheduler_circuit_open == 1
+        for: 5m
+        labels:
+          severity: warning
+          team: ops
+        annotations:
+          summary: "git_cochange refresh loop stopped"
+          description: |
+            5 consecutive scheduler failures have stopped the co-change refresh
+            loop. Layer 4 keeps answering from its last successful build and
+            goes stale from here; it does not restart by itself. These are
+            database failures, not git ones -- build() handles git failures
+            itself. Read checks.git_cochange.last_error on /readyz for the
+            reason, fix it, then restart the coordinator.
+          runbook_url: "docs/troubleshooting.md"
+
       - alert: HealthReadyFailing
         expr: probe_success{job="health-ready"} == 0
         for: 2m

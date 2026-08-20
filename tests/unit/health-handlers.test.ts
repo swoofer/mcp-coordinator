@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from "vitest";
 import type { IncomingMessage, ServerResponse } from "http";
 import fs from "fs";
 import { initDatabase, getDb, closeDb } from "../../src/database.js";
@@ -199,5 +199,65 @@ describe("handleHealth (backwards-compat alias)", () => {
     expect(body.status).toBe("alive");
     expect(body).toHaveProperty("uptime_seconds");
     expect(body).toHaveProperty("version");
+  });
+});
+
+// ── /readyz git_cochange reporting (#368) ───────────────────────────────
+
+describe("handleReadyz git_cochange reporting", () => {
+  const setMeta = (k: string, v: string) =>
+    getDb()
+      .prepare("INSERT OR REPLACE INTO git_cochange_meta (org_id, k, v) VALUES (?, ?, ?)")
+      .run("default", k, v);
+
+  const ready = (gitCochange?: { isSchedulerCircuitOpen(): boolean }) => {
+    const res = mockResponse();
+    handleReadyz(
+      mockReq(),
+      res as unknown as ServerResponse,
+      {
+        mqttBridge: { isConnected: () => true },
+        gitCochange,
+      } as never,
+    );
+    return (res.body as { checks: Record<string, Record<string, unknown>> }).checks.git_cochange;
+  };
+
+  beforeEach(() => {
+    getDb().exec("DELETE FROM git_cochange_meta");
+  });
+
+  // last_error was written on every failure path and read by nothing --
+  // persisted, then lost. It is the only record of *why* the layer is down.
+  it("reports why the layer is unavailable, not just that it is", () => {
+    setMeta("available", "false");
+    setMeta("last_error", "SQLITE_READONLY: attempt to write a readonly database");
+    expect(ready()).toMatchObject({
+      available: false,
+      status: "false",
+      last_error: "SQLITE_READONLY: attempt to write a readonly database",
+    });
+  });
+
+  // A reason left over from a fault that has since been fixed would read as a
+  // live one, which is worse than not reporting it at all.
+  it("does not report a stale error once a build has succeeded", () => {
+    setMeta("last_error", "git log failed");
+    setMeta("available", "true");
+    expect(ready()).toMatchObject({ available: true, status: "true", last_error: null });
+  });
+
+  it("reports no reason when there is none recorded", () => {
+    setMeta("available", "stale_partial");
+    expect(ready()).toMatchObject({ available: false, status: "stale_partial", last_error: null });
+  });
+
+  it("surfaces a stopped refresh loop", () => {
+    setMeta("available", "true");
+    expect(ready({ isSchedulerCircuitOpen: () => true }).scheduler_circuit_open).toBe(true);
+    expect(ready({ isSchedulerCircuitOpen: () => false }).scheduler_circuit_open).toBe(false);
+    // Layer 4 is opt-in: with no builder wired at all, the loop is not stopped,
+    // it was never started.
+    expect(ready().scheduler_circuit_open).toBe(false);
   });
 });

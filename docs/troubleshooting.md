@@ -210,6 +210,41 @@ and `git_cochange` are reported but optional). Look at the failing check:
 underlying dependency -- free the MQTT port, or make the data directory
 writable. `/readyz` flips back to `200 ready` once both are green.
 
+### `git_cochange` reports unavailable (does not cause the 503)
+
+Layer 4 never gates readiness, so this check explains a *degraded* conflict
+detector, not a failing pod:
+
+```json
+"git_cochange": {
+  "available": false,
+  "status": "false",
+  "last_error": "SQLITE_READONLY: attempt to write a readonly database",
+  "scheduler_circuit_open": true,
+  "optional": true
+}
+```
+
+- `status` distinguishes the cases: `"false"` (no `.git`, a shallow clone, or
+  `git log` failed), `"stale_partial"` (`git log` timed out -- earlier results
+  are still served), `"unavailable"` (never built; normal when
+  `COORDINATOR_REPO_ROOT` is unset, since Layer 4 is opt-in).
+- `last_error` is the reason for the most recent failure. It is cleared from
+  the response as soon as a build succeeds, so anything shown here is live.
+- `scheduler_circuit_open` is the one that needs you. Five consecutive
+  **database** failures stop the refresh loop permanently -- the same
+  threshold the sweeper uses. Layer 4 keeps answering from its last
+  successful build and silently goes stale. Fix what `last_error` names,
+  then **restart the coordinator**; there is no runtime reset.
+
+Git-side failures never reach the breaker: `build()` handles those itself and
+simply retries at the normal refresh interval. A tripped breaker always means
+SQLite.
+
+Metrics: `mcp_coordinator_git_cochange_scheduler_failures_total`,
+`mcp_coordinator_git_cochange_scheduler_circuit_open`, and
+`mcp_coordinator_git_cochange_builds_total{outcome="scheduler_error"}`.
+
 ---
 
 ## 6. 401 Unauthorized on HTTP / MCP / SSE

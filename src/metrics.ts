@@ -69,11 +69,13 @@ export class Metrics {
   readonly sseClientsActive: Gauge<string>;
   readonly workingFilesActive: Gauge<string>;
   readonly gitCochangePairs: Gauge<string>;
+  readonly gitCochangeSchedulerCircuitOpen: Gauge<string>;
 
   // v0.6 counters
   readonly workingFilesStarts: Counter<"result">;
   readonly treeSitterParseFailures: Counter<string>;
   readonly gitCochangeBuilds: Counter<"outcome">;
+  readonly gitCochangeSchedulerFailures: Counter<string>;
 
   constructor(opts: MetricsOptions = {}) {
     this.registry = new Registry();
@@ -193,6 +195,21 @@ export class Metrics {
     this.gitCochangePairs = new Gauge({
       name: "mcp_coordinator_git_cochange_pairs_total",
       help: "Current git_cochange row count",
+      registers: [this.registry],
+    });
+
+    // Scheduler-level failures are a different population from the build
+    // failures above: build() catches everything git-related itself, so what
+    // reaches the scheduler is the database being unreachable.
+    this.gitCochangeSchedulerFailures = new Counter({
+      name: "mcp_coordinator_git_cochange_scheduler_failures_total",
+      help: "git_cochange refresh-loop failures build() did not catch (getDb + SQLite writes)",
+      registers: [this.registry],
+    });
+
+    this.gitCochangeSchedulerCircuitOpen = new Gauge({
+      name: "mcp_coordinator_git_cochange_scheduler_circuit_open",
+      help: "1 when the git_cochange refresh loop has stopped after consecutive failures, 0 otherwise",
       registers: [this.registry],
     });
   }
