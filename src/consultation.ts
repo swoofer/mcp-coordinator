@@ -22,6 +22,13 @@ export interface ResolutionEvent {
  * This is exactly the shape get_thread_updates hands back to the caller in
  * ThreadMessage.created_at.
  */
+/**
+ * How many action summaries per agent reach a caller that does not ask for a
+ * different number. Ten is enough to answer "what has this peer been doing"
+ * and small enough that several concerned peers still fit in a few kB.
+ */
+export const DEFAULT_ACTION_SUMMARY_LIMIT = 10;
+
 const TIMEZONE_LESS_TIMESTAMP = new RegExp(
   "^\\d{4}-\\d{2}-\\d{2}[ T]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?$",
 );
@@ -651,7 +658,21 @@ export class Consultation {
     return db.prepare("SELECT * FROM action_summaries WHERE id = ?").get(id) as ActionSummary;
   }
 
-  getActionSummaries(orgId: string, agentId: string, since?: string): ActionSummary[] {
+  /**
+   * Recent action summaries for one agent, newest first.
+   *
+   * #361: `limit` is not optional-with-no-default by accident. This query had
+   * no LIMIT and its only caller passed no `since`, so it returned every
+   * summary inside the 30-day retention window -- and the result travels into
+   * the `context` of every announce_work response, once per concerned peer.
+   * One peer with a month of activity made a single response 59 kB.
+   */
+  getActionSummaries(
+    orgId: string,
+    agentId: string,
+    since?: string,
+    limit = DEFAULT_ACTION_SUMMARY_LIMIT,
+  ): ActionSummary[] {
     const db = getDb();
     let sql = "SELECT * FROM action_summaries WHERE org_id = ? AND agent_id = ?";
     const params: unknown[] = [orgId, agentId];
@@ -667,7 +688,15 @@ export class Consultation {
       sql += " AND created_at > ?";
       params.push(normalizeSinceCursor(since));
     }
-    sql += " ORDER BY created_at DESC";
+    // DESC + LIMIT: the bound keeps the newest, which is the useful end.
+    //
+    // The rowid tiebreak is load-bearing, not decoration. created_at defaults
+    // to CURRENT_TIMESTAMP, which has one-second granularity, so a burst of
+    // summaries all carry the same value and ordering by it alone leaves them
+    // in insertion order -- oldest first. Adding a LIMIT on top of that would
+    // have bounded the size and kept precisely the wrong end.
+    sql += " ORDER BY created_at DESC, rowid DESC LIMIT ?";
+    params.push(limit);
     return db.prepare(sql).all(...params) as ActionSummary[];
   }
 
