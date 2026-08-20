@@ -4,8 +4,11 @@ import { getAuditQueue } from "../security/audit.js";
 import { getEncryptionStatus } from "../observability/encryption-status.js";
 
 export interface ReadinessOptions {
-  /** Set to true when the sweeper circuit-breaker (T28) has tripped open.
-   *  Phase 2 hardwires false until T28 lands; T28 will wire the real signal. */
+  /** Set to true when the sweeper circuit-breaker has tripped open.
+   *  Wired from Sweeper.metrics.circuitOpen in serve-http.ts. It was
+   *  hardwired false for as long as the comment here said T28 would wire it:
+   *  handleHealthReady was called with no options, so this probe answered
+   *  ok:true even with retention stopped for good. */
   sweeperCircuitOpen?: boolean;
   /** Hard cap on audit queue depth as % of capacity. Default 80. */
   auditDepthThresholdPercent?: number;
