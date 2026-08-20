@@ -570,7 +570,7 @@ See [`sdk/README.md`](./sdk/README.md) for the full API.
 
 ## Integration patterns
 
-- **Any MCP client** — connect to `http://localhost:3100/mcp` (HTTP/SSE) or stdio. The server speaks MCP 2024-11-05.
+- **Any MCP client** — connect to `http://localhost:3100/mcp` (HTTP/SSE), or run `mcp-coordinator stdio` for a client that only speaks stdio. The server speaks MCP 2024-11-05. stdio is a different topology, not just a different transport — no MQTT broker, one SQLite handle per client, nothing shared between them; see [`docs/clients.md`](./docs/clients.md#stdio).
 - **Custom orchestrator** — spawn agents that connect to the MQTT broker and register via the MCP `register_agent` tool. The orchestrator decides spawn count, lifecycle, and quota gating; the coordinator handles the protocol. See [essaim](https://github.com/swoofer/essaim) for a reference implementation, or write your own.
 - **Behavior catalog** — coordinator-aware agent behaviors (announce-before-write, work-stealing, conflict resolution) are YAML configs assembled by [@swoofer/promptweave](https://github.com/swoofer/promptweave). See [essaim's behaviors](https://github.com/swoofer/essaim/tree/main/behaviors) for a curated catalog.
 

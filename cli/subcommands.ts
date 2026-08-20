@@ -21,6 +21,7 @@ import type { Command } from "commander";
 export const SUBCOMMANDS: Record<string, () => Promise<Command>> = {
   init: async () => (await import("./init.js")).createInitCommand(),
   server: async () => (await import("./server/index.js")).createServerProgram(),
+  stdio: async () => (await import("./stdio.js")).createStdioCommand(),
   channel: async () => (await import("./channel.js")).createChannelCommand(),
   dashboard: async () => (await import("./dashboard.js")).createDashboardCommand(),
   doctor: async () => (await import("./doctor.js")).createDoctorCommand(),

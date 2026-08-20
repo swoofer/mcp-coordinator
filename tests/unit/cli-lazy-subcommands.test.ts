@@ -71,7 +71,7 @@ describe("the lazy map matches what the commands call themselves (#278)", () => 
   // Nine, not the eleven the issue says — cli/index.ts had nine imports and
   // nine addCommand calls. Counting the nested `server` and `encryption`
   // sub-subcommands separately is presumably where eleven came from.
-  it("covers all nine the CLI used to import eagerly", () => {
+  it("covers the nine the CLI used to import eagerly, plus stdio (#277)", () => {
     expect(Object.keys(SUBCOMMANDS).sort()).toEqual([
       "channel",
       "dashboard",
@@ -81,6 +81,7 @@ describe("the lazy map matches what the commands call themselves (#278)", () => 
       "rotate-jwt-secret",
       "server",
       "service-token",
+      "stdio",
       "uninstall",
     ]);
   });

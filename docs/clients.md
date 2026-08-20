@@ -52,22 +52,33 @@ instead — `mcp-coordinator init --url https://coordinator.example.com/mcp`.
 
 ### stdio
 
-Some clients only speak stdio. The coordinator ships a stdio server, but there
-is **no CLI subcommand for it** — you invoke the shipped file directly:
+Some clients only speak stdio. Name the subcommand:
 
 ```json
 {
   "mcpServers": {
     "coordinator": {
-      "command": "node",
-      "args": ["<install-path>/dist/src/index.js"],
-      "env": { "COORDINATOR_DATA_DIR": "/absolute/path/to/data" }
+      "command": "mcp-coordinator",
+      "args": ["stdio", "--data-dir", "/absolute/path/to/data"]
     }
   }
 }
 ```
 
-Find `<install-path>` with `npm root -g` (append `/mcp-coordinator`).
+`--data-dir` is optional and falls back to `COORDINATOR_DATA_DIR`, then to a
+cwd-relative `./data` — which is unpredictable for a server your client spawns
+from an arbitrary directory, so set one of the two.
+
+Until #277 there was no subcommand and this document told you to point at the
+shipped file directly:
+
+```json
+{ "command": "node", "args": ["<npm root -g>/mcp-coordinator/dist/src/index.js"] }
+```
+
+That still works — it is the same server — but it breaks on reinstall to a
+different prefix and differs between global, local and npx installs. Prefer the
+subcommand.
 
 Two things to know before choosing stdio:
 
@@ -185,8 +196,9 @@ client happened to spawn it from, and logs a warning. Two clients started from
 different directories then coordinate against two different databases and never
 see each other.
 
-The CLI (`mcp-coordinator server start`) already uses a stable location; set the
-variable explicitly for any stdio config.
+The CLI (`mcp-coordinator server start`) already uses a stable location. For a
+stdio config, pass `--data-dir` or set the variable — either one, but not
+neither.
 
 ## Verify it worked
 
