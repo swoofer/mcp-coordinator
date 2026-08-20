@@ -35,7 +35,13 @@ interface ReadinessChecks {
     optional: true;
     error?: string;
   };
-  git_cochange: { available: boolean; status: string; optional: true };
+  git_cochange: {
+    available: boolean;
+    status: string;
+    last_error: string | null;
+    scheduler_circuit_open: boolean;
+    optional: true;
+  };
 }
 
 const VERSION = getVersion();
@@ -73,7 +79,13 @@ export function handleReadyz(
     db: { ok: false },
     mqtt: { ok: false },
     tree_sitter: { ok: false, grammars_loaded: 0, total_grammars: 7, optional: true },
-    git_cochange: { available: false, status: "unavailable", optional: true },
+    git_cochange: {
+      available: false,
+      status: "unavailable",
+      last_error: null,
+      scheduler_circuit_open: false,
+      optional: true,
+    },
   };
 
   try {
@@ -107,16 +119,27 @@ export function handleReadyz(
 
   // Optional: git_cochange availability (does NOT gate readiness — Layer 4 degrades gracefully)
   try {
-    const row = getDb()
-      .prepare("SELECT v FROM git_cochange_meta WHERE org_id = ? AND k = ?")
-      .get("default", "available") as { v: string } | undefined;
+    // #368: last_error was written on every failure path and read by nobody.
+    // It is the only place the *reason* survives -- `status` says the layer is
+    // down, this says why -- so it is reported next to it rather than deleted.
+    const rows = getDb()
+      .prepare(
+        "SELECT k, v FROM git_cochange_meta WHERE org_id = ? AND k IN ('available', 'last_error')",
+      )
+      .all("default") as Array<{ k: string; v: string }>;
+    const meta = new Map(rows.map((r) => [r.k, r.v]));
+    const available = meta.get("available");
     checks.git_cochange = {
-      available: row?.v === "true",
-      status: row?.v ?? "unavailable",
+      available: available === "true",
+      status: available ?? "unavailable",
+      // A stale error from before the last successful build would read as a
+      // live fault, so it is only reported while the layer is actually down.
+      last_error: available === "true" ? null : (meta.get("last_error") ?? null),
+      scheduler_circuit_open: services.gitCochange?.isSchedulerCircuitOpen() ?? false,
       optional: true,
     };
   } catch {
-    // keep default { available: false, status: "unavailable", optional: true }
+    // keep the default: unavailable, no reason known
   }
 
   // Gating: only db + mqtt block readiness. tree_sitter and git_cochange are reported but optional.

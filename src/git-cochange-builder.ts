@@ -23,6 +23,11 @@ const DEFAULT_DENYLIST = [
   /\.snap$/,
 ];
 
+// Same number the sweeper uses (src/sweeper/index.ts CIRCUIT_BREAK_THRESHOLD).
+// Same class of problem -- a periodic task whose backing store has gone away --
+// so an operator who has learned one threshold has learned both.
+const SCHEDULER_CIRCUIT_BREAK_THRESHOLD = 5;
+
 interface BuilderOpts {
   repoRoot: string;
   sinceDays?: number;
@@ -44,6 +49,8 @@ export class GitCochangeBuilder {
   private log: Logger;
   private metrics?: Metrics;
   private timer: ReturnType<typeof setTimeout> | null = null;
+  private schedulerFailures = 0;
+  private schedulerCircuitOpen = false;
 
   constructor(opts: BuilderOpts) {
     this.repoRoot = opts.repoRoot;
@@ -296,12 +303,21 @@ export class GitCochangeBuilder {
 
   /** Schedule a refresh loop. unref() so it doesn't keep the loop alive. */
   startScheduler(orgId: string): void {
+    this.schedulerFailures = 0;
+    this.schedulerCircuitOpen = false;
+    this.metrics?.gitCochangeSchedulerCircuitOpen.set(0);
+
     const tick = async () => {
       try {
         await this.build(orgId);
+        this.schedulerFailures = 0;
         this.timer = setTimeout(tick, this.refreshMs);
       } catch (err) {
-        this.log.warn({ err }, "build failed, retrying");
+        this.recordSchedulerFailure(orgId, err);
+        if (this.schedulerCircuitOpen) {
+          this.timer = null;
+          return;
+        }
         this.timer = setTimeout(tick, this.retryMs);
       }
       if (this.timer && typeof this.timer.unref === "function") this.timer.unref();
@@ -309,6 +325,60 @@ export class GitCochangeBuilder {
     // First build after 5s grace
     this.timer = setTimeout(tick, 5000);
     if (this.timer && typeof this.timer.unref === "function") this.timer.unref();
+  }
+
+  /**
+   * build() instruments every failure it catches itself -- a missing .git, a
+   * shallow clone, a git log that fails or times out all get a counter, a
+   * meta row and a log line. So the only errors that reach the scheduler are
+   * the ones build() does *not* catch: getDb() and the SQLite writes.
+   *
+   * Those are the severe end of the range, and until #368 they were the only
+   * ones with no counter, no meta row and no bound on how long the loop would
+   * keep retrying -- one warn line every retryMs (5 min by default), forever.
+   */
+  private recordSchedulerFailure(orgId: string, err: unknown): void {
+    this.schedulerFailures++;
+    this.metrics?.gitCochangeBuilds.inc({ outcome: "scheduler_error" });
+    this.metrics?.gitCochangeSchedulerFailures.inc();
+
+    // The likeliest way to land here is the database being unreachable, which
+    // is also what persisting the reason needs. Recording the failure must
+    // never become a second failure.
+    try {
+      const stmt = getDb().prepare(
+        "INSERT OR REPLACE INTO git_cochange_meta (org_id, k, v) VALUES (?, ?, ?)",
+      );
+      stmt.run(orgId, "available", "false");
+      stmt.run(orgId, "last_error", String((err as Error)?.message ?? err));
+    } catch (metaErr) {
+      this.log.warn({ err: metaErr }, "could not persist git_cochange scheduler failure");
+    }
+
+    if (this.schedulerFailures >= SCHEDULER_CIRCUIT_BREAK_THRESHOLD) {
+      this.schedulerCircuitOpen = true;
+      this.metrics?.gitCochangeSchedulerCircuitOpen.set(1);
+      this.log.error(
+        { err, consecutive_failures: this.schedulerFailures },
+        "git_cochange refresh loop stopped: circuit breaker open. Layer 4 stays at its last built state; restart the coordinator once the database is reachable.",
+      );
+      return;
+    }
+
+    this.log.warn(
+      { err, consecutive_failures: this.schedulerFailures },
+      "git_cochange build failed, retrying",
+    );
+  }
+
+  /** Consecutive scheduler failures; 0 after any successful build. */
+  getSchedulerFailureCount(): number {
+    return this.schedulerFailures;
+  }
+
+  /** True once the refresh loop has given up. Surfaced on /health/ready. */
+  isSchedulerCircuitOpen(): boolean {
+    return this.schedulerCircuitOpen;
   }
 
   stopScheduler(): void {
