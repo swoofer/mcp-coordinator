@@ -14,12 +14,15 @@ row in the middle breaks the next row's `prev_hash` linkage. The
 `scripts/verify-audit-chain.ts` script walks the chain and reports
 every break it finds.
 
-> **The script is not in the published package.** `package.json`'s `files`
-> ships `dist/src/`, `dist/cli/`, `dashboard/`, LICENSE and README; the
-> Dockerfile copies the same set. `scripts/` is in neither, so only someone
-> who cloned the repository has this tool. Every command below assumes a
-> checkout. Tracked in
-> [#348](https://github.com/swoofer/mcp-coordinator/issues/348).
+> **Two invocations, depending on where you are.** From an npm or Docker
+> install the compiled script is at `dist/scripts/verify-audit-chain.js` and
+> runs on plain `node` — no `tsx`, no devDependencies. From a repository
+> checkout you can run the TypeScript source directly with `tsx`. Both are
+> shown below; they are the same program.
+>
+> Until #348 the script shipped **nowhere** — `package.json`'s `files` and the
+> Dockerfile both omitted `scripts/`, so the cron this runbook sets up named a
+> file only a repo cloner had.
 
 What this gives you:
 
@@ -54,16 +57,20 @@ What this does **not** give you on its own:
 
 ## Running the verifier
 
+From an npm or Docker install:
+
 ```sh
 # Human-readable output (default DB path = data/coordinator.db)
-tsx scripts/verify-audit-chain.ts
+node dist/scripts/verify-audit-chain.js
 
 # Custom DB path
-tsx scripts/verify-audit-chain.ts --db /var/lib/coordinator/coordinator.db
+node dist/scripts/verify-audit-chain.js --db /var/lib/coordinator/coordinator.db
 
 # JSON output for piping into a monitoring system
-tsx scripts/verify-audit-chain.ts --json
+node dist/scripts/verify-audit-chain.js --json
 ```
+
+From a repository checkout, the same three with `tsx scripts/verify-audit-chain.ts`.
 
 Exit codes:
 
@@ -117,7 +124,7 @@ record the tip externally on a schedule:
 1. Run the verifier in JSON mode and record `report.tip_row_hash`:
 
    ```sh
-   tsx scripts/verify-audit-chain.ts --json > /var/log/audit-tip-$(date -Iseconds).json
+   node dist/scripts/verify-audit-chain.js --json > /var/log/audit-tip-$(date -Iseconds).json
    ```
 
 2. Sign the recorded value (e.g., with `gpg --detach-sign`) and

@@ -41,6 +41,7 @@
   "files": [
     "dist/src/",
     "dist/cli/",
+    "dist/scripts/",
     "dashboard/",
     "LICENSE",
     "README.md"
