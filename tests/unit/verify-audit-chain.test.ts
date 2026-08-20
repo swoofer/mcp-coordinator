@@ -216,10 +216,10 @@ describe("verify-audit-chain script", () => {
     expect(report.ok).toBe(true);
   });
 
-  it("middle-deletion -> exit 1 (id_gap + wrong_prev_hash)", () => {
-    // #348: this comment used to say "the retention sweeper never deletes
-    // middle rows -- it deletes by age, oldest first. A middle gap is an
-    // attacker signature." Both sentences are false.
+  it("middle-deletion -> exit 0, id_gap_before only", () => {
+    // #348, now fixed. This comment first said "the retention sweeper never
+    // deletes middle rows -- it deletes by age, oldest first. A middle gap is
+    // an attacker signature." Both sentences were false.
     //
     // The sweeper runs TWO deletes on audit_log with two different TTLs,
     // discriminated by `action IN (...)`: Tier 1 at 365 days, Tier 2 at 90.
@@ -228,22 +228,44 @@ describe("verify-audit-chain script", () => {
     // wrong_prev_hash findings on a healthy database.
     //
     // So a middle gap is NOT an attacker signature; past day 91 it is the
-    // ordinary shape of a swept database. This test still pins what the
-    // verifier does today, which is exit 1 -- see the suite below for what
-    // that means in practice.
+    // ordinary shape of a swept database. The verifier now treats the row
+    // after a gap as a new chain head -- the same tolerance it has always
+    // had for the FIRST row, whose prev_hash also points at something it
+    // cannot see.
+    //
+    // The gap is still reported, informationally. What is gone is the
+    // wrong_prev_hash that made a routine sweep look like tampering.
     const h1 = insertRow("event.a", GENESIS_HASH);
     const h2 = insertRow("event.b", h1);
     insertRow("event.c", h2);
     db.prepare("DELETE FROM audit_log WHERE id = 2").run();
 
     const result = runVerifier(["--db", dbPath, "--json"]);
-    expect(result.status).toBe(1);
+    expect(result.status).toBe(0);
     const report = JSON.parse(result.stdout);
-    expect(report.ok).toBe(false);
+    expect(report.ok).toBe(true);
     expect(report.findings.some((f: { reason: string }) => f.reason === "id_gap_before")).toBe(
       true,
     );
+    // The finding this fix removes.
     expect(report.findings.some((f: { reason: string }) => f.reason === "wrong_prev_hash")).toBe(
+      false,
+    );
+  });
+
+  it("content mutation after a gap is still caught", () => {
+    // The cost of tolerating the gap is bounded: wrong_row_hash checks a row
+    // against ITSELF, not against its predecessor, so editing a surviving
+    // row still fails even though the row before it was deleted.
+    const h1 = insertRow("event.a", GENESIS_HASH);
+    const h2 = insertRow("event.b", h1);
+    insertRow("event.c", h2, { tamperContent: true });
+    db.prepare("DELETE FROM audit_log WHERE id = 2").run();
+
+    const result = runVerifier(["--db", dbPath, "--json"]);
+    expect(result.status).toBe(1);
+    const report = JSON.parse(result.stdout);
+    expect(report.findings.some((f: { reason: string }) => f.reason === "wrong_row_hash")).toBe(
       true,
     );
   });
@@ -473,7 +495,7 @@ describe("verify-audit-chain script: keyed (HMAC) rows", () => {
 
 // ── #348: what the real sweeper actually leaves behind ──────────────────
 
-describe("the retention sweeper breaks the chain it is verified against (#348)", () => {
+describe("a swept chain verifies clean (#348)", () => {
   // Every other test in this file simulates a deletion by hand. This one
   // reproduces the SHAPE the production sweeper produces, using the real
   // tier lists, because the assumption the rest of the suite encoded — that
@@ -484,7 +506,7 @@ describe("the retention sweeper breaks the chain it is verified against (#348)",
   // Past day 91 a two-tier deployment has had its Tier 2 rows removed from
   // between its Tier 1 rows, which is a middle deletion however you look at
   // it.
-  it("alternating tiers, Tier 2 purged: the verifier reports tampering on a healthy DB", () => {
+  it("alternating tiers, Tier 2 purged: exit 0, gaps reported informationally", () => {
     const tier1 = TIER1_EVENTS[0];
     const tier2 = TIER2_EVENTS[0];
 
@@ -512,18 +534,40 @@ describe("the retention sweeper breaks the chain it is verified against (#348)",
       findings: Array<{ reason: string }>;
     };
 
-    // THIS IS THE BUG, pinned rather than fixed. docs/ops/audit-integrity.md
-    // calls exit 1 "a Tier 1 security signal" that "should page the on-call
-    // engineer immediately", on an hourly cron. Routine retention triggers it.
-    expect(swept.status).toBe(1);
-    expect(report.ok).toBe(false);
-    const wrongPrev = report.findings.filter((f) => f.reason === "wrong_prev_hash");
-    expect(wrongPrev.length).toBeGreaterThan(5);
+    // This assertion used to read `toBe(1)` with more than five
+    // wrong_prev_hash findings — the defect, pinned so it stayed visible.
+    // docs/ops/audit-integrity.md calls exit 1 "a Tier 1 security signal"
+    // that "should page the on-call engineer immediately", on an hourly
+    // cron, and routine retention triggered it.
+    expect(swept.status).toBe(0);
+    expect(report.ok).toBe(true);
+    expect(report.findings.filter((f) => f.reason === "wrong_prev_hash")).toHaveLength(0);
 
-    // When #348 is fixed, this test should flip to expecting 0 — whichever
-    // option is taken (tolerate the gap, or have the sweeper declare its
-    // purge in the chain). Leaving it asserting the broken behaviour keeps
-    // the defect visible and makes the fix show up as a diff here.
+    // The gaps are still reported. They are what a sweep genuinely leaves,
+    // and an operator correlating them with the sweeper's own counters is
+    // the intended use — they just no longer fail the run.
+    expect(report.findings.some((f) => f.reason === "id_gap_before")).toBe(true);
+  });
+
+  it("a forged row inside a swept chain is still caught", () => {
+    // The bound on what tolerating gaps costs. An attacker who edits a
+    // surviving row fails wrong_row_hash regardless of what was deleted
+    // around it, because that check hashes the row against itself.
+    const tier1 = TIER1_EVENTS[0];
+    const tier2 = TIER2_EVENTS[0];
+    let prev = GENESIS_HASH;
+    for (let i = 0; i < 20; i++) {
+      prev = insertRow(i % 2 === 0 ? tier1 : tier2, prev);
+    }
+    db.prepare("DELETE FROM audit_log WHERE action = ?").run(tier2);
+    db.prepare("UPDATE audit_log SET action = 'ATTACKER' WHERE id = 5").run();
+
+    const result = runVerifier(["--db", dbPath, "--json"], {
+      COORDINATOR_ENCRYPTION_KEY: RAW_MASTER_KEY,
+    });
+    expect(result.status).toBe(1);
+    const report = JSON.parse(result.stdout) as { findings: Array<{ reason: string }> };
+    expect(report.findings.some((f) => f.reason === "wrong_row_hash")).toBe(true);
   });
 
   it("a single-tier chain IS purged as a strict prefix — which is why this hid", () => {
