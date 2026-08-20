@@ -29,8 +29,11 @@
 //                               Phase 1 tables.
 //
 // Circuit-breaker: 5 consecutive errors halt the sweeper (stop()) and set
-// circuitOpen=true so T36 /health/ready can surface degraded state. Manual
-// reset via resetCircuit() (test helper / admin CLI to be wired later).
+// circuitOpen=true, which /health/ready reports and which the Prometheus
+// gauges below carry. The reason for the last failure is kept in
+// metrics.lastError — the catch used to discard it, so a stopped sweeper
+// said nothing about why. Manual reset via resetCircuit() (test helper /
+// admin CLI to be wired later).
 //
 // SIGTERM: drain() stops the interval and returns. SQLite is synchronous,
 // so by the time drain() is called the current pass has already completed.
@@ -64,6 +67,12 @@ import type Database from "better-sqlite3";
 import type { Clock } from "../auth/clock.js";
 import { getOrgSetting } from "../auth/org-settings.js";
 import { TIER1_EVENTS, TIER2_EVENTS } from "../security/audit-events.js";
+import {
+  sweeperCircuitOpen,
+  sweeperConsecutiveFailures,
+  sweeperLastRunTimestamp,
+  sweeperRowsDeletedTotal,
+} from "../observability/metrics.js";
 
 const SWEEP_INTERVAL_MS = 60_000;
 const BATCH_SIZE = 1000;
@@ -79,6 +88,8 @@ export interface SweeperMetrics {
   readonly consecutiveFailures: number;
   readonly circuitOpen: boolean;
   readonly totalRuns: number;
+  /** Why the last pass failed, or null when the last pass succeeded. */
+  readonly lastError: string | null;
 }
 
 export class Sweeper {
@@ -86,6 +97,9 @@ export class Sweeper {
   private _lastRunTimestamp: number | null = null;
   private _consecutiveFailures = 0;
   private _circuitOpen = false;
+  private _lastError: string | null = null;
+  /** Last value pushed to the rows-deleted Counter, per table. */
+  private _publishedRowsDeleted: Record<string, number> = {};
   private _totalRuns = 0;
   private _rowsDeletedByTable: Record<string, number> = {
     oauth_state: 0,
@@ -175,12 +189,48 @@ export class Sweeper {
       }
       this._lastRunTimestamp = this.clock.now();
       this._consecutiveFailures = 0;
+      this._lastError = null;
       this._totalRuns++;
-    } catch {
+    } catch (err) {
+      // This catch used to be bare — `catch {`. Five of these open the circuit
+      // and stop retention for good, and the operator was left with a stopped
+      // sweeper and no statement of why. Keeping the message is the difference
+      // between "retention is off" and "retention is off because audit_log has
+      // no row_hash column".
+      this._lastError = err instanceof Error ? err.message : String(err);
       this._consecutiveFailures++;
       if (this._consecutiveFailures >= CIRCUIT_BREAK_THRESHOLD) {
         this._circuitOpen = true;
         this.stop();
+      }
+    }
+    this.publishMetrics();
+  }
+
+  /**
+   * Push the in-memory counters onto the Prometheus registry.
+   *
+   * coordinator_sweeper_circuit_open, _consecutive_failures and
+   * _last_run_timestamp have existed in src/observability/metrics.ts since the
+   * day they were declared, and nothing ever set them: a scrape reported 0 for
+   * a circuit that had been open for a week. Same for the rows-deleted
+   * counter. There is an alert rule keyed on the first of them
+   * (docs/ops/alerts/coordinator-alerts.yaml, severity: page) that could
+   * therefore never fire.
+   */
+  private publishMetrics(): void {
+    sweeperCircuitOpen.set(this._circuitOpen ? 1 : 0);
+    sweeperConsecutiveFailures.set(this._consecutiveFailures);
+    if (this._lastRunTimestamp !== null) {
+      sweeperLastRunTimestamp.set(this._lastRunTimestamp);
+    }
+    for (const [table, count] of Object.entries(this._rowsDeletedByTable)) {
+      const previous = this._publishedRowsDeleted[table] ?? 0;
+      // _rowsDeletedByTable is cumulative; the Prometheus metric is a Counter,
+      // so only the delta may be added.
+      if (count > previous) {
+        sweeperRowsDeletedTotal.inc({ table }, count - previous);
+        this._publishedRowsDeleted[table] = count;
       }
     }
   }
@@ -335,6 +385,7 @@ export class Sweeper {
       consecutiveFailures: this._consecutiveFailures,
       circuitOpen: this._circuitOpen,
       totalRuns: this._totalRuns,
+      lastError: this._lastError,
     };
   }
 
@@ -342,5 +393,7 @@ export class Sweeper {
   resetCircuit(): void {
     this._circuitOpen = false;
     this._consecutiveFailures = 0;
+    this._lastError = null;
+    this.publishMetrics();
   }
 }

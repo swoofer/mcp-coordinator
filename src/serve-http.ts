@@ -503,6 +503,12 @@ export interface ServerHandle {
  */
 interface HttpHandlerCtx {
   phase2Bootstrap: Phase2Bootstrap | null;
+  /**
+   * The retention sweeper, so /health/ready can report whether its circuit
+   * breaker is open. handleHealthReady used to be called with no options at
+   * all, which made its sweeper probe answer ok:true unconditionally.
+   */
+  retentionSweeper: Sweeper;
   port: number;
   sessions: Map<string, NodeStreamableHTTPServerTransport>;
   sessionClaims: Map<string, AuthClaims>;
@@ -707,7 +713,9 @@ function createHttpHandler(
               // (Phase 1 dependency readiness), while /health/ready reports
               // db+audit_queue+sweeper+draining (Phase 2 auth-flow readiness) —
               // the exact shape sdk/src/types.ts::HealthReadyResponse documents.
-              await handleHealthReady(req, res);
+              await handleHealthReady(req, res, {
+                sweeperCircuitOpen: ctx.retentionSweeper.metrics.circuitOpen,
+              });
               services.metrics.recordHttpRequest("/health/ready", res.statusCode || 0);
             } else if (url === "/.well-known/oauth-authorization-server" && ctx.phase2Bootstrap) {
               // protocole-mcp-03: RFC 8414 discovery doc, gated on Phase 2 actually
@@ -1439,6 +1447,7 @@ async function startServerInner(opts?: ServerOptions): Promise<ServerHandle> {
 
   const handlerCtx: HttpHandlerCtx = {
     phase2Bootstrap,
+    retentionSweeper,
     port,
     sessions,
     sessionClaims,
