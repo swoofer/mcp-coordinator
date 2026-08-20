@@ -273,9 +273,21 @@ export function buildReplyPublish(input: {
  * rejected) without spinning up an MCP transport.
  */
 export const PostToThreadArgsSchema = z.object({
-  thread_id: z.string().min(1, "thread_id is required"),
-  content: z.string().min(1, "content is required"),
-  agent_id: z.string().min(1).optional(),
+  thread_id: z
+    .string()
+    .min(1, "thread_id is required")
+    .describe("Thread ID from the <channel> tag's thread_id attribute."),
+  content: z
+    .string()
+    .min(1, "content is required")
+    .describe("The message body to post into the thread."),
+  agent_id: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      "Optional override for the author attribution. Defaults to 'channel' so audit logs track channel-originated replies distinctly.",
+    ),
 });
 
 export type PostToThreadArgs = z.infer<typeof PostToThreadArgsSchema>;
@@ -286,34 +298,43 @@ const POST_TO_THREAD_TOOL_DESCRIPTION =
   "context, propose a resolution, or just acknowledge the thread.";
 
 /**
- * JSON Schema for `post_to_thread`'s `inputSchema`. Hand-written rather than
- * generated from `PostToThreadArgsSchema` because the SDK's `ListTools`
- * response wants a raw JSON Schema object, and the project's zod-v3 surface
- * doesn't ship a `toJSONSchema` helper. Kept tightly in sync with the zod
- * schema above — both list `thread_id` and `content` as required.
+ * JSON Schema for `post_to_thread`'s `inputSchema`, derived from
+ * `PostToThreadArgsSchema` so the published contract cannot drift from what
+ * the handler actually validates (#363).
+ *
+ * The hand-written copy this replaces had already drifted: it advertised no
+ * `minLength`, while the zod schema requires 1 on all three fields. A model
+ * reading tools/list could send `content: ""` and get an isError for a value
+ * the advertised contract called legal.
+ *
+ * Its comment claimed derivation was impossible because "the project's zod-v3
+ * surface doesn't ship a toJSONSchema helper". The project is on zod 4.4.3 and
+ * z.toJSONSchema exists; the justification outlived the constraint.
+ *
+ * Two shapes still have to be forced by hand, and neither is cosmetic:
+ *   - `type` must be the literal "object", not `string`, for the tools/list
+ *     result type. The object is deliberately NOT `as const` -- that made
+ *     `required` a readonly tuple, which the v2 result type rejects.
+ *   - `$schema` is emitted by z.toJSONSchema and does not belong in a
+ *     tools/list entry, so it is destructured away.
  */
+const { $schema: _jsonSchemaDialect, ...POST_TO_THREAD_JSON_SCHEMA } =
+  z.toJSONSchema(PostToThreadArgsSchema);
+
+// zod's own JSONSchema type is recursive and optional-heavy; it does not
+// structurally satisfy the SDK's tools/list result, which fails with TS2322 on
+// the whole handler. The SDK wants plain JSON values, so restate it as that.
+type JsonValue = string | number | boolean | null | JsonValue[] | { [k: string]: JsonValue };
+
+const derived = POST_TO_THREAD_JSON_SCHEMA as {
+  properties?: Record<string, JsonValue>;
+  required?: string[];
+};
+
 const POST_TO_THREAD_INPUT_SCHEMA = {
-  // `type` stays a literal because the tools/list result type demands
-  // exactly "object". The whole object is deliberately NOT `as const`:
-  // that made `required` a readonly tuple, which the v2 result type rejects
-  // (it wants a mutable string[]). Narrow only what has to be narrow.
   type: "object" as const,
-  properties: {
-    thread_id: {
-      type: "string",
-      description: "Thread ID from the <channel> tag's thread_id attribute.",
-    },
-    content: {
-      type: "string",
-      description: "The message body to post into the thread.",
-    },
-    agent_id: {
-      type: "string",
-      description:
-        "Optional override for the author attribution. Defaults to 'channel' so audit logs track channel-originated replies distinctly.",
-    },
-  },
-  required: ["thread_id", "content"],
+  properties: derived.properties ?? {},
+  required: derived.required ?? [],
   additionalProperties: false,
 };
 

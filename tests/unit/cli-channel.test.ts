@@ -331,13 +331,40 @@ describe("buildChannelServer — post_to_thread tool registration", () => {
         mcpReq: { id: 1, method: "tools/call", requestState: () => undefined },
       },
     )) as {
-      tools: Array<{ name: string; description: string; inputSchema: { required?: string[] } }>;
+      tools: Array<{
+        name: string;
+        description: string;
+        inputSchema: {
+          required?: string[];
+          additionalProperties?: boolean;
+          properties?: Record<string, { minLength?: number; description?: string }>;
+        };
+      }>;
     };
     expect(result.tools).toHaveLength(1);
     const tool = result.tools[0];
     expect(tool.name).toBe("post_to_thread");
     expect(tool.description).toMatch(/consultation_opened/);
     expect(tool.inputSchema.required).toEqual(["thread_id", "content"]);
+
+    // #363: the schema is derived from PostToThreadArgsSchema rather than
+    // hand-written, so what tools/list advertises cannot drift from what the
+    // handler validates. The hand-written copy had already lost minLength on
+    // all three fields: a model could read the contract, send content: "", and
+    // get an isError for a value the contract called legal.
+    for (const field of ["thread_id", "content", "agent_id"]) {
+      expect(tool.inputSchema.properties?.[field]?.minLength, field).toBe(1);
+    }
+
+    // Derivation only carries descriptions if the zod fields declare them.
+    // Without this, dropping a .describe() silently strips the tool's docs.
+    expect(tool.inputSchema.properties?.thread_id?.description).toMatch(/thread_id attribute/);
+    expect(tool.inputSchema.properties?.content?.description).toMatch(/message body/);
+
+    expect(tool.inputSchema.additionalProperties).toBe(false);
+    // $schema is emitted by z.toJSONSchema and has no place in a tools/list
+    // entry; it is destructured away rather than tolerated.
+    expect(tool.inputSchema).not.toHaveProperty("$schema");
   });
 
   it("publishes the right MQTT topic + payload when post_to_thread is called", async () => {
