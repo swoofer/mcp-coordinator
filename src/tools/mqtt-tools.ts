@@ -155,7 +155,21 @@ export function registerMqttTools(
       const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError(ctx.sessionId);
       if (!mqttBridge.isConnected()) return mqttNotConnectedResult();
-      mqttBridge.mqttPublish(claims.org, topic, payload);
+      // #330: hold the caller to its own identity on agent-status topics. A
+      // Phase 1 agent token is minted with the agent id as subject
+      // (auth.ts:99); anything else has no agent identity to enforce and stays
+      // unrestricted, as it was.
+      const callerAgentId = claims.role === "agent" ? claims.sub : undefined;
+      const published = mqttBridge.mqttPublish(claims.org, topic, payload, callerAgentId);
+      if (!published) {
+        throw new Error(
+          `Refused: ${topic} is another agent's status topic. Publishing "offline" there runs that ` +
+            `agent's departure — its threads are unclaimed, a consultation it was the last ` +
+            `respondent on can be force-resolved, and its working-file claims are cleared. ` +
+            `Publish your own status (coordinator/${claims.org}/agents/${claims.sub}/status), or ` +
+            `use broadcast / consultations/* to reach other agents.`,
+        );
+      }
       return { content: [{ type: "text", text: "published" }] };
     },
   );

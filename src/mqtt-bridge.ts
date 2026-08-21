@@ -1,4 +1,5 @@
 import mqtt from "mqtt";
+import { agentStatusTopicOwner } from "./mqtt-broker.js";
 import { silentLogger, type Logger } from "./logger.js";
 
 interface QueuedMessage {
@@ -463,7 +464,24 @@ export class MqttBridge {
     return messages;
   }
 
-  mqttPublish(orgId: string, topic: string, payload: string): void {
+  /**
+   * Publish on behalf of an MCP caller.
+   *
+   * `callerAgentId` is the identity to hold the caller to (#330). The broker's
+   * own ACL cannot do it here: this publish goes out over the INTERNAL bridge
+   * connection, which is exempt from the per-org check by design so it can
+   * route every tenant. So an `mqtt_publish` call reaches the same topics a
+   * direct broker connection does, without ever presenting a token to the
+   * broker — the issue says as much, and it is why hardening the broker alone
+   * would not have closed anything.
+   *
+   * Undefined means the deployment has no agent identity to enforce (the
+   * anonymous default profile, where claims are synthetic). Unrestricted then,
+   * exactly as before — the same fail-open rule the tool scopes use.
+   *
+   * Returns false when the publish was refused.
+   */
+  mqttPublish(orgId: string, topic: string, payload: string, callerAgentId?: string): boolean {
     if (this.client && this.connected) {
       // Task 22: force every outbound topic into the caller's org namespace. An
       // unscoped topic is prefixed with the caller's org; a topic already scoped
@@ -489,10 +507,27 @@ export class MqttBridge {
       if (!routable) {
         this.recordDrop("unroutable_topic", scopedTopic, { org: orgId });
       }
+
+      // #330: the same rule the broker ACL applies to a direct connection. An
+      // `offline` payload on another agent's status topic runs that agent's
+      // departure — unclaiming its threads, possibly force-resolving a
+      // consultation, clearing its file claims — so it is the one topic here
+      // that is destructive rather than informational.
+      const owner = agentStatusTopicOwner(scopedTopic, orgId);
+      if (callerAgentId !== undefined && owner !== null && owner !== callerAgentId) {
+        this.log.warn(
+          { org: orgId, topic: scopedTopic, claimed_agent: owner, actual: callerAgentId },
+          "mqtt_publish denied: agent status belongs to another identity (#330)",
+        );
+        this.recordDrop("foreign_agent_status", scopedTopic, { org: orgId });
+        return false;
+      }
+
       // QoS 1 to match the other coordination publishers: at-least-once, so a
       // reconnecting subscriber does not miss the event outright.
       this.client.publish(scopedTopic, payload, { qos: 1 });
     }
+    return true;
   }
 
   async disconnect(): Promise<void> {

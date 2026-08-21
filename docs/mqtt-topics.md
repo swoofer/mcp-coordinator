@@ -118,12 +118,33 @@ not make the bus authoritative about who said what. Three limits, all
 measured, all worth knowing before you build a policy on top of this bus
 (see [#330](https://github.com/swoofer/mcp-coordinator/issues/330)):
 
-**1. The ACL is per-org, not per-identity.** `authorizePublish` exempts the
-internal bridge role, then checks `topic.startsWith("coordinator/<org>/")` and
-nothing else. There is no per-topic rule and no per-client rule. Since the
-coordinator publishes everything under the single hardcoded org `default`,
-**any authenticated agent can publish any message on behalf of any other**.
-Only cross-org is blocked.
+**1. The ACL is per-org, except on agent-status topics.** `authorizePublish`
+exempts the internal bridge role, then checks
+`topic.startsWith("coordinator/<org>/")`. Since the coordinator publishes
+everything under the single hardcoded org `default`, **any authenticated agent
+can publish any message on behalf of any other** — on consultation and
+broadcast topics, which is what fan-out means and is not going to change.
+
+> **One exception, and it is the one that mattered.**
+> `coordinator/<org>/agents/<id>/status` is now restricted to the agent the
+> token was minted for. It is the only topic here that is destructive rather
+> than informational: an `offline` payload runs that agent's departure —
+> unclaiming its threads, possibly force-resolving a consultation it was the
+> last respondent on, and clearing its working-file claims.
+>
+> The identity was never missing. A Phase 1 agent token is minted with
+> `.setSubject(agentId)` (`src/auth.ts:99`), and the MQTT verifier had the whole
+> claims object in hand — it forwarded `org` and `role` and dropped `sub`.
+>
+> `mqtt_publish` enforces the same rule, because it has to: that call goes out
+> over the internal bridge connection, which is ACL-exempt by design so it can
+> route every tenant. Hardening the broker alone would have left an identical
+> hole reachable over HTTP.
+>
+> **This only binds callers that HAVE an identity.** In the anonymous default
+> profile there is no token and nothing to check, so the exception buys you
+> nothing until `COORDINATOR_AUTH_ENABLED` is on. That is the point: enabling
+> auth now buys something it did not before.
 
 **2. A status message is a destructive operation.** Publishing
 `{status:"offline"}` on `coordinator/<org>/agents/<id>/status` marks that agent

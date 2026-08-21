@@ -78,7 +78,7 @@ describe("protocole-mcp-06: MQTT tools when the bridge is not connected (e.g. st
   function makeDisconnectedBridge() {
     return {
       isConnected: () => false,
-      mqttPublish: vi.fn(),
+      mqttPublish: vi.fn(() => true),
       waitForMessage: vi.fn(async () => null),
       getQueuedMessages: vi.fn(() => []),
     };
@@ -123,7 +123,7 @@ describe("protocole-mcp-06: MQTT tools when the bridge IS connected — nominal 
   function makeConnectedBridge() {
     return {
       isConnected: () => true,
-      mqttPublish: vi.fn(),
+      mqttPublish: vi.fn(() => true),
       waitForMessage: vi.fn(async () => ({
         topic: "coordinator/default/broadcast",
         payload: { hi: true },
@@ -142,7 +142,32 @@ describe("protocole-mcp-06: MQTT tools when the bridge IS connected — nominal 
     const result = await callTool(server, "mqtt_publish", { topic: "t", payload: "p" });
     expect(result.isError).toBeFalsy();
     expect(result.content[0].text).toBe("published");
-    expect(bridge.mqttPublish).toHaveBeenCalledWith("org-1", "t", "p");
+    // #330: the caller identity is threaded so the bridge can hold an agent to
+    // its own status topic. Synthetic/non-agent claims carry none, and stay
+    // unrestricted.
+    expect(bridge.mqttPublish).toHaveBeenCalledWith("org-1", "t", "p", "agent-1");
+  });
+
+  it("mqtt_publish refuses another agent status topic, with the reason (#330)", async () => {
+    // The bridge answers false; the tool must turn that into an error the
+    // caller can act on, not a silent "published".
+    const bridge = makeConnectedBridge();
+    bridge.mqttPublish = vi.fn(() => false);
+    const server = makeServer(bridge);
+    const thrown = await callTool(server, "mqtt_publish", {
+      topic: "coordinator/org-1/agents/victim/status",
+      payload: JSON.stringify({ status: "offline" }),
+    }).then(
+      () => null,
+      (e: Error) => e,
+    );
+    // It THROWS, like the sibling refusals on these tools (missing claims,
+    // insufficient scope) rather than answering "published" with a flag the
+    // caller has to remember to read.
+    expect(thrown).toBeInstanceOf(Error);
+    expect(thrown!.message).toMatch(/another agent.s status topic/i);
+    // and it names what the caller MAY do instead
+    expect(thrown!.message).toContain("coordinator/org-1/agents/agent-1/status");
   });
 
   it("wait_for_message resolves with the message, no isError", async () => {
@@ -164,7 +189,7 @@ describe("protocole-mcp-06: MQTT tools when the bridge IS connected — nominal 
   it("wait_for_message reports { timeout: true } (not isError) when the bridge itself times out", async () => {
     const bridge = {
       isConnected: () => true,
-      mqttPublish: vi.fn(),
+      mqttPublish: vi.fn(() => true),
       waitForMessage: vi.fn(async () => null),
       getQueuedMessages: vi.fn(() => []),
     };

@@ -23,7 +23,7 @@ import { silentLogger } from "../../src/logger.js";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 
-type HookClient = { id?: string; org?: string; role?: string };
+type HookClient = { id?: string; org?: string; role?: string; agentId?: string };
 
 /** Run the publish hook and report whether it allowed the topic. */
 function publishAllowed(client: HookClient, topic: string): boolean {
@@ -38,14 +38,25 @@ function publishAllowed(client: HookClient, topic: string): boolean {
   return allowed;
 }
 
-describe("the publish ACL is per-org, not per-identity (#330)", () => {
-  const alice: HookClient = { id: "alice", org: "default", role: "agent" };
+describe("the publish ACL is per-org, and per-identity on status topics (#330)", () => {
+  const alice: HookClient = { id: "alice", org: "default", role: "agent", agentId: "alice" };
 
-  it("lets one agent publish on another agent's status topic", () => {
-    // This is the documented limitation, stated as a test so it cannot become
-    // false without someone noticing. `authorizePublish` matches an org prefix
-    // and nothing finer, and every coordinator topic lives under `default`.
-    expect(publishAllowed(alice, "coordinator/default/agents/bob/status")).toBe(true);
+  it("refuses one agent publishing on another agent's status topic", () => {
+    // INVERTED, not deleted. This asserted the documented limitation — "lets
+    // one agent publish on another agent's status topic" — precisely so it
+    // could not become false without someone noticing. Someone noticed: the
+    // ACL now checks the agent id the token was minted with, and this is the
+    // topic where the limitation actually cost something, because an `offline`
+    // payload here runs the named agent's departure.
+    expect(publishAllowed(alice, "coordinator/default/agents/bob/status")).toBe(false);
+    expect(publishAllowed(alice, "coordinator/default/agents/alice/status")).toBe(true);
+  });
+
+  it("but the rest of the org's topics are still shared, by design", () => {
+    // The limitation is real everywhere else and stays stated: consultation
+    // and broadcast traffic fans out to the whole org on purpose.
+    expect(publishAllowed(alice, "coordinator/default/broadcast")).toBe(true);
+    expect(publishAllowed(alice, "coordinator/default/consultations/bob-thread")).toBe(true);
   });
 
   it("still blocks cross-org", () => {

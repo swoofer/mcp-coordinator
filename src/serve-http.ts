@@ -998,7 +998,21 @@ async function wireMqtt(opts: MqttWiring): Promise<{
                     // Thread the role through so mqtt-broker.ts's ACL hooks can
                     // recognize and exempt the internal bridge (role "internal",
                     // minted below) from the org-prefix check.
-                    return { ok: true as const, org: claims.org, role: claims.role };
+                    //
+                    // #330: and thread the subject. A Phase 1 agent token is
+                    // minted with `.setSubject(agentId)` (auth.ts:99), so this
+                    // IS the agent id — available here all along and dropped,
+                    // which is why the org prefix was the entire ACL and any
+                    // authenticated client could speak for any other agent.
+                    // Only agent tokens carry one; anything else leaves it
+                    // undefined and the ACL refuses status topics rather than
+                    // waving them through.
+                    return {
+                      ok: true as const,
+                      org: claims.org,
+                      role: claims.role,
+                      agentId: claims.role === "agent" ? claims.sub : undefined,
+                    };
                   } catch {
                     return { ok: false };
                   }
