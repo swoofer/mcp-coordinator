@@ -1,4 +1,5 @@
 import { Aedes, type Client } from "aedes";
+import { isAllowedOrigin } from "./http/origin.js";
 import { createServer as createTcpServer } from "net";
 import type { Server as HttpServer, IncomingMessage } from "http";
 import { Duplex } from "stream";
@@ -375,6 +376,26 @@ export async function startEmbeddedMqttBroker(
     httpServer.on("upgrade", (req: IncomingMessage, socket, head) => {
       const url = req.url || "";
       if (url === wsPath || url.startsWith(`${wsPath}?`)) {
+        // issue #330: this leg rides the HTTP server, so it follows
+        // COORDINATOR_BIND while the TCP leg stays pinned to loopback. It used
+        // to gate on the path and nothing else, which made a page on any origin
+        // able to open an MQTT connection through the visitor's browser.
+        //
+        // The SAME check the /mcp handler already applies, and deliberately the
+        // same helper: `isAllowedOrigin` returns true for a MISSING Origin
+        // header, so every non-browser MQTT client — mqtt.js in Node, the
+        // channel sidecar, mosquitto_sub — is unaffected. Only a browser, which
+        // always sends Origin, can be refused.
+        //
+        // This is not the LAN fix. A non-browser client on the LAN still
+        // connects; that needs broker authentication, which the issue tracks
+        // separately. What closes here is the browser-as-proxy vector.
+        if (!isAllowedOrigin(req.headers.origin, process.env.COORDINATOR_PUBLIC_URL)) {
+          logger.warn({ origin: req.headers.origin }, "MQTT WS upgrade denied (origin)");
+          socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
+          socket.destroy();
+          return;
+        }
         wss.handleUpgrade(req, socket, head, (ws) => wss.emit("connection", ws, req));
       }
     });

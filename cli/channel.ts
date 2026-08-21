@@ -493,10 +493,32 @@ export function buildChannelServer(opts: {
   });
 
   // Three topic patterns from the spec / issue #130.
+  //
+  // issue #330: the org segment was a `+` wildcard unconditionally, and the
+  // broker's authorizeSubscribe hook tests `startsWith("coordinator/<org>/")`
+  // — which a `+` never satisfies. So the moment MQTT auth was enabled all
+  // three subscriptions were refused and this sidecar went deaf SILENTLY: a
+  // subscribe refusal is `cb(null, null)`, not an error, so the callback below
+  // sees no `err` and reports ready.
+  //
+  // So: when an org is EXPLICITLY configured, name it — that subscription the
+  // ACL grants. Without one, keep the wildcard.
+  //
+  // Note this reads the RAW `opts.org`, not the `org` binding above, which is
+  // `opts.org ?? "default"`. Using the defaulted value looked tidier and was
+  // wrong: it silently pinned an unconfigured channel to `default` and killed
+  // the cross-org watch mode, which channel-smoke covers by publishing on
+  // `testorg` and `altorg`. "No org configured" and "org is default" are
+  // different states here and only the raw option tells them apart.
+  //
+  // The wildcard remains incompatible with MQTT auth, and that is not a bug to
+  // fix: watching every org IS a cross-org subscription, which is precisely
+  // what the ACL exists to refuse. Under auth, pass `--org`.
+  const orgSegment = opts.org ?? "+";
   const TOPICS = [
-    "coordinator/+/consultations/new",
-    "coordinator/+/consultations/+/messages",
-    "coordinator/+/agents/+/status",
+    `coordinator/${orgSegment}/consultations/new`,
+    `coordinator/${orgSegment}/consultations/+/messages`,
+    `coordinator/${orgSegment}/agents/+/status`,
   ];
 
   let readyResolve!: () => void;

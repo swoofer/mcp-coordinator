@@ -110,18 +110,40 @@ describe("the two broker legs are exposed differently (#330)", () => {
 
   it("the TCP leg is pinned to loopback and ignores COORDINATOR_BIND", () => {
     expect(BROKER).toContain('tcpServer.listen(tcpPort, "127.0.0.1"');
-    expect(BROKER).not.toContain("COORDINATOR_BIND");
+    // Scoped to the listen call rather than the whole file. The original
+    // assertion was `expect(BROKER).not.toContain("COORDINATOR_BIND")`, which a
+    // COMMENT explaining the loopback/COORDINATOR_BIND asymmetry was enough to
+    // break — the test was reading prose as behaviour. What it means to pin is
+    // that the bind address is a literal, so that is what it now checks.
+    const listen = BROKER.slice(BROKER.indexOf("tcpServer.listen("));
+    expect(listen.slice(0, listen.indexOf(")"))).not.toContain("COORDINATOR_BIND");
   });
 
-  it("the WebSocket upgrade handler gates on the path and nothing else", () => {
-    // It rides the HTTP server, so it follows COORDINATOR_BIND — no origin
-    // check, no credential check. That asymmetry is the reason the LAN recipe
-    // in docs/usage.md now carries a warning.
+  it("the WebSocket upgrade handler now checks the origin", () => {
+    // INVERTED, not deleted. This used to assert the handler gated on the path
+    // "and nothing else", with the message "update the docs" if a gate ever
+    // appeared — which is exactly what happened.
     const upgrade = BROKER.slice(BROKER.indexOf('httpServer.on("upgrade"'));
     const handler = upgrade.slice(0, upgrade.indexOf("logger.info"));
     expect(handler).toContain("wsPath");
-    for (const gate of ["origin", "Origin", "authorization", "Authorization"]) {
-      expect(handler, `upgrade handler now checks ${gate} — update the docs`).not.toContain(gate);
+    expect(handler).toContain("isAllowedOrigin");
+    expect(handler).toContain("403");
+  });
+
+  it("but still checks no credential, which is the LAN exposure", () => {
+    // The origin check stops a browser being used as the vector. It does
+    // nothing about a non-browser client on the LAN, because isAllowedOrigin
+    // returns true for a MISSING Origin header by design — that is what keeps
+    // mqtt.js, the channel sidecar and mosquitto_sub working.
+    //
+    // So the docs' LAN warning stands, and this assertion is what stops it
+    // being quietly outgrown.
+    const upgrade = BROKER.slice(BROKER.indexOf('httpServer.on("upgrade"'));
+    const handler = upgrade.slice(0, upgrade.indexOf("logger.info"));
+    for (const gate of ["authorization", "Authorization", "password", "token"]) {
+      expect(handler, `upgrade handler now checks ${gate} — update the LAN warning`).not.toContain(
+        gate,
+      );
     }
   });
 });
