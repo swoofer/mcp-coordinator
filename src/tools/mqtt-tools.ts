@@ -107,10 +107,22 @@ export function registerMqttTools(
     "get_queued_messages",
     {
       description:
-        "Drain queued MQTT messages without blocking. DESTRUCTIVE: messages are removed as they are returned, so a second call gets nothing and a crash mid-processing loses them. Nothing is buffered while no listener is registered, and the queue drops oldest-first when full. For delivery you can rely on, use get_thread_updates instead." +
+        "Drain queued MQTT messages without blocking. DESTRUCTIVE by default: messages are removed as they are returned, so a second call gets nothing and a crash mid-processing loses them. Pass require_ack:true to hold the batch instead — the result becomes {messages, batch_id}, and the next call redelivers that batch unless you hand the id back as ack. Nothing is buffered while no listener is registered, and the queue drops oldest-first when full. A coordinator restart still drops the queue either way; for delivery you can rely on, use get_thread_updates." +
         MQTT_AVAILABILITY_CAVEAT,
       inputSchema: z.object({
         agent_id: z.string().describe("ID of the agent whose queued messages to fetch."),
+        require_ack: z
+          .boolean()
+          .optional()
+          .describe(
+            "Hold this batch until it is acknowledged, and return {messages, batch_id} instead of a bare array. Once set for an agent it stays set, so every later unacknowledged batch is redelivered rather than dropped — set it on the FIRST call, while there is still nothing to lose.",
+          ),
+        ack: z
+          .string()
+          .optional()
+          .describe(
+            "The batch_id from your previous call, sent once you have durably handled that batch. Omit it and that batch comes back on this call.",
+          ),
       }),
       annotations: {
         readOnlyHint: false,
@@ -119,12 +131,20 @@ export function registerMqttTools(
         title: "Drain queued MQTT messages",
       },
     },
-    async ({ agent_id }, ctx) => {
+    async ({ agent_id, require_ack, ack }, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError(ctx.sessionId);
       if (!mqttBridge.isConnected()) return mqttNotConnectedResult();
-      const messages = mqttBridge.getQueuedMessages(claims.org, agent_id);
-      return { content: [{ type: "text", text: JSON.stringify(messages) }] };
+      const result = mqttBridge.getQueuedMessages(claims.org, agent_id, {
+        requireAck: require_ack,
+        ack,
+      });
+      // issue #236: the wire shape follows the opt-in. A caller that never
+      // asked for acks still gets the bare array it has always parsed —
+      // changing that for everyone would break every deployed consumer to fix
+      // a hazard only some of them have.
+      const body = require_ack ? result : result.messages;
+      return { content: [{ type: "text", text: JSON.stringify(body) }] };
     },
   );
 

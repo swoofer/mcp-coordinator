@@ -80,7 +80,7 @@ describe("protocole-mcp-06: MQTT tools when the bridge is not connected (e.g. st
       isConnected: () => false,
       mqttPublish: vi.fn(() => true),
       waitForMessage: vi.fn(async () => null),
-      getQueuedMessages: vi.fn(() => []),
+      getQueuedMessages: vi.fn(() => ({ messages: [], batch_id: null })),
     };
   }
 
@@ -129,7 +129,14 @@ describe("protocole-mcp-06: MQTT tools when the bridge IS connected — nominal 
         payload: { hi: true },
         timestamp: 123,
       })),
-      getQueuedMessages: vi.fn(() => [{ topic: "t", payload: { a: 1 }, timestamp: 1 }]),
+      // #236: the bridge now answers { messages, batch_id } so a batch can be
+      // held pending acknowledgement. A double still returning a bare array
+      // would let the tool ship reading .messages off an array — undefined.
+      getQueuedMessages: vi.fn(() => ({
+        messages: [{ topic: "t", payload: { a: 1 }, timestamp: 1 }],
+        batch_id: null as string | null,
+      })),
+      ackBatch: vi.fn(() => true),
       // #357: the real bridge reports how many messages are still queued;
       // a double that omits it no longer models the interface.
       queueDepth: vi.fn(() => 0),
@@ -191,7 +198,7 @@ describe("protocole-mcp-06: MQTT tools when the bridge IS connected — nominal 
       isConnected: () => true,
       mqttPublish: vi.fn(() => true),
       waitForMessage: vi.fn(async () => null),
-      getQueuedMessages: vi.fn(() => []),
+      getQueuedMessages: vi.fn(() => ({ messages: [], batch_id: null })),
     };
     const server = makeServer(bridge);
     const result = await callTool(server, "wait_for_message", { agent_id: "a1" });
@@ -207,7 +214,40 @@ describe("protocole-mcp-06: MQTT tools when the bridge IS connected — nominal 
     expect(JSON.parse(result.content[0].text)).toEqual([
       { topic: "t", payload: { a: 1 }, timestamp: 1 },
     ]);
-    expect(bridge.getQueuedMessages).toHaveBeenCalledWith("org-1", "a1");
+    // #236: a caller that did not ask for acks still gets the BARE ARRAY it
+    // has always parsed. The opt-in changes the wire shape; its absence must
+    // not, or every deployed consumer breaks to fix a hazard only some have.
+    expect(bridge.getQueuedMessages).toHaveBeenCalledWith("org-1", "a1", {
+      requireAck: undefined,
+      ack: undefined,
+    });
+  });
+
+  it("require_ack switches the result to { messages, batch_id } (#236)", async () => {
+    const bridge = makeConnectedBridge();
+    bridge.getQueuedMessages = vi.fn(() => ({
+      messages: [{ topic: "t", payload: { a: 1 }, timestamp: 1 }],
+      batch_id: "b-1",
+    }));
+    const server = makeServer(bridge);
+    const result = await callTool(server, "get_queued_messages", {
+      agent_id: "a1",
+      require_ack: true,
+    });
+    expect(JSON.parse(result.content[0].text)).toEqual({
+      messages: [{ topic: "t", payload: { a: 1 }, timestamp: 1 }],
+      batch_id: "b-1",
+    });
+  });
+
+  it("ack is forwarded to the bridge (#236)", async () => {
+    const bridge = makeConnectedBridge();
+    const server = makeServer(bridge);
+    await callTool(server, "get_queued_messages", { agent_id: "a1", ack: "b-1" });
+    expect(bridge.getQueuedMessages).toHaveBeenCalledWith("org-1", "a1", {
+      requireAck: undefined,
+      ack: "b-1",
+    });
   });
 });
 

@@ -1,4 +1,5 @@
 import mqtt from "mqtt";
+import { randomUUID } from "node:crypto";
 import { agentStatusTopicOwner } from "./mqtt-broker.js";
 import { silentLogger, type Logger } from "./logger.js";
 
@@ -11,6 +12,23 @@ interface QueuedMessage {
 interface AgentListener {
   queue: QueuedMessage[];
   waitResolve: ((msg: QueuedMessage | null) => void) | null;
+  /**
+   * issue #236: the batch handed out by the last `getQueuedMessages` and not
+   * yet acknowledged. At most one at a time — allowing several would let a
+   * requeue interleave an old batch with a newer one, and ordering is the only
+   * guarantee this queue still offers.
+   */
+  inFlight: { id: string; messages: QueuedMessage[] } | null;
+  /**
+   * Whether this consumer has opted into acknowledgement.
+   *
+   * Sticky, and it has to be: it is what lets one method keep two contracts. A
+   * consumer that never asked for acks has its in-flight batch DROPPED on the
+   * next drain, which is exactly today's behaviour. One that has asked gets it
+   * REQUEUED, which is the whole point — a pod killed mid-processing comes
+   * back and finds its messages still there.
+   */
+  ackMode: boolean;
 }
 
 /**
@@ -398,7 +416,7 @@ export class MqttBridge {
   registerListener(orgId: string, agentId: string): void {
     const inner = this.orgListeners(orgId);
     if (!inner.has(agentId)) {
-      inner.set(agentId, { queue: [], waitResolve: null });
+      inner.set(agentId, { queue: [], waitResolve: null, inFlight: null, ackMode: false });
     }
   }
 
@@ -428,7 +446,13 @@ export class MqttBridge {
    * with no listener has nothing queued, which is the honest answer.
    */
   queueDepth(orgId: string, agentId: string): number {
-    return this.listeners.get(orgId)?.get(agentId)?.queue.length ?? 0;
+    const listener = this.listeners.get(orgId)?.get(agentId);
+    if (!listener) return 0;
+    // issue #236: an unacknowledged batch is still owed to this agent, and for
+    // an ack-mode consumer it will be redelivered. Reporting only `queue`
+    // would show 0 for a consumer that is holding messages it has not
+    // confirmed — the opposite of what a depth check is asked for.
+    return listener.queue.length + (listener.inFlight?.messages.length ?? 0);
   }
 
   async waitForMessage(
@@ -456,12 +480,85 @@ export class MqttBridge {
     });
   }
 
-  getQueuedMessages(orgId: string, agentId: string): QueuedMessage[] {
+  /**
+   * Drain the queue (issue #236).
+   *
+   * This used to be copy-then-clear, and the copy left the process before
+   * anything confirmed it arrived: a consumer SIGKILLed between the drain and
+   * its own persistence — a k8s rollout, in the report that opened the issue —
+   * lost the batch with no trace. It also made the queue unobservable, since
+   * any monitoring peek stole the messages.
+   *
+   * Acknowledgement is opt-in, per consumer, because this method has a caller
+   * contract already in the field:
+   *
+   *  - `requireAck` absent: the batch is handed out and forgotten on the next
+   *    drain. Byte for byte what happened before.
+   *  - `requireAck: true`: the batch is held, and the NEXT drain requeues it at
+   *    the front unless `ack` names it. Redelivery rather than loss.
+   *
+   * Requeue is at the front, and only one batch is ever in flight, so a
+   * redelivered batch cannot appear after messages that were queued behind it.
+   *
+   * What this does NOT fix: the queue is still process memory, so a
+   * coordinator restart still drops everything, acknowledged or not. That is
+   * cause 1 of the issue and it needs a store, not a protocol.
+   */
+  getQueuedMessages(
+    orgId: string,
+    agentId: string,
+    opts: { requireAck?: boolean; ack?: string } = {},
+  ): { messages: QueuedMessage[]; batch_id: string | null } {
     this.registerListener(orgId, agentId);
     const listener = this.orgListeners(orgId).get(agentId)!;
+    if (opts.requireAck) listener.ackMode = true;
+
+    if (listener.inFlight) {
+      const settled = opts.ack !== undefined && opts.ack === listener.inFlight.id;
+      if (settled || !listener.ackMode) {
+        // Acknowledged, or a caller that never asked for acks: drop it, which
+        // is the pre-#236 behaviour.
+        listener.inFlight = null;
+      } else {
+        // Unacknowledged and the consumer asked to be held to it. Put the
+        // batch back at the head so ordering survives the round trip.
+        listener.queue.unshift(...listener.inFlight.messages);
+        listener.inFlight = null;
+        this.trimQueue(listener, `coordinator/${orgId}/agents/${agentId}`, orgId);
+      }
+    }
+
     const messages = [...listener.queue];
     listener.queue.length = 0;
-    return messages;
+    if (messages.length === 0) return { messages, batch_id: null };
+
+    if (!listener.ackMode) return { messages, batch_id: null };
+    const id = randomUUID();
+    listener.inFlight = { id, messages };
+    return { messages, batch_id: id };
+  }
+
+  /**
+   * Acknowledge a batch out of band (issue #236).
+   *
+   * Returns false for an id that is not the batch currently in flight —
+   * already acknowledged, already requeued, or simply wrong. The caller needs
+   * to tell "you are done" from "that is not the batch I am holding", because
+   * only the second means its next drain will see the messages again.
+   */
+  ackBatch(orgId: string, agentId: string, batchId: string): boolean {
+    const listener = this.listeners.get(orgId)?.get(agentId);
+    if (!listener?.inFlight || listener.inFlight.id !== batchId) return false;
+    listener.inFlight = null;
+    return true;
+  }
+
+  /** Enforce MAX_LISTENER_QUEUE after a requeue, dropping oldest first. */
+  private trimQueue(listener: AgentListener, topic: string, orgId: string): void {
+    while (listener.queue.length > MAX_LISTENER_QUEUE) {
+      listener.queue.shift();
+      this.recordDrop("queue_full", topic, { org: orgId, cap: MAX_LISTENER_QUEUE });
+    }
   }
 
   /**
