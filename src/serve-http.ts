@@ -1,4 +1,5 @@
 ﻿import { createServer, IncomingMessage, ServerResponse } from "http";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "crypto";
 import path from "path";
 import { readFileSync, existsSync } from "fs";
@@ -75,6 +76,49 @@ async function getDashboardDir(): Promise<string> {
     dir = path.dirname(dir);
   }
   throw new Error(`mcp-coordinator: could not locate dashboard/public/ from ${SERVER_FILE_DIR}`);
+}
+
+/**
+ * The claims of the request currently being handled (#325).
+ *
+ * Identity used to reach a tool handler ONLY through `sessionClaims`, a Map
+ * keyed by the `mcp-session-id` this process minted. Every one of the 26 tools
+ * opens with `getSessionClaims(ctx.sessionId ?? "")`, so anything that breaks
+ * the key breaks all of them at once, and there are two such things:
+ *
+ *  - Construct the transport with `sessionIdGenerator: undefined` — the SDK's
+ *    own stateless idiom — and `ctx.sessionId` is undefined on every call.
+ *    `getSessionClaims("")` misses and all 26 tools throw. Total outage from a
+ *    one-word change.
+ *  - Run a second instance and a request routed to it misses too, because the
+ *    id was minted in the other process.
+ *
+ * The claims themselves were never the scarce thing. Both branches of the /mcp
+ * dispatch call `authenticateMcpRequest` and hold verified claims in hand
+ * immediately before `handleRequest` — the Map was a delivery mechanism that
+ * happened to be keyed on something fragile. AsyncLocalStorage delivers the
+ * same value with no key at all.
+ *
+ * The Map stays as a fallback rather than being deleted, because it still
+ * answers for anything running outside a request: the SDK can invoke a handler
+ * from a server-initiated flow, and stdio has no HTTP request to scope.
+ *
+ * This does NOT make the coordinator multi-instance. Instance B can now
+ * authenticate the caller, but it still has no transport for that session —
+ * see docs/ops/single-instance-constraints.md §7.
+ */
+export const requestClaims = new AsyncLocalStorage<AuthClaims>();
+
+/**
+ * Identity for a tool call: this request's claims, else the session map.
+ *
+ * Exported so the order is testable rather than inlined at the one call site.
+ * The order is the whole decision — session-first would keep a stale entry
+ * winning over the claims just verified, which is the mid-session JWT rotation
+ * case Task 23.5 handles by overwriting the map on every request.
+ */
+export function resolveClaims(fromSession: AuthClaims | null | undefined): AuthClaims | null {
+  return requestClaims.getStore() ?? fromSession ?? null;
 }
 
 const PORT = parseInt(process.env.PORT || "3100");
@@ -796,7 +840,9 @@ function createHttpHandler(
                 // counts as activity — resets the idle clock so the sweeper leaves
                 // it alone.
                 ctx.sessionLastActivity.set(sessionId, Date.now());
-                await ctx.sessions.get(sessionId)!.handleRequest(req, res);
+                await requestClaims.run(claims, () =>
+                  ctx.sessions.get(sessionId)!.handleRequest(req, res),
+                );
               } else if (req.method === "POST" && !sessionId) {
                 // New-session branch — also gated.
                 const claims = await authenticateMcpRequest(req, res);
@@ -829,9 +875,11 @@ function createHttpHandler(
                   allowedOrigins: allowedOriginsForTransport,
                 });
                 // Task 23.5: pass a getter so tool handlers can look up per-session claims.
-                const mcpServer = createMcpServer(
-                  services,
-                  (sid) => ctx.sessionClaims.get(sid) ?? null,
+                // #325: the request-scoped store is consulted FIRST, and the session
+                // map is now the fallback rather than the only path. See the
+                // requestClaims comment at the top of this file.
+                const mcpServer = createMcpServer(services, (sid) =>
+                  resolveClaims(ctx.sessionClaims.get(sid)),
                 );
 
                 // performance-07 / protocole-mcp-07: set onclose BEFORE connect() so
@@ -855,7 +903,7 @@ function createHttpHandler(
                 };
                 await mcpServer.connect(transport);
 
-                await transport.handleRequest(req, res);
+                await requestClaims.run(claims, () => transport.handleRequest(req, res));
 
                 const sid = transport.sessionId;
                 if (sid) {
