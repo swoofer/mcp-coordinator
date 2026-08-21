@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.1](https://github.com/swoofer/mcp-coordinator/compare/v2.2.0...v2.2.1) (2026-08-21)
+
+
+### Bug Fixes
+
+* **mqtt:** check the origin on the WS upgrade, and let the channel name its org ([#330](https://github.com/swoofer/mcp-coordinator/issues/330)) ([#436](https://github.com/swoofer/mcp-coordinator/issues/436)) ([a7583c8](https://github.com/swoofer/mcp-coordinator/commit/a7583c846274b39b0cce83bd2e6490454719cfee))
+
 ## [2.2.0](https://github.com/swoofer/mcp-coordinator/compare/v2.1.0...v2.2.0) (2026-08-21)
 
 
