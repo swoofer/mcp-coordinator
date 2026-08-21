@@ -297,7 +297,7 @@ acting on it is the agents' job. See
 | Tool | Description |
 |------|-------------|
 | `wait_for_message` | Block until a coordination message arrives on the agent's topic |
-| `get_queued_messages` | Drain all queued messages without blocking |
+| `get_queued_messages` | Drain all queued messages without blocking; `require_ack` holds the batch until acknowledged |
 | `mqtt_publish` | Publish a message into your org's MQTT namespace |
 
 **MQTT here is best-effort push, not the record of truth.** Worth knowing before
@@ -305,8 +305,15 @@ you build on it:
 
 - Nothing is buffered for an agent with no live listener — a message that
   arrives before `wait_for_message`/`get_queued_messages` registers is gone.
-- `get_queued_messages` **drains**: the messages are removed as you read them,
-  so a second call returns nothing and a crash mid-processing loses them.
+- `get_queued_messages` **drains by default**: the messages are removed as you
+  read them, so a second call returns nothing and a crash mid-processing loses
+  them. Pass `require_ack: true` and the batch is held instead — you get a
+  `batch_id`, and the next call redelivers that batch unless you hand the id
+  back as `ack`. Set it on the FIRST call, while there is still nothing to
+  lose; once set for an agent it stays set. Only the opted-in call changes
+  shape, so existing consumers keep parsing the bare array (issue #236).
+- A coordinator **restart** still drops every queue, acknowledged or not. The
+  queues are process memory; that half of #236 needs a store, not a protocol.
 - Listener queues are capped and drop oldest-first under load.
 - `mqtt_publish` rewrites your topic into `coordinator/<your-org>/…`, and only
   `broadcast` and `consultations/*` reach other agents' listeners. Any other
