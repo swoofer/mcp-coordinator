@@ -22,12 +22,25 @@ workloads (Phase 4), multi-instance HA (Phase 5).
 
 One consequence of that first deferral is worth stating explicitly, because
 it is not the same as the self-asserted-identity caveat below. An agent
-impersonating another is a *confidentiality and attribution* problem. But a
-status message on `coordinator/<org>/agents/<id>/status` is a **destructive**
-operation: it marks the agent offline and deletes its `working_files` claims
--- the state the announce-before-you-write contract rests on. So a third
-party does not merely speak as another agent, it **destroys that agent's
-state**, and in the default profile it needs no credential to do it.
+impersonating another is a *confidentiality and attribution* problem. A status
+message on `coordinator/<org>/agents/<id>/status` used to be worse than that:
+it ran the departure path, which deletes the agent's `working_files` claims
+and -- the effect #330 did not know about until it was measured --
+**force-resolves** any open consultation the agent was the last expected
+respondent on. A third party did not merely speak as another agent, it
+destroyed that agent's state, with no credential in the default profile.
+
+That is now gated. The destructive half runs only when `agents.last_seen_at`
+-- stamped by the coordinator when a request arrives, never asserted by a
+payload -- shows the agent silent past `COORDINATOR_AGENT_ONLINE_TTL_SECONDS`.
+A message about a live agent updates presence and stops there, and presence is
+self-healing: the agent's next heartbeat restores it. The residual risk is a
+**denial-of-visibility** one, bounded by one heartbeat interval, rather than
+destruction of another agent's work.
+
+What this does NOT do is authenticate the publisher. The identity problem is
+untouched; the reach of getting it wrong is smaller. Nothing here changes the
+rule below that `agent_id` is a self-asserted handle.
 
 Enabling auth narrows this to org members rather than closing it: the publish
 ACL matches an org prefix and nothing finer, and every coordinator topic lives

@@ -1067,12 +1067,36 @@ async function wireMqtt(opts: MqttWiring): Promise<{
     // real org too (agents-tools registerAgent), so this topic carries the
     // correct org.
     const processDeparture = () => {
+      // issue #330: this topic is publishable by anyone the broker lets in,
+      // and in the default profile the broker is anonymous. Ask the
+      // coordinator's own record whether the agent has actually gone quiet
+      // BEFORE trusting the announcement, because setOffline stamps
+      // last_seen_at and would destroy the evidence.
+      const confirmed = services.registry.isStale(orgId, agentId);
+
       services.registry.setOffline(orgId, agentId);
-      services.consultation.handleAgentDeparture(orgId, agentId);
-      // Clear in-flight working_files AFTER consultation cleanup so any future
-      // consultation logic that might inspect working_files state for this agent
-      // sees the pre-cleanup view.
-      services.workingFiles.clearForAgent(orgId, agentId);
+
+      if (confirmed) {
+        services.consultation.handleAgentDeparture(orgId, agentId);
+        // Clear in-flight working_files AFTER consultation cleanup so any future
+        // consultation logic that might inspect working_files state for this agent
+        // sees the pre-cleanup view.
+        services.workingFiles.clearForAgent(orgId, agentId);
+      } else {
+        // Deferred, not skipped. Both cleanups have a time-driven path the
+        // coordinator runs itself: consultation.checkTimeouts() resolves open
+        // threads past timeout_seconds, and workingFiles.sweepExpired()
+        // deletes claims past claim_until every 60s. Waiting for those costs
+        // latency and bounds the delay at values the operator configured; the
+        // alternative is letting an unauthenticated message force-resolve a
+        // live agent's consultations, which nothing undoes.
+        services.logger.warn(
+          { org_id: orgId, agent_id: agentId },
+          "offline announced for an agent still within its online TTL -- presence updated, " +
+            "departure cleanup deferred to the timeout sweepers (#330)",
+        );
+        services.metrics.agentDepartureDeferred.inc({ org: orgId });
+      }
       services.sseEmitter.emit("agent_offline", { agent_id: agentId }, { org_id: orgId });
     };
     if (!redis) {

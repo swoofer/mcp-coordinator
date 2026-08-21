@@ -125,11 +125,30 @@ coordinator publishes everything under the single hardcoded org `default`,
 **any authenticated agent can publish any message on behalf of any other**.
 Only cross-org is blocked.
 
-**2. A status message is a destructive operation.** Publishing
+**2. A status message speaks for an agent it cannot prove it is.** Publishing
 `{status:"offline"}` on `coordinator/<org>/agents/<id>/status` marks that agent
-offline, runs its consultation departure, and **deletes its `working_files`
-claims**. Combined with (1), one authenticated agent can wipe another's claims;
-with the broker anonymous, so can anyone who can reach it.
+offline. Combined with (1), one authenticated agent can do it to another; with
+the broker anonymous, so can anyone who can reach it. Presence is the whole of
+it now, and presence is self-healing — the agent's next heartbeat restores it.
+
+> This used to run the full departure: consultation cleanup **and** deletion of
+> the agent's `working_files` claims. Measuring it for #330 turned up a worse
+> effect than the one that was documented — `handleAgentDeparture` strips the
+> agent from every open thread's `expected_respondents`, and a thread whose list
+> empties is **force-resolved**. Claims come back on the agent's next write; a
+> resolved consultation does not come back at all.
+>
+> Both now run only when the coordinator's own `last_seen_at` says the agent has
+> been silent past `COORDINATOR_AGENT_ONLINE_TTL_SECONDS` (default 900). That
+> field is stamped when a request arrives, so it is the one liveness signal on
+> this bus that no publisher asserts.
+>
+> Deferring costs latency, not correctness: `checkTimeouts()` resolves open
+> threads past their own `timeout_seconds`, and `sweepExpired()` deletes claims
+> past `claim_until` every 60s. Both ran before this change and still do — the
+> departure hook was only ever making them happen sooner.
+>
+> Refusals are counted by `mcp_coordinator_agent_departure_deferred_total`.
 
 **3. Enabling auth breaks the channel sidecar.** `mcp-coordinator channel`
 subscribes with an org wildcard (`coordinator/+/agents/+/status`), and
