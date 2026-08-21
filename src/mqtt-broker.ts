@@ -105,7 +105,23 @@ export interface EmbeddedMqttBroker {
  * privilege level (e.g. "admin", which real org admins also legitimately
  * hold) as a cross-org bypass. Only the literal value "internal" is exempted.
  */
-export type MqttAuthResult = { ok: false } | { ok: true; org: string; role?: string };
+export type MqttAuthResult =
+  | { ok: false }
+  | {
+      ok: true;
+      org: string;
+      role?: string;
+      /**
+       * Who this connection is, when the token says so (#330).
+       *
+       * A Phase 1 agent token is minted with `.setSubject(agentId)`
+       * (src/auth.ts:99), so `claims.sub` IS the agent id — the verifier had it
+       * in hand all along and forwarded only `org`. Undefined for tokens that
+       * do not identify one agent (the internal bridge, a human's Phase 2 JWT),
+       * and the ACL reads undefined as "not an agent", never as "any agent".
+       */
+      agentId?: string;
+    };
 export type MqttAuthVerifier = (
   username: string | undefined,
   password: Buffer | undefined,
@@ -147,11 +163,12 @@ export function createAedesAuthenticateHook(
           cb(null, false);
           return;
         }
-        // Attach org (and, when present, role) to the Aedes client object —
-        // both survive the connection lifetime and are read back by the ACL
-        // hooks below (authorizeSubscribe/authorizePublish).
+        // Attach org (and, when present, role and agent id) to the Aedes client
+        // object — all survive the connection lifetime and are read back by the
+        // ACL hooks below (authorizeSubscribe/authorizePublish).
         (client as unknown as { org: string }).org = result.org;
         (client as unknown as { role?: string }).role = result.role;
+        (client as unknown as { agentId?: string }).agentId = result.agentId;
         cb(null, true);
       },
       (err) => {
@@ -204,9 +221,29 @@ export function createAedesAuthorizeSubscribeHook(logger: Logger): AedesAuthoriz
  * bridge (role === "internal"), exempt for the same reason as
  * createAedesAuthorizeSubscribeHook above.
  */
+/**
+ * The agent named by an agent-status topic, or null if this is not one.
+ *
+ * `coordinator/<org>/agents/<agentId>/status` is the ONE topic on this bus that
+ * is destructive rather than informational: the bridge turns an `offline`
+ * payload into a departure, which unclaims the agent's threads, can
+ * force-resolve a consultation it was the last respondent on, and clears its
+ * working-file claims (#330, #427). Consultation and broadcast topics only fan
+ * messages out, so they stay org-wide — that IS the design.
+ */
+export function agentStatusTopicOwner(topic: string, org: string): string | null {
+  const parts = topic.split("/");
+  if (parts.length !== 5) return null;
+  const [root, topicOrg, kind, agentId, leaf] = parts;
+  if (root !== "coordinator" || topicOrg !== org || kind !== "agents" || leaf !== "status") {
+    return null;
+  }
+  return agentId || null;
+}
+
 export function createAedesAuthorizePublishHook(logger: Logger): AedesAuthorizePublishHook {
   return (client, packet, cb) => {
-    const c = client as unknown as { id?: string; org?: string; role?: string };
+    const c = client as unknown as { id?: string; org?: string; role?: string; agentId?: string };
     if (c.role === INTERNAL_BRIDGE_ROLE) return cb(null);
     const org = c.org;
     if (!org) return cb(new Error("MQTT client missing org"));
@@ -217,6 +254,19 @@ export function createAedesAuthorizePublishHook(logger: Logger): AedesAuthorizeP
         "MQTT publish denied (cross-org) — client will be disconnected",
       );
       return cb(new Error("Cross-org publish denied"));
+    }
+
+    // #330: until now the org prefix was the whole ACL, so ANY authenticated
+    // client could announce ANY agent in its org offline and destroy that
+    // agent's work. The issue reports this as unfixable without identity; the
+    // identity was already in the token, discarded by the verifier.
+    const owner = agentStatusTopicOwner(packet.topic, org);
+    if (owner !== null && owner !== c.agentId) {
+      logger.warn(
+        { client_id: c.id, org, topic: packet.topic, claimed_agent: owner, actual: c.agentId },
+        "MQTT publish denied (agent status belongs to another identity) — client will be disconnected",
+      );
+      return cb(new Error("Publishing another agent's status is denied"));
     }
     cb(null);
   };
