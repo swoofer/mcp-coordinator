@@ -3,9 +3,9 @@ import path from "path";
 /**
  * Normalize a file path for matching/correctness — NOT security.
  *
- * Returns POSIX (forward slash), repo-relative when repoRoot is provided,
- * lower-cased when the path is Windows-style (drive letter prefix in repoRoot
- * or input, or backslash in input). Collapses ./ and .. segments via
+ * Returns POSIX (forward slash), repo-relative when any root is provided,
+ * lower-cased when the path is Windows-style (drive letter prefix in a root or
+ * in the input, or backslash in either). Collapses ./ and .. segments via
  * path.posix.normalize.
  *
  * The lowercase pass is anchored to path SHAPE rather than `process.platform`
@@ -13,33 +13,60 @@ import path from "path";
  * exercising Windows-shaped fixtures) still produces consistent canonical
  * forms.
  *
- * Throws when an absolute path falls outside repoRoot. Security path
+ * `repoRoot` accepts one root or many (#379). Many is what `repoRoots()`
+ * returns: the configured root plus every worktree git knows about, so an
+ * agent in a worktree lands on the same key as the main checkout instead of
+ * being rejected (worktree outside the root) or silently filed under a second
+ * key (worktree inside it, e.g. `.claude/worktrees/<name>/`).
+ *
+ * Throws when an absolute path falls under none of them. Security path
  * traversal checks are separate (see path-guard.ts:safeJoinUnderRoot).
  */
-export function normalizePath(repoRoot: string | null, input: string): string {
+export function normalizePath(repoRoot: string | string[] | null, input: string): string {
+  // #379: one root became many. A path may sit under the configured root OR
+  // under any worktree git knows about, so try them longest-first and keep the
+  // first that matches. Longest-first is the whole trick: a native worktree at
+  // `<root>/.claude/worktrees/<name>` is a strict extension of the configured
+  // root, so both match its absolute paths, and only the longer one yields the
+  // same repo-relative key the main checkout produces for that file.
+  const given = Array.isArray(repoRoot) ? repoRoot : repoRoot == null ? [] : [repoRoot];
+  const roots = given
+    .map((r) => r.replace(/\\/g, "/").replace(/\/+$/, ""))
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length);
+
+  // Test the roots AS GIVEN, not the slash-normalized copies: the copies can
+  // no longer contain a backslash, so checking them would quietly drop the
+  // UNC case (`\\server\share` has no drive letter and would stop counting as
+  // Windows-shaped).
   const isWindowsStyle =
-    (repoRoot != null && (/^[a-zA-Z]:/.test(repoRoot) || repoRoot.includes("\\"))) ||
+    given.some((r) => /^[a-zA-Z]:/.test(r) || r.includes("\\")) ||
     /^[a-zA-Z]:/.test(input) ||
     input.includes("\\");
 
   let p = input.replace(/\\/g, "/");
 
-  if (repoRoot) {
-    const root = repoRoot.replace(/\\/g, "/").replace(/\/+$/, "");
+  if (roots.length > 0) {
     if (path.isAbsolute(input) || /^[a-zA-Z]:/.test(input)) {
       const lowerP = isWindowsStyle ? p.toLowerCase() : p;
-      const lowerRoot = isWindowsStyle ? root.toLowerCase() : root;
-      if (!lowerP.startsWith(lowerRoot + "/") && lowerP !== lowerRoot) {
-        // #379: the old message was `path is outside repoRoot: <input>`. It
-        // named the rule but not the way out, so a reader had to go find
-        // COORDINATOR_REPO_ROOT themselves to learn what "outside" meant here
-        // — and if they were in a second worktree, that they could not comply
-        // at all. The rejection is unchanged; only the diagnostic is.
+      const root = roots.find((r) => {
+        const lowerRoot = isWindowsStyle ? r.toLowerCase() : r;
+        return lowerP.startsWith(lowerRoot + "/") || lowerP === lowerRoot;
+      });
+      if (root === undefined) {
+        // #379 shipped a diagnostic here that named the rule and then told the
+        // reader the remedy did not apply to them: "Paths in another checkout
+        // or worktree cannot be expressed today". That was false — declaring
+        // `src/foo.ts` relative produces exactly the key the main checkout
+        // produces — and it is the sentence a reader in a worktree would act
+        // on, by giving up. Absolute paths from worktrees git knows about now
+        // normalize, so what still lands here really is outside the repository.
         throw new Error(
-          `path is outside repoRoot: ${input} (configured root: ${repoRoot}). ` +
-            `Pass a repo-relative forward-slash path, or an absolute path under that root. ` +
-            `Paths in another checkout or worktree cannot be expressed today: ` +
-            `COORDINATOR_REPO_ROOT is a single global value — see issue #379.`,
+          `path is outside repoRoot: ${input} (known roots: ${roots.join(", ")}). ` +
+            `Pass a repo-relative forward-slash path — that always works, including from ` +
+            `a second worktree — or an absolute path under one of those roots. ` +
+            `Worktrees come from \`git worktree list\`, so one created just now may take ` +
+            `up to a minute to be recognised.`,
         );
       }
       p = p.slice(root.length).replace(/^\/+/, "");
@@ -79,7 +106,7 @@ export type DeclaredPathsResult =
  * in its own idiom (HTTP 400, or a structured MCP tool error).
  */
 export function normalizeDeclaredPaths(
-  repoRoot: string | null,
+  repoRoot: string | string[] | null,
   paths: readonly string[] | undefined,
 ): DeclaredPathsResult {
   if (!paths || paths.length === 0) return { ok: true, paths: [] };
