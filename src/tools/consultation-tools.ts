@@ -5,6 +5,7 @@ import type { Logger } from "../logger.js";
 import type { AgentContext } from "../types.js";
 import { getDb } from "../database.js";
 import { normalizeDeclaredPaths } from "../path-normalize.js";
+import { repoRoots } from "../repo-roots.js";
 import { runCommonAnnounceFlow } from "../announce-workflow.js";
 import type { AuthClaims } from "../auth.js";
 
@@ -123,7 +124,7 @@ export function registerConsultationTools(
       // side. Without this the two never join: the scorer queries normalized
       // columns by exact SQL equality, so `src/Types.ts` announced on Windows
       // silently matched nothing.
-      const repoRoot = process.env.COORDINATOR_REPO_ROOT || null;
+      const repoRoot = repoRoots();
       const declared = normalizeDeclaredPaths(repoRoot, [
         ...target_files,
         ...(depends_on_files ?? []),

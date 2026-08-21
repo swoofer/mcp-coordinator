@@ -7,6 +7,7 @@ import type { AuthClaims } from "../auth.js";
 import { missingClaimsError } from "./tool-errors.js";
 import { requireScope } from "./tool-scopes.js";
 import { normalizeDeclaredPaths } from "../path-normalize.js";
+import { repoRoots } from "../repo-roots.js";
 
 /**
  * S1: file tracking MCP tools (3 tools).
@@ -85,9 +86,7 @@ export function registerFilesTools(
       requireScope(claims, "check_file_conflict");
       // issue #275: same canonical form as the observed side, or the lookup
       // compares a raw string against a normalized column and finds nothing.
-      const declared = normalizeDeclaredPaths(process.env.COORDINATOR_REPO_ROOT || null, [
-        file_path,
-      ]);
+      const declared = normalizeDeclaredPaths(repoRoots(), [file_path]);
       if (!declared.ok) {
         return {
           isError: true,

@@ -512,6 +512,49 @@ ode_modules" -Force   # deletes the link, not the target
 > start, or `node -e "import('./dist/src/serve-http.js')"`.
 ---
 
+## 8g. `path is outside repoRoot`, or an agent that coordinates with nobody
+
+Both come from the same place: the coordinator turns every declared path into
+a repo-relative key, and everything downstream — `hot_files`,
+`check_file_conflict`, the Layer 1 score — joins those keys by exact string
+equality. A path it cannot map to the right key either gets refused or, worse,
+gets filed under a key nothing else shares.
+
+Since #379 the roots come from `git worktree list`, run by the coordinator on
+its own `COORDINATOR_REPO_ROOT`, so an absolute path from any worktree of the
+repository maps to the same key as the main checkout — whether the worktree
+sits outside the root (`git worktree add ../feature-x`) or inside it, as Claude
+Code's own do at `.claude/worktrees/<name>/`.
+
+The in-root case is the one worth knowing about, because it never announced
+itself. Before #379 an agent there was accepted and silently stored under
+`.claude/worktrees/<name>/src/foo.ts` while everyone else stored `src/foo.ts`.
+No error, no log line. If you ran agents in native worktrees on an older
+build, their `file_activity` and `working_files` rows carry those long keys and
+will not match anything; they age out with their normal retention.
+
+If you still get the rejection:
+
+- **A worktree you just created.** The enumeration is cached for 60 seconds.
+  Wait, or restart the daemon.
+- **`COORDINATOR_REPO_ROOT` is not the git toplevel.** `git worktree list`
+  still works from a subdirectory, but Layer 4 reads `git log --name-only`,
+  whose paths are always toplevel-relative — set the root to the toplevel or
+  the two will key differently. `git -C "$COORDINATOR_REPO_ROOT" rev-parse
+  --show-toplevel` tells you.
+- **The root is not a git repository, or `git` is not on the daemon's PATH.**
+  The enumeration fails silently by design and you are back to the single
+  configured root. Check with `git -C "$COORDINATOR_REPO_ROOT" worktree list`.
+- **The path really is elsewhere.** A repo-relative forward-slash path always
+  works, from any worktree. That is the contract the tool schemas state.
+
+Note this is per *repository*, not per project: one daemon still has one
+`COORDINATOR_REPO_ROOT`, so two unrelated repos on one coordinator still merge
+their `hot_files` rows — [#279](https://github.com/swoofer/mcp-coordinator/issues/279),
+still open. One daemon per project remains the supported answer.
+
+---
+
 ## 9. Windows notes
 
 - **`EBUSY` during tests.** A handful of Windows file-handle teardown flakes
