@@ -17,6 +17,7 @@
  * refactor — Agent 3 — may extend later; we reproduce it inline here to avoid
  * coupling).
  */
+import { TSX_NODE_ARGS } from "../helpers/tsx-node.js";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -99,19 +100,14 @@ describe("channel CLI — smoke (MQTT → notifications/claude/channel)", () => 
       // No authenticate hook → anonymous mode, matches default daemon flow.
     });
     brokerPort = broker.tcpPort as number;
+    // Spawn `mcp-coordinator channel` over stdio through node + the tsx loader
+    // (tests/helpers/tsx-node.ts). Not a .cmd shim (npx.cmd or tsx.CMD): those
+    // wrap the process in cmd.exe, so SIGTERM/SIGKILL from
+    // StdioClientTransport.close() never reach the server and afterAll hangs.
+    const command = process.execPath;
 
-    // Spawn `mcp-coordinator channel` over stdio. We invoke node-modules tsx
-    // directly (not via `npx`) — on Windows, the npx.cmd shim breaks signal
-    // forwarding so SIGTERM/SIGKILL from StdioClientTransport.close() never
-    // reach the actual tsx process and the test hangs in afterAll.
-    const tsxBin = path.join(
-      REPO_ROOT,
-      "node_modules",
-      ".bin",
-      process.platform === "win32" ? "tsx.CMD" : "tsx",
-    );
-    const command = tsxBin;
     const args = [
+      ...TSX_NODE_ARGS,
       path.join(REPO_ROOT, "cli", "index.ts"),
       "channel",
       "--broker-url",

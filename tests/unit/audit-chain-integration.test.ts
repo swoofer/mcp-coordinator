@@ -46,12 +46,16 @@ function runVerifyScript(dbPath: string, env: Record<string, string>): VerifierR
   // tests/unit/verify-audit-chain.test.ts's runVerifier.
   const baseEnv = { ...process.env };
   delete baseEnv.COORDINATOR_ENCRYPTION_KEY;
-  const result = spawnSync("npx", ["tsx", VERIFY_SCRIPT_PATH, "--db", dbPath, "--json"], {
-    cwd: REPO_ROOT,
-    encoding: "utf-8",
-    shell: process.platform === "win32",
-    env: { ...baseEnv, ...env },
-  });
+  const result = spawnSync(
+    process.execPath,
+    ["--import", "tsx", VERIFY_SCRIPT_PATH, "--db", dbPath, "--json"],
+    {
+      cwd: REPO_ROOT,
+      encoding: "utf-8",
+      windowsHide: true,
+      env: { ...baseEnv, ...env },
+    },
+  );
   return {
     status: result.status ?? 1,
     stdout: result.stdout ?? "",

@@ -71,5 +71,30 @@ describe("downgrade refusal", () => {
 
   it("refuses to boot if user_version is from a newer binary", () => {
     expect(() => initDatabase(DIR)).toThrow(/newer version/);
+    // ...and it closes the connection it opened. Otherwise the refused DB file
+    // stays locked, this describe's afterAll rmSync fails, and data-test-downgrade/
+    // is left behind on Windows.
+    expect((getDb() as unknown as { open: boolean }).open).toBe(false);
+  });
+});
+
+// The previous connection must be closed on re-init: better-sqlite3 keeps the
+// file handle open, and on Windows an orphaned handle makes rmSync of the data
+// dir fail with EBUSY -- which is what broke tests/unit/logger.test.ts (it calls
+// createServices twice, so initDatabase ran twice). Asserted on `open` rather
+// than on a filesystem delete so it fails on POSIX too, where unlink of an open
+// file quietly succeeds.
+describe("initDatabase re-initialisation", () => {
+  it("closes the previous connection instead of leaking the handle", () => {
+    // Own the starting state: whatever ran before may have left the singleton
+    // pointing at an already-closed connection (see the downgrade test).
+    initDatabase(TEST_DIR);
+    const previous = getDb() as unknown as { open: boolean };
+    expect(previous.open).toBe(true);
+
+    initDatabase(TEST_DIR);
+
+    expect(previous.open).toBe(false);
+    expect((getDb() as unknown as { open: boolean }).open).toBe(true);
   });
 });
