@@ -15,9 +15,18 @@ import { silentLogger } from "../../src/logger.js";
  * tests hold the code to them, because a documented limitation that quietly
  * stops being true is worse than an undocumented one.
  *
- * None of this is a fix. The per-identity ACL the issue asks for needs an
- * authenticated agent identity, and AuthClaims carries none — that prerequisite
- * is what actually blocks it.
+ * This header used to end: "None of this is a fix. The per-identity ACL the
+ * issue asks for needs an authenticated agent identity, and AuthClaims carries
+ * none — that prerequisite is what actually blocks it."
+ *
+ * That was wrong, and writing it down made it durable — it is why the ACL kept
+ * being filed as blocked. `AuthClaims` has no field NAMED `agent_id`, but a
+ * Phase 1 agent token is minted with `.setSubject(agentId)` (src/auth.ts:99),
+ * so the identity has been sitting in `sub` the whole time. The MQTT verifier
+ * held the entire claims object and forwarded only `org` and `role`.
+ *
+ * The status-topic ACL below is therefore a fix. The other limitations in this
+ * file are not, and are still stated as limitations.
  */
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
