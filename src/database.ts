@@ -366,6 +366,21 @@ function createBunSqlite(dataDir: string): DatabaseAdapter {
 }
 
 export function initDatabase(dataDir: string): void {
+  // Neither a re-init nor a failure part-way through may leak the connection:
+  // better-sqlite3 keeps the file handle open, so an orphan blocks rmSync of the
+  // data dir on Windows (EBUSY) and pins the old file after a data-dir switch.
+  // Every throw below the open -- downgrade refusal, orgs-uniqueness guard, a
+  // migration -- lands in the catch. close() is a no-op when already closed.
+  if (db) db.close();
+  try {
+    openAndMigrate(dataDir);
+  } catch (err) {
+    if (db) db.close();
+    throw err;
+  }
+}
+
+function openAndMigrate(dataDir: string): void {
   if (typeof (globalThis as Record<string, unknown>).Bun !== "undefined") {
     db = createBunSqlite(dataDir);
   } else {
