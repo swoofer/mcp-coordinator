@@ -157,11 +157,20 @@ plan on rotating it.
 lasts up to 90 days (`SERVICE_TOKEN_MAX_TTL_S`, a hard ceiling you cannot raise
 by configuration), which is what makes it the better fit for CI.
 
-One thing to know before you lean on it: the `--scope` you pass is validated when
-the token is minted and then **never enforced on a request**. A `--scope read`
-token can write. That is
-[#313](https://github.com/swoofer/mcp-coordinator/issues/313), open — until it
-closes, treat every service token as full access regardless of its scope.
+The `--scope` you pass is enforced on every tool call: `read` reaches the twelve
+observation tools, `write` adds the fourteen that mutate coordination state, and
+a refusal comes back as a JSON-RPC error naming the scope you hold, the scope the
+tool needs, and the command to mint a token that would work — the session stays
+open, so a read token can carry on calling read tools.
+
+Note that `heartbeat`, `register_agent`, `wait_for_message` and
+`get_queued_messages` are writes. The last two **drain** the queue — there is no
+ack, so reading a message consumes it for every other subscriber.
+
+Before [#313](https://github.com/swoofer/mcp-coordinator/issues/313) the scope was
+validated at minting and then never read back, so a `--scope read` token could
+write. If you issued tokens on an older build and leaned on the flag, they now
+behave as labelled.
 
 > **On older builds, no Phase 2 token authenticates over `Bearer` at all.**
 > Until [#322](https://github.com/swoofer/mcp-coordinator/pull/322) the Bearer

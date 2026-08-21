@@ -90,7 +90,10 @@ export function createServiceTokensCommand(): Command {
     .description("Issue a new service token")
     .requiredOption("--user <id>", "Target user ID")
     .requiredOption("--org <id>", "Target org ID")
-    .requiredOption("--scope <scope>", "Token scope (read|write|admin)")
+    .requiredOption(
+      "--scope <scope>",
+      "Token scope (read|write|admin) -- read reaches observation tools only, write adds the tools that mutate coordination state",
+    )
     .requiredOption("--ttl <duration>", "TTL (e.g., 30d, 168h)")
     .requiredOption("--reason <text>", "Reason for issuance (>=10 chars)")
     .option("--server <url>", "Coordinator URL", "http://localhost:3000")
