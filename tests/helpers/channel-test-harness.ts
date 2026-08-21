@@ -33,6 +33,7 @@
  * notifications — see `tests/unit/channel-harness-self-test.ts` for the
  * minimal inline stub used to prove the wiring.
  */
+import { TSX_NODE_ARGS } from "./tsx-node.js";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { Client } from "@modelcontextprotocol/client";
 import { Aedes } from "aedes";
@@ -160,11 +161,11 @@ export interface CreateChannelHarnessOptions {
 export async function createChannelHarness(
   opts: CreateChannelHarnessOptions = {},
 ): Promise<ChannelHarness> {
-  // On Windows, `tsx` (and all npm-installed CLIs) are .cmd shims. The MCP
-  // SDK's StdioClientTransport spawns without a shell, so we must point at
-  // the .cmd directly. Mirrors the pattern in mcp-client-harness.ts.
-  const defaultCommand = process.platform === "win32" ? "npx.cmd" : "npx";
-  const defaultArgs = ["tsx", path.join(REPO_ROOT, "cli", "channel.ts")];
+  // node + the tsx loader (tests/helpers/tsx-node.ts): the MCP SDK's
+  // StdioClientTransport spawns without a shell, and node needs no shim --
+  // unlike npx.cmd, whose cmd.exe wrapper also swallowed kill() signals.
+  const defaultCommand = process.execPath;
+  const defaultArgs = [...TSX_NODE_ARGS, path.join(REPO_ROOT, "cli", "channel.ts")];
 
   const command = opts.command ?? defaultCommand;
   const args = opts.args ?? defaultArgs;

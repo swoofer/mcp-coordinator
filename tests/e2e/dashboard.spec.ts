@@ -1,3 +1,4 @@
+import { TSX_NODE_ARGS } from "../helpers/tsx-node.js";
 import { test as base, expect } from "@playwright/test";
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -107,10 +108,8 @@ const dashboardFixture = base.extend<DashboardFixtures>({
     const dataDir = mkdtempSync(path.join(tmpdir(), "mcp-coord-e2e-dash-"));
     const coordinatorUrl = `http://localhost:${port}`;
 
-    const child: ChildProcess = spawn("npx", ["tsx", "src/serve-http.ts"], {
+    const child: ChildProcess = spawn(process.execPath, [...TSX_NODE_ARGS, "src/serve-http.ts"], {
       cwd: REPO_ROOT,
-      // shell:true so `npx` resolves on Windows (npx.cmd, not npx).
-      shell: true,
       env: {
         ...process.env,
         PORT: String(port),

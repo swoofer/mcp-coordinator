@@ -18,6 +18,7 @@
  * The cleanup function MUST run in afterAll (or the test's finally block);
  * otherwise subprocesses and HTTP listeners leak across the suite.
  */
+import { TSX_NODE_ARGS } from "./tsx-node.js";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -51,10 +52,10 @@ export async function createStdioHarness(opts?: {
 }): Promise<McpHarness> {
   const dataDir = opts?.dataDir ?? mkdtempSync(path.join(tmpdir(), "mcp-stdio-harness-"));
 
-  // tsx is on the dev PATH; lets us run src/index.ts directly without a
-  // pre-built dist/. Falls back to npx-style invocation if tsx isn't on PATH.
-  const command = process.platform === "win32" ? "npx.cmd" : "npx";
-  const args = ["tsx", path.join(REPO_ROOT, "src", "index.ts")];
+  // node + the tsx loader (tests/helpers/tsx-node.ts) so src/index.ts runs
+  // without a pre-built dist/, and kill() reaches the server, not a shim.
+  const command = process.execPath;
+  const args = [...TSX_NODE_ARGS, path.join(REPO_ROOT, "src", "index.ts")];
 
   const transport = new StdioClientTransport({
     command,

@@ -16,9 +16,9 @@
  * pointed at an isolated temp directory — never the repo root — so the
  * `./data` fallback never touches this repo's working tree.
  */
+import { TSX_NODE_ARGS } from "../helpers/tsx-node.js";
 import { describe, it, expect, afterEach } from "vitest";
-import type { ChildProcess, SpawnOptions } from "node:child_process";
-import { createRequire } from "node:module";
+import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -27,13 +27,6 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(__filename), "..", "..");
-
-const require = createRequire(import.meta.url);
-const spawn: (
-  command: string,
-  args: string[],
-  options: SpawnOptions,
-) => ChildProcess = require("cross-spawn");
 
 // Exact leading substring of the warning both entry points log — kept
 // stable across src/serve-http.ts and src/index.ts.
@@ -64,17 +57,11 @@ async function killAndWait(child: ChildProcess): Promise<void> {
   if (child.exitCode !== null || child.killed) return;
   await new Promise<void>((resolve) => {
     child.once("exit", () => resolve());
-    // Windows-specific: `npx.cmd` is a batch script, so Node routes it
-    // through cmd.exe even with shell:false — the real work happens in a
-    // grandchild (tsx -> node) process tree. `child.kill()` only signals
-    // the immediate PID; on the stdio entry point (src/index.ts) the
-    // grandchild happens to self-terminate anyway (its stdin pipe breaks
-    // when the middle process dies, and StdioServerTransport closes on
-    // stdin EOF), but the HTTP entry point (src/serve-http.ts) has no such
-    // dependency and is orphaned as a live listener otherwise. Use
-    // `taskkill /T /F` to reap the whole tree on Windows; POSIX kill()
-    // already signals the whole process group when the child was spawned
-    // normally (no `detached: true` here), so the plain path is fine there.
+    // The child is node itself now (no npx.cmd shim in between), so
+    // `child.kill()` reaches the server directly. `taskkill /T /F` stays as
+    // belt-and-braces on Windows: the HTTP entry point (src/serve-http.ts) is
+    // a live listener with no stdin dependency, and /T also reaps anything it
+    // spawned. POSIX kill() already signals the whole process group.
     if (process.platform === "win32" && child.pid) {
       try {
         spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], {
@@ -130,8 +117,8 @@ describe("Boot warns on cwd-relative ./data fallback (architecture-06)", () => {
   describe("stdio entry point (src/index.ts)", () => {
     it("warns on stderr (never stdout) when COORDINATOR_DATA_DIR is unset", async () => {
       cwd = mkdtempSync(path.join(tmpdir(), "boot-warn-stdio-unset-"));
-      const command = process.platform === "win32" ? "npx.cmd" : "npx";
-      const args = ["tsx", path.join(REPO_ROOT, "src", "index.ts")];
+      const command = process.execPath;
+      const args = [...TSX_NODE_ARGS, path.join(REPO_ROOT, "src", "index.ts")];
 
       child = spawn(command, args, {
         cwd,
@@ -185,8 +172,8 @@ describe("Boot warns on cwd-relative ./data fallback (architecture-06)", () => {
     it("does NOT warn when COORDINATOR_DATA_DIR is explicitly set (no false positive)", async () => {
       cwd = mkdtempSync(path.join(tmpdir(), "boot-warn-stdio-set-"));
       const dataDir = mkdtempSync(path.join(tmpdir(), "boot-warn-stdio-set-data-"));
-      const command = process.platform === "win32" ? "npx.cmd" : "npx";
-      const args = ["tsx", path.join(REPO_ROOT, "src", "index.ts")];
+      const command = process.execPath;
+      const args = [...TSX_NODE_ARGS, path.join(REPO_ROOT, "src", "index.ts")];
 
       child = spawn(command, args, {
         cwd,
@@ -233,8 +220,8 @@ describe("Boot warns on cwd-relative ./data fallback (architecture-06)", () => {
       cwd = mkdtempSync(path.join(tmpdir(), "boot-warn-http-unset-"));
       const port = await getFreePort();
       const mqttTcpPort = await getFreePort();
-      const command = process.platform === "win32" ? "npx.cmd" : "npx";
-      const args = ["tsx", path.join(REPO_ROOT, "src", "serve-http.ts")];
+      const command = process.execPath;
+      const args = [...TSX_NODE_ARGS, path.join(REPO_ROOT, "src", "serve-http.ts")];
 
       child = spawn(command, args, {
         cwd,
@@ -267,8 +254,8 @@ describe("Boot warns on cwd-relative ./data fallback (architecture-06)", () => {
       const dataDir = mkdtempSync(path.join(tmpdir(), "boot-warn-http-set-data-"));
       const port = await getFreePort();
       const mqttTcpPort = await getFreePort();
-      const command = process.platform === "win32" ? "npx.cmd" : "npx";
-      const args = ["tsx", path.join(REPO_ROOT, "src", "serve-http.ts")];
+      const command = process.execPath;
+      const args = [...TSX_NODE_ARGS, path.join(REPO_ROOT, "src", "serve-http.ts")];
 
       child = spawn(command, args, {
         cwd,

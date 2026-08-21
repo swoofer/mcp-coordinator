@@ -1,3 +1,4 @@
+import { TSX_NODE_ARGS } from "../../helpers/tsx-node.js";
 import { test as base } from "@playwright/test";
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -99,11 +100,8 @@ export const coordinatorFixture = base.extend<CoordinatorFixtures>({
     // enforced by src/auth/entropy.ts (boot will reject anything weaker).
     const jwtSecret = randomBytes(32).toString("base64url");
 
-    const child: ChildProcess = spawn("npx", ["tsx", "src/serve-http.ts"], {
+    const child: ChildProcess = spawn(process.execPath, [...TSX_NODE_ARGS, "src/serve-http.ts"], {
       cwd: REPO_ROOT,
-      // shell:true so `npx` resolves on Windows (where it's npx.cmd, not npx).
-      // Without shell, Node would ENOENT on Windows even though npx is on PATH.
-      shell: true,
       env: {
         ...process.env,
         PORT: String(port),

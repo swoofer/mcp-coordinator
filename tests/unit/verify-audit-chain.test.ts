@@ -63,17 +63,17 @@ function runVerifier(args: string[], env?: Record<string, string>): ScriptResult
   // of exit code -- the verifier exits 1 on findings and 2 on
   // bad-args / DB-open errors, and we need to inspect the JSON
   // payload either way.
-  // Use shell: true on Windows so `npx` (a .cmd shim) resolves
-  // through cmd.exe; POSIX systems are unaffected.
+  // node with tsx as a loader rather than `npx tsx`: on Windows npx costs
+  // ~2.6s per spawn (3.1s vs 0.47s measured), and this file pays it 23 times.
   // The spawned process inherits a clean env plus any overrides; we drop
   // COORDINATOR_ENCRYPTION_KEY unless the test explicitly sets one so a
   // stray ambient key can't mask a "no key" assertion.
   const baseEnv = { ...process.env };
   delete baseEnv.COORDINATOR_ENCRYPTION_KEY;
-  const result = spawnSync("npx", ["tsx", SCRIPT_PATH, ...args], {
+  const result = spawnSync(process.execPath, ["--import", "tsx", SCRIPT_PATH, ...args], {
     cwd: REPO_ROOT,
     encoding: "utf-8",
-    shell: process.platform === "win32",
+    windowsHide: true,
     env: { ...baseEnv, ...(env ?? {}) },
   });
   return {

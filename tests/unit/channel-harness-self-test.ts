@@ -25,6 +25,7 @@
  * The vitest CLI accepts explicit file paths outside the default include
  * glob, so this still runs as a regular test file when targeted.
  */
+import { TSX_NODE_ARGS } from "../helpers/tsx-node.js";
 import { describe, it, expect } from "vitest";
 import mqtt from "mqtt";
 import path from "node:path";
@@ -45,13 +46,12 @@ const STUB_SERVER_PATH = path.resolve(
 describe("channel-test-harness — createChannelHarness", () => {
   it("captures a notifications/claude/channel event and matches a predicate", async () => {
     // Point the harness at the inline stub instead of the (not-yet-existing)
-    // cli/channel.ts. On Windows we need the .cmd shim for npx; the harness
-    // already defaults to it but we override here to be explicit about which
-    // binary runs.
-    const command = process.platform === "win32" ? "npx.cmd" : "npx";
+    // cli/channel.ts. The harness already defaults to node + the tsx loader;
+    // we override here to be explicit about which binary runs.
+    const command = process.execPath;
     const harness = await createChannelHarness({
       command,
-      args: ["tsx", STUB_SERVER_PATH],
+      args: [...TSX_NODE_ARGS, STUB_SERVER_PATH],
     });
 
     try {
@@ -79,10 +79,10 @@ describe("channel-test-harness — createChannelHarness", () => {
   }, 15_000);
 
   it("waitForNotification rejects on timeout with a descriptive error", async () => {
-    const command = process.platform === "win32" ? "npx.cmd" : "npx";
+    const command = process.execPath;
     const harness = await createChannelHarness({
       command,
-      args: ["tsx", STUB_SERVER_PATH],
+      args: [...TSX_NODE_ARGS, STUB_SERVER_PATH],
     });
 
     try {

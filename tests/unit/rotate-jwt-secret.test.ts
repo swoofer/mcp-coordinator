@@ -13,10 +13,10 @@ interface CliResult {
 }
 
 function runCli(args: string[]): CliResult {
-  const result = spawnSync("npx", ["tsx", CLI_PATH, ...args], {
+  const result = spawnSync(process.execPath, ["--import", "tsx", CLI_PATH, ...args], {
     cwd: REPO_ROOT,
     encoding: "utf-8",
-    shell: process.platform === "win32",
+    windowsHide: true,
   });
   return {
     status: result.status ?? 1,

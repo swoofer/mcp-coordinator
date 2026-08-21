@@ -16,9 +16,9 @@
  * `@modelcontextprotocol/sdk`'s Client, specifically so nothing sits
  * between the subprocess's stdout pipe and this test's assertions.
  */
+import { TSX_NODE_ARGS } from "../helpers/tsx-node.js";
 import { describe, it, expect, afterEach } from "vitest";
-import type { ChildProcess, SpawnOptions } from "node:child_process";
-import { createRequire } from "node:module";
+import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -27,17 +27,6 @@ import { LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/server";
 
 const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(__filename), "..", "..");
-
-// cross-spawn has no bundled/@types declarations in this repo; it's already
-// a transitive dep (the SDK's own StdioClientTransport uses it for the same
-// Windows .cmd-spawning correctness this test needs). Load it via require
-// to avoid an implicit-any import while not adding a new devDependency.
-const require = createRequire(import.meta.url);
-const spawn: (
-  command: string,
-  args: string[],
-  options: SpawnOptions,
-) => ChildProcess = require("cross-spawn");
 
 // The exact string src/index.ts used to log via log.info(...) right after
 // connecting the stdio transport (previously routed to console.log = stdout).
@@ -85,8 +74,8 @@ describe("MCP stdio entrypoint — stdout carries ONLY JSON-RPC (protocole-mcp-0
 
   it("every stdout line is valid JSON-RPC; the startup log line lands on stderr, never stdout", async () => {
     dataDir = mkdtempSync(path.join(tmpdir(), "mcp-stdio-purity-"));
-    const command = process.platform === "win32" ? "npx.cmd" : "npx";
-    const args = ["tsx", path.join(REPO_ROOT, "src", "index.ts")];
+    const command = process.execPath;
+    const args = [...TSX_NODE_ARGS, path.join(REPO_ROOT, "src", "index.ts")];
 
     child = spawn(command, args, {
       cwd: REPO_ROOT,

@@ -14,6 +14,7 @@
  * failing the handshake. So this reads the child's raw stdout, exactly as
  * stdio-log-purity.test.ts does for the direct entry point.
  */
+import { TSX_NODE_ARGS } from "../helpers/tsx-node.js";
 import { describe, it, expect, afterEach } from "vitest";
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -62,16 +63,13 @@ describe("mcp-coordinator stdio (#277)", () => {
 
   it("serves MCP over stdio, and the CLI layer writes nothing to stdout", async () => {
     dataDir = mkdtempSync(path.join(tmpdir(), "cli-stdio-"));
-
-    // node with tsx as a loader rather than `npx tsx`: on Windows npx is a
-    // .cmd, which needs cross-spawn, and cross-spawn is a transitive dep that
-    // does not resolve in every checkout.
+    // node + the tsx loader (tests/helpers/tsx-node.ts) rather than a .cmd
+    // shim -- see that file for why.
     //
     // Through the CLI entry point, not src/index.ts — that the subcommand path
     // is equivalent is the whole claim.
     const args = [
-      "--import",
-      "tsx",
+      ...TSX_NODE_ARGS,
       path.join(REPO_ROOT, "cli", "index.ts"),
       "stdio",
       "--data-dir",
