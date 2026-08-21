@@ -50,6 +50,15 @@ export class Metrics {
    */
   readonly mqttMessagesDropped: Counter<"reason">;
   /**
+   * issue #330: an agent-status topic anyone can publish to used to run the
+   * full departure cleanup. It now runs only when the coordinator's own
+   * `last_seen_at` agrees the agent went quiet. This counts the refusals —
+   * a steady rate means either agents are crashing faster than the online
+   * TTL (tune COORDINATOR_AGENT_ONLINE_TTL_SECONDS down) or something is
+   * publishing departures it has no business publishing.
+   */
+  readonly agentDepartureDeferred: Counter<"org">;
+  /**
    * issue #353: SSE had the mirror-image of the #236 gap. mqtt-bridge logs
    * and counts every dropped message; the SSE emitter refused listeners past
    * MAX_SSE_CLIENTS and swallowed listener exceptions with neither. The
@@ -108,6 +117,13 @@ export class Metrics {
       name: "mcp_coordinator_mqtt_messages_dropped_total",
       help: "Inbound MQTT messages the bridge discarded, by reason",
       labelNames: ["reason"] as const,
+      registers: [this.registry],
+    });
+
+    this.agentDepartureDeferred = new Counter({
+      name: "mcp_coordinator_agent_departure_deferred_total",
+      help: "Offline announcements that did not trigger departure cleanup because the agent was still within its online TTL",
+      labelNames: ["org"] as const,
       registers: [this.registry],
     });
 

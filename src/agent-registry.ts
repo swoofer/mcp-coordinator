@@ -94,10 +94,49 @@ export class AgentRegistry {
     ).run(orgId, agentId);
   }
 
+  /**
+   * Proof of life is proof of presence (issue #330).
+   *
+   * This used to refresh `last_seen_at` alone, which left a hole: nothing in
+   * production ever set `status` back to 'online' — `setOnline` had no caller
+   * outside tests. An agent knocked offline by an MQTT status message stayed
+   * invisible to `listOnline` no matter how hard it heartbeat, and
+   * `listOnline` is what feeds consultation routing (announce-workflow),
+   * impact scoring and `wait_for_peers`. It could work forever and never be
+   * consulted again.
+   *
+   * announce-workflow already assumed this method restored presence: issue
+   * #233 put a `heartbeat()` call immediately before its `listOnline` so a
+   * busy agent would not age out of its own announce. That only ever fixed
+   * the staleness half.
+   */
   heartbeat(orgId: string, agentId: string): void {
     const db = getDb();
     db.prepare(
-      "UPDATE agents SET last_seen_at = CURRENT_TIMESTAMP WHERE org_id = ? AND id = ?",
+      "UPDATE agents SET status = 'online', last_seen_at = CURRENT_TIMESTAMP WHERE org_id = ? AND id = ?",
     ).run(orgId, agentId);
+  }
+
+  /**
+   * Has the coordinator itself gone without hearing from this agent for
+   * longer than the online TTL?
+   *
+   * `last_seen_at` is the one liveness signal here that no client asserts: it
+   * is stamped when a request arrives, not when a payload claims something.
+   * That makes it the right thing to consult before acting destructively on
+   * a departure announcement that anyone on the network can publish (#330).
+   *
+   * An unknown agent counts as stale — there is no work of its to protect.
+   */
+  isStale(orgId: string, agentId: string): boolean {
+    const db = getDb();
+    const row = db
+      .prepare(
+        `SELECT strftime('%s', 'now') - strftime('%s', last_seen_at) AS age
+           FROM agents WHERE org_id = ? AND id = ?`,
+      )
+      .get(orgId, agentId) as { age: number } | undefined;
+    if (!row) return true;
+    return row.age > onlineTtlSeconds();
   }
 }

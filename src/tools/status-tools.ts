@@ -6,6 +6,7 @@ import type { AuthClaims } from "../auth.js";
 import { safeJsonParse } from "../json-utils.js";
 
 import { missingClaimsError } from "./tool-errors.js";
+import { requireScope } from "./tool-scopes.js";
 
 /**
  * S1: status + coordination helper MCP tools (2 tools).
@@ -41,6 +42,7 @@ export function registerStatusTools(
     async (_args, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError(ctx.sessionId);
+      requireScope(claims, "coordinator_status");
       const online = registry.listOnline(claims.org);
       const openThreads = consultation.listThreads(claims.org, { status: "open" });
       const resolvingThreads = consultation.listThreads(claims.org, { status: "resolving" });
@@ -99,6 +101,7 @@ export function registerStatusTools(
     async ({ agent_id, min_peers, timeout_seconds }, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError(ctx.sessionId);
+      requireScope(claims, "wait_for_peers");
       const targetPeers = min_peers ?? 1;
       const cappedSeconds = Math.min(timeout_seconds ?? 30, MAX_WAIT_TIMEOUT_SECONDS);
       const timeoutMs = cappedSeconds * 1000;

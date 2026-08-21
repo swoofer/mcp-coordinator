@@ -11,6 +11,7 @@ import { canResetDb } from "../reset-guard.js";
 import { isCredentialReaderSupported } from "../quota/credential-reader.js";
 import { json } from "./utils.js";
 import { normalizePath, normalizeDeclaredPaths } from "../path-normalize.js";
+import { repoRoots } from "../repo-roots.js";
 import { safeJsonParse } from "../json-utils.js";
 import { appError } from "./response-contract.js";
 import {
@@ -147,7 +148,7 @@ export function handleCheckConflict(
   const { file, agent_id } = parsed.data;
   // issue #275: the REST twin of check_file_conflict, and the same trap --
   // this asked a normalized column about a raw string.
-  const declared = normalizeDeclaredPaths(process.env.COORDINATOR_REPO_ROOT || null, [file]);
+  const declared = normalizeDeclaredPaths(repoRoots(), [file]);
   if (!declared.ok) {
     json(
       res,
@@ -187,7 +188,7 @@ export function handleLogFile(
   // is enough to poison the column for checkFileConflict, the impact scorer
   // and hot_files: a row written as C:\repo\src\Types.ts never joins a query
   // carrying src/types.ts, though they name the same file.
-  const repoRoot = process.env.COORDINATOR_REPO_ROOT || null;
+  const repoRoot = repoRoots();
   let filePath: string;
   try {
     filePath = normalizePath(repoRoot, file);
@@ -243,7 +244,7 @@ export function handleAnnounce(
   // /api/working-files already do for the observed side. AnnounceBodySchema is
   // a bare z.array(z.string()), so without this the scorer compares raw strings
   // against normalized columns by exact SQL equality and joins nothing.
-  const declared = normalizeDeclaredPaths(process.env.COORDINATOR_REPO_ROOT || null, [
+  const declared = normalizeDeclaredPaths(repoRoots(), [
     ...target_files,
     ...(depends_on_files ?? []),
     ...(exports_affected ?? []),
@@ -933,7 +934,7 @@ export function handleFileActivity(
     json(res, { error: "agent_name must be string when present" }, 400);
     return;
   }
-  const repoRoot = process.env.COORDINATOR_REPO_ROOT || null;
+  const repoRoot = repoRoots();
   let filePath: string;
   try {
     filePath = normalizePath(repoRoot, body.file_path as string);
@@ -976,7 +977,7 @@ export function handleWorkingFilesStart(
     json(res, { error: "agent_id and file_path required" }, 400);
     return;
   }
-  const repoRoot = process.env.COORDINATOR_REPO_ROOT || null;
+  const repoRoot = repoRoots();
   let filePath: string;
   try {
     filePath = normalizePath(repoRoot, body.file_path as string);
@@ -1000,7 +1001,7 @@ export function handleWorkingFilesStop(
     json(res, { error: "agent_id and file_path required" }, 400);
     return;
   }
-  const repoRoot = process.env.COORDINATOR_REPO_ROOT || null;
+  const repoRoot = repoRoots();
   let filePath: string;
   try {
     filePath = normalizePath(repoRoot, body.file_path as string);

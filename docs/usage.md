@@ -50,10 +50,23 @@ One person hosts the coordinator on a shared machine; teammates point their Clau
 > anywhere on the LAN.
 >
 > Concretely, an unauthenticated client on the LAN can publish
-> `{status:"offline"}` on another agent's status topic, which marks that agent
-> offline **and deletes its `working_files` claims** — the state the
-> announce-before-you-write contract rests on. Measured; see
+> `{status:"offline"}` on another agent's status topic. Measured; see
 > [#330](https://github.com/swoofer/mcp-coordinator/issues/330).
+>
+> What that message can still do: mark the agent offline, hiding it from
+> `list_agents --online_only`, `wait_for_peers` and consultation routing until
+> its next heartbeat puts it back.
+>
+> What it can no longer do: delete the agent's `working_files` claims, unclaim
+> its threads, or force-resolve a consultation it was the last respondent on.
+> Those run only when the coordinator's own `last_seen_at` agrees the agent has
+> gone quiet past `COORDINATOR_AGENT_ONLINE_TTL_SECONDS`, so a message about a
+> live agent updates presence and nothing else. Watch
+> `mcp_coordinator_agent_departure_deferred_total` — a steady rate on a LAN you
+> did not expect it on is the signal.
+>
+> This narrows the blast radius; it does not authenticate the sender. Any
+> client the broker admits can still speak for any agent in its org.
 >
 > **Use this recipe only on a network you would trust with an unauthenticated
 > database.** Otherwise go straight to

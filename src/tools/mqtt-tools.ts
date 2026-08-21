@@ -5,6 +5,7 @@ import type { Logger } from "../logger.js";
 import type { AuthClaims } from "../auth.js";
 
 import { missingClaimsError } from "./tool-errors.js";
+import { requireScope } from "./tool-scopes.js";
 
 /**
  * S1: MQTT listener MCP tools (3 tools).
@@ -85,6 +86,7 @@ export function registerMqttTools(
     async ({ agent_id, timeout_seconds }, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError(ctx.sessionId);
+      requireScope(claims, "wait_for_message");
       if (!mqttBridge.isConnected()) return mqttNotConnectedResult();
       const cappedSeconds = Math.min(timeout_seconds || 15, MAX_WAIT_TIMEOUT_SECONDS);
       const timeoutMs = cappedSeconds * 1000;
@@ -134,6 +136,7 @@ export function registerMqttTools(
     async ({ agent_id, require_ack, ack }, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError(ctx.sessionId);
+      requireScope(claims, "get_queued_messages");
       if (!mqttBridge.isConnected()) return mqttNotConnectedResult();
       const result = mqttBridge.getQueuedMessages(claims.org, agent_id, {
         requireAck: require_ack,
@@ -174,6 +177,7 @@ export function registerMqttTools(
     async ({ topic, payload }, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError(ctx.sessionId);
+      requireScope(claims, "mqtt_publish");
       if (!mqttBridge.isConnected()) return mqttNotConnectedResult();
       // #330: hold the caller to its own identity on agent-status topics. A
       // Phase 1 agent token is minted with the agent id as subject

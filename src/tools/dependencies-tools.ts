@@ -6,6 +6,7 @@ import type { AuthClaims } from "../auth.js";
 import type { DependencyMap } from "../types.js";
 
 import { missingClaimsError } from "./tool-errors.js";
+import { requireScope } from "./tool-scopes.js";
 
 /**
  * S1: dependency map MCP tools (3 tools).
@@ -37,6 +38,7 @@ export function registerDependenciesTools(
     async ({ modules }, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError(ctx.sessionId);
+      requireScope(claims, "set_dependency_map");
 
       let parsed: unknown;
       try {
@@ -88,6 +90,7 @@ export function registerDependenciesTools(
     async ({ module_id }, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError(ctx.sessionId);
+      requireScope(claims, "get_blast_radius");
       const radius = depMap.getBlastRadius(claims.org, module_id);
       return { content: [{ type: "text", text: JSON.stringify(radius) }] };
     },
@@ -105,6 +108,7 @@ export function registerDependenciesTools(
     async ({ module_id }, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError(ctx.sessionId);
+      requireScope(claims, "get_module_info");
       const info = depMap.getModuleInfo(claims.org, module_id);
       return { content: [{ type: "text", text: JSON.stringify(info) }] };
     },

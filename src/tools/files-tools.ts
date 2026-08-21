@@ -5,7 +5,9 @@ import type { Logger } from "../logger.js";
 import type { AuthClaims } from "../auth.js";
 
 import { missingClaimsError } from "./tool-errors.js";
+import { requireScope } from "./tool-scopes.js";
 import { normalizeDeclaredPaths } from "../path-normalize.js";
+import { repoRoots } from "../repo-roots.js";
 
 /**
  * S1: file tracking MCP tools (3 tools).
@@ -34,6 +36,7 @@ export function registerFilesTools(
     async ({ since_minutes }, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError(ctx.sessionId);
+      requireScope(claims, "hot_files");
       const files = fileTracker.getHotFiles(claims.org, since_minutes || 30);
       return { content: [{ type: "text", text: JSON.stringify(files) }] };
     },
@@ -51,6 +54,7 @@ export function registerFilesTools(
     async ({ session_id }, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError(ctx.sessionId);
+      requireScope(claims, "get_session_files");
       const files = fileTracker.getBySession(claims.org, session_id);
       return { content: [{ type: "text", text: JSON.stringify(files) }] };
     },
@@ -79,11 +83,10 @@ export function registerFilesTools(
     async ({ file_path, agent_id, within_minutes }, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError(ctx.sessionId);
+      requireScope(claims, "check_file_conflict");
       // issue #275: same canonical form as the observed side, or the lookup
       // compares a raw string against a normalized column and finds nothing.
-      const declared = normalizeDeclaredPaths(process.env.COORDINATOR_REPO_ROOT || null, [
-        file_path,
-      ]);
+      const declared = normalizeDeclaredPaths(repoRoots(), [file_path]);
       if (!declared.ok) {
         return {
           isError: true,

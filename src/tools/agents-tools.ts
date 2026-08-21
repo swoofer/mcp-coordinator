@@ -6,6 +6,7 @@ import type { AuthClaims } from "../auth.js";
 import { runRegisterFlow } from "../register-workflow.js";
 
 import { missingClaimsError } from "./tool-errors.js";
+import { requireScope } from "./tool-scopes.js";
 
 /**
  * S1: agent registry MCP tools (4 tools).
@@ -44,6 +45,7 @@ export function registerAgentTools(
     async ({ agent_id, name, modules }, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError(ctx.sessionId);
+      requireScope(claims, "register_agent");
       mcpLog.info(
         { tool: "register_agent", agent_id, name, module_count: modules.length },
         "Tool called",
@@ -70,6 +72,7 @@ export function registerAgentTools(
     async ({ online_only }, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError(ctx.sessionId);
+      requireScope(claims, "list_agents");
       const agents = online_only ? registry.listOnline(claims.org) : registry.listAll(claims.org);
       return { content: [{ type: "text", text: JSON.stringify(agents) }] };
     },
@@ -100,6 +103,7 @@ export function registerAgentTools(
     async ({ agent_id, current_file, current_thread }, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError(ctx.sessionId);
+      requireScope(claims, "heartbeat");
       registry.heartbeat(claims.org, agent_id);
       activityTracker.heartbeat(claims.org, agent_id, {
         currentFile: current_file || null,
@@ -130,6 +134,7 @@ export function registerAgentTools(
     async (_args, ctx) => {
       const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError(ctx.sessionId);
+      requireScope(claims, "agent_activity");
       const activities = activityTracker.listAll(claims.org, { idleAfterMinutes: 5 });
       return { content: [{ type: "text", text: JSON.stringify(activities) }] };
     },

@@ -46,12 +46,20 @@ describe("the out-of-root rejection explains itself (#379)", () => {
     expect(thrown()!.message).toMatch(/repo-relative/i);
   });
 
-  it("says a second worktree cannot be expressed, and where that is tracked", () => {
-    // The honest part: for the reader who is in a worktree, no rephrasing of
-    // their path will work, and they should stop trying.
+  it("tells a worktree reader how to comply, instead of that they cannot", () => {
+    // INVERTED, not deleted. This used to assert the message said a second
+    // worktree "cannot be expressed today", and called that "the honest part".
+    // It was not honest, it was wrong — and the last case in this same file
+    // proved it wrong: a relative declaration has always produced the same key
+    // as the main checkout. A reader in a worktree who believed that sentence
+    // gave up for no reason.
+    //
+    // Since #379's fix it is out of date as well: absolute paths from any
+    // worktree `git worktree list` knows about now normalize.
     const message = thrown()!.message;
     expect(message).toMatch(/worktree/i);
-    expect(message).toContain("#379");
+    expect(message).not.toMatch(/cannot be expressed/i);
+    expect(message).toMatch(/always works/i);
   });
 
   it("keeps the phrase the existing assertions match on", () => {
