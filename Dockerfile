@@ -83,9 +83,27 @@ COPY --chown=coordinator:coordinator LICENSE ./LICENSE
 # files. Declaring VOLUME signals the contract; users mount a named volume
 # or host path here. COORDINATOR_DATA_DIR points serve-http.ts at /data/data
 # (the default subdir is "./data" relative to dataDir, so we pin it).
+#
+# COORDINATOR_BIND is set here, and ONLY here — the binary keeps its
+# loopback default. The two defaults answer different questions.
+#
+# On a laptop, 127.0.0.1 is the right answer: `mcp-coordinator server start`
+# must not put an authenticated coordination bus on the LAN because someone
+# ran it in a café. That default stays.
+#
+# In an image, loopback is never the answer. The container's network
+# namespace IS the isolation boundary, so binding to it and no further makes
+# the server unreachable from the outside — which contradicts the EXPOSE two
+# stanzas down, and makes the published ports a promise the image does not
+# keep. Every orchestrator probes the container's address, not its loopback:
+# under Kubernetes the kubelet's liveness probe gets `connection refused` on
+# the pod IP and restart-loops the container, while an exec'd
+# `wget 127.0.0.1:3100/livez` from inside answers perfectly. Healthy from
+# within, dead from without.
 ENV COORDINATOR_DATA_DIR=/data/data \
   NODE_ENV=production \
-  PORT=3100
+  PORT=3100 \
+  COORDINATOR_BIND=0.0.0.0
 
 VOLUME ["/data"]
 
@@ -101,6 +119,13 @@ USER coordinator
 
 # Use 127.0.0.1 inside the container — the probe runs in the same net
 # namespace as the server, so loopback is correct and avoids DNS surprises.
+#
+# This probe is only MEANINGFUL because COORDINATOR_BIND=0.0.0.0 is set
+# above. A loopback probe against a loopback-only server is the worst of
+# both worlds: it reports healthy while nothing outside the container can
+# reach the port, so the one signal that should catch the misconfiguration
+# is the signal that hides it. If you ever drop that ENV, this HEALTHCHECK
+# stops telling the truth — change both or neither.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD wget -q --spider http://127.0.0.1:3100/health || exit 1
 
