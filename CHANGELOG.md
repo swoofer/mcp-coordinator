@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.3.0](https://github.com/swoofer/mcp-coordinator/compare/v2.2.1...v2.3.0) (2026-08-28)
+
+
+### Features
+
+* **http:** add POST /api/threads-summary — thread counts by run ([#442](https://github.com/swoofer/mcp-coordinator/issues/442)) ([8a7c528](https://github.com/swoofer/mcp-coordinator/commit/8a7c528638f236a6da749a38c0b25c2fce0f6388))
+
+
+### Bug Fixes
+
+* **docker:** bind to all interfaces in the image so orchestrator probes reach the server ([#438](https://github.com/swoofer/mcp-coordinator/issues/438)) ([e79b65e](https://github.com/swoofer/mcp-coordinator/commit/e79b65e84646e4cfe9fcfac16637298fe0069c9e))
+
 ## [2.2.1](https://github.com/swoofer/mcp-coordinator/compare/v2.2.0...v2.2.1) (2026-08-21)
 
 
