@@ -3,6 +3,7 @@ import type { ZodError } from "zod";
 import type { CoordinatorServices } from "../server-setup.js";
 import type { Logger } from "../logger.js";
 import type { AuthClaims } from "../auth.js";
+import type { ThreadStatus } from "../types.js";
 import { createHash } from "crypto";
 import { getDb } from "../database.js";
 import { runCommonAnnounceFlow } from "../announce-workflow.js";
@@ -27,6 +28,7 @@ import {
   ApproveResolutionBodySchema,
   HotFilesBodySchema,
   ThreadsActiveBodySchema,
+  ThreadsSummaryBodySchema,
   IntrospectionResponseBodySchema,
   CheckInterruptBodySchema,
 } from "./rest-schemas.js";
@@ -654,6 +656,57 @@ export function handleThreadsActive(
   const open = consultation.listThreads(ctx.claims.org, { status: "open", run_id });
   const resolving = consultation.listThreads(ctx.claims.org, { status: "resolving", run_id });
   json(res, [...open, ...resolving]);
+}
+
+/**
+ * POST /api/threads-summary — thread counts by status for one run, so a
+ * client can report a run's final state.
+ *
+ * Why this exists: /api/threads-active only ever returns 'open' and
+ * 'resolving' threads, and a 'poisoned' thread (handleUnclaimTask, F4 —
+ * unclaimed POISON_THRESHOLD times) is a table UPDATE with no matching SSE
+ * event. A client reconstructing outcomes from the event stream (essaim's
+ * run reporter) cannot distinguish an abandoned thread from a resolved one.
+ * This reads the DB truth directly instead.
+ *
+ * Deliberately NOT consultation.listThreads's `run_id = ? OR run_id IS
+ * NULL` semantics (see ThreadsActiveBodySchema doc): that OR exists so a
+ * live agent doesn't miss a concurrent human session's threads. A run
+ * summary asks the opposite question — "what did THIS run do" — so
+ * un-scoped threads must never be folded into another run's counts.
+ */
+export function handleThreadsSummary(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RestContext,
+  body: Record<string, unknown>,
+): void {
+  const parsed = ThreadsSummaryBodySchema.safeParse(body);
+  if (!parsed.success) {
+    sendValidationError(res, parsed.error);
+    return;
+  }
+  const { run_id } = parsed.data;
+  const db = getDb();
+  const rows = db
+    .prepare(
+      "SELECT status, COUNT(*) AS n FROM threads WHERE org_id = ? AND run_id = ? GROUP BY status",
+    )
+    .all(ctx.claims.org, run_id) as Array<{ status: ThreadStatus; n: number }>;
+
+  const counts: Record<ThreadStatus, number> = {
+    open: 0,
+    resolving: 0,
+    resolved: 0,
+    cancelled: 0,
+    poisoned: 0,
+  };
+  let total = 0;
+  for (const row of rows) {
+    counts[row.status] = row.n;
+    total += row.n;
+  }
+  json(res, { run_id, total, counts });
 }
 
 export function handleHotFiles(

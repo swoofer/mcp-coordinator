@@ -204,6 +204,7 @@ describe("handleRest — read-only endpoints remain accessible via GET", () => {
     { url: "/api/status", body: {} },
     { url: "/api/quota", body: {} },
     { url: "/api/threads-active", body: {} },
+    { url: "/api/threads-summary", body: { run_id: "run-1" } },
     { url: "/api/hot-files", body: {} },
     { url: "/api/check-interrupt", body: { agent_id: "agent-a" } },
     { url: "/api/check-conflict", body: { file: "x.ts", agent_id: "agent-a" } },
