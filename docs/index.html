@@ -38,7 +38,7 @@
     "applicationCategory": "DeveloperApplication",
     "applicationSubCategory": "AI Agent Coordination",
     "operatingSystem": "Linux, macOS, Windows",
-    "softwareVersion": "2.2.1",
+    "softwareVersion": "2.3.0",
     "license": "https://opensource.org/licenses/MIT",
     "codeRepository": "https://github.com/swoofer/mcp-coordinator",
     "programmingLanguage": ["JavaScript", "Node.js"],
@@ -1635,7 +1635,7 @@
 <section id="hero">
   <div class="container">
     <div class="hero-eyebrow">
-      <span data-i18n="hero.eyebrow">Open Source &middot; MIT &middot; v2.2.1</span>
+      <span data-i18n="hero.eyebrow">Open Source &middot; MIT &middot; v2.3.0</span>
     </div>
     <h1 data-i18n="hero.h1">Zero conflicts. Every agent aligned.</h1>
     <p class="hero-subtitle" data-i18n="hero.subtitle">5 agents, 1 codebase, 0 merge conflicts. The MCP server that keeps parallel Claude Code, Cursor, and Cline agents aligned.</p>
@@ -2264,7 +2264,7 @@
         <div class="code-block">mcp-coordinator doctor &amp;&amp; mcp-coordinator dashboard</div>
       </div>
     </div>
-    <p class="install-alt text-center" data-i18n="start.alt"><strong>Prefer Docker?</strong> Pull the multi-arch image instead: <code class="ic">docker pull ghcr.io/swoofer/mcp-coordinator:2.2.1</code>. A working compose stack with Caddy auto-TLS ships at <a href="https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose">examples/docker-compose/</a>.</p>
+    <p class="install-alt text-center" data-i18n="start.alt"><strong>Prefer Docker?</strong> Pull the multi-arch image instead: <code class="ic">docker pull ghcr.io/swoofer/mcp-coordinator:2.3.0</code>. A working compose stack with Caddy auto-TLS ships at <a href="https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose">examples/docker-compose/</a>.</p>
     <p class="install-alt text-center" data-i18n="start.modes"><strong>Want real-time push instead of polling?</strong> The Channels sidecar (v0.12+ research preview) streams coordination events into a Claude Code session as <code class="ic">&lt;channel&gt;</code> tags. <strong>It does not load on a stock install today</strong> — the flag is only parsed in an interactive session, availability sits behind an Anthropic-side switch that defaults to off, and every refusal is silent. Polling is the answer that works today: see the <a href="https://github.com/swoofer/mcp-coordinator/blob/main/docs/operating-modes.md">polling-vs-push decision guide</a> and the <a href="https://github.com/swoofer/mcp-coordinator/tree/main/examples/channels-quickstart">channels-quickstart example</a>.</p>
     <p class="install-note text-center" data-i18n="start.note"><code class="ic">git worktree add ../feature-x main</code> and run each agent in its own worktree &mdash; mcp-coordinator handles "who's editing types.ts"; worktrees handle "no two agents fighting the same inode."</p>
 
@@ -2276,7 +2276,7 @@
         <div class="agent-status"><span class="dot dot-green" aria-hidden="true"></span> Beta &mdash; idle</div>
         <div class="agent-status"><span class="dot dot-yellow" aria-hidden="true"></span> Gamma &mdash; waiting</div>
         <div class="agent-status"><span class="dot dot-red" aria-hidden="true"></span> Delta &mdash; offline</div>
-        <div class="agent-status" style="margin-left: auto; color: var(--muted); font-size: 0.8rem;" data-i18n="start.dash.meta">mcp-coordinator v2.2.1 &middot; quota 62%</div>
+        <div class="agent-status" style="margin-left: auto; color: var(--muted); font-size: 0.8rem;" data-i18n="start.dash.meta">mcp-coordinator v2.3.0 &middot; quota 62%</div>
       </div>
       <div class="dash-timeline">
         <div><span class="tl-time">09:41:02</span> <span class="tl-blue">Alpha</span> announced: "Add updated_at to User" &rarr; types.ts, user.service.ts</div>
@@ -2493,7 +2493,7 @@
 
       <details class="faq-item">
         <summary class="faq-q" data-i18n="faq.q8">Yet another tool to maintain?</summary>
-        <div class="faq-a" data-i18n="faq.a8">One <code>npm install -g</code>, or pull the published image <code>ghcr.io/swoofer/mcp-coordinator:2.2.1</code> if you prefer Docker. Embedded MQTT broker, SQLite, and dashboard ship in the package. Zero sidecar. Symmetric <code>uninstall</code> reverses the <code>init</code> actions; <code>--purge</code> wipes the data dir.</div>
+        <div class="faq-a" data-i18n="faq.a8">One <code>npm install -g</code>, or pull the published image <code>ghcr.io/swoofer/mcp-coordinator:2.3.0</code> if you prefer Docker. Embedded MQTT broker, SQLite, and dashboard ship in the package. Zero sidecar. Symmetric <code>uninstall</code> reverses the <code>init</code> actions; <code>--purge</code> wipes the data dir.</div>
       </details>
 
       <details class="faq-item">
@@ -2585,7 +2585,7 @@
         "name": "Yet another tool to maintain?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "One npm install -g, or pull the published image ghcr.io/swoofer/mcp-coordinator:2.2.1 if you prefer Docker. Embedded MQTT broker, SQLite, and dashboard ship in the package. Zero sidecar. Symmetric uninstall reverses the init actions; --purge wipes the data dir."
+          "text": "One npm install -g, or pull the published image ghcr.io/swoofer/mcp-coordinator:2.3.0 if you prefer Docker. Embedded MQTT broker, SQLite, and dashboard ship in the package. Zero sidecar. Symmetric uninstall reverses the init actions; --purge wipes the data dir."
         }
       },
       {
@@ -2906,7 +2906,7 @@
     <a href="https://github.com/sponsors/swoofer" target="_blank" rel="noopener noreferrer">Sponsor</a>
     <a href="https://buymeacoffee.com/swoofer" target="_blank" rel="noopener noreferrer">Buy Me A Coffee</a>
   </div>
-  <p data-i18n="footer.text">MIT License &nbsp;·&nbsp; Built with <a href="https://claude.ai/code" target="_blank" rel="noopener noreferrer">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v2.2.1</p>
+  <p data-i18n="footer.text">MIT License &nbsp;·&nbsp; Built with <a href="https://claude.ai/code" target="_blank" rel="noopener noreferrer">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v2.3.0</p>
 </footer>
 
 <script>
@@ -3005,7 +3005,7 @@
       "nav.faq": "FAQ",
       "nav.roadmap": "Roadmap",
       "nav.getstarted": "Get Started",
-      "hero.eyebrow": "Open Source &middot; MIT &middot; v2.2.1",
+      "hero.eyebrow": "Open Source &middot; MIT &middot; v2.3.0",
       "hero.h1": "Zero conflicts. Every agent aligned.",
       "hero.subtitle": "5 agents, 1 codebase, 0 merge conflicts. The MCP server that keeps parallel Claude Code, Cursor, and Cline agents aligned.",
       "hero.stat.latency": "&lt;50ms push latency",
@@ -3173,11 +3173,11 @@
       "start.step4.label": "Step 4",
       "start.step4.title": "Verify and open",
       "start.step4.desc": "The <code class=\"ic\">doctor</code> command checks config, server, MCP responses, and MQTT connections, then opens the dashboard at <code class=\"ic\">localhost:3100/dashboard</code>.",
-      "start.alt": "<strong>Prefer Docker?</strong> Pull the multi-arch image instead: <code class=\"ic\">docker pull ghcr.io/swoofer/mcp-coordinator:2.2.1</code>. A working compose stack with Caddy auto-TLS ships at <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose\">examples/docker-compose/</a>.",
+      "start.alt": "<strong>Prefer Docker?</strong> Pull the multi-arch image instead: <code class=\"ic\">docker pull ghcr.io/swoofer/mcp-coordinator:2.3.0</code>. A working compose stack with Caddy auto-TLS ships at <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose\">examples/docker-compose/</a>.",
       "start.modes": "<strong>Want real-time push instead of polling?</strong> The Channels sidecar (v0.12+ research preview) streams coordination events into a Claude Code session as <code class=\"ic\">&lt;channel&gt;</code> tags. <strong>It does not load on a stock install today</strong> — the flag is only parsed in an interactive session, availability sits behind an Anthropic-side switch that defaults to off, and every refusal is silent. Polling is the answer that works today: see the <a href=\"https://github.com/swoofer/mcp-coordinator/blob/main/docs/operating-modes.md\">polling-vs-push decision guide</a> and the <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/channels-quickstart\">channels-quickstart example</a>.",
       "start.note": "<code class=\"ic\">git worktree add ../feature-x main</code> and run each agent in its own worktree &mdash; mcp-coordinator handles \"who's editing types.ts\"; worktrees handle \"no two agents fighting the same inode.\"",
       "start.dash.title": "What you'll see in 60 seconds",
-      "start.dash.meta": "mcp-coordinator v2.2.1 &middot; quota 62%",
+      "start.dash.meta": "mcp-coordinator v2.3.0 &middot; quota 62%",
       "start.dash.aria": "Sample dashboard view: four agents tracked live, with a conflict resolved in 38 seconds",
       "start.cta.star": "Star on GitHub",
       "start.cta.issue": "Open an issue",
@@ -3223,7 +3223,7 @@
       "faq.q7": "How is this different from Aider or Cline's own coordination?",
       "faq.a7": "Aider and Cline have no cross-session awareness. mcp-coordinator gives them shared state via the MQTT broker.",
       "faq.q8": "Yet another tool to maintain?",
-      "faq.a8": "One <code>npm install -g</code>, or pull the published image <code>ghcr.io/swoofer/mcp-coordinator:2.2.1</code> if you prefer Docker. Embedded MQTT broker, SQLite, and dashboard ship in the package. Zero sidecar. Symmetric <code>uninstall</code> reverses the <code>init</code> actions; <code>--purge</code> wipes the data dir.",
+      "faq.a8": "One <code>npm install -g</code>, or pull the published image <code>ghcr.io/swoofer/mcp-coordinator:2.3.0</code> if you prefer Docker. Embedded MQTT broker, SQLite, and dashboard ship in the package. Zero sidecar. Symmetric <code>uninstall</code> reverses the <code>init</code> actions; <code>--purge</code> wipes the data dir.",
       "faq.q9": "What if the coordinator goes down?",
       "faq.a9": "Agents fail open and keep working as if uninstalled. Local SQLite resumes on restart.",
       "faq.q10": "Will my agent lose context between turns?",
@@ -3321,7 +3321,7 @@
       "roadmap.beyond.desc": "Coordination across multiple repositories from a single MQTT broker. A frozen, versioned public REST API with migration guides.",
       "roadmap.beyond.date": "Date TBD",
       "roadmap.beyond.link": "Follow on GitHub",
-      "footer.text": "MIT License &nbsp;·&nbsp; Built with <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v2.2.1",
+      "footer.text": "MIT License &nbsp;·&nbsp; Built with <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v2.3.0",
       // === Deprecated keys preserved for backwards-compat (old taxonomy) ===
       // === v0.7 additions: nav, roadmap v0.6/v0.7, Enterprise & Compliance section ===
       "nav.compliance": "Compliance",
@@ -3385,7 +3385,7 @@
       "nav.roadmap": "Feuille de route",
       "nav.getstarted": "Commencer",
       "nav.compliance": "Conformité",
-      "hero.eyebrow": "Open Source &middot; MIT &middot; v2.2.1",
+      "hero.eyebrow": "Open Source &middot; MIT &middot; v2.3.0",
       "hero.h1": "Zéro conflit. Tous les agents alignés.",
       "hero.subtitle": "Serveur MCP clé en main qui permet à des agents Claude Code, Cursor ou Cline en parallèle d'annoncer leur travail, détecter les conflits et atteindre un consensus — avant de toucher à votre code.",
       "hero.stat.latency": "Latence push &lt;50 ms",
@@ -3547,11 +3547,11 @@
       "start.step4.label": "Étape 4",
       "start.step4.title": "Vérifier et ouvrir",
       "start.step4.desc": "La commande <code class=\"ic\">doctor</code> vérifie la config, le serveur, les réponses MCP et les connexions MQTT, puis ouvre le dashboard sur <code class=\"ic\">localhost:3100/dashboard</code>.",
-      "start.alt": "<strong>Vous préférez Docker ?</strong> Pull plutôt l'image multi-arch : <code class=\"ic\">docker pull ghcr.io/swoofer/mcp-coordinator:2.2.1</code>. Une stack compose complète avec Caddy auto-TLS est fournie dans <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose\">examples/docker-compose/</a>.",
+      "start.alt": "<strong>Vous préférez Docker ?</strong> Pull plutôt l'image multi-arch : <code class=\"ic\">docker pull ghcr.io/swoofer/mcp-coordinator:2.3.0</code>. Une stack compose complète avec Caddy auto-TLS est fournie dans <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose\">examples/docker-compose/</a>.",
       "start.modes": "<strong>Vous voulez du push temps réel plutôt que du polling ?</strong> Le sidecar Channels (v0.12+, research preview) diffuse les événements de coordination dans une session Claude Code sous forme de balises <code class=\"ic\">&lt;channel&gt;</code>. <strong>Il ne se charge sur aucune installation stock à ce jour</strong> — le flag n'est lu qu'en session interactive, la disponibilité dépend d'un interrupteur côté Anthropic désactivé par défaut, et chaque refus est silencieux. Le polling est la réponse qui marche aujourd'hui : voir le <a href=\"https://github.com/swoofer/mcp-coordinator/blob/main/docs/operating-modes.md\">guide de décision polling vs push</a> et l'<a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/channels-quickstart\">exemple channels-quickstart</a>.",
       "start.note": "<code class=\"ic\">git worktree add ../feature-x main</code> et lancez chaque agent dans son propre worktree &mdash; mcp-coordinator gère \"qui édite types.ts\" ; les worktrees gèrent \"deux agents qui ne se battent pas sur la même inode.\"",
       "start.dash.title": "Ce que vous verrez en 60 secondes",
-      "start.dash.meta": "mcp-coordinator v2.2.1 &middot; quota 62%",
+      "start.dash.meta": "mcp-coordinator v2.3.0 &middot; quota 62%",
       "start.dash.aria": "Vue exemple du dashboard : quatre agents suivis en direct, avec un conflit résolu en 38 secondes",
       "start.cta.star": "Mettre une étoile sur GitHub",
       "start.cta.issue": "Ouvrir une issue",
@@ -3597,7 +3597,7 @@
       "faq.q7": "En quoi est-ce différent de la coordination propre à Aider ou Cline ?",
       "faq.a7": "Aider et Cline n'ont aucune conscience cross-session. mcp-coordinator leur donne un état partagé via le broker MQTT.",
       "faq.q8": "Encore un outil à maintenir ?",
-      "faq.a8": "Un seul <code>npm install -g</code>, ou pull de l'image publiée <code>ghcr.io/swoofer/mcp-coordinator:2.2.1</code> si vous préférez Docker. Broker MQTT, SQLite et dashboard embarqués dans le paquet. Zéro sidecar. Le <code>uninstall</code> symétrique annule les actions de <code>init</code> ; <code>--purge</code> efface le dossier de données.",
+      "faq.a8": "Un seul <code>npm install -g</code>, ou pull de l'image publiée <code>ghcr.io/swoofer/mcp-coordinator:2.3.0</code> si vous préférez Docker. Broker MQTT, SQLite et dashboard embarqués dans le paquet. Zéro sidecar. Le <code>uninstall</code> symétrique annule les actions de <code>init</code> ; <code>--purge</code> efface le dossier de données.",
       "faq.q9": "Que se passe-t-il si le coordinator tombe ?",
       "faq.a9": "Les agents échouent en mode ouvert et continuent à travailler comme s'il était désinstallé. SQLite local reprend au redémarrage.",
       "faq.q10": "Mon agent va-t-il perdre son contexte entre les turns ?",
@@ -3741,7 +3741,7 @@
       "compliance.row.retention.status": "Sweeper livré &middot; UI future",
       "compliance.row.retention.aligned": "SOC 2 &middot; Minimisation RGPD",
       "compliance.disclaimer": "mcp-coordinator n'est <strong>pas certifié SOC 2</strong> &mdash; la certification est un travail d'auditeur, pas de code. Nous livrons les crochets architecturaux (isolation multi-tenant, audit log, interface de chiffrement) pour que les équipes en quête d'audit aient une longueur d'avance, mais la certification elle-même reste le processus de votre équipe.",
-      "footer.text": "Licence MIT &nbsp;·&nbsp; Construit avec <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v2.2.1",
+      "footer.text": "Licence MIT &nbsp;·&nbsp; Construit avec <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v2.3.0",
       "mechanism.v05.inflight.title": "Conscience en vol",
       "mechanism.v05.inflight.body": "Les hooks PreToolUse + PostToolUse permettent au coordinator de voir les agents <strong>commencer</strong> à éditer les fichiers — pas seulement quand ils terminent. Les conflits émergent avant que les bytes ne soient écrits, pas après.",
       "mechanism.v05.symbol.title": "Scoring conscient des symboles",
@@ -3761,7 +3761,7 @@
       "nav.faq": "FAQ",
       "nav.roadmap": "Hoja de ruta",
       "nav.getstarted": "Empezar",
-      "hero.eyebrow": "Código abierto &middot; MIT &middot; v2.2.1",
+      "hero.eyebrow": "Código abierto &middot; MIT &middot; v2.3.0",
       "hero.h1": "Cero conflictos. Cada agente alineado.",
       "hero.subtitle": "Servidor MCP plug-and-play que permite a agentes paralelos de Claude Code, Cursor o Cline anunciar su trabajo, detectar conflictos y alcanzar consenso — antes de tocar su código.",
       "hero.stat.latency": "&lt;50ms de latencia push",
@@ -3923,11 +3923,11 @@
       "start.step4.label": "Paso 4",
       "start.step4.title": "Verificar y abrir",
       "start.step4.desc": "El comando <code class=\"ic\">doctor</code> chequea config, servidor, respuestas MCP y conexiones MQTT, luego abre el dashboard en <code class=\"ic\">localhost:3100/dashboard</code>.",
-      "start.alt": "<strong>¿Prefieres Docker?</strong> Haz pull de la imagen multi-arch: <code class=\"ic\">docker pull ghcr.io/swoofer/mcp-coordinator:2.2.1</code>. Un stack compose completo con Caddy auto-TLS está en <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose\">examples/docker-compose/</a>.",
+      "start.alt": "<strong>¿Prefieres Docker?</strong> Haz pull de la imagen multi-arch: <code class=\"ic\">docker pull ghcr.io/swoofer/mcp-coordinator:2.3.0</code>. Un stack compose completo con Caddy auto-TLS está en <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose\">examples/docker-compose/</a>.",
       "start.modes": "<strong>¿Quieres push en tiempo real en vez de polling?</strong> El sidecar Channels (v0.12+, research preview) transmite los eventos de coordinación a una sesión de Claude Code como etiquetas <code class=\"ic\">&lt;channel&gt;</code>. <strong>Hoy no se carga en ninguna instalación estándar</strong>: la flag solo se analiza en una sesión interactiva, la disponibilidad depende de un interruptor del lado de Anthropic desactivado por defecto, y cada rechazo es silencioso. El polling es la respuesta que funciona hoy: consulta la <a href=\"https://github.com/swoofer/mcp-coordinator/blob/main/docs/operating-modes.md\">guía de decisión polling vs push</a> y el <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/channels-quickstart\">ejemplo channels-quickstart</a>.",
       "start.note": "<code class=\"ic\">git worktree add ../feature-x main</code> y ejecuta cada agente en su propio worktree &mdash; mcp-coordinator maneja \"quién está editando types.ts\"; los worktrees manejan \"que dos agentes no peleen por el mismo inode.\"",
       "start.dash.title": "Lo que verás en 60 segundos",
-      "start.dash.meta": "mcp-coordinator v2.2.1 &middot; cuota 62%",
+      "start.dash.meta": "mcp-coordinator v2.3.0 &middot; cuota 62%",
       "start.dash.aria": "Vista de dashboard de muestra: cuatro agentes rastreados en vivo, con un conflicto resuelto en 38 segundos",
       "start.cta.star": "Dale una estrella en GitHub",
       "start.cta.issue": "Abrir un issue",
@@ -3973,7 +3973,7 @@
       "faq.q7": "¿En qué se diferencia esto de la coordinación propia de Aider o Cline?",
       "faq.a7": "Aider y Cline no tienen conciencia entre sesiones. mcp-coordinator les da estado compartido vía el MQTT broker.",
       "faq.q8": "¿Otra herramienta más para mantener?",
-      "faq.a8": "Un solo <code>npm install -g</code>, o haz pull de la imagen publicada <code>ghcr.io/swoofer/mcp-coordinator:2.2.1</code> si prefieres Docker. MQTT broker embebido, SQLite y dashboard vienen en el paquete. Cero sidecar. El <code>uninstall</code> simétrico revierte las acciones de <code>init</code>; <code>--purge</code> limpia el directorio de datos.",
+      "faq.a8": "Un solo <code>npm install -g</code>, o haz pull de la imagen publicada <code>ghcr.io/swoofer/mcp-coordinator:2.3.0</code> si prefieres Docker. MQTT broker embebido, SQLite y dashboard vienen en el paquete. Cero sidecar. El <code>uninstall</code> simétrico revierte las acciones de <code>init</code>; <code>--purge</code> limpia el directorio de datos.",
       "faq.q9": "¿Qué pasa si el coordinator se cae?",
       "faq.a9": "Los agentes fallan en abierto y siguen trabajando como si estuviera desinstalado. La SQLite local retoma al reiniciar.",
       "faq.q10": "¿Mi agente perderá contexto entre turnos?",
@@ -3995,7 +3995,7 @@
       "roadmap.v03.desc": "Apagado ordenado con un <code>ServerHandle</code> devuelto. Consistencia: <code>announceWork</code> envuelto en una transacción, compare-and-set en <code>approveResolution</code>, <code>checkTimeouts</code> sacado de la ruta de request hacia un sweeper en segundo plano. Seguridad: auth JWT MQTT opt-in con anónimo todavía por defecto, <code>/api/reset</code> con gating cuando la auth está desactivada, y guarda contra path traversal en el handler estático del dashboard. Además, el rediseño de la landing en 11 secciones, con tarjetas Open Graph, sitemap y la primera pasada completa de i18n.",
       "roadmap.v03.date": "Lanzado en mayo de 2026",
       "roadmap.v03.link": "Lanzamiento v0.3.0",
-      "footer.text": "Licencia MIT &nbsp;·&nbsp; Construido con <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v2.2.1",
+      "footer.text": "Licencia MIT &nbsp;·&nbsp; Construido con <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v2.3.0",
       "nav.compliance": "Cumplimiento",
       "roadmap.v04.title": "v0.4 — Sondas de salud y métricas Prometheus",
       "roadmap.v04.desc": "La superficie de observabilidad, más una pasada de corrección sobre la entrega MQTT, la resiliencia SSE y el rendimiento del scorer. Handlers de salud: <code>/livez</code> para liveness, <code>/readyz</code> que sondea SQLite y el bridge MQTT y responde 503 cuando alguno de los dos está caído, y <code>/health</code> conservado como alias. Y <code>metrics.ts</code> con 10 series Prometheus — 5 counters (anuncios, threads resueltos, publicaciones MQTT, requests HTTP, rechazos de auth) y 5 gauges (agentes online, threads abiertos, threads en resolución, listeners MQTT, clientes SSE). Las rutas se conectaron al servidor HTTP una versión después, en v0.5.0.",
@@ -4138,7 +4138,7 @@
       "nav.faq": "FAQ",
       "nav.roadmap": "Roadmap",
       "nav.getstarted": "Loslegen",
-      "hero.eyebrow": "Open Source &middot; MIT &middot; v2.2.1",
+      "hero.eyebrow": "Open Source &middot; MIT &middot; v2.3.0",
       "hero.h1": "Null Konflikte. Jeder Agent abgestimmt.",
       "hero.subtitle": "Drop-in MCP-Server, mit dem parallele Claude-Code-, Cursor- oder Cline-Agenten ihre Arbeit ankündigen, Konflikte erkennen und zu einem Konsens kommen — bevor sie eine einzige Zeile Ihres Codes anfassen.",
       "hero.stat.latency": "&lt;50 ms Push-Latenz",
@@ -4300,11 +4300,11 @@
       "start.step4.label": "Schritt 4",
       "start.step4.title": "Prüfen und öffnen",
       "start.step4.desc": "Der <code class=\"ic\">doctor</code>-Befehl prüft Konfig, Server, MCP-Antworten und MQTT-Verbindungen, dann öffnet er das Dashboard auf <code class=\"ic\">localhost:3100/dashboard</code>.",
-      "start.alt": "<strong>Bevorzugen Sie Docker?</strong> Ziehen Sie stattdessen das Multi-Arch-Image: <code class=\"ic\">docker pull ghcr.io/swoofer/mcp-coordinator:2.2.1</code>. Ein vollständiger Compose-Stack mit Caddy auto-TLS liegt unter <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose\">examples/docker-compose/</a>.",
+      "start.alt": "<strong>Bevorzugen Sie Docker?</strong> Ziehen Sie stattdessen das Multi-Arch-Image: <code class=\"ic\">docker pull ghcr.io/swoofer/mcp-coordinator:2.3.0</code>. Ein vollständiger Compose-Stack mit Caddy auto-TLS liegt unter <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose\">examples/docker-compose/</a>.",
       "start.modes": "<strong>Möchten Sie Echtzeit-Push statt Polling?</strong> Der Channels-Sidecar (v0.12+, Research Preview) streamt Koordinationsereignisse als <code class=\"ic\">&lt;channel&gt;</code>-Tags in eine Claude-Code-Sitzung. <strong>Auf einer Standardinstallation lädt er derzeit nicht</strong> — das Flag wird nur in einer interaktiven Sitzung ausgewertet, die Verfügbarkeit hängt an einem standardmäßig deaktivierten Schalter auf Anthropic-Seite, und jede Ablehnung erfolgt lautlos. Polling ist heute die funktionierende Antwort: siehe den <a href=\"https://github.com/swoofer/mcp-coordinator/blob/main/docs/operating-modes.md\">Entscheidungsleitfaden Polling vs. Push</a> und das <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/channels-quickstart\">channels-quickstart-Beispiel</a>.",
       "start.note": "<code class=\"ic\">git worktree add ../feature-x main</code> und führe jeden Agenten in seinem eigenen Worktree aus &mdash; mcp-coordinator regelt \"wer bearbeitet types.ts\"; Worktrees regeln \"keine zwei Agenten kämpfen um dieselbe Inode.\"",
       "start.dash.title": "Was du in 60 Sekunden siehst",
-      "start.dash.meta": "mcp-coordinator v2.2.1 &middot; Quota 62%",
+      "start.dash.meta": "mcp-coordinator v2.3.0 &middot; Quota 62%",
       "start.dash.aria": "Beispiel-Dashboard-Ansicht: vier Agenten live verfolgt, mit einem in 38 Sekunden gelösten Konflikt",
       "start.cta.star": "Auf GitHub starren",
       "start.cta.issue": "Issue eröffnen",
@@ -4350,7 +4350,7 @@
       "faq.q7": "Wie unterscheidet sich das von Aiders oder Clines eigener Koordination?",
       "faq.a7": "Aider und Cline haben kein Bewusstsein über Sessions hinweg. mcp-coordinator gibt ihnen geteilten State über den MQTT-Broker.",
       "faq.q8": "Noch ein Tool zu pflegen?",
-      "faq.a8": "Ein <code>npm install -g</code>, oder ziehen Sie das veröffentlichte Image <code>ghcr.io/swoofer/mcp-coordinator:2.2.1</code>, wenn Sie Docker bevorzugen. Eingebetteter MQTT-Broker, SQLite und Dashboard sind im Paket enthalten. Kein Sidecar. Symmetrisches <code>uninstall</code> macht die <code>init</code>-Aktionen rückgängig; <code>--purge</code> löscht das Datenverzeichnis.",
+      "faq.a8": "Ein <code>npm install -g</code>, oder ziehen Sie das veröffentlichte Image <code>ghcr.io/swoofer/mcp-coordinator:2.3.0</code>, wenn Sie Docker bevorzugen. Eingebetteter MQTT-Broker, SQLite und Dashboard sind im Paket enthalten. Kein Sidecar. Symmetrisches <code>uninstall</code> macht die <code>init</code>-Aktionen rückgängig; <code>--purge</code> löscht das Datenverzeichnis.",
       "faq.q9": "Was, wenn der Coordinator ausfällt?",
       "faq.a9": "Agenten arbeiten weiter, als wäre nichts installiert. Lokales SQLite nimmt beim Neustart wieder auf.",
       "faq.q10": "Verliert mein Agent Kontext zwischen Turns?",
@@ -4372,7 +4372,7 @@
       "roadmap.v03.desc": "Graceful Shutdown mit zurückgegebenem <code>ServerHandle</code>. Konsistenz: <code>announceWork</code> in eine Transaktion gekapselt, Compare-and-Set auf <code>approveResolution</code>, <code>checkTimeouts</code> vom Request-Pfad in einen Hintergrund-Sweeper verlagert. Sicherheit: opt-in MQTT-JWT-Auth mit weiterhin anonymem Standard, <code>/api/reset</code> gegated, wenn Auth deaktiviert ist, Path-Traversal-Guard im statischen Handler des Dashboards. Dazu das Landingpage-Redesign mit 11 Abschnitten, Open-Graph-Cards, Sitemap und der erste vollständige i18n-Durchgang.",
       "roadmap.v03.date": "Veröffentlicht im Mai 2026",
       "roadmap.v03.link": "v0.3.0 Release",
-      "footer.text": "MIT-Lizenz &nbsp;·&nbsp; Gebaut mit <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v2.2.1",
+      "footer.text": "MIT-Lizenz &nbsp;·&nbsp; Gebaut mit <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> &nbsp;·&nbsp; MCP Coordinator v2.3.0",
       "nav.compliance": "Compliance",
       "roadmap.v04.title": "v0.4 — Health-Probes &amp; Prometheus-Metriken",
       "roadmap.v04.desc": "Die Observability-Oberfläche, dazu ein Korrektheitsdurchgang bei MQTT-Zustellung, SSE-Resilienz und Scorer-Performance. Health-Handler: <code>/livez</code> für Liveness, <code>/readyz</code> prüft SQLite und die MQTT-Bridge und antwortet mit 503, sobald eines von beidem ausfällt, <code>/health</code> bleibt als Alias erhalten. Dazu <code>metrics.ts</code> mit 10 Prometheus-Metriken — 5 Counter (Ankündigungen, aufgelöste Threads, MQTT-Publishes, HTTP-Requests, Auth-Ablehnungen) und 5 Gauges (Agenten online, offene Threads, Threads in Auflösung, MQTT-Listener, SSE-Clients). In den HTTP-Server verdrahtet wurden die Routen erst ein Release später, in v0.5.0.",
@@ -4515,7 +4515,7 @@
       "nav.faq": "常见问题",
       "nav.roadmap": "路线图",
       "nav.getstarted": "开始使用",
-      "hero.eyebrow": "开源 &middot; MIT &middot; v2.2.1",
+      "hero.eyebrow": "开源 &middot; MIT &middot; v2.3.0",
       "hero.h1": "零冲突。每个 agent 对齐。",
       "hero.subtitle": "即插即用的 MCP 服务器,让并行运行的 Claude Code、Cursor 或 Cline agent 在动手改代码之前先宣告工作、检测冲突、达成共识。",
       "hero.stat.latency": "&lt;50ms 推送延迟",
@@ -4677,11 +4677,11 @@
       "start.step4.label": "第 4 步",
       "start.step4.title": "验证并打开",
       "start.step4.desc": "<code class=\"ic\">doctor</code> 命令检查 config、服务器、MCP 响应和 MQTT 连接,然后在 <code class=\"ic\">localhost:3100/dashboard</code> 打开 dashboard。",
-      "start.alt": "<strong>更喜欢 Docker?</strong> 改为拉取多架构镜像:<code class=\"ic\">docker pull ghcr.io/swoofer/mcp-coordinator:2.2.1</code>。完整的 compose 栈(带 Caddy auto-TLS)位于 <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose\">examples/docker-compose/</a>。",
+      "start.alt": "<strong>更喜欢 Docker?</strong> 改为拉取多架构镜像:<code class=\"ic\">docker pull ghcr.io/swoofer/mcp-coordinator:2.3.0</code>。完整的 compose 栈(带 Caddy auto-TLS)位于 <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose\">examples/docker-compose/</a>。",
       "start.modes": "<strong>想要实时推送而不是轮询?</strong> Channels 边车(v0.12+ research preview)将协调事件以 <code class=\"ic\">&lt;channel&gt;</code> 标签的形式推入 Claude Code 会话。<strong>但在当前的标准安装上它不会加载</strong>——该标志仅在交互式会话中被解析,可用性还取决于 Anthropic 侧一个默认关闭的开关,而且每一次拒绝都是静默的。轮询才是目前真正可用的方案:参见<a href=\"https://github.com/swoofer/mcp-coordinator/blob/main/docs/operating-modes.md\">轮询与推送的决策指南</a>和 <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/channels-quickstart\">channels-quickstart 示例</a>。",
       "start.note": "<code class=\"ic\">git worktree add ../feature-x main</code>,让每个 agent 在自己的 worktree 里运行&mdash;&mdash;mcp-coordinator 处理\"谁在编辑 types.ts\";worktree 处理\"两个 agent 别抢同一个 inode\"。",
       "start.dash.title": "60 秒后你会看到的画面",
-      "start.dash.meta": "mcp-coordinator v2.2.1 &middot; 配额 62%",
+      "start.dash.meta": "mcp-coordinator v2.3.0 &middot; 配额 62%",
       "start.dash.aria": "示例 dashboard 视图:实时跟踪 4 个 agent,一次冲突在 38 秒内得到解决",
       "start.cta.star": "在 GitHub 上 Star",
       "start.cta.issue": "提一个 issue",
@@ -4727,7 +4727,7 @@
       "faq.q7": "这和 Aider 或 Cline 自带的协调有什么区别?",
       "faq.a7": "Aider 和 Cline 没有跨会话的感知。mcp-coordinator 通过 MQTT broker 给它们提供共享状态。",
       "faq.q8": "又多一个工具要维护?",
-      "faq.a8": "一条 <code>npm install -g</code>,或者拉取已发布的镜像 <code>ghcr.io/swoofer/mcp-coordinator:2.2.1</code>(如果您更喜欢 Docker)。嵌入式 MQTT broker、SQLite 和 dashboard 都在包里。零 sidecar。对称的 <code>uninstall</code> 可以撤销 <code>init</code> 的所有动作;<code>--purge</code> 清空数据目录。",
+      "faq.a8": "一条 <code>npm install -g</code>,或者拉取已发布的镜像 <code>ghcr.io/swoofer/mcp-coordinator:2.3.0</code>(如果您更喜欢 Docker)。嵌入式 MQTT broker、SQLite 和 dashboard 都在包里。零 sidecar。对称的 <code>uninstall</code> 可以撤销 <code>init</code> 的所有动作;<code>--purge</code> 清空数据目录。",
       "faq.q9": "如果 coordinator 挂了会怎样?",
       "faq.a9": "agent 失败开放,继续工作,就像没装过一样。本地 SQLite 在重启时恢复。",
       "faq.q10": "agent 会在轮次之间丢失上下文吗?",
@@ -4749,7 +4749,7 @@
       "roadmap.v03.desc": "优雅关闭，并返回一个 <code>ServerHandle</code>。一致性：<code>announceWork</code> 包进事务、<code>approveResolution</code> 改用 compare-and-set、<code>checkTimeouts</code> 从请求路径移到后台 sweeper。安全：可选启用的 MQTT JWT 认证（默认仍为匿名）、禁用认证时对 <code>/api/reset</code> 加门禁、dashboard 静态处理器上的路径穿越防护。此外还有 11 个板块的落地页重设计，带 Open Graph 卡片、sitemap，以及第一轮完整的 i18n。",
       "roadmap.v03.date": "2026 年 5 月发布",
       "roadmap.v03.link": "v0.3.0 发布版本",
-      "footer.text": "MIT 许可证 &nbsp;·&nbsp; 用 <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> 构建 &nbsp;·&nbsp; MCP Coordinator v2.2.1",
+      "footer.text": "MIT 许可证 &nbsp;·&nbsp; 用 <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> 构建 &nbsp;·&nbsp; MCP Coordinator v2.3.0",
       "nav.compliance": "合规",
       "roadmap.v04.title": "v0.4——健康探针与 Prometheus 指标",
       "roadmap.v04.desc": "可观测性表面，以及针对 MQTT 投递、SSE 弹性和 scorer 性能的一轮正确性修正。健康检查处理器：<code>/livez</code> 负责存活探测，<code>/readyz</code> 探测 SQLite 和 MQTT bridge，任一不可用时返回 503，<code>/health</code> 保留为别名。还有 <code>metrics.ts</code>，内含 10 条 Prometheus 指标序列——5 个 counter（宣告数、已解决 thread 数、MQTT 发布数、HTTP 请求数、auth 拒绝数）和 5 个 gauge（在线 agent 数、打开的 thread 数、解决中的 thread 数、MQTT 监听器数、SSE 客户端数）。这些路由要到下一个版本 v0.5.0 才接进 HTTP 服务器。",
@@ -4892,7 +4892,7 @@
       "nav.faq": "FAQ",
       "nav.roadmap": "ロードマップ",
       "nav.getstarted": "始める",
-      "hero.eyebrow": "オープンソース &middot; MIT &middot; v2.2.1",
+      "hero.eyebrow": "オープンソース &middot; MIT &middot; v2.3.0",
       "hero.h1": "競合ゼロ。すべてのエージェントが揃う。",
       "hero.subtitle": "並列で動く Claude Code、Cursor、Cline のエージェントが、コードに触れる前に作業を宣言し、競合を検出し、合意に至るためのドロップイン MCP サーバーです。",
       "hero.stat.latency": "プッシュ遅延 &lt;50ms",
@@ -5054,11 +5054,11 @@
       "start.step4.label": "ステップ 4",
       "start.step4.title": "確認して開く",
       "start.step4.desc": "<code class=\"ic\">doctor</code> コマンドが config、サーバー、MCP 応答、MQTT 接続をチェックし、その後 <code class=\"ic\">localhost:3100/dashboard</code> でダッシュボードを開きます。",
-      "start.alt": "<strong>Docker をお使いの場合は?</strong> 代わりにマルチアーキ対応イメージを pull してください: <code class=\"ic\">docker pull ghcr.io/swoofer/mcp-coordinator:2.2.1</code>。Caddy auto-TLS 付きの完全な compose スタックが <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose\">examples/docker-compose/</a> にあります。",
+      "start.alt": "<strong>Docker をお使いの場合は?</strong> 代わりにマルチアーキ対応イメージを pull してください: <code class=\"ic\">docker pull ghcr.io/swoofer/mcp-coordinator:2.3.0</code>。Caddy auto-TLS 付きの完全な compose スタックが <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/docker-compose\">examples/docker-compose/</a> にあります。",
       "start.modes": "<strong>ポーリングではなくリアルタイム push がお望みですか?</strong> Channels サイドカー (v0.12+ research preview) は調整イベントを <code class=\"ic\">&lt;channel&gt;</code> タグとして Claude Code セッションに流し込みます。<strong>ただし現状、素のインストールでは読み込まれません</strong> — フラグは対話セッションでしか解析されず、利用可否は既定でオフの Anthropic 側スイッチ次第で、拒否はすべて無言です。いま動くのはポーリングです: <a href=\"https://github.com/swoofer/mcp-coordinator/blob/main/docs/operating-modes.md\">ポーリング vs push の判断ガイド</a>と <a href=\"https://github.com/swoofer/mcp-coordinator/tree/main/examples/channels-quickstart\">channels-quickstart の例</a>を参照してください。",
       "start.note": "<code class=\"ic\">git worktree add ../feature-x main</code> を実行し、各エージェントを自身のワークツリーで動かしてください&mdash;mcp-coordinator は「誰が types.ts を編集しているか」を扱い、ワークツリーは「2 体のエージェントが同じ inode を取り合わない」を扱います。",
       "start.dash.title": "60 秒で見えるもの",
-      "start.dash.meta": "mcp-coordinator v2.2.1 &middot; クォータ 62%",
+      "start.dash.meta": "mcp-coordinator v2.3.0 &middot; クォータ 62%",
       "start.dash.aria": "サンプルダッシュボードビュー: 4 体のエージェントをライブで追跡、競合は 38 秒で解決",
       "start.cta.star": "GitHub でスター",
       "start.cta.issue": "Issue を起票",
@@ -5104,7 +5104,7 @@
       "faq.q7": "Aider や Cline 自身の連携機能とは何が違いますか?",
       "faq.a7": "Aider と Cline はセッション横断の認識を持ちません。mcp-coordinator は MQTT ブローカーを介して共有状態を提供します。",
       "faq.q8": "また別のメンテすべきツールが増えるのでは?",
-      "faq.a8": "<code>npm install -g</code> ひとつ、または Docker をお使いの場合は公開イメージ <code>ghcr.io/swoofer/mcp-coordinator:2.2.1</code> を pull するだけ。組み込み MQTT ブローカー、SQLite、ダッシュボードがパッケージに同梱されています。サイドカーゼロ。対称的な <code>uninstall</code> が <code>init</code> のアクションを巻き戻し、<code>--purge</code> がデータディレクトリを一掃します。",
+      "faq.a8": "<code>npm install -g</code> ひとつ、または Docker をお使いの場合は公開イメージ <code>ghcr.io/swoofer/mcp-coordinator:2.3.0</code> を pull するだけ。組み込み MQTT ブローカー、SQLite、ダッシュボードがパッケージに同梱されています。サイドカーゼロ。対称的な <code>uninstall</code> が <code>init</code> のアクションを巻き戻し、<code>--purge</code> がデータディレクトリを一掃します。",
       "faq.q9": "コーディネーターがダウンしたらどうなりますか?",
       "faq.a9": "エージェントはフェイルオープンし、未インストール時のように作業を続けます。再起動時にローカルの SQLite が再開します。",
       "faq.q10": "エージェントはターン間でコンテキストを失いますか?",
@@ -5126,7 +5126,7 @@
       "roadmap.v03.desc": "<code>ServerHandle</code> を返すグレースフルシャットダウン。一貫性:<code>announceWork</code> をトランザクションで包み、<code>approveResolution</code> に compare-and-set を導入、<code>checkTimeouts</code> をリクエスト経路からバックグラウンドの sweeper へ移動。セキュリティ:オプトインの MQTT JWT 認証 (デフォルトは引き続き匿名)、認証が無効なときの <code>/api/reset</code> のゲート、ダッシュボードの静的ハンドラーへのパストラバーサル対策。加えて 11 セクションのランディングページ再設計、Open Graph カード、サイトマップ、そして最初の本格的な i18n 対応。",
       "roadmap.v03.date": "2026 年 5 月リリース",
       "roadmap.v03.link": "v0.3.0 リリース",
-      "footer.text": "MIT License &nbsp;·&nbsp; <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> で構築 &nbsp;·&nbsp; MCP Coordinator v2.2.1",
+      "footer.text": "MIT License &nbsp;·&nbsp; <a href=\"https://claude.ai/code\" target=\"_blank\" rel=\"noopener noreferrer\">Claude Code</a> で構築 &nbsp;·&nbsp; MCP Coordinator v2.3.0",
       "nav.compliance": "コンプライアンス",
       "roadmap.v04.title": "v0.4 —— ヘルスプローブと Prometheus メトリクス",
       "roadmap.v04.desc": "可観測性の表層と、MQTT 配送・SSE レジリエンス・scorer 性能の正確性修正パス。ヘルスハンドラー:liveness 用の <code>/livez</code>、SQLite と MQTT ブリッジをプローブしどちらかがダウンしていれば 503 を返す <code>/readyz</code>、エイリアスとして残した <code>/health</code>。そして 10 系列の Prometheus メトリクスを備えた <code>metrics.ts</code> — カウンター 5 つ (宣言、解決済みスレッド、MQTT publish、HTTP リクエスト、認証拒否) とゲージ 5 つ (オンラインのエージェント、オープン中のスレッド、解決中のスレッド、MQTT リスナー、SSE クライアント)。これらのルートが HTTP サーバーに接続されたのは 1 リリース後の v0.5.0 です。",
