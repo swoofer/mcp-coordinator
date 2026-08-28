@@ -84,6 +84,16 @@ export const ThreadsActiveBodySchema = z.object({
 });
 export type ThreadsActiveBody = z.infer<typeof ThreadsActiveBodySchema>;
 
+// POST /api/threads-summary — thread counts by status (open/resolving/
+// resolved/cancelled/poisoned) for exactly one run, so a client can report a
+// run's final outcome. Unlike ThreadsActiveBodySchema above, run_id is
+// REQUIRED and non-empty: this endpoint answers "what did THIS run do", so
+// it must not silently fall back to reporting every un-scoped thread too.
+export const ThreadsSummaryBodySchema = z.object({
+  run_id: z.string().min(1),
+});
+export type ThreadsSummaryBody = z.infer<typeof ThreadsSummaryBodySchema>;
+
 // POST /api/post-to-thread — mirrors MCP post_to_thread (consultation-tools.ts)
 // fields actually read by the REST handler (context_snapshot/in_reply_to are
 // MCP-only and not consumed by this endpoint today).
