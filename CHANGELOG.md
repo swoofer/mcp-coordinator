@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.3.1](https://github.com/swoofer/mcp-coordinator/compare/v2.3.0...v2.3.1) (2026-09-11)
+
+
+### Bug Fixes
+
+* **db:** take the write lock up front in boot migrations and the audit queue ([#453](https://github.com/swoofer/mcp-coordinator/issues/453)) ([b341906](https://github.com/swoofer/mcp-coordinator/commit/b341906089194fe3d3470e848d490eea8811dcd0))
+* **http:** answer 405 to a GET on /mcp without a session, not 404 ([#450](https://github.com/swoofer/mcp-coordinator/issues/450)) ([f20e910](https://github.com/swoofer/mcp-coordinator/commit/f20e910de8234b6f16f4f9dd2f4e1a921e4c8aa2))
+
 ## [2.3.0](https://github.com/swoofer/mcp-coordinator/compare/v2.2.1...v2.3.0) (2026-08-28)
 
 
