@@ -915,7 +915,8 @@ function createHttpHandler(
                     "MCP session opened",
                   );
                 }
-              } else {
+              } else if (sessionId) {
+                // Unknown or expired session id: 404 tells the client to re-initialize.
                 json(
                   res,
                   {
@@ -923,6 +924,27 @@ function createHttpHandler(
                       "Session not found. Send a request without mcp-session-id to start a new session.",
                   },
                   404,
+                );
+              } else if (req.method === "GET") {
+                // MCP Streamable HTTP: a GET MUST get an SSE stream or 405. Without a
+                // session there is no stream to open; only POST (initialize) applies.
+                res.setHeader("Allow", "POST");
+                json(
+                  res,
+                  {
+                    error:
+                      "Method not allowed without mcp-session-id. Send a POST to start a new session.",
+                  },
+                  405,
+                );
+              } else {
+                json(
+                  res,
+                  {
+                    error:
+                      "Bad Request: mcp-session-id header is required. Send a POST without mcp-session-id to start a new session.",
+                  },
+                  400,
                 );
               }
             } else {
