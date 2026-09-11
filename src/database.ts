@@ -566,7 +566,7 @@ function openAndMigrate(dataDir: string): void {
     // even on error to avoid permanent corruption.
     targetDb.exec("PRAGMA foreign_keys = OFF");
     try {
-      targetDb.exec("BEGIN");
+      targetDb.exec("BEGIN IMMEDIATE");
       try {
         targetDb.exec(newCreateSql.replace(tableName, `${tableName}_new`));
         targetDb.exec(
@@ -1371,7 +1371,7 @@ function migrateRevokedAgentsPerOrgV12(targetDb: DatabaseAdapter): void {
 
   const moved: { agent_id: string; orgs: string[] }[] = [];
 
-  targetDb.exec("BEGIN");
+  targetDb.exec("BEGIN IMMEDIATE");
   try {
     const orgsOf = q.prepare("SELECT org_id AS orgId FROM agents WHERE id = ? ORDER BY org_id");
     const insert = q.prepare(
@@ -1656,7 +1656,7 @@ function migrateAgentIdPerOrgV11(targetDb: DatabaseAdapter): void {
   // it is a no-op inside an open one. try/finally so it is always restored.
   targetDb.exec("PRAGMA foreign_keys = OFF");
   try {
-    targetDb.exec("BEGIN");
+    targetDb.exec("BEGIN IMMEDIATE");
     try {
       // Pre-flight 2: rows whose org_id disagrees with their agent's org.
       // Repairable while ids are still globally unique — the agent resolves to
@@ -2218,9 +2218,20 @@ function migrateOrgsFkV9(targetDb: DatabaseAdapter): void {
   // Run the table-copy migration. PRAGMA foreign_keys must be OFF outside
   // the transaction (it's a no-op inside an open transaction). Wrapped in
   // try/finally so foreign_keys is ALWAYS re-enabled even on error.
+  //
+  // BEGIN IMMEDIATE, not a plain BEGIN — here and in the other boot
+  // migrations that read before they write (migrateToCompositePK, v11, v12).
+  // Another process may be writing this file while we boot: a replica already
+  // serving, which the Redis boot lock does not stop (it only orders boots
+  // against each other). Deferred, our first read pins a WAL snapshot; a commit
+  // from that process before our first write makes SQLite refuse the upgrade
+  // with SQLITE_BUSY_SNAPSHOT, at once — busy_timeout is not consulted. That
+  // crashed a booting replica in production (2026-09-11). IMMEDIATE takes the
+  // write lock up front, so the two writers wait for each other instead.
+  // See tests/unit/boot-migration-concurrent-writer.test.ts.
   targetDb.exec("PRAGMA foreign_keys = OFF");
   try {
-    targetDb.exec("BEGIN");
+    targetDb.exec("BEGIN IMMEDIATE");
     try {
       // Which tables this run actually recreated. Only these can carry a
       // violation of the constraint the migration adds (issue #285).

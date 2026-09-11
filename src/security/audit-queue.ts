@@ -145,33 +145,35 @@ export class AuditQueue {
         //
         // The batch path below (flush) has always been transactional; only
         // this shutdown row was not.
-        this.db.transaction(() => {
-          const tip = this.tipStmt.get() as { row_hash: string } | undefined;
-          const prevHash = tip?.row_hash ?? GENESIS_HASH;
-          const metadata = JSON.stringify({ dropped_count: this._dropped });
-          const rowHash = computeRowHash(
-            prevHash,
-            {
-              action: "system.shutdown.audit_loss",
-              actor_org_id: null,
-              actor_ip: null,
-              actor_user_agent: null,
-              actor_user_id: null,
-              metadata_json: metadata,
-              outcome: "failure",
-              request_id: null,
-              target: null,
-            },
-            getAuditChainKey(),
-          );
-          this.shutdownStmt.run(
-            "system.shutdown.audit_loss",
-            "failure",
-            metadata,
-            prevHash,
-            rowHash,
-          );
-        })();
+        this.db
+          .transaction(() => {
+            const tip = this.tipStmt.get() as { row_hash: string } | undefined;
+            const prevHash = tip?.row_hash ?? GENESIS_HASH;
+            const metadata = JSON.stringify({ dropped_count: this._dropped });
+            const rowHash = computeRowHash(
+              prevHash,
+              {
+                action: "system.shutdown.audit_loss",
+                actor_org_id: null,
+                actor_ip: null,
+                actor_user_agent: null,
+                actor_user_id: null,
+                metadata_json: metadata,
+                outcome: "failure",
+                request_id: null,
+                target: null,
+              },
+              getAuditChainKey(),
+            );
+            this.shutdownStmt.run(
+              "system.shutdown.audit_loss",
+              "failure",
+              metadata,
+              prevHash,
+              rowHash,
+            );
+          })
+          .immediate();
       } catch (err) {
         // Final-row write failure is itself unrecoverable telemetry loss;
         // log path will be added by T36 logger. For now, swallow — the
@@ -271,7 +273,7 @@ export class AuditQueue {
         prevHash = rowHash;
       }
     });
-    tx(rows);
+    tx.immediate(rows);
     void this.clock; // reserved for future per-flush timing metrics; unused today
   }
 }
