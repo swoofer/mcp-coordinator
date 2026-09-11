@@ -414,6 +414,59 @@ describe("AuditQueue", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Two processes on one database (replicas > 1). The flush must take the write
+// lock before it reads the chain tip: deferred, a commit landing between the
+// tip read and the INSERT fails the batch with SQLITE_BUSY_SNAPSHOT — and on
+// the timer path that error is swallowed after the buffer was already cleared.
+// ---------------------------------------------------------------------------
+
+describe("AuditQueue vs a second process writing the same audit_log", () => {
+  it("a commit landing right after the tip read does not fail the flush", () => {
+    const dir = "data-test-audit-queue-concurrent-writer";
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, "audit.db");
+    const db = new DatabaseCtor(file);
+    const other = new DatabaseCtor(file);
+    try {
+      db.pragma("journal_mode = WAL");
+      db.exec(AUDIT_SCHEMA);
+      other.pragma("busy_timeout = 0"); // single thread: it cannot wait for the flush to commit
+      const queue = new AuditQueue(db);
+
+      const realTip = queue["tipStmt"].get.bind(queue["tipStmt"]);
+      let otherWrite = "";
+      queue["tipStmt"].get = ((...args: unknown[]) => {
+        const tip = realTip(...args);
+        try {
+          other.prepare("INSERT INTO audit_log (action) VALUES ('other.process')").run();
+          otherWrite = "committed";
+        } catch (err) {
+          otherWrite = (err as { code?: string }).code ?? String(err);
+        }
+        return tip;
+      }) as (typeof queue)["tipStmt"]["get"];
+
+      queue.enqueue(makeRow({ action: "test.concurrent" }));
+      let flushError: unknown;
+      try {
+        queue.flush();
+      } catch (err) {
+        flushError = err;
+      }
+      // Before the fix: SqliteError, code SQLITE_BUSY_SNAPSHOT, on the INSERT.
+      expect((flushError as { code?: string } | undefined)?.code).toBeUndefined();
+      expect(flushError).toBeUndefined();
+      expect(otherWrite).toBe("SQLITE_BUSY");
+      expect(countRows(db)).toBe(1);
+    } finally {
+      other.close();
+      db.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // audit() routing integration: Tier 1 sync, Tier 2 queue, Tier 2 fallback
 // ---------------------------------------------------------------------------
 
