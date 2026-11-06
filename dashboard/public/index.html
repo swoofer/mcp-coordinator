@@ -129,6 +129,12 @@
     .quota-bar-fill.warn { background: #fbbf24; }
     .quota-bar-fill.danger { background: #f87171; }
     .quota-unavailable { color: #64748b; font-style: italic; font-size: 11px; padding: 10px; text-align: center; }
+    .token-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 20px; background: #2e2518; border-bottom: 1px solid #fbbf24; font-size: 12px; }
+    .token-form[hidden] { display: none; }
+    .token-form input { flex: 1 1 280px; background: #0a0a14; color: #e2e8f0; border: 1px solid #334155; border-radius: 4px; padding: 6px 8px; font-family: monospace; font-size: 12px; }
+    .token-form button { background: #1e3a5f; color: #e2e8f0; border: 1px solid #60a5fa; border-radius: 4px; padding: 6px 12px; cursor: pointer; font-size: 12px; }
+    .token-error { color: #f87171; flex-basis: 100%; }
+    .token-error:empty { display: none; }
   </style>
 </head>
 <body>
@@ -138,6 +144,13 @@
       <span class="status-dot offline" id="conn-dot"></span> Connecting...
     </span>
   </div>
+  <!-- Shown by dashboard.js when the coordinator answers 401 (auth enabled). -->
+  <form class="token-form" id="token-form" hidden>
+    <label for="token-input">Ce coordinator exige un jeton d'accès :</label>
+    <input id="token-input" name="token" type="password" autocomplete="off" spellcheck="false" placeholder="Jeton (JWT)" required>
+    <button type="submit">Se connecter</button>
+    <span class="token-error" id="token-error" role="alert"></span>
+  </form>
   <div class="grid">
     <!-- Left panel: Agents + Hot Files + Quota -->
     <div class="panel">

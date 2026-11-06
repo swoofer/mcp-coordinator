@@ -41,9 +41,12 @@ describe("every dashboard input has a producer (#341)", () => {
   });
 
   it("fetches only endpoints the router serves", () => {
-    const fetched = [...DASHBOARD.matchAll(/COORDINATOR_URL\}(\/api\/[a-z0-9/-]+)/g)].map((m) =>
-      m[1].replace(/\/$/, ""),
-    );
+    // API calls go through apiFetch('/api/…') (it adds the Bearer token);
+    // the raw-origin form is still matched for anything that bypasses it.
+    const fetched = [
+      ...DASHBOARD.matchAll(/COORDINATOR_URL\}(\/api\/[a-z0-9/-]+)/g),
+      ...DASHBOARD.matchAll(/apiFetch\('(\/api\/[a-z0-9/-]+)/g),
+    ].map((m) => m[1].replace(/\/$/, ""));
     expect(fetched.length).toBeGreaterThan(3);
 
     const routed = new Set([...ROUTER.matchAll(/"(\/api\/[a-z0-9/-]+)":/g)].map((m) => m[1]));

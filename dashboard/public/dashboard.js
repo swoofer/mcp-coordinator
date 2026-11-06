@@ -6,6 +6,73 @@
     // directory already call same-origin paths via admin-common.js's
     // fetchJSON(). Companion to the #69 fix on the opener side (cli/dashboard.ts).
     const COORDINATOR_URL = window.location.origin;
+
+    // ── Bearer token for auth-on deployments ──
+    // With COORDINATOR_AUTH_ENABLED=true every /api/* call answers 401 without
+    // a credential, and a Phase-1-only deployment (Bearer JWTs, no OAuth) has
+    // no browser login to set a session cookie — so the page rendered empty
+    // with every error swallowed. The page now carries a token itself: taken
+    // once from a `#token=` fragment (a fragment never reaches the server or
+    // its logs, and is stripped from the address bar at once) or typed into
+    // #token-form; kept in sessionStorage, so it dies with the tab. Without a
+    // token every request goes out exactly as before (open or cookie setups).
+    const TOKEN_KEY = 'coordinator.dashboard.token';
+    function readToken() {
+      try { return sessionStorage.getItem(TOKEN_KEY) || ''; } catch { return ''; }
+    }
+    function storeToken(token) {
+      try {
+        if (token) sessionStorage.setItem(TOKEN_KEY, token);
+        else sessionStorage.removeItem(TOKEN_KEY);
+      } catch { /* storage disabled — the token lives for this page only */ }
+    }
+    (function takeTokenFromFragment() {
+      const match = /(?:^|&)token=([^&]+)/.exec(window.location.hash.slice(1));
+      if (!match) return;
+      // Strip first: a malformed escape ("%zz") must neither stay in the
+      // address bar nor throw out of this top-level script.
+      history.replaceState(null, '', window.location.pathname + window.location.search);
+      try { storeToken(decodeURIComponent(match[1])); } catch { /* unusable — the form will ask */ }
+    })();
+
+    // Set on the first 401. While set, apiFetch() sends nothing: the polls
+    // below run every few seconds, and a stream of failed credentials would
+    // only feed the server's auth-failure rate limiting.
+    let authBlocked = false;
+    let streamAbort = null;   // AbortController of the live event stream
+    let streamRetry = null;   // pending reconnect timer
+
+    function apiFetch(path, init = {}) {
+      if (authBlocked) return Promise.reject(new Error('jeton requis'));
+      const token = readToken();
+      const headers = new Headers(init.headers || {});
+      if (token) headers.set('Authorization', `Bearer ${token}`);
+      return fetch(`${COORDINATOR_URL}${path}`, { ...init, headers }).then(r => {
+        // Only a 401 for the token still in use counts: an answer to a request
+        // sent before the form was submitted must not wipe the new token.
+        if (r.status === 401 && readToken() === token) {
+          requireToken(token ? 'Jeton refusé par le coordinator (invalide ou expiré).' : '');
+        }
+        if (r.status === 401) throw new Error('jeton requis');
+        return r;
+      });
+    }
+
+    function setConnectionStatus(online) {
+      const cls = online ? 'online' : 'offline';
+      document.getElementById('conn-status').innerHTML =
+        `<span class="status-dot ${cls}" id="conn-dot"></span> ${online ? 'Connecté' : 'Déconnecté'}`;
+    }
+
+    function requireToken(errorText) {
+      authBlocked = true;
+      storeToken('');
+      stopStream();
+      setConnectionStatus(false);
+      document.getElementById('token-form').hidden = false;
+      if (errorText) document.getElementById('token-error').textContent = errorText;
+    }
+
     const FILTER_CATEGORIES = ['workflow', 'activity', 'impact', 'coordination', 'tokens'];
     const FILTER_LABELS = { workflow: 'Workflow', activity: 'Activity', impact: 'Impact', coordination: 'Coordination', tokens: 'Tokens' };
     const state = {
@@ -510,7 +577,7 @@
     }
 
     function updateThreads() {
-      fetch(`${COORDINATOR_URL}/api/threads-active`, {
+      apiFetch('/api/threads-active', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: '{}',
@@ -639,27 +706,80 @@
       }).join('') || '<div style="color:#64748b;font-size:12px;">Aucun agent</div>';
     }
 
-    // SSE Connection
-    function connectSSE() {
-      const es = new EventSource(`${COORDINATOR_URL}/api/events`);
-      const dot = document.getElementById('conn-dot');
-      const status = document.getElementById('conn-status');
+    // ── Live events (SSE read over fetch) ──
+    // Not an EventSource: it cannot send headers, so its only credential
+    // channel is ?token=, and reverse proxies log query strings (Envoy's
+    // access log records the full path) — a long-lived token would end up in
+    // access logs. A streamed fetch() carries the same Bearer header as every
+    // other call (handleSse() reads it first) and keeps what EventSource gave
+    // us: Last-Event-ID resumption and a reconnect a few seconds after a drop.
+    let lastEventId = '';
 
-      es.onopen = () => { dot.className = 'status-dot online'; status.innerHTML = '<span class="status-dot online" id="conn-dot"></span> Connecté'; };
-      es.onerror = () => { dot.className = 'status-dot offline'; status.innerHTML = '<span class="status-dot offline" id="conn-dot"></span> Déconnecté'; };
-
-      const eventTypes = ['agent_online','agent_offline','agent_activity','thread_opened','message_posted','resolution_proposed','thread_resolved','thread_cancelled','file_edited','action_summary','impact_scored','introspection_requested','introspection_completed','quota_update'];
-      for (const type of eventTypes) {
-        es.addEventListener(type, (e) => addEvent(type, e.data, e.lastEventId));
-      }
-      // Quota is pushed via SSE on refresh; wire it to the widget directly.
-      es.addEventListener('quota_update', (e) => {
-        try { renderQuotaWidget(JSON.parse(e.data)); } catch { /* ignore malformed payload */ }
-      });
+    function stopStream() {
+      clearTimeout(streamRetry);
+      streamRetry = null;
+      if (streamAbort) { streamAbort.abort(); streamAbort = null; }
     }
 
+    function dispatchSseBlock(block) {
+      let type = 'message';
+      let data = '';
+      let id = '';
+      for (const line of block.split('\n')) {
+        if (!line || line.startsWith(':')) continue;   // ":keep-alive" heartbeat
+        const colon = line.indexOf(':');
+        const field = colon === -1 ? line : line.slice(0, colon);
+        const value = colon === -1 ? '' : line.slice(colon + 1).replace(/^ /, '');
+        if (field === 'event') type = value;
+        else if (field === 'data') data = data ? `${data}\n${value}` : value;
+        else if (field === 'id') id = value;
+      }
+      if (id) lastEventId = id;
+      if (!eventTypes.includes(type)) return;
+      addEvent(type, data, id);
+      // Quota is pushed via SSE on refresh; wire it to the widget directly.
+      if (type === 'quota_update') {
+        try { renderQuotaWidget(JSON.parse(data)); } catch { /* ignore malformed payload */ }
+      }
+    }
+
+    function connectSSE() {
+      stopStream();
+      const ac = new AbortController();
+      streamAbort = ac;
+      const headers = { Accept: 'text/event-stream' };
+      if (lastEventId) headers['Last-Event-ID'] = lastEventId;
+      apiFetch('/api/events', { headers, signal: ac.signal, cache: 'no-store' })
+        .then(async (r) => {
+          if (!r.ok || !r.body) throw new Error(`HTTP ${r.status}`);
+          setConnectionStatus(true);
+          const reader = r.body.pipeThrough(new TextDecoderStream()).getReader();
+          let buf = '';
+          for (;;) {
+            const { value, done } = await reader.read();
+            if (done) throw new Error('stream ended');
+            // Normalise on the joined buffer, so a CRLF split across two
+            // chunks is still one line break.
+            buf = (buf + value).replace(/\r\n/g, '\n');
+            let end;
+            while ((end = buf.indexOf('\n\n')) !== -1) {
+              dispatchSseBlock(buf.slice(0, end));
+              buf = buf.slice(end + 2);
+            }
+          }
+        })
+        .catch(() => {
+          // Replaced or stopped on purpose, or waiting for a token: no retry.
+          if (ac.signal.aborted || authBlocked) return;
+          setConnectionStatus(false);
+          streamRetry = setTimeout(connectSSE, 3000);
+        });
+    }
+
+    const eventTypes = ['agent_online','agent_offline','agent_activity','thread_opened','message_posted','resolution_proposed','thread_resolved','thread_cancelled','file_edited','action_summary','impact_scored','introspection_requested','introspection_completed','quota_update'];
+
     function updateHotFiles() {
-      fetch(`${COORDINATOR_URL}/api/hot-files`, {
+      apiFetch('/api/hot-files', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ since_minutes: 60 })
       })
@@ -737,7 +857,7 @@
         `<div class="quota-unavailable">Quota indisponible : ${reason}${extra}</div>`;
     }
     function fetchQuotaOnce() {
-      fetch(`${COORDINATOR_URL}/api/quota`)
+      apiFetch('/api/quota')
         .then(async r => {
           if (r.status === 503) { render503(await r.json().catch(() => null)); return null; }
           return r.ok ? r.json() : null;
@@ -770,7 +890,7 @@
       btn.textContent = '⟳ …';
       btn.style.opacity = '0.6';
 
-      fetch(`${COORDINATOR_URL}/api/quota/refresh`, { method: 'POST' })
+      apiFetch('/api/quota/refresh', { method: 'POST' })
         .then(async r => {
           if (r.status === 503) { render503(await r.json().catch(() => null)); return null; }
           return r.ok ? r.json() : null;
@@ -804,7 +924,7 @@
         ? `⚠️ ${activeCount} agent(s) actif(s) détecté(s) côté UI.\n\nReset Server efface TOUT l'état du coordinator (agents, threads, events). Les agents en cours vont planter à leur prochain announce (SQLITE_CONSTRAINT_FOREIGNKEY).\n\nContinuer quand même ?`
         : 'Reset Server efface TOUT l\'état du coordinator (agents, threads, events). À utiliser uniquement entre deux runs.\n\nContinuer ?';
       if (!confirm(msg)) return;
-      fetch(`${COORDINATOR_URL}/api/reset`, { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+      apiFetch('/api/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
         .then(r => {
           if (!r.ok) {
             r.json().then(j => alert(`Reset refusé par le serveur: ${j.error || r.status}`)).catch(() => alert(`Reset refusé: HTTP ${r.status}`));
@@ -817,7 +937,7 @@
 
     async function refreshConflictSignals() {
       try {
-        const r = await fetch(`${COORDINATOR_URL}/api/scoring-stats?since=24h`);
+        const r = await apiFetch('/api/scoring-stats?since=24h');
         const j = await r.json();
         for (const layer of j.layers) {
           const el = document.querySelector(`[data-layer="${layer.layer}"]`);
@@ -837,6 +957,23 @@
     document.getElementById('btn-verbose').addEventListener('click', toggleVerbose);
     document.getElementById('btn-clear-timeline').addEventListener('click', clearTimeline);
     document.getElementById('btn-reset-server').addEventListener('click', resetServer);
+
+    document.getElementById('token-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const input = document.getElementById('token-input');
+      const token = input.value.trim();
+      if (!token) return;
+      input.value = '';
+      storeToken(token);
+      authBlocked = false;
+      document.getElementById('token-error').textContent = '';
+      document.getElementById('token-form').hidden = true;
+      connectSSE();
+      updateThreads();
+      updateHotFiles();
+      fetchQuotaOnce();
+      refreshConflictSignals();
+    });
 
     connectSSE();
     updateAgents();
