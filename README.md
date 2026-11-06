@@ -441,6 +441,8 @@ There is no per-agent token accounting and no per-turn cost breakdown: the coord
 
 `http://localhost:3100/dashboard` (or `/dashboard` on whichever port the coordinator is bound to).
 
+With authentication on (`COORDINATOR_AUTH_ENABLED=true`) every `/api/*` call needs a credential. Open `/dashboard/#token=<JWT>` — a URL fragment never reaches the server, and the page strips it from the address bar — or paste the token into the form the page shows on its first 401. The token is kept in `sessionStorage` (this tab only) and sent as `Authorization: Bearer` on every call, the `/api/events` stream included: the page reads it with a streamed `fetch()` rather than an `EventSource`, so the token never appears in a URL that a reverse proxy would log. A rejected or expired token brings the form back. Any agent token works; the dashboard shows the token's org.
+
 - **Timeline** — all threads + `quota_update` events with scores and resolution types
 - **Agent panel** — online/offline, working/idle/waiting, current file, thread being waited on
 - **Scoring breakdown** — which detection layer triggered each conflict
