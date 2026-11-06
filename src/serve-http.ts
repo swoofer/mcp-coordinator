@@ -798,7 +798,14 @@ function createHttpHandler(
                 bearerToken: process.env.COORDINATOR_METRICS_BEARER,
               });
               services.metrics.recordHttpRequest("/metrics/auth", res.statusCode || 200);
-            } else if (url === "/api/events" && req.method === "GET") {
+            } else if (
+              (url === "/api/events" || url.startsWith("/api/events?")) &&
+              req.method === "GET"
+            ) {
+              // The query string must not defeat the match: a browser
+              // EventSource can only send its credential as ?token= (see
+              // authenticateRequest), so an exact match 404'd every
+              // authenticated dashboard.
               await handleSse(req, res);
             } else if (url.startsWith("/api/auth/")) {
               if (!AUTH_ENABLED && url !== "/api/auth/refresh") {

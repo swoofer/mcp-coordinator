@@ -48,4 +48,30 @@ describe("SSE /api/events flushes headers immediately (quiet org)", () => {
     ac.abort();
     await res.body?.cancel().catch(() => {});
   });
+
+  it("routes /api/events with a query string to the SSE handler", async () => {
+    // ?token= is the only credential a browser EventSource can send (it
+    // cannot set headers), and authenticateRequest() accepts it on GET — but
+    // the router matched the raw req.url exactly, so "/api/events?token=…"
+    // fell through to a 404 and the dashboard could never authenticate.
+    // Any query string must reach handleSse(); auth is off here, so a neutral
+    // parameter keeps this a pure routing check.
+    handle = await startServer({ port: 0, mqttTcpPort: 0, mqttWsPath: "/mqtt" });
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 5000);
+    let res: Response;
+    try {
+      res = await fetch(`http://127.0.0.1:${handle.port}/api/events?probe=1`, {
+        signal: ac.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toMatch(/text\/event-stream/);
+
+    ac.abort();
+    await res.body?.cancel().catch(() => {});
+  });
 });
