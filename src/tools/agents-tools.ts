@@ -104,22 +104,36 @@ export function registerAgentTools(
       const claims = getSessionClaims(ctx.sessionId ?? "");
       if (!claims) throw missingClaimsError(ctx.sessionId);
       requireScope(claims, "heartbeat");
+      // An agent that beats again after being announced offline (agent_offline)
+      // or after aging out of listOnline (silent past the online TTL) is back,
+      // whatever its activity row says: the MQTT departure path leaves that
+      // row untouched, and aging out writes nothing, so only the registry
+      // tells. Checked before registry.heartbeat() refreshes it.
+      const known = registry.get(claims.org, agent_id);
+      const comesBack =
+        known !== undefined &&
+        (known.status === "offline" || registry.isStale(claims.org, agent_id));
       registry.heartbeat(claims.org, agent_id);
-      activityTracker.heartbeat(claims.org, agent_id, {
+      const changed = activityTracker.heartbeat(claims.org, agent_id, {
         currentFile: current_file || null,
         currentThread: current_thread || null,
       });
       const activity = activityTracker.getActivity(claims.org, agent_id);
-      sseEmitter.emit(
-        "agent_activity",
-        {
-          agent_id,
-          activity_status: activity.activity_status,
-          current_file: activity.current_file,
-          current_thread: activity.current_thread,
-        },
-        { org_id: claims.org },
-      );
+      // A heartbeat that changes nothing is not news. Announcing every one
+      // flooded the dashboard and the events table (15 agents beating every
+      // ~3 s made ~5 identical "idle" events per second).
+      if (changed || comesBack) {
+        sseEmitter.emit(
+          "agent_activity",
+          {
+            agent_id,
+            activity_status: activity.activity_status,
+            current_file: activity.current_file,
+            current_thread: activity.current_thread,
+          },
+          { org_id: claims.org },
+        );
+      }
       return { content: [{ type: "text", text: JSON.stringify(activity) }] };
     },
   );

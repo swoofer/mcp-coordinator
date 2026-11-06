@@ -1,5 +1,5 @@
 import { TSX_NODE_ARGS } from "../helpers/tsx-node.js";
-import { test as base, expect } from "@playwright/test";
+import { test as base, expect, type APIRequestContext } from "@playwright/test";
 import { SignJWT } from "jose";
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -240,7 +240,79 @@ test.describe("main dashboard — agent list live-updates via SSE", () => {
     await expect(page.locator("#agents-list")).toContainText(agentName);
     await expect(page.locator(".agent-modules", { hasText: "dashboard-e2e" })).toBeVisible();
   });
+
+  test("an agent already online when the page opens is listed, with its activity", async ({
+    page,
+    coordinatorUrl,
+  }) => {
+    const agentName = `e2e-already-online-${Date.now()}`;
+    await pushRegistrationOutOfReplay(page.request, coordinatorUrl, agentName, {});
+
+    await page.goto(`${coordinatorUrl}/dashboard/`);
+    await expect(page.locator("#conn-status")).toContainText("Connecté");
+    const card = page.locator("#agents-list .agent-card", { hasText: agentName });
+    await expect(card).toBeVisible();
+    await expect(card.locator(".agent-modules")).toHaveText("already-online");
+    await expect(card).toContainText(`src/f${REPLAY_OVERFLOW - 1}.ts`);
+  });
+
+  // A heartbeat that repeats what the coordinator already knows emits
+  // nothing, so the card must follow the other events that change an agent's
+  // activity: a logged file edit, and a re-registration that is not a
+  // return from offline.
+  test("a logged file edit shows on the agent's card, and survives a re-registration", async ({
+    page,
+    coordinatorUrl,
+  }) => {
+    const agentName = `e2e-live-file-${Date.now()}`;
+    const register = () =>
+      page.request.post(`${coordinatorUrl}/api/register`, {
+        data: { agent_id: agentName, name: agentName, modules: ["live-file"] },
+      });
+    expect((await register()).ok()).toBeTruthy();
+    await page.goto(`${coordinatorUrl}/dashboard/`);
+    const card = page.locator("#agents-list .agent-card", { hasText: agentName });
+    await expect(card).toContainText("En ligne");
+
+    const res = await page.request.post(`${coordinatorUrl}/api/log-file`, {
+      data: { session_id: "e2e", agent_id: agentName, tool_name: "Edit", file: "src/live.ts" },
+    });
+    expect(res.ok()).toBeTruthy();
+    await expect(card).toContainText("Au travail");
+    await expect(card).toContainText("src/live.ts");
+
+    expect((await register()).ok()).toBeTruthy();
+    await expect(page.locator(".timeline-event.event-agent_online")).toHaveCount(2);
+    await expect(card).toContainText("Au travail");
+  });
 });
+
+// The event stream replays only the latest 50 events to a new page
+// (SSE_RECENT_EVENTS_LIMIT in src/serve-http.ts). In production the agents'
+// registrations had fallen out of that window behind thousands of heartbeat
+// events, so the panel said "Aucun agent" while 15 were online. This
+// registers an agent, then logs enough file edits to push its agent_online
+// event out of the replay, so only the agents-online list can show it.
+const REPLAY_OVERFLOW = 55;
+async function pushRegistrationOutOfReplay(
+  request: APIRequestContext,
+  coordinatorUrl: string,
+  agentId: string,
+  headers: Record<string, string>,
+): Promise<void> {
+  const reg = await request.post(`${coordinatorUrl}/api/register`, {
+    headers,
+    data: { agent_id: agentId, name: agentId, modules: ["already-online"] },
+  });
+  expect(reg.ok()).toBeTruthy();
+  for (let i = 0; i < REPLAY_OVERFLOW; i++) {
+    const res = await request.post(`${coordinatorUrl}/api/log-file`, {
+      headers,
+      data: { session_id: "e2e", agent_id: agentId, tool_name: "Edit", file: `src/f${i}.ts` },
+    });
+    expect(res.ok()).toBeTruthy();
+  }
+}
 
 test.describe("main dashboard — Reset Server is gated, not a bare click", () => {
   test("clicking Reset Server opens a confirm dialog; dismissing it must not call POST /api/reset", async ({
@@ -348,6 +420,22 @@ authTest.describe("main dashboard — authenticated coordinator", () => {
       });
       expect(res.ok()).toBeTruthy();
       await expect(page.locator("#agents-list")).toContainText(agentName);
+    },
+  );
+
+  authTest(
+    "agents already online are listed once the token is accepted",
+    async ({ page, coordinatorUrl }) => {
+      const agentName = `e2e-auth-already-online-${Date.now()}`;
+      const agentToken = await mintAgentToken(agentName);
+      await pushRegistrationOutOfReplay(page.request, coordinatorUrl, agentName, {
+        Authorization: `Bearer ${agentToken}`,
+      });
+
+      const token = await mintAgentToken("e2e-dashboard-latecomer");
+      await page.goto(`${coordinatorUrl}/dashboard/#token=${token}`);
+      await expect(page.locator("#conn-status")).toContainText("Connecté");
+      await expect(page.locator("#agents-list .agent-card", { hasText: agentName })).toBeVisible();
     },
   );
 

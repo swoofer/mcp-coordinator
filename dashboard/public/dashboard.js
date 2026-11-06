@@ -316,26 +316,36 @@
       else if (type === 'agent_online') {
         const modules = (p.modules || []).join(', ');
         detail = modules ? `<span style="font-size:10px;color:#64748b;">${modules}</span>` : '';
-        state.agents[p.agent_id] = { ...state.agents[p.agent_id], ...p, activity_status: 'idle' };
+        // A re-registration leaves the activity alone: the coordinator's
+        // record of it is unchanged, so no heartbeat would repeat it. Only an
+        // agent returning from offline is reset (a new card shows idle).
+        const fields = { ...p };
+        if (state.agents[p.agent_id]?.activity_status === 'offline') fields.activity_status = 'idle';
+        applyAgentUpdate(p.agent_id, fields, id);
         addVerboseEvent(`<span style="color:#60a5fa;font-weight:600;">${agentName}</span> enregistré avec modules: [${modules}]`);
       }
       else if (type === 'agent_offline') {
         detail = '';
-        if (state.agents[p.agent_id]) state.agents[p.agent_id].activity_status = 'offline';
+        // Never a new card: this event also comes from an MQTT topic that
+        // anyone the broker lets in may publish to, for any id (#330).
+        applyAgentUpdate(p.agent_id, { activity_status: 'offline' }, id, false);
         addVerboseEvent(`<span style="color:#60a5fa;font-weight:600;">${agentName}</span> déconnecté — retiré des quorums actifs`);
       }
       else if (type === 'agent_activity') {
-        if (state.agents[p.agent_id]) {
-          state.agents[p.agent_id].activity_status = p.activity_status;
-          state.agents[p.agent_id].current_file = p.current_file;
-          state.agents[p.agent_id].current_thread = p.current_thread;
-        }
+        applyAgentUpdate(p.agent_id, {
+          activity_status: p.activity_status,
+          current_file: p.current_file,
+          current_thread: p.current_thread,
+        }, id);
         const statusLabel = { working: '💻 au travail', idle: '⏸ en attente', waiting: '⏳ consultation', offline: '🔴 hors ligne' }[p.activity_status] || p.activity_status;
         detail = `${statusLabel}${p.current_file ? ' — ' + p.current_file : ''}`;
       }
       else if (type === 'file_edited') {
         const tool = p.tool_name ? `<span style="color:#64748b;font-size:10px;">[${p.tool_name}]</span> ` : '';
         detail = `${tool}${p.file || ''}`;
+        // A logged edit makes the agent "working" on that file server-side,
+        // and a heartbeat repeating it emits nothing: the card follows here.
+        applyAgentUpdate(p.agent_id, { activity_status: 'working', current_file: p.file, current_thread: null }, id);
       }
       else if (type === 'action_summary') { detail = p.summary || ''; }
       else if (type === 'impact_scored') {
@@ -686,6 +696,53 @@
     setInterval(updateThreads, 2000);
     setInterval(tickRelativeTimes, 1000);
 
+    // ── Agents already online ──
+    // The event stream only reports agents as they register or change, and
+    // replays just the latest 50 events to a new page: an agent registered
+    // earlier was never listed ("Aucun agent" while 15 were online). So each
+    // (re)connect asks the server for the agents online now. The list comes
+    // with the id of the latest event it reflects: a replayed agent event at
+    // or below that id is older than the list and must not override it (a
+    // replayed agent_offline would hide an agent that came back).
+    let agentListUpTo = 0;          // latest event id the current list reflects
+    let agentListRequest = 0;       // only the latest request's answer counts
+    let agentUpdatesInFlight = null; // agent events received while it is out
+
+    // Applies an agent event to its card, unless the agents list already
+    // reflects it. `create` false only updates a card the page already has.
+    function applyAgentUpdate(agentId, fields, id, create = true) {
+      if (!agentId || (id && Number(id) <= agentListUpTo)) return;
+      if (agentUpdatesInFlight) agentUpdatesInFlight.push({ agentId, fields, id, create });
+      if (!create && !state.agents[agentId]) return;
+      state.agents[agentId] = { agent_id: agentId, ...state.agents[agentId], ...fields };
+    }
+
+    // The list replaces every card, then the agent events received while it
+    // was on its way are applied again over it: those newer than the list
+    // stay, the older ones (replayed history) are dropped by their id.
+    function loadOnlineAgents() {
+      const request = ++agentListRequest;
+      const updates = agentUpdatesInFlight = [];
+      apiFetch('/api/agents-online', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+      })
+        .then(r => r.ok ? r.json() : null)
+        .then(list => {
+          if (request !== agentListRequest) return;   // a newer request is out
+          agentUpdatesInFlight = null;
+          if (!list || !Array.isArray(list.agents)) return;
+          state.agents = {};
+          for (const a of list.agents) state.agents[a.agent_id] = a;
+          agentListUpTo = Number(list.last_event_id) || 0;
+          for (const u of updates) applyAgentUpdate(u.agentId, u.fields, u.id, u.create);
+          updateAgents();
+        })
+        .catch(() => {
+          // The next (re)connect asks again.
+          if (request === agentListRequest) agentUpdatesInFlight = null;
+        });
+    }
+
     function updateAgents() {
       const list = document.getElementById('agents-list');
       const statusLabels = { working: '💻 Au travail', idle: '⏸ En ligne', waiting: '⏳ En consultation', offline: '🔴 Hors ligne' };
@@ -753,6 +810,7 @@
         .then(async (r) => {
           if (!r.ok || !r.body) throw new Error(`HTTP ${r.status}`);
           setConnectionStatus(true);
+          loadOnlineAgents();
           const reader = r.body.pipeThrough(new TextDecoderStream()).getReader();
           let buf = '';
           for (;;) {
@@ -914,6 +972,8 @@
       state.seenIds.clear();
       updateMetrics();
       updateAgents();
+      // Clearing the timeline must not empty the agents panel: refill it.
+      loadOnlineAgents();
     }
 
     function resetServer() {
