@@ -42,8 +42,12 @@ export class AgentActivityTracker {
     ).run(orgId, agentId);
   }
 
-  /** Enriched heartbeat -- derives status from current state (org-scoped) */
-  heartbeat(orgId: string, agentId: string, payload: HeartbeatPayload): void {
+  /**
+   * Enriched heartbeat -- derives status from current state (org-scoped).
+   * Returns true when the status, file or thread differs from the stored row
+   * (or there was none), so callers can skip announcing a no-op heartbeat.
+   */
+  heartbeat(orgId: string, agentId: string, payload: HeartbeatPayload): boolean {
     let status: ActivityStatus;
     if (payload.currentFile) {
       status = "working";
@@ -52,7 +56,14 @@ export class AgentActivityTracker {
     } else {
       status = "idle";
     }
+    const previous = this.getStatus(orgId, agentId);
     this.upsert(orgId, agentId, status, payload.currentFile, payload.currentThread);
+    return (
+      !previous ||
+      previous.activity_status !== status ||
+      previous.current_file !== payload.currentFile ||
+      previous.current_thread !== payload.currentThread
+    );
   }
 
   /** Get raw status row for a single agent (org-scoped) */

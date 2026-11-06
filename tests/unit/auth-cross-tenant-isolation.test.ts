@@ -198,6 +198,20 @@ describe("cross-tenant isolation defense-in-depth", () => {
     expect((statusB.data as { online: number }).online).toBe(1);
   });
 
+  // ── /api/agents-online ───────────────────────────────────────────────────
+  type AgentsOnline = { agents: Array<{ agent_id: string }> };
+  it("/api/agents-online: lists only the caller's org agents", async () => {
+    await postAs("/api/register", tokenA, { agent_id: "agent-a", name: "AgentAlpha", modules: [] });
+    await postAs("/api/register", tokenB, { agent_id: "agent-b", name: "AgentBeta", modules: [] });
+
+    const listA = await postAs("/api/agents-online", tokenA, {});
+    expect(listA.status).toBe(200);
+    expect((listA.data as AgentsOnline).agents.map((a) => a.agent_id)).toEqual(["agent-a"]);
+
+    const listB = await postAs("/api/agents-online", tokenB, {});
+    expect((listB.data as AgentsOnline).agents.map((a) => a.agent_id)).toEqual(["agent-b"]);
+  });
+
   // ── /api/session-start ───────────────────────────────────────────────────
   it("/api/session-start: briefing scoped to org", async () => {
     await postAs("/api/register", tokenA, { agent_id: "agent-a", name: "AgentAlpha", modules: [] });

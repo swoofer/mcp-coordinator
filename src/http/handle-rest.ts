@@ -24,6 +24,7 @@ import {
   handleReset,
   handleCheckInterrupt,
   handleAgentStatus,
+  handleAgentsOnline,
   handleFileActivity,
   handleWorkingFilesStart,
   handleWorkingFilesStop,
@@ -77,6 +78,7 @@ const ROUTES: Record<string, RestHandler> = {
   "/api/reset": handleReset,
   "/api/check-interrupt": handleCheckInterrupt,
   "/api/status": handleStatus,
+  "/api/agents-online": handleAgentsOnline,
 };
 
 // State-changing routes: any method other than POST is rejected with 405,
@@ -154,6 +156,7 @@ export async function handleRest(
     url === "/api/hot-files" ||
     url === "/api/threads-active" ||
     url === "/api/status" ||
+    url === "/api/agents-online" ||
     url === "/api/quota";
   // Note: /api/quota/refresh is NOT in the poll list — it's a manual user
   // action and deserves an info-level log for auditability.

@@ -968,6 +968,44 @@ export function handleAgentStatus(
   }
 }
 
+/**
+ * POST|GET /api/agents-online — the agents currently online in the caller's
+ * org, with their activity. The dashboard calls it each time its event
+ * stream (re)connects: the stream only reports agents as they register or
+ * change, so without this an agent already online when the page opened was
+ * never listed.
+ *
+ * `last_event_id` is the org's latest event when the list was read. The
+ * stream replays recent history on connect; an agent event at or below this
+ * id is already reflected in the list, so the dashboard must not apply it
+ * (a replayed agent_offline would otherwise hide an agent that came back).
+ * It is read before the agents, so every event it covers is in the list.
+ */
+export function handleAgentsOnline(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RestContext,
+  body: Record<string, unknown>,
+): void {
+  const { registry, activityTracker } = ctx.services;
+  const org = ctx.claims.org;
+  const latest = getDb().prepare("SELECT MAX(id) AS id FROM events WHERE org_id = ?").get(org) as {
+    id: number | null;
+  };
+  const agents = registry.listOnline(org).map((agent) => {
+    const activity = activityTracker.getActivity(org, agent.id, { idleAfterMinutes: 5 });
+    return {
+      agent_id: agent.id,
+      name: agent.name,
+      modules: safeJsonParse<string[]>(agent.modules, []),
+      activity_status: activity.activity_status,
+      current_file: activity.current_file,
+      current_thread: activity.current_thread,
+    };
+  });
+  json(res, { last_event_id: latest.id ?? 0, agents });
+}
+
 export function handleFileActivity(
   req: IncomingMessage,
   res: ServerResponse,
