@@ -105,6 +105,26 @@ describe("MqttBridge drop visibility (#236)", () => {
     expect(drops).toContain("malformed_payload");
   });
 
+  it("stays quiet for the empty payload that clears a retained message", async () => {
+    const { client, drops } = await makeBridge();
+
+    // clearRetainedConsultation() publishes "" with retain on
+    // consultations/new: the broker's way to delete a retained message. The
+    // bridge's own subscription receives that tombstone; it is not a
+    // malformed message (production logged one per resolved thread).
+    client.emit("message", "coordinator/default/consultations/new", Buffer.from(""));
+
+    expect(drops).toEqual([]);
+  });
+
+  it("still reports an empty payload published anywhere else", async () => {
+    const { client, drops } = await makeBridge();
+
+    client.emit("message", "coordinator/default/broadcast", Buffer.from(""));
+
+    expect(drops).toContain("malformed_payload");
+  });
+
   it("reports a broadcast that lands with no listener registered", async () => {
     const { client, drops } = await makeBridge();
 

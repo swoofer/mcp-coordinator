@@ -218,6 +218,10 @@ export class MqttBridge {
         // Route consultation messages to agent listeners.
         // Topic: coordinator/<orgId>/consultations/... or coordinator/<orgId>/broadcast
         if (parts[2] === "consultations" || parts[2] === "broadcast") {
+          // An empty payload on consultations/new is how clearRetainedConsultation
+          // deletes the retained message: a tombstone, not a message to route.
+          // Anywhere else an empty payload is a publisher mistake, still reported.
+          if (message.length === 0 && parts[2] === "consultations" && parts[3] === "new") return;
           try {
             const payload = JSON.parse(message.toString());
             const msg: QueuedMessage = { topic, payload, timestamp: Date.now() };
