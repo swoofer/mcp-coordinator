@@ -11,12 +11,21 @@ import type { Agent } from "./types.js";
  */
 const DEFAULT_ONLINE_TTL_SECONDS = 900;
 
-function onlineTtlSeconds(): number {
+export function onlineTtlSeconds(): number {
   const raw = process.env.COORDINATOR_AGENT_ONLINE_TTL_SECONDS;
   if (!raw) return DEFAULT_ONLINE_TTL_SECONDS;
   const n = Number.parseInt(raw, 10);
   return Number.isFinite(n) && n > 0 ? n : DEFAULT_ONLINE_TTL_SECONDS;
 }
+
+/**
+ * The one definition of "online" for a row of `agents`: marked online AND
+ * seen within the TTL. Bind `onlineTtlSeconds()` to its placeholder. Every
+ * query that picks live agents must use it — a bare `status = 'online'`
+ * keeps every agent that died without going offline.
+ */
+export const ONLINE_AGENT_SQL =
+  "status = 'online' AND strftime('%s', 'now') - strftime('%s', last_seen_at) <= ?";
 
 export class AgentRegistry {
   register(orgId: string, agentId: string, name: string, modules: string[]): Agent {
@@ -66,8 +75,7 @@ export class AgentRegistry {
       .prepare(
         `SELECT * FROM agents
          WHERE org_id = ?
-           AND status = 'online'
-           AND strftime('%s', 'now') - strftime('%s', last_seen_at) <= ?
+           AND ${ONLINE_AGENT_SQL}
          ORDER BY name`,
       )
       .all(orgId, onlineTtlSeconds()) as Agent[];

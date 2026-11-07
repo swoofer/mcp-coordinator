@@ -115,11 +115,24 @@ export function runCommonAnnounceFlow(
     .filter((a) => a.id !== params.agent_id).length;
   const shouldAutoResolve = concernedIds.length === 0 && otherOnlineCount === 0;
   const currentThread = consultation.getThread(params.org_id, threadId)!;
-  if (shouldAutoResolve && currentThread.status === "open" && !params.keep_open) {
-    db.prepare(
-      "UPDATE threads SET status = 'resolved', resolved_at = ? WHERE id = ? AND org_id = ?",
-    ).run(new Date().toISOString(), threadId, params.org_id);
+  // This flow has the last word on the thread it was handed, fresh from
+  // announceWork. announceWork resolves at insert, silently, when no live
+  // agent shares a module; only here are file-level links (Layer 0, file
+  // activity) and the other online agents known. A thread resolved there with
+  // a concerned peer would never be put to that peer, and one resolved while
+  // others are online breaks the "only when truly alone" rule above: reopen
+  // it. A truly alone thread ends resolved and announced either way.
+  if (shouldAutoResolve && !params.keep_open) {
+    if (currentThread.status === "open") {
+      db.prepare(
+        "UPDATE threads SET status = 'resolved', resolved_at = ? WHERE id = ? AND org_id = ?",
+      ).run(new Date().toISOString(), threadId, params.org_id);
+    }
     consultation.emitResolution(threadId, "auto_resolved");
+  } else if (currentThread.status === "resolved") {
+    db.prepare(
+      "UPDATE threads SET status = 'open', resolved_at = NULL WHERE id = ? AND org_id = ?",
+    ).run(threadId, params.org_id);
   }
 
   // 3. Emit impact_scored SSE events for every scored agent.

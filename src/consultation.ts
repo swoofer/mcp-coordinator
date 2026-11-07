@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { getDb } from "./database.js";
+import { ONLINE_AGENT_SQL, onlineTtlSeconds } from "./agent-registry.js";
 import { silentLogger, type Logger } from "./logger.js";
 import { safeJsonParse } from "./json-utils.js";
 import type { Thread, ThreadMessage, ActionSummary, MessageType, ResolutionType } from "./types.js";
@@ -182,11 +183,13 @@ export class Consultation {
     // whose expected_respondents contains an agent that just went away — the
     // thread then stays open forever waiting for an absent voter.
     const tx = db.transaction(() => {
+      // Same presence rule as AgentRegistry.listOnline: an agent silent past
+      // the TTL is not a respondent, whatever its stored status says.
       const onlineAgents = db
         .prepare(
-          "SELECT id, modules FROM agents WHERE status = 'online' AND id != ? AND org_id = ?",
+          `SELECT id, modules FROM agents WHERE ${ONLINE_AGENT_SQL} AND id != ? AND org_id = ?`,
         )
-        .all(params.agent_id, orgId) as { id: string; modules: string }[];
+        .all(onlineTtlSeconds(), params.agent_id, orgId) as { id: string; modules: string }[];
 
       const respondents = onlineAgents.filter((agent) => {
         const agentModules: string[] = safeJsonParse<string[]>(
